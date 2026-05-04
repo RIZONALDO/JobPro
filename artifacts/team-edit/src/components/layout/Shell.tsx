@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, FolderOpen, ListTodo, Users, Settings, LogOut,
   CalendarDays, Menu, Bell, Search, ChevronRight, X, UserCircle,
-  Kanban, CalendarRange, BarChart3, Zap, AtSign,
+  Kanban, CalendarRange, BarChart3, Zap, AtSign, ClipboardList,
   CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2,
 } from "lucide-react";
 import * as Collapsible from "@radix-ui/react-collapsible";
@@ -75,6 +75,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/feed",     label: "Feed",             icon: Zap,             roles: ALL_ROLES },
   { href: "/my-tasks", label: "Meu Quadro",      icon: ListTodo,        roles: ALL_ROLES },
   { href: "/calendar", label: "Meu Calendário",  icon: CalendarDays,    roles: ALL_ROLES },
+  { href: "/tasks",    label: "Tarefas",           icon: ClipboardList,   roles: COORD_ROLES },
   { href: "/team",     label: "Membros",          icon: Users,           roles: COORD_ROLES },
   { href: "/settings", label: "Configurações",    icon: Settings,        roles: ["admin"] },
 ];

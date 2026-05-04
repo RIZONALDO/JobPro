@@ -18,6 +18,7 @@ import Pipeline from "@/pages/pipeline";
 import TimelinePage from "@/pages/timeline";
 import Reports from "@/pages/reports";
 import FeedPage from "@/pages/feed";
+import TasksOverview from "@/pages/tasks-overview";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } });
 
@@ -50,6 +51,7 @@ function Router() {
         <Route path="/timeline" component={TimelinePage} />
         <Route path="/reports" component={Reports} />
         <Route path="/feed" component={FeedPage} />
+        <Route path="/tasks" component={TasksOverview} />
         <Route>
           <div className="text-center py-20">
             <h2 className="text-2xl font-bold">404</h2>

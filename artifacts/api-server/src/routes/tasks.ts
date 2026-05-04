@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, tasksTable, usersTable, taskRevisionsTable, taskEventsTable, jobsTable, projectsTable } from "@workspace/db";
-import { eq, ne, desc, asc, and, gte, lte, isNotNull, lt, notInArray } from "drizzle-orm";
+import { eq, ne, desc, asc, and, gte, lte, isNotNull, lt, notInArray, inArray } from "drizzle-orm";
 import { requireAuth, requireCoordinator } from "../lib/auth.js";
 import { notify, notifyAdmins } from "../lib/notify.js";
 import { broadcastTaskChange, broadcastJobChange, broadcastProjectChange } from "../lib/broadcast.js";
@@ -316,6 +316,81 @@ router.delete("/tasks/:id", requireCoordinator, async (req, res): Promise<void> 
   const [job] = await db.select({ projectId: jobsTable.projectId }).from(jobsTable).where(eq(jobsTable.id, task.jobId));
   broadcastTaskChange(task.jobId, job?.projectId ?? 0);
   res.sendStatus(204);
+});
+
+router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void> => {
+  const { status, assignedToId, createdById } = req.query;
+
+  const coordUsers = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(inArray(usersTable.role, ["coordinator", "supervisor", "admin"]));
+  const coordIds = coordUsers.map(u => u.id);
+  if (coordIds.length === 0) { res.json([]); return; }
+
+  const conditions: ReturnType<typeof eq>[] = [inArray(tasksTable.createdById, coordIds) as any];
+  if (status && status !== "all") conditions.push(eq(tasksTable.status, String(status)) as any);
+  if (assignedToId) conditions.push(eq(tasksTable.assignedToId, parseInt(String(assignedToId), 10)) as any);
+  if (createdById) conditions.push(eq(tasksTable.createdById, parseInt(String(createdById), 10)) as any);
+
+  const rows = await db
+    .select({
+      id: tasksTable.id,
+      title: tasksTable.title,
+      description: tasksTable.description,
+      status: tasksTable.status,
+      priority: tasksTable.priority,
+      complexity: tasksTable.complexity,
+      dueDate: tasksTable.dueDate,
+      folderUrl: tasksTable.folderUrl,
+      revisionCount: tasksTable.revisionCount,
+      createdById: tasksTable.createdById,
+      assignedToId: tasksTable.assignedToId,
+      jobId: tasksTable.jobId,
+      jobName: jobsTable.name,
+      projectId: projectsTable.id,
+      projectName: projectsTable.name,
+      projectColor: projectsTable.color,
+    })
+    .from(tasksTable)
+    .leftJoin(jobsTable, eq(tasksTable.jobId, jobsTable.id))
+    .leftJoin(projectsTable, eq(jobsTable.projectId, projectsTable.id))
+    .where(and(...conditions))
+    .orderBy(desc(tasksTable.createdAt));
+
+  const personIds = [...new Set([
+    ...rows.map(r => r.assignedToId),
+    ...rows.map(r => r.createdById),
+  ].filter((id): id is number => id !== null))];
+
+  const persons = personIds.length
+    ? await db
+        .select({ id: usersTable.id, name: usersTable.name, login: usersTable.login, avatarUrl: usersTable.avatarUrl })
+        .from(usersTable)
+        .where(inArray(usersTable.id, personIds))
+    : [];
+  const personMap = new Map(persons.map(p => [p.id, p]));
+
+  const userId = req.session.userId!;
+  res.json(rows.map(r => ({
+    id: r.id,
+    title: r.title,
+    description: r.description,
+    status: r.status,
+    priority: r.priority,
+    complexity: r.complexity,
+    dueDate: r.dueDate,
+    folderUrl: r.folderUrl,
+    revisionCount: r.revisionCount ?? 0,
+    jobId: r.jobId,
+    jobName: r.jobName,
+    projectId: r.projectId,
+    projectName: r.projectName,
+    projectColor: r.projectColor,
+    assignee: r.assignedToId ? (personMap.get(r.assignedToId) ?? null) : null,
+    coordinator: r.createdById ? (personMap.get(r.createdById) ?? null) : null,
+    isOwn: r.createdById === userId,
+  })));
 });
 
 router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
