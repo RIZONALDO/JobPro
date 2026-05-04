@@ -211,14 +211,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
             { jobId }
           );
         }
-        await createFeedItem({
-          type: "job_completed",
-          title: `Job concluído: "${closedJob.name}"`,
-          actorId: userId,
-          entityId: jobId,
-          entityType: "job",
-          jobId,
-        }).catch(() => {});
 
         const projectId = closedJob.projectId;
         const allProjectJobs = await db.select({ status: jobsTable.status }).from(jobsTable).where(eq(jobsTable.projectId, projectId));
@@ -238,13 +230,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
             "Projeto concluído",
             `O projeto "${closedProject?.name ?? ""}" foi concluído`
           );
-          await createFeedItem({
-            type: "project_completed",
-            title: `Projeto concluído: "${closedProject?.name ?? ""}"`,
-            actorId: userId,
-            entityId: closedJob.projectId,
-            entityType: "project",
-          }).catch(() => {});
           broadcastProjectChange();
         }
         broadcastJobChange(projectId);

@@ -3,7 +3,6 @@ import { db, projectsTable, jobsTable, tasksTable, usersTable } from "@workspace
 import { eq, desc, asc, and, or, inArray, ne } from "drizzle-orm";
 import { requireAuth, requireCoordinator } from "../lib/auth.js";
 import { broadcastProjectChange, broadcastJobChange } from "../lib/broadcast.js";
-import { createFeedItem } from "../lib/feed.js";
 
 const ACTIVE_TASK_STATUSES = ["in_progress", "review", "in_revision"] as const;
 
@@ -70,13 +69,6 @@ router.post("/projects", requireCoordinator, async (req, res): Promise<void> => 
   }).returning();
 
   broadcastProjectChange();
-  await createFeedItem({
-    type: "project_created",
-    title: `Novo projeto: "${project.name}"`,
-    actorId: req.session.userId,
-    entityId: project.id,
-    entityType: "project",
-  }).catch(() => {});
   res.status(201).json(project);
 });
 
