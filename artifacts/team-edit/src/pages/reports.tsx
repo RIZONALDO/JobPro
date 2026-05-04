@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { fmtDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,9 +30,13 @@ const PRIORITY_CLS: Record<string, string> = {
   low: "text-green-600", medium: "text-amber-600", high: "text-red-600",
 };
 
+const COORD_ROLES = ["admin", "supervisor", "coordinator"];
+
 export default function Reports() {
   usePageTitle("Relatórios");
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isCoord = COORD_ROLES.includes(user?.role ?? "");
   const today = new Date();
   const [from, setFrom] = useState(
     new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0]
@@ -42,6 +47,7 @@ export default function Reports() {
   const [loading, setLoading] = useState(false);
 
   const load = () => {
+    if (!isCoord) return;
     setLoading(true);
     apiFetch<ReportData>(`/api/reports?from=${from}&to=${to}`)
       .then(setData)
@@ -49,7 +55,7 @@ export default function Reports() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [isCoord]);
 
   const filtered = data?.data?.filter(t => {
     if (!search) return true;
@@ -61,6 +67,8 @@ export default function Reports() {
       (t.assignee?.name.toLowerCase().includes(q) ?? false)
     );
   }) ?? [];
+
+  if (!isCoord) return <div className="text-[hsl(var(--muted-foreground))] text-sm py-8 text-center">Acesso restrito a coordenadores.</div>;
 
   return (
     <div className="space-y-4">

@@ -3,6 +3,7 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { apiFetch } from "@/lib/api";
 import { useJobModal } from "@/contexts/JobModalContext";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import ReactApexChart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
@@ -24,21 +25,30 @@ interface TimelineJob {
 }
 
 
+const COORD_ROLES = ["admin", "supervisor", "coordinator"];
+
 export default function TimelinePage() {
   usePageTitle("Timeline");
   const { toast } = useToast();
   const { openJob } = useJobModal();
+  const { user } = useAuth();
   const [jobs, setJobs] = useState<TimelineJob[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const isCoord = COORD_ROLES.includes(user?.role ?? "");
+
   const load = useCallback(() => {
+    if (!isCoord) return;
     apiFetch<TimelineJob[]>("/api/timeline")
       .then(setJobs)
       .catch(() => toast({ title: "Erro ao carregar linha do tempo", variant: "destructive" }))
       .finally(() => setLoading(false));
-  }, [toast]);
+  }, [toast, isCoord]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!isCoord) { setLoading(false); return; }
+    load();
+  }, [load, isCoord]);
 
   useRealtime({ onTasksChanged: load, onJobsChanged: load });
 
@@ -132,6 +142,7 @@ export default function TimelinePage() {
     return { series: chartSeries, chartOptions: opts };
   }, [jobs]);
 
+  if (!isCoord) return <div className="text-[hsl(var(--muted-foreground))] text-sm py-8 text-center">Acesso restrito a coordenadores.</div>;
   if (loading) return <div className="text-[hsl(var(--muted-foreground))] text-sm">Carregando...</div>;
 
   const chartHeight = Math.max(260, jobs.length * 40 + 80);
