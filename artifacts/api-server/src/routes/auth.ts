@@ -24,7 +24,11 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     name: user.name,
     login: user.login,
     role: user.role,
+    jobTitle: user.jobTitle ?? null,
     mustChangePassword: user.mustChangePassword,
+    email: user.email ?? null,
+    phone: user.phone ?? null,
+    avatarUrl: user.avatarUrl ?? null,
   });
 });
 
