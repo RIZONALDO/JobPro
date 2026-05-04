@@ -261,7 +261,7 @@ export default function Calendar() {
                     type="button"
                     onClick={() => openCreate(dateStr)}
                     title="Nova tarefa"
-                    className="absolute top-1 right-1 h-5 w-5 rounded flex items-center justify-center text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-1 right-1 h-5 w-5 rounded flex items-center justify-center text-[hsl(var(--muted-foreground))]/50 hover:text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/10 transition-colors"
                   >
                     <Plus className="h-3 w-3" />
                   </button>
@@ -280,6 +280,14 @@ export default function Calendar() {
               <div key={i} className={`border-r last:border-r-0 p-2 space-y-1.5 align-top ${isToday ? "bg-[hsl(var(--primary))]/5" : ""}`}>
                 {loading ? (
                   <div className="h-8 rounded bg-[hsl(var(--muted))]/50 animate-pulse" />
+                ) : dayTasks.length === 0 && isCoord ? (
+                  <button
+                    type="button"
+                    onClick={() => openCreate(fmt(day))}
+                    className="w-full h-10 rounded-lg border border-dashed border-[hsl(var(--border))] text-[10px] text-[hsl(var(--muted-foreground))]/40 hover:border-[hsl(var(--primary))]/40 hover:text-[hsl(var(--primary))]/60 transition-colors flex items-center justify-center gap-1"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </button>
                 ) : dayTasks.map(t => (
                   <div key={t.id}
                     onClick={() => isCoord && openEdit(t)}
