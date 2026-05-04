@@ -1,13 +1,17 @@
 import { useEffect, useState } from "react";
-import { apiFetch, apiPut } from "@/lib/api";
+import { apiFetch, apiPut, apiPost } from "@/lib/api";
 import { useSettings } from "@/contexts/SettingsContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { ImagePlus, X } from "lucide-react";
+import { ImagePlus, X, TriangleAlert } from "lucide-react";
 import { usePageTitle } from "@/lib/use-page-title";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
 
 const PROJECT_COLORS_PRIMARY = ["#6366f1","#ec4899","#f59e0b","#10b981","#3b82f6","#ef4444","#8b5cf6","#06b6d4"];
 
@@ -15,10 +19,14 @@ export default function SettingsPage() {
   usePageTitle("Configurações");
   const { toast } = useToast();
   const { refreshSettings } = useSettings();
+  const { logout } = useAuth();
   const [form, setForm] = useState({ company_name: "", system_name: "", logo_url: "", favicon_url: "", primary_color: "#6366f1" });
   const [logoDrag, setLogoDrag] = useState(false);
   const [faviconDrag, setFaviconDrag] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     apiFetch<Record<string, string>>("/api/settings").then(d => {
@@ -46,6 +54,21 @@ export default function SettingsPage() {
       const b64 = await readBase64(file);
       setForm(f => ({ ...f, [field]: b64 }));
     } catch (err: unknown) { toast({ title: err instanceof Error ? err.message : "Erro", variant: "destructive" }); }
+  };
+
+  const doReset = async () => {
+    setResetting(true);
+    try {
+      await apiPost("/api/admin/reset", {});
+      toast({ title: "Sistema resetado com sucesso. Faça login novamente." });
+      setResetOpen(false);
+      await logout();
+    } catch {
+      toast({ title: "Erro ao resetar o sistema", variant: "destructive" });
+    } finally {
+      setResetting(false);
+      setResetConfirm("");
+    }
   };
 
   const save = async () => {
@@ -136,6 +159,71 @@ export default function SettingsPage() {
       </Card>
 
       <Button onClick={save} disabled={saving}>{saving ? "Salvando..." : "Salvar configurações"}</Button>
+
+      {/* Zona de Perigo */}
+      <Card className="border-red-200 dark:border-red-900">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2 text-red-600 dark:text-red-400">
+            <TriangleAlert className="h-4 w-4" />
+            Zona de Perigo
+          </CardTitle>
+          <CardDescription>
+            Ações irreversíveis. Não há como desfazer após a confirmação.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/20 p-4">
+            <div>
+              <p className="text-sm font-medium">Resetar sistema para o estado de fábrica</p>
+              <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">
+                Remove todos os projetos, jobs, tarefas, feed, mensagens e usuários não-admin. Você será desconectado.
+              </p>
+            </div>
+            <Button variant="destructive" size="sm" onClick={() => { setResetConfirm(""); setResetOpen(true); }}>
+              Resetar
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Dialog de confirmação */}
+      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <TriangleAlert className="h-5 w-5" /> Resetar sistema?
+            </DialogTitle>
+            <DialogDescription className="space-y-2 pt-1">
+              <span className="block">Esta ação é <strong>permanente e irreversível</strong>. Serão apagados:</span>
+              <ul className="list-disc list-inside text-sm space-y-0.5 text-[hsl(var(--foreground))]">
+                <li>Todos os projetos, jobs e tarefas</li>
+                <li>Todo o feed, comentários e reações</li>
+                <li>Todas as mensagens de chat e DMs</li>
+                <li>Todos os usuários (exceto o administrador)</li>
+                <li>Todas as sessões ativas</li>
+              </ul>
+              <span className="block mt-3">Para confirmar, digite <strong>RESETAR</strong> abaixo:</span>
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={resetConfirm}
+            onChange={e => setResetConfirm(e.target.value)}
+            placeholder="RESETAR"
+            className="font-mono"
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetOpen(false)}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              disabled={resetConfirm !== "RESETAR" || resetting}
+              onClick={doReset}
+            >
+              {resetting ? "Resetando..." : "Confirmar reset"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

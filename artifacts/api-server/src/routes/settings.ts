@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db, appSettingsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, ne } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth.js";
+import { pool } from "@workspace/db";
 
 const router = Router();
 
@@ -25,6 +26,33 @@ router.put("/settings", requireAdmin, async (req, res): Promise<void> => {
   const settings: Record<string, string | null> = {};
   for (const row of rows) settings[row.key] = row.value ?? null;
   res.json(settings);
+});
+
+router.post("/admin/reset", requireAdmin, async (req, res): Promise<void> => {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      TRUNCATE
+        te_task_events,
+        te_task_revisions,
+        te_notifications,
+        te_user_presence,
+        te_direct_messages,
+        te_chat_messages,
+        te_feed_reactions,
+        te_feed_comments,
+        te_feed_items,
+        te_tasks,
+        te_jobs,
+        te_projects
+      CASCADE;
+    `);
+    await client.query(`DELETE FROM te_users WHERE role != 'admin'`);
+    await client.query(`DELETE FROM session`);
+    res.json({ ok: true });
+  } finally {
+    client.release();
+  }
 });
 
 export default router;
