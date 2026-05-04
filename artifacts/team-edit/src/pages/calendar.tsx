@@ -297,9 +297,9 @@ export default function Calendar() {
                         type="button"
                         onClick={() => openCreate(fmt(day))}
                         title="Nova tarefa"
-                        className="w-full h-6 rounded flex items-center justify-center gap-1 text-[hsl(var(--muted-foreground))]/40 hover:text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/8 transition-colors opacity-0 group-hover:opacity-100"
+                        className="w-full rounded-lg border border-dashed border-[hsl(var(--border))] px-2 py-1.5 flex items-center justify-center text-[hsl(var(--muted-foreground))]/40 hover:border-[hsl(var(--primary))]/50 hover:text-[hsl(var(--primary))]/70 hover:bg-[hsl(var(--primary))]/5 transition-colors opacity-0 group-hover:opacity-100"
                       >
-                        <Plus className="h-3 w-3" />
+                        <Plus className="h-3.5 w-3.5" />
                       </button>
                     )}
                   </>
