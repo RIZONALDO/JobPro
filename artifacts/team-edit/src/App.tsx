@@ -1,0 +1,80 @@
+import { Switch, Route, Router as WouterRouter } from "wouter";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { SettingsProvider } from "@/contexts/SettingsContext";
+import { JobModalProvider } from "@/contexts/JobModalContext";
+import { Shell } from "@/components/layout/Shell";
+import { Toaster } from "@/components/ui/toaster";
+import LoginPage from "@/pages/login";
+import ChangePasswordPage from "@/pages/change-password";
+import Dashboard from "@/pages/dashboard";
+import ProjectsList from "@/pages/projects/index";
+import MyTasks from "@/pages/my-tasks";
+import CalendarPage from "@/pages/calendar";
+import Team from "@/pages/team";
+import SettingsPage from "@/pages/settings";
+import Profile from "@/pages/profile";
+import Pipeline from "@/pages/pipeline";
+import TimelinePage from "@/pages/timeline";
+import Reports from "@/pages/reports";
+import FeedPage from "@/pages/feed";
+
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } });
+
+function Router() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[hsl(var(--background))]">
+        <div className="text-[hsl(var(--muted-foreground))] text-sm">Carregando...</div>
+      </div>
+    );
+  }
+
+  if (!user) return <LoginPage />;
+  if (user.mustChangePassword) return <ChangePasswordPage />;
+
+  return (
+    <JobModalProvider>
+    <Shell>
+      <Switch>
+        <Route path="/" component={Dashboard} />
+        <Route path="/projects" component={ProjectsList} />
+        <Route path="/my-tasks" component={MyTasks} />
+        <Route path="/calendar" component={CalendarPage} />
+        <Route path="/team" component={Team} />
+        <Route path="/settings" component={SettingsPage} />
+        <Route path="/profile" component={Profile} />
+        <Route path="/pipeline" component={Pipeline} />
+        <Route path="/timeline" component={TimelinePage} />
+        <Route path="/reports" component={Reports} />
+        <Route path="/feed" component={FeedPage} />
+        <Route>
+          <div className="text-center py-20">
+            <h2 className="text-2xl font-bold">404</h2>
+            <p className="text-[hsl(var(--muted-foreground))] mt-2">Página não encontrada</p>
+          </div>
+        </Route>
+      </Switch>
+    </Shell>
+    </JobModalProvider>
+  );
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <SettingsProvider>
+        <AuthProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
+        </AuthProvider>
+      </SettingsProvider>
+    </QueryClientProvider>
+  );
+}
+
+export default App;

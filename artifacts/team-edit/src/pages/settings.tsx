@@ -1,0 +1,141 @@
+import { useEffect, useState } from "react";
+import { apiFetch, apiPut } from "@/lib/api";
+import { useSettings } from "@/contexts/SettingsContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
+import { ImagePlus, X } from "lucide-react";
+import { usePageTitle } from "@/lib/use-page-title";
+
+const PROJECT_COLORS_PRIMARY = ["#6366f1","#ec4899","#f59e0b","#10b981","#3b82f6","#ef4444","#8b5cf6","#06b6d4"];
+
+export default function SettingsPage() {
+  usePageTitle("Configurações");
+  const { toast } = useToast();
+  const { refreshSettings } = useSettings();
+  const [form, setForm] = useState({ company_name: "", system_name: "", logo_url: "", favicon_url: "", primary_color: "#6366f1" });
+  const [logoDrag, setLogoDrag] = useState(false);
+  const [faviconDrag, setFaviconDrag] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    apiFetch<Record<string, string>>("/api/settings").then(d => {
+      setForm({
+        company_name: d["company_name"] ?? "",
+        system_name: d["system_name"] ?? "",
+        logo_url: d["logo_url"] ?? "",
+        favicon_url: d["favicon_url"] ?? "",
+        primary_color: d["primary_color"] ?? "#6366f1",
+      });
+    });
+  }, []);
+
+  const readBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    if (file.size > 2 * 1024 * 1024) { reject(new Error("Imagem muito grande (máx 2MB)")); return; }
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const handleFile = async (field: "logo_url" | "favicon_url", file: File | undefined) => {
+    if (!file) return;
+    try {
+      const b64 = await readBase64(file);
+      setForm(f => ({ ...f, [field]: b64 }));
+    } catch (err: unknown) { toast({ title: err instanceof Error ? err.message : "Erro", variant: "destructive" }); }
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await apiPut("/api/settings", form);
+      await refreshSettings();
+      toast({ title: "Configurações salvas" });
+    } catch { toast({ title: "Erro ao salvar", variant: "destructive" }); }
+    finally { setSaving(false); }
+  };
+
+  const ImageField = ({ field, label, hint }: { field: "logo_url" | "favicon_url"; label: string; hint: string }) => (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <label
+        onDragOver={e => { e.preventDefault(); field === "logo_url" ? setLogoDrag(true) : setFaviconDrag(true); }}
+        onDragLeave={() => field === "logo_url" ? setLogoDrag(false) : setFaviconDrag(false)}
+        onDrop={async e => { e.preventDefault(); field === "logo_url" ? setLogoDrag(false) : setFaviconDrag(false); await handleFile(field, e.dataTransfer.files?.[0]); }}
+        className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed cursor-pointer transition-colors h-24 ${(field === "logo_url" ? logoDrag : faviconDrag) ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/5" : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20 hover:bg-[hsl(var(--muted))]/40"}`}
+      >
+        {form[field] ? (
+          <img src={form[field]} alt={label} className="max-h-16 max-w-full object-contain rounded" />
+        ) : (
+          <>
+            <ImagePlus className="h-6 w-6 text-[hsl(var(--muted-foreground))]" />
+            <span className="text-xs text-[hsl(var(--muted-foreground))]">Clique ou arraste uma imagem</span>
+          </>
+        )}
+        <input type="file" accept="image/*" className="hidden" onChange={e => handleFile(field, e.target.files?.[0])} />
+      </label>
+      {form[field] && (
+        <button type="button" className="text-xs text-[hsl(var(--destructive))] hover:underline flex items-center gap-1" onClick={() => setForm(f => ({ ...f, [field]: "" }))}>
+          <X className="h-3 w-3" /> Remover
+        </button>
+      )}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 h-px bg-[hsl(var(--border))]" />
+        <span className="text-xs text-[hsl(var(--muted-foreground))]">ou cole uma URL</span>
+        <div className="flex-1 h-px bg-[hsl(var(--border))]" />
+      </div>
+      <Input value={form[field].startsWith("data:") ? "" : form[field]} onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))} placeholder="https://..." className="text-sm" />
+      <p className="text-xs text-[hsl(var(--muted-foreground))]">{hint}</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
+        <p className="text-[hsl(var(--muted-foreground))] mt-1">Personalize a identidade visual do sistema</p>
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Identidade</CardTitle><CardDescription>Nome e visual exibidos em todo o sistema.</CardDescription></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Nome da empresa</Label>
+              <Input value={form.company_name} onChange={e => setForm(f => ({ ...f, company_name: e.target.value }))} placeholder="TeamEdit" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Nome do sistema</Label>
+              <Input value={form.system_name} onChange={e => setForm(f => ({ ...f, system_name: e.target.value }))} placeholder="TeamEdit" />
+            </div>
+          </div>
+          <ImageField field="logo_url" label="Logo" hint="Exibida na sidebar. Recomendado: 200×60px, fundo transparente." />
+          <ImageField field="favicon_url" label="Favicon" hint="Ícone da aba do navegador. Recomendado: PNG 32×32px." />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Cor principal</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex gap-2 flex-wrap">
+            {PROJECT_COLORS_PRIMARY.map(c => (
+              <button key={c} type="button" onClick={() => setForm(f => ({ ...f, primary_color: c }))}
+                className={`h-8 w-8 rounded-full border-2 transition-all ${form.primary_color === c ? "border-[hsl(var(--foreground))] scale-110" : "border-transparent"}`}
+                style={{ backgroundColor: c }} />
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <input type="color" value={form.primary_color} onChange={e => setForm(f => ({ ...f, primary_color: e.target.value }))}
+              className="h-9 w-12 rounded-md border border-[hsl(var(--input))] cursor-pointer p-0.5" />
+            <Input value={form.primary_color} onChange={e => setForm(f => ({ ...f, primary_color: e.target.value }))} className="font-mono text-sm w-32" />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Button onClick={save} disabled={saving}>{saving ? "Salvando..." : "Salvar configurações"}</Button>
+    </div>
+  );
+}
