@@ -246,9 +246,8 @@ export default function Calendar() {
         <div className="grid grid-cols-7 border-b">
           {weekDays.map((day, i) => {
             const isToday = fmt(day) === today;
-            const dateStr = fmt(day);
             return (
-              <div key={i} className={`relative group px-2 py-3 text-center border-r last:border-r-0 ${isToday ? "bg-[hsl(var(--primary))]/5" : "bg-[hsl(var(--muted))]/30"}`}>
+              <div key={i} className={`px-2 py-3 text-center border-r last:border-r-0 ${isToday ? "bg-[hsl(var(--primary))]/5" : "bg-[hsl(var(--muted))]/30"}`}>
                 <p className="text-[11px] font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wide">
                   {DAYS_PT[i]}
                 </p>
@@ -256,16 +255,6 @@ export default function Calendar() {
                   {day.getDate()}
                 </p>
                 {isToday && <div className="h-1 w-1 rounded-full bg-[hsl(var(--primary))] mx-auto mt-1" />}
-                {isCoord && (
-                  <button
-                    type="button"
-                    onClick={() => openCreate(dateStr)}
-                    title="Nova tarefa"
-                    className="absolute top-1 right-1 h-5 w-5 rounded flex items-center justify-center text-[hsl(var(--muted-foreground))]/50 hover:text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/10 transition-colors"
-                  >
-                    <Plus className="h-3 w-3" />
-                  </button>
-                )}
               </div>
             );
           })}
@@ -277,38 +266,44 @@ export default function Calendar() {
             const isToday = fmt(day) === today;
             const dayTasks = tasksByDay(day);
             return (
-              <div key={i} className={`border-r last:border-r-0 p-2 space-y-1.5 align-top ${isToday ? "bg-[hsl(var(--primary))]/5" : ""}`}>
+              <div key={i} className={`group border-r last:border-r-0 p-2 space-y-1.5 align-top ${isToday ? "bg-[hsl(var(--primary))]/5" : ""}`}>
                 {loading ? (
                   <div className="h-8 rounded bg-[hsl(var(--muted))]/50 animate-pulse" />
-                ) : dayTasks.length === 0 && isCoord ? (
-                  <button
-                    type="button"
-                    onClick={() => openCreate(fmt(day))}
-                    className="w-full h-10 rounded-lg border border-dashed border-[hsl(var(--border))] text-[10px] text-[hsl(var(--muted-foreground))]/40 hover:border-[hsl(var(--primary))]/40 hover:text-[hsl(var(--primary))]/60 transition-colors flex items-center justify-center gap-1"
-                  >
-                    <Plus className="h-3 w-3" />
-                  </button>
-                ) : dayTasks.map(t => (
-                  <div key={t.id}
-                    onClick={() => isCoord && openEdit(t)}
-                    className={`rounded-lg border bg-white px-2 py-1.5 border-l-2 ${PRIORITY_COLOR[t.priority] ?? "border-l-slate-300"} shadow-sm ${isCoord ? "cursor-pointer hover:shadow-md hover:border-[hsl(var(--primary))]/40 transition-all" : ""}`}
-                  >
-                    <p className="text-xs font-medium leading-tight line-clamp-2">{t.title}</p>
-                    {t.jobName && (
-                      <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5 truncate">{t.jobName}</p>
+                ) : (
+                  <>
+                    {dayTasks.map(t => (
+                      <div key={t.id}
+                        onClick={() => isCoord && openEdit(t)}
+                        className={`rounded-lg border bg-white px-2 py-1.5 border-l-2 ${PRIORITY_COLOR[t.priority] ?? "border-l-slate-300"} shadow-sm ${isCoord ? "cursor-pointer hover:shadow-md hover:border-[hsl(var(--primary))]/40 transition-all" : ""}`}
+                      >
+                        <p className="text-xs font-medium leading-tight line-clamp-2">{t.title}</p>
+                        {t.jobName && (
+                          <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5 truncate">{t.jobName}</p>
+                        )}
+                        <div className="flex items-center justify-between mt-1 gap-1 flex-wrap">
+                          <Badge className={`text-[9px] px-1 py-0 leading-4 ${STATUS_CLASS[t.status] ?? ""}`}>
+                            {STATUS_LABEL[t.status] ?? t.status}
+                          </Badge>
+                          {isCoord && t.assigneeName && (
+                            <span className="text-[10px] text-[hsl(var(--muted-foreground))] truncate">
+                              {t.assigneeName.split(" ")[0]}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {isCoord && (
+                      <button
+                        type="button"
+                        onClick={() => openCreate(fmt(day))}
+                        title="Nova tarefa"
+                        className="w-full h-6 rounded flex items-center justify-center gap-1 text-[hsl(var(--muted-foreground))]/40 hover:text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/8 transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </button>
                     )}
-                    <div className="flex items-center justify-between mt-1 gap-1 flex-wrap">
-                      <Badge className={`text-[9px] px-1 py-0 leading-4 ${STATUS_CLASS[t.status] ?? ""}`}>
-                        {STATUS_LABEL[t.status] ?? t.status}
-                      </Badge>
-                      {isCoord && t.assigneeName && (
-                        <span className="text-[10px] text-[hsl(var(--muted-foreground))] truncate">
-                          {t.assigneeName.split(" ")[0]}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  </>
+                )}
               </div>
             );
           })}
