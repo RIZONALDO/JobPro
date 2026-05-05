@@ -561,8 +561,8 @@ export default function TimelinePage() {
       </div>
 
       {/* ── Gantt ─────────────────────────────────────────────────── */}
-      <div className="rounded-2xl border bg-[hsl(var(--card))] card-float overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-3 border-b bg-[hsl(var(--muted))]/20">
+      <div className="rounded-2xl border bg-[hsl(var(--card))] card-float p-4">
+        <div className="flex items-center gap-2 mb-3">
           <CalendarIcon className="h-4 w-4 text-[hsl(var(--primary))]" />
           <span className="text-sm font-semibold">Gantt</span>
           <span className="text-[11px] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">
