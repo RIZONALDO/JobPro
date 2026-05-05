@@ -133,7 +133,7 @@ function LifecycleFlow({ data, onClose, onOpen }: { data: LifecycleData; onClose
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-      <div className="relative w-full max-w-5xl max-h-[90vh] flex flex-col rounded-2xl border bg-[hsl(var(--card))] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="relative w-full max-h-[94vh] flex flex-col rounded-2xl border bg-[hsl(var(--card))] shadow-2xl overflow-hidden" style={{ maxWidth: "min(96vw, 1600px)" }} onClick={e => e.stopPropagation()}>
       {/* Header */}
       <div className="flex items-center gap-3 px-5 py-3 border-b bg-[hsl(var(--muted))]/20 shrink-0">
         <div className="h-3 w-3 rounded-full shrink-0" style={{ background: task.color }} />
@@ -179,7 +179,7 @@ function LifecycleFlow({ data, onClose, onOpen }: { data: LifecycleData; onClose
             return (
               <div key={i} className="flex items-start">
                 {/* Node */}
-                <div className={`rounded-xl border-2 ${style.border} ${style.bg} p-3 w-[168px] flex flex-col gap-1.5 shadow-sm`}>
+                <div className={`rounded-xl border-2 ${style.border} ${style.bg} p-3 w-[200px] flex flex-col gap-1.5 shadow-sm`}>
                   {/* Icon + label */}
                   <div className={`flex items-center gap-1.5 ${style.text} font-semibold text-[11px]`}>
                     {style.icon}
@@ -237,7 +237,7 @@ function LifecycleFlow({ data, onClose, onOpen }: { data: LifecycleData; onClose
                 {/* Arrow connector */}
                 {!isLast && (
                   <div className="flex items-center self-center mx-1 shrink-0">
-                    <div className="w-8 h-px bg-[hsl(var(--border))]" />
+                    <div className="w-10 h-px bg-[hsl(var(--border))]" />
                     <ArrowRight className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] -ml-1" />
                   </div>
                 )}
@@ -261,7 +261,6 @@ function GanttChart({
   selectedId: number | null;
   onSelect: (id: number) => void;
 }) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [tooltip, setTooltip] = useState<{ task: TimelineTask; x: number; y: number } | null>(null);
 
   const withDate = tasks.filter(t => t.dueDate);
@@ -292,15 +291,13 @@ function GanttChart({
 
   const todayLeft = Math.max(0, differenceInDays(today, rangeStart)) * DAY_W;
 
-  const groups: { client: string | null; tasks: TimelineTask[] }[] = [];
-  const clientMap = new Map<string, TimelineTask[]>();
-  withDate.forEach(t => {
-    const k = t.client ?? "__none__";
-    if (!clientMap.has(k)) clientMap.set(k, []);
-    clientMap.get(k)!.push(t);
+  // Flat list sorted by dueDate
+  const sortedTasks = [...withDate].sort((a, b) => {
+    if (!a.dueDate && !b.dueDate) return 0;
+    if (!a.dueDate) return 1;
+    if (!b.dueDate) return -1;
+    return a.dueDate.localeCompare(b.dueDate);
   });
-  clientMap.forEach((ts, k) => groups.push({ client: k === "__none__" ? null : k, tasks: ts }));
-  groups.sort((a, b) => (a.client ?? "").localeCompare(b.client ?? ""));
 
   const barFor = (t: TimelineTask) => {
     const left = Math.max(0, differenceInDays(parseISO(t.createdAt), rangeStart)) * DAY_W;
@@ -311,8 +308,6 @@ function GanttChart({
   const barColor = (t: TimelineTask) =>
     isOverdue(t) ? "#ef4444" : STATUS_BAR[t.status] ?? t.color;
 
-  const toggleGroup = (k: string) =>
-    setCollapsed(p => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
   return (
     <div className="relative" onMouseLeave={() => setTooltip(null)}>
@@ -338,43 +333,28 @@ function GanttChart({
             </div>
           </div>
 
-          {groups.map(g => {
-            const k = g.client ?? "__none__";
-            const isCol = collapsed.has(k);
-            return (
-              <div key={k}>
-                {/* Group header */}
-                <div className="flex sticky z-10" style={{ top: HEAD_H, height: GRP_H }}>
-                  <button onClick={() => toggleGroup(k)}
-                    className="sticky left-0 shrink-0 flex items-center gap-1.5 px-2.5 bg-[hsl(var(--muted))]/40 border-r border-b hover:bg-[hsl(var(--muted))]/60 transition-colors z-20"
-                    style={{ width: LEFT_W }}>
-                    <ChevronRight className={`h-3 w-3 text-[hsl(var(--muted-foreground))] transition-transform ${isCol ? "" : "rotate-90"}`} />
-                    <Tag className="h-3 w-3 text-[hsl(var(--primary))] shrink-0" />
-                    <span className="text-[11px] font-semibold truncate">{g.client ?? "Sem cliente"}</span>
-                    <span className="ml-auto text-[10px] text-[hsl(var(--muted-foreground))] shrink-0">{g.tasks.length}</span>
-                  </button>
-                  <div className="relative bg-[hsl(var(--muted))]/20 border-b flex-1">
-                    {todayLeft <= totalW && <div className="absolute inset-y-0 w-0.5 bg-indigo-400/30" style={{ left: todayLeft }} />}
-                  </div>
-                </div>
-
-                {!isCol && g.tasks.map(t => {
+          {sortedTasks.map(t => {
                   const { left, width } = barFor(t);
                   const color = barColor(t);
                   const overdue = isOverdue(t);
                   const isSel = selectedId === t.id;
                   return (
-                    <div key={t.id} className="flex group" style={{ height: ROW_H }}>
+                    <div key={t.id} className="flex group" style={{ height: ROW_H + 10 }}>
                       <div
                         onClick={() => onSelect(t.id)}
-                        className={`sticky left-0 shrink-0 flex items-center gap-1.5 px-2.5 border-r border-b cursor-pointer transition-colors z-10
-                          ${isSel ? "bg-[hsl(var(--primary))]/10 border-r-[hsl(var(--primary))]/30" : "bg-[hsl(var(--card))] hover:bg-[hsl(var(--muted))]/20"}`}
-                        style={{ width: LEFT_W }}
+                        className={`sticky left-0 shrink-0 flex flex-col justify-center gap-0 px-2.5 border-r border-b cursor-pointer transition-colors z-10
+                          ${isSel ? "bg-[hsl(var(--primary))]/10" : "bg-[hsl(var(--card))] hover:bg-[hsl(var(--muted))]/20"}`}
+                        style={{ width: LEFT_W, borderLeft: `3px solid ${color}` }}
                       >
-                        <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: color }} />
-                        <span className="text-[11px] truncate flex-1">{t.title}</span>
-                        {overdue && <AlertTriangle className="h-3 w-3 text-red-500 shrink-0" />}
-                        {isSel && <div className="h-3 w-0.5 bg-[hsl(var(--primary))] rounded-full shrink-0" />}
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-[11px] font-medium truncate flex-1">{t.title}</span>
+                          {overdue && <AlertTriangle className="h-3 w-3 text-red-500 shrink-0" />}
+                        </div>
+                        {t.client && (
+                          <span className="text-[10px] text-[hsl(var(--muted-foreground))] truncate flex items-center gap-0.5">
+                            <Tag className="h-2.5 w-2.5 shrink-0" />{t.client}
+                          </span>
+                        )}
                       </div>
                       <div
                         className={`relative border-b transition-colors cursor-pointer ${isSel ? "bg-[hsl(var(--primary))]/5" : "hover:bg-[hsl(var(--muted))]/10"}`}
@@ -385,18 +365,15 @@ function GanttChart({
                       >
                         {todayLeft <= totalW && <div className="absolute inset-y-0 w-0.5 bg-indigo-400/40 z-[1]" style={{ left: todayLeft }} />}
                         <div
-                          className="absolute rounded z-[2] flex items-center px-1 overflow-hidden"
-                          style={{ left, width, height: 18, top: 6, background: color, opacity: t.status === "completed" ? 0.5 : 0.82 }}
+                          className="absolute rounded z-[2] flex items-center px-1.5 overflow-hidden"
+                          style={{ left, width, height: 20, top: 10, background: color, opacity: t.status === "completed" ? 0.45 : 0.8 }}
                         >
-                          {width > 55 && <span className="text-white text-[9px] font-medium truncate drop-shadow">{t.title}</span>}
+                          {width > 60 && <span className="text-white text-[9px] font-semibold truncate drop-shadow">{t.title}</span>}
                         </div>
                       </div>
                     </div>
                   );
                 })}
-              </div>
-            );
-          })}
         </div>
       </div>
 
