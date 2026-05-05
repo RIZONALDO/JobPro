@@ -315,7 +315,7 @@ function GanttChart({
 
   return (
     <div className="relative" onMouseLeave={() => setTooltip(null)}>
-      <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 220px)", minHeight: 320 }}>
+      <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 170px)" }}>
         <div style={{ width: LEFT_W + totalW, minWidth: "100%" }}>
 
           {/* Header */}
