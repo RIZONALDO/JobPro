@@ -606,6 +606,100 @@ router.get("/pipeline", requireAuth, async (_req, res): Promise<void> => {
 });
 
 // ── Timeline (tasks with due dates) ──────────────────────────────────────────
+// ── Task lifecycle ────────────────────────────────────────────────────────────
+router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+  if (!task) { res.status(404).json({ error: "Tarefa não encontrada" }); return; }
+
+  const [events, revisions] = await Promise.all([
+    db.select({
+      id: taskEventsTable.id,
+      fromStatus: taskEventsTable.fromStatus,
+      toStatus: taskEventsTable.toStatus,
+      changedById: taskEventsTable.changedById,
+      createdAt: taskEventsTable.createdAt,
+    }).from(taskEventsTable)
+      .where(eq(taskEventsTable.taskId, id))
+      .orderBy(asc(taskEventsTable.createdAt)),
+
+    db.select({
+      id: taskRevisionsTable.id,
+      revisionNumber: taskRevisionsTable.revisionNumber,
+      comment: taskRevisionsTable.comment,
+      createdById: taskRevisionsTable.createdById,
+      createdAt: taskRevisionsTable.createdAt,
+    }).from(taskRevisionsTable)
+      .where(eq(taskRevisionsTable.taskId, id))
+      .orderBy(asc(taskRevisionsTable.createdAt)),
+  ]);
+
+  const personIds = [...new Set([
+    task.createdById,
+    task.assignedToId,
+    ...events.map(e => e.changedById),
+    ...revisions.map(r => r.createdById),
+  ].filter((x): x is number => x !== null))];
+
+  const personMap = new Map<number, { id: number; name: string; role: string; avatarUrl: string | null }>();
+  if (personIds.length > 0) {
+    const persons = await db
+      .select({ id: usersTable.id, name: usersTable.name, role: usersTable.role, avatarUrl: usersTable.avatarUrl })
+      .from(usersTable).where(inArray(usersTable.id, personIds));
+    persons.forEach(p => personMap.set(p.id, p));
+  }
+
+  // Merge task_revisions into events that have toStatus = "in_revision"
+  // by matching revision order to in_revision events
+  const revisionQueue = [...revisions];
+
+  const steps: object[] = [];
+
+  // Step 0: creation
+  steps.push({
+    type: "created",
+    at: task.createdAt,
+    by: task.createdById ? (personMap.get(task.createdById) ?? null) : null,
+    meta: { title: task.title, client: task.client, priority: task.priority, color: task.color },
+  });
+
+  // Subsequent events
+  for (const e of events) {
+    const step: Record<string, unknown> = {
+      type: "status_change",
+      at: e.createdAt,
+      by: e.changedById ? (personMap.get(e.changedById) ?? null) : null,
+      meta: { fromStatus: e.fromStatus, toStatus: e.toStatus },
+    };
+    // Attach revision comment if this is an in_revision transition
+    if (e.toStatus === "in_revision" && revisionQueue.length > 0) {
+      const rev = revisionQueue.shift()!;
+      (step.meta as Record<string, unknown>).revisionComment = rev.comment;
+      (step.meta as Record<string, unknown>).revisionNumber = rev.revisionNumber;
+    }
+    steps.push(step);
+  }
+
+  res.json({
+    task: {
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+      complexity: task.complexity,
+      client: task.client,
+      color: task.color,
+      dueDate: task.dueDate,
+      assignee: task.assignedToId ? (personMap.get(task.assignedToId) ?? null) : null,
+      coordinator: task.createdById ? (personMap.get(task.createdById) ?? null) : null,
+    },
+    steps,
+  });
+});
+
+
 router.get("/timeline", requireCoordinator, async (_req, res): Promise<void> => {
   const tasks = await db
     .select({

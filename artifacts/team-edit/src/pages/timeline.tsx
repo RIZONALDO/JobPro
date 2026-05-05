@@ -8,35 +8,45 @@ import { Badge } from "@/components/ui/badge";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { usePageTitle } from "@/lib/use-page-title";
 import {
-  Search, Tag, Calendar, AlertTriangle, CheckCircle2,
-  Clock, Eye, RotateCcw, ChevronUp, ChevronDown, ChevronsUpDown,
-  ExternalLink, Layers, BarChart3, ListFilter, ChevronRight,
+  Search, Tag, AlertTriangle, CheckCircle2, Clock, Eye,
+  RotateCcw, ChevronUp, ChevronDown, ChevronsUpDown,
+  ExternalLink, ChevronRight, X, User, UserCheck,
+  ArrowRight, Pencil, MessageSquare, Play, Send,
+  Calendar as CalendarIcon,
 } from "lucide-react";
 import {
   parseISO, isBefore, isToday, differenceInDays, format,
-  min as dateMin, max as dateMax,
-  startOfMonth, endOfMonth, addMonths,
+  min as dateMin, max as dateMax, startOfMonth, endOfMonth, addMonths,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+interface Person { id: number; name: string; role: string; avatarUrl: string | null }
+
 interface TimelineTask {
-  id: number;
-  title: string;
-  description: string | null;
-  status: string;
-  priority: string;
-  complexity: string;
-  dueDate: string | null;
-  color: string;
-  client: string | null;
-  revisionCount: number;
-  folderUrl: string | null;
-  createdAt: string;
-  updatedAt: string;
-  assignee: { id: number; name: string; avatarUrl: string | null } | null;
-  coordinator: { id: number; name: string; avatarUrl: string | null } | null;
+  id: number; title: string; description: string | null;
+  status: string; priority: string; complexity: string;
+  dueDate: string | null; color: string; client: string | null;
+  revisionCount: number; folderUrl: string | null;
+  createdAt: string; updatedAt: string;
+  assignee: Person | null; coordinator: Person | null;
+}
+
+interface LifecycleStep {
+  type: "created" | "status_change";
+  at: string;
+  by: Person | null;
+  meta: {
+    fromStatus?: string; toStatus?: string;
+    title?: string; client?: string; priority?: string; color?: string;
+    revisionComment?: string; revisionNumber?: number;
+  };
+}
+
+interface LifecycleData {
+  task: TimelineTask & { assignee: Person | null; coordinator: Person | null };
+  steps: LifecycleStep[];
 }
 
 type SortKey = "dueDate" | "title" | "status" | "priority" | "client" | "assignee" | "revisionCount";
@@ -49,56 +59,55 @@ const ALL_STATUSES = ["pending", "in_progress", "review", "in_revision", "comple
 
 const PRIORITY_LABEL: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta" };
 const PRIORITY_CLS: Record<string, string> = {
-  low:    "bg-green-100 text-green-700 border-green-200",
+  low: "bg-green-100 text-green-700 border-green-200",
   medium: "bg-amber-100 text-amber-700 border-amber-200",
-  high:   "bg-red-100 text-red-700 border-red-200",
+  high: "bg-red-100 text-red-700 border-red-200",
 };
 const COMPLEXITY_LABEL: Record<string, string> = { low: "Simples", medium: "Moderada", high: "Complexa" };
 
-const STATUS_BAR_COLOR: Record<string, string> = {
-  pending:     "#94a3b8",
-  in_progress: "#3b82f6",
-  review:      "#f59e0b",
-  in_revision: "#f97316",
-  completed:   "#22c55e",
+const STATUS_BAR: Record<string, string> = {
+  pending: "#94a3b8", in_progress: "#3b82f6",
+  review: "#f59e0b", in_revision: "#f97316", completed: "#22c55e",
 };
 
-const LEFT_W  = 240; // px — sticky left panel
-const ROW_H   = 38;  // px — each task row
-const HEAD_H  = 28;  // px — month header height
-const GROUP_H = 30;  // px — client group header
+// Node styles for lifecycle flowchart
+const STEP_STYLE: Record<string, { bg: string; border: string; text: string; icon: JSX.Element; label: string }> = {
+  created:      { bg: "bg-indigo-50",  border: "border-indigo-300",  text: "text-indigo-700",  icon: <Play className="h-3.5 w-3.5" />,        label: "Criação" },
+  pending:      { bg: "bg-slate-50",   border: "border-slate-300",   text: "text-slate-600",   icon: <Clock className="h-3.5 w-3.5" />,        label: "Pendente" },
+  in_progress:  { bg: "bg-blue-50",    border: "border-blue-300",    text: "text-blue-700",    icon: <Pencil className="h-3.5 w-3.5" />,       label: "Em edição" },
+  review:       { bg: "bg-amber-50",   border: "border-amber-300",   text: "text-amber-700",   icon: <Send className="h-3.5 w-3.5" />,         label: "Enviado p/ aprovação" },
+  in_revision:  { bg: "bg-orange-50",  border: "border-orange-400",  text: "text-orange-700",  icon: <MessageSquare className="h-3.5 w-3.5" />, label: "Alteração solicitada" },
+  completed:    { bg: "bg-green-50",   border: "border-green-400",   text: "text-green-700",   icon: <CheckCircle2 className="h-3.5 w-3.5" />, label: "Aprovada" },
+};
+
+const LEFT_W = 210;
+const ROW_H  = 30;
+const HEAD_H = 24;
+const GRP_H  = 26;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function isOverdue(t: TimelineTask) {
+function isOverdue(t: { dueDate: string | null; status: string }) {
   if (!t.dueDate || t.status === "completed") return false;
   const d = parseISO(t.dueDate);
   return isBefore(d, new Date()) && !isToday(d);
 }
 
-function dueDateLabel(dueDate: string | null) {
-  if (!dueDate) return { text: "—", cls: "text-[hsl(var(--muted-foreground))]" };
-  const d = parseISO(dueDate);
-  const diff = differenceInDays(d, new Date());
-  const fmt  = format(d, "dd/MM/yy", { locale: ptBR });
-  if (isBefore(d, new Date()) && !isToday(d)) return { text: fmt, cls: "text-red-600 font-semibold" };
-  if (isToday(d))  return { text: "Hoje",  cls: "text-orange-600 font-semibold" };
-  if (diff <= 3)   return { text: fmt,     cls: "text-amber-600 font-medium" };
-  return { text: fmt, cls: "text-[hsl(var(--muted-foreground))]" };
-}
+function fmt(iso: string) { return format(parseISO(iso), "dd/MM/yy HH:mm", { locale: ptBR }); }
+function fmtShort(iso: string) { return format(parseISO(iso), "dd/MM/yy", { locale: ptBR }); }
 
-function Avatar({ p, size = 6 }: { p: { name: string; avatarUrl: string | null } | null; size?: number }) {
+function Avatar({ p, size = 5 }: { p: Person | null; size?: number }) {
   if (!p) return <span className="text-xs text-[hsl(var(--muted-foreground))]">—</span>;
   const ini = p.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5 min-w-0">
       {p.avatarUrl
         ? <img src={p.avatarUrl} className={`h-${size} w-${size} rounded-full object-cover shrink-0`} />
         : <div className={`h-${size} w-${size} rounded-full bg-[hsl(var(--primary))]/15 flex items-center justify-center shrink-0`}>
-            <span className="text-[9px] font-bold text-[hsl(var(--primary))]">{ini}</span>
+            <span className="text-[8px] font-bold text-[hsl(var(--primary))]">{ini}</span>
           </div>
       }
-      <span className="text-xs truncate max-w-[90px]">{p.name}</span>
+      <span className="text-xs truncate">{p.name}</span>
     </div>
   );
 }
@@ -108,213 +117,282 @@ function SortIcon({ col, sort }: { col: SortKey; sort: { key: SortKey; dir: Sort
   return sort.dir === "asc" ? <ChevronUp className="h-3 w-3 text-[hsl(var(--primary))]" /> : <ChevronDown className="h-3 w-3 text-[hsl(var(--primary))]" />;
 }
 
-// ── Custom Gantt ──────────────────────────────────────────────────────────────
+// ── Lifecycle Flowchart ───────────────────────────────────────────────────────
 
-interface GanttGroup { client: string | null; tasks: TimelineTask[] }
+function LifecycleFlow({ data, onClose, onOpen }: { data: LifecycleData; onClose: () => void; onOpen: (id: number) => void }) {
+  const { task, steps } = data;
 
-function GanttChart({ tasks, onOpen }: { tasks: TimelineTask[]; onOpen: (id: number) => void }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [tooltip, setTooltip] = useState<{ task: TimelineTask; x: number; y: number } | null>(null);
+  const nodeKey = (step: LifecycleStep, i: number) => {
+    if (step.type === "created") return "created";
+    return step.meta.toStatus ?? `step-${i}`;
+  };
+
+  const styleFor = (step: LifecycleStep) => {
+    if (step.type === "created") return STEP_STYLE.created;
+    const key = step.meta.toStatus ?? "pending";
+    return STEP_STYLE[key] ?? STEP_STYLE.pending;
+  };
+
+  const roleLabel: Record<string, string> = {
+    admin: "Admin", coordinator: "Coordenador", supervisor: "Supervisor", editor: "Editor",
+  };
+
+  return (
+    <div className="rounded-2xl border bg-[hsl(var(--card))] card-float overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-5 py-3 border-b bg-[hsl(var(--muted))]/20">
+        <div className="h-3 w-3 rounded-full shrink-0" style={{ background: task.color }} />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold truncate">{task.title}</p>
+          {task.client && (
+            <p className="text-[11px] text-[hsl(var(--muted-foreground))] flex items-center gap-1">
+              <Tag className="h-3 w-3" />{task.client}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Badge className={`text-[10px] px-1.5 ${STATUS_CLASS[task.status] ?? ""}`}>
+            {STATUS_LABEL[task.status] ?? task.status}
+          </Badge>
+          <button
+            onClick={() => onOpen(task.id)}
+            className="text-[11px] text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5"
+          >
+            Abrir <ExternalLink className="h-3 w-3" />
+          </button>
+          <button onClick={onClose} className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Sub-header info */}
+      <div className="flex items-center gap-6 px-5 py-2 border-b bg-[hsl(var(--muted))]/10 text-[11px] text-[hsl(var(--muted-foreground))]">
+        <span>Coordenador: <strong className="text-[hsl(var(--foreground))]">{task.coordinator?.name ?? "—"}</strong></span>
+        <span>Editor: <strong className="text-[hsl(var(--foreground))]">{task.assignee?.name ?? "—"}</strong></span>
+        {task.dueDate && <span>Prazo: <strong className={isOverdue(task) ? "text-red-600" : "text-[hsl(var(--foreground))]"}>{fmtShort(task.dueDate)}</strong></span>}
+        <span>{task.revisionCount} revisão{task.revisionCount !== 1 ? "ões" : ""}</span>
+      </div>
+
+      {/* Flowchart */}
+      <div className="overflow-x-auto px-5 py-5">
+        <div className="flex items-start gap-0 min-w-max">
+          {steps.map((step, i) => {
+            const style = styleFor(step);
+            const isLast = i === steps.length - 1;
+
+            return (
+              <div key={i} className="flex items-start">
+                {/* Node */}
+                <div className={`rounded-xl border-2 ${style.border} ${style.bg} p-3 w-[168px] flex flex-col gap-1.5 shadow-sm`}>
+                  {/* Icon + label */}
+                  <div className={`flex items-center gap-1.5 ${style.text} font-semibold text-[11px]`}>
+                    {style.icon}
+                    <span>{style.label}</span>
+                  </div>
+
+                  {/* From → To badge (for status changes) */}
+                  {step.type === "status_change" && step.meta.fromStatus && (
+                    <div className="flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))]">
+                      <span className="opacity-60 line-through">{STATUS_LABEL[step.meta.fromStatus] ?? step.meta.fromStatus}</span>
+                      <ArrowRight className="h-2.5 w-2.5 shrink-0" />
+                      <span className={style.text + " font-medium"}>{STATUS_LABEL[step.meta.toStatus!] ?? step.meta.toStatus}</span>
+                    </div>
+                  )}
+
+                  {/* Actor */}
+                  {step.by && (
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      {step.by.avatarUrl
+                        ? <img src={step.by.avatarUrl} className="h-5 w-5 rounded-full object-cover shrink-0" />
+                        : <div className="h-5 w-5 rounded-full bg-[hsl(var(--primary))]/20 flex items-center justify-center shrink-0">
+                            <span className="text-[8px] font-bold text-[hsl(var(--primary))]">
+                              {step.by.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
+                            </span>
+                          </div>
+                      }
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-medium truncate">{step.by.name}</p>
+                        <p className="text-[9px] text-[hsl(var(--muted-foreground))]">{roleLabel[step.by.role] ?? step.by.role}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Revision comment */}
+                  {step.meta.revisionComment && (
+                    <div className="mt-1 rounded-lg bg-orange-100/80 border border-orange-200 px-2 py-1.5 text-[10px] text-orange-800 leading-snug">
+                      <span className="font-semibold block mb-0.5">Revisão #{step.meta.revisionNumber}</span>
+                      {step.meta.revisionComment}
+                    </div>
+                  )}
+
+                  {/* Creation meta */}
+                  {step.type === "created" && step.meta.client && (
+                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] flex items-center gap-1">
+                      <Tag className="h-2.5 w-2.5" />{step.meta.client}
+                    </p>
+                  )}
+
+                  {/* Timestamp */}
+                  <p className="text-[9px] text-[hsl(var(--muted-foreground))] mt-auto pt-1 border-t border-[hsl(var(--border))]/40">
+                    {fmt(step.at)}
+                  </p>
+                </div>
+
+                {/* Arrow connector */}
+                {!isLast && (
+                  <div className="flex items-center self-center mx-1 shrink-0">
+                    <div className="w-8 h-px bg-[hsl(var(--border))]" />
+                    <ArrowRight className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] -ml-1" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Compact Gantt ─────────────────────────────────────────────────────────────
+
+function GanttChart({
+  tasks, onOpen, selectedId, onSelect,
+}: {
+  tasks: TimelineTask[];
+  onOpen: (id: number) => void;
+  selectedId: number | null;
+  onSelect: (id: number) => void;
+}) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [tooltip, setTooltip] = useState<{ task: TimelineTask; x: number; y: number } | null>(null);
 
   const withDate = tasks.filter(t => t.dueDate);
+  if (withDate.length === 0)
+    return <div className="py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">Nenhuma tarefa com prazo cadastrado.</div>;
 
-  if (withDate.length === 0) {
-    return (
-      <div className="py-10 text-center text-sm text-[hsl(var(--muted-foreground))]">
-        Nenhuma tarefa com prazo para exibir no Gantt.
-      </div>
-    );
-  }
-
-  // Date range
   const today = new Date();
   const allStarts = withDate.map(t => parseISO(t.createdAt));
   const allEnds   = withDate.map(t => parseISO(t.dueDate!));
   const rangeStart = startOfMonth(dateMin([...allStarts, today]));
   const rangeEnd   = endOfMonth(dateMax([...allEnds, today]));
   const totalDays  = differenceInDays(rangeEnd, rangeStart) + 1;
+  const DAY_W      = totalDays > 365 ? 7 : totalDays > 180 ? 12 : totalDays > 90 ? 18 : 24;
+  const totalW     = totalDays * DAY_W;
 
-  const DAY_W = totalDays > 365 ? 8 : totalDays > 180 ? 14 : totalDays > 90 ? 20 : 28;
-  const totalW = totalDays * DAY_W;
-
-  // Month headers
   const months: { label: string; left: number; width: number }[] = [];
   let cur = startOfMonth(rangeStart);
   while (isBefore(cur, rangeEnd)) {
-    const mStart = cur < rangeStart ? rangeStart : cur;
-    const mEnd   = endOfMonth(cur) > rangeEnd ? rangeEnd : endOfMonth(cur);
+    const mS = cur < rangeStart ? rangeStart : cur;
+    const mE = endOfMonth(cur) > rangeEnd ? rangeEnd : endOfMonth(cur);
     months.push({
-      label: format(cur, "MMM yyyy", { locale: ptBR }),
-      left:  differenceInDays(mStart, rangeStart) * DAY_W,
-      width: (differenceInDays(mEnd, mStart) + 1) * DAY_W,
+      label: format(cur, "MMM/yy", { locale: ptBR }),
+      left: differenceInDays(mS, rangeStart) * DAY_W,
+      width: (differenceInDays(mE, mS) + 1) * DAY_W,
     });
     cur = addMonths(cur, 1);
   }
 
-  // Week grid lines (every 7 days)
-  const weekLines: number[] = [];
-  for (let d = 0; d < totalDays; d += 7) weekLines.push(d * DAY_W);
+  const todayLeft = Math.max(0, differenceInDays(today, rangeStart)) * DAY_W;
 
-  // Today line
-  const todayLeft = differenceInDays(today, rangeStart) * DAY_W;
-
-  // Groups
-  const groups: GanttGroup[] = [];
+  const groups: { client: string | null; tasks: TimelineTask[] }[] = [];
   const clientMap = new Map<string, TimelineTask[]>();
   withDate.forEach(t => {
-    const key = t.client ?? "__none__";
-    if (!clientMap.has(key)) clientMap.set(key, []);
-    clientMap.get(key)!.push(t);
+    const k = t.client ?? "__none__";
+    if (!clientMap.has(k)) clientMap.set(k, []);
+    clientMap.get(k)!.push(t);
   });
-  clientMap.forEach((ts, key) =>
-    groups.push({ client: key === "__none__" ? null : key, tasks: ts })
-  );
-  groups.sort((a, b) => (a.client ?? "zzz").localeCompare(b.client ?? "zzz"));
+  clientMap.forEach((ts, k) => groups.push({ client: k === "__none__" ? null : k, tasks: ts }));
+  groups.sort((a, b) => (a.client ?? "").localeCompare(b.client ?? ""));
 
   const barFor = (t: TimelineTask) => {
-    const s    = parseISO(t.createdAt);
-    const e    = parseISO(t.dueDate!);
-    const left = Math.max(0, differenceInDays(s, rangeStart)) * DAY_W;
-    const end  = Math.min(totalW, (differenceInDays(e, rangeStart) + 1) * DAY_W);
-    return { left, width: Math.max(end - left, DAY_W) };
+    const left = Math.max(0, differenceInDays(parseISO(t.createdAt), rangeStart)) * DAY_W;
+    const right = Math.min(totalW, (differenceInDays(parseISO(t.dueDate!), rangeStart) + 1) * DAY_W);
+    return { left, width: Math.max(right - left, DAY_W) };
   };
 
   const barColor = (t: TimelineTask) =>
-    isOverdue(t) ? "#ef4444" : STATUS_BAR_COLOR[t.status] ?? t.color;
+    isOverdue(t) ? "#ef4444" : STATUS_BAR[t.status] ?? t.color;
 
-  const toggleGroup = (key: string) =>
-    setCollapsed(prev => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
+  const toggleGroup = (k: string) =>
+    setCollapsed(p => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
   return (
-    <div className="relative select-none" onMouseLeave={() => setTooltip(null)}>
-      <div className="overflow-auto rounded-lg border" style={{ maxHeight: 520 }}>
+    <div className="relative" onMouseLeave={() => setTooltip(null)}>
+      <div className="overflow-auto rounded-lg border" style={{ maxHeight: 460 }}>
         <div style={{ width: LEFT_W + totalW, minWidth: "100%" }}>
 
-          {/* ── Header row ── */}
+          {/* Header */}
           <div className="flex sticky top-0 z-20" style={{ height: HEAD_H }}>
-            {/* Left corner */}
-            <div
-              className="sticky left-0 shrink-0 bg-[hsl(var(--muted))]/60 border-r border-b flex items-center px-3 z-30"
-              style={{ width: LEFT_W }}
-            >
-              <span className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Tarefa</span>
+            <div className="sticky left-0 shrink-0 bg-[hsl(var(--muted))]/60 border-r border-b flex items-center px-3 z-30 text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide" style={{ width: LEFT_W }}>
+              Tarefa
             </div>
-            {/* Month labels */}
             <div className="relative bg-[hsl(var(--muted))]/40 border-b" style={{ width: totalW }}>
               {months.map(m => (
-                <div
-                  key={m.label}
-                  className="absolute inset-y-0 flex items-center border-r border-[hsl(var(--border))]/60 px-2"
-                  style={{ left: m.left, width: m.width }}
-                >
+                <div key={m.label} className="absolute inset-y-0 border-r border-[hsl(var(--border))]/50 flex items-center px-1.5" style={{ left: m.left, width: m.width }}>
                   <span className="text-[10px] font-medium text-[hsl(var(--muted-foreground))] capitalize">{m.label}</span>
                 </div>
               ))}
-              {/* Today label in header */}
-              {todayLeft >= 0 && todayLeft <= totalW && (
-                <div
-                  className="absolute top-0 flex flex-col items-center"
-                  style={{ left: todayLeft, transform: "translateX(-50%)", zIndex: 5 }}
-                >
-                  <div className="bg-indigo-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap">
-                    Hoje
-                  </div>
+              {todayLeft <= totalW && (
+                <div className="absolute top-0 flex flex-col items-center z-10" style={{ left: todayLeft, transform: "translateX(-50%)" }}>
+                  <div className="bg-indigo-500 text-white text-[9px] font-bold px-1.5 rounded whitespace-nowrap leading-5">Hoje</div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* ── Groups + Rows ── */}
           {groups.map(g => {
-            const key = g.client ?? "__none__";
-            const isCollapsed = collapsed.has(key);
+            const k = g.client ?? "__none__";
+            const isCol = collapsed.has(k);
             return (
-              <div key={key}>
+              <div key={k}>
                 {/* Group header */}
-                <div className="flex sticky z-10" style={{ top: HEAD_H, height: GROUP_H }}>
-                  <button
-                    onClick={() => toggleGroup(key)}
-                    className="sticky left-0 shrink-0 flex items-center gap-1.5 px-3 bg-[hsl(var(--muted))]/50 border-r border-b hover:bg-[hsl(var(--muted))]/70 transition-colors z-20 text-left"
-                    style={{ width: LEFT_W }}
-                  >
-                    <ChevronRight className={`h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] transition-transform ${isCollapsed ? "" : "rotate-90"}`} />
+                <div className="flex sticky z-10" style={{ top: HEAD_H, height: GRP_H }}>
+                  <button onClick={() => toggleGroup(k)}
+                    className="sticky left-0 shrink-0 flex items-center gap-1.5 px-2.5 bg-[hsl(var(--muted))]/40 border-r border-b hover:bg-[hsl(var(--muted))]/60 transition-colors z-20"
+                    style={{ width: LEFT_W }}>
+                    <ChevronRight className={`h-3 w-3 text-[hsl(var(--muted-foreground))] transition-transform ${isCol ? "" : "rotate-90"}`} />
                     <Tag className="h-3 w-3 text-[hsl(var(--primary))] shrink-0" />
                     <span className="text-[11px] font-semibold truncate">{g.client ?? "Sem cliente"}</span>
                     <span className="ml-auto text-[10px] text-[hsl(var(--muted-foreground))] shrink-0">{g.tasks.length}</span>
                   </button>
-                  {/* Group row background */}
-                  <div className="relative bg-[hsl(var(--muted))]/20 border-b flex-1" style={{ width: totalW }}>
-                    {weekLines.map(x => (
-                      <div key={x} className="absolute inset-y-0 w-px bg-[hsl(var(--border))]/30" style={{ left: x }} />
-                    ))}
-                    {todayLeft >= 0 && todayLeft <= totalW && (
-                      <div className="absolute inset-y-0 w-0.5 bg-indigo-500/40" style={{ left: todayLeft }} />
-                    )}
+                  <div className="relative bg-[hsl(var(--muted))]/20 border-b flex-1">
+                    {todayLeft <= totalW && <div className="absolute inset-y-0 w-0.5 bg-indigo-400/30" style={{ left: todayLeft }} />}
                   </div>
                 </div>
 
-                {/* Task rows */}
-                {!isCollapsed && g.tasks.map(t => {
+                {!isCol && g.tasks.map(t => {
                   const { left, width } = barFor(t);
                   const color = barColor(t);
                   const overdue = isOverdue(t);
+                  const isSel = selectedId === t.id;
                   return (
                     <div key={t.id} className="flex group" style={{ height: ROW_H }}>
-                      {/* Left cell */}
                       <div
-                        className="sticky left-0 shrink-0 flex items-center gap-2 px-3 bg-[hsl(var(--card))] border-r border-b hover:bg-[hsl(var(--muted))]/20 cursor-pointer z-10 transition-colors"
+                        onClick={() => onSelect(t.id)}
+                        className={`sticky left-0 shrink-0 flex items-center gap-1.5 px-2.5 border-r border-b cursor-pointer transition-colors z-10
+                          ${isSel ? "bg-[hsl(var(--primary))]/10 border-r-[hsl(var(--primary))]/30" : "bg-[hsl(var(--card))] hover:bg-[hsl(var(--muted))]/20"}`}
                         style={{ width: LEFT_W }}
-                        onClick={() => onOpen(t.id)}
                       >
-                        <span
-                          className="h-2 w-2 rounded-full shrink-0"
-                          style={{ background: color }}
-                        />
+                        <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: color }} />
                         <span className="text-[11px] truncate flex-1">{t.title}</span>
                         {overdue && <AlertTriangle className="h-3 w-3 text-red-500 shrink-0" />}
+                        {isSel && <div className="h-3 w-0.5 bg-[hsl(var(--primary))] rounded-full shrink-0" />}
                       </div>
-
-                      {/* Timeline cell */}
                       <div
-                        className="relative border-b flex items-center bg-[hsl(var(--card))] hover:bg-[hsl(var(--muted))]/10 transition-colors cursor-pointer"
+                        className={`relative border-b transition-colors cursor-pointer ${isSel ? "bg-[hsl(var(--primary))]/5" : "hover:bg-[hsl(var(--muted))]/10"}`}
                         style={{ width: totalW }}
-                        onClick={() => onOpen(t.id)}
-                        onMouseMove={e => {
-                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                          setTooltip({ task: t, x: e.clientX, y: e.clientY });
-                        }}
+                        onClick={() => onSelect(t.id)}
+                        onMouseMove={e => setTooltip({ task: t, x: e.clientX, y: e.clientY })}
                         onMouseLeave={() => setTooltip(null)}
                       >
-                        {/* Grid */}
-                        {weekLines.map(x => (
-                          <div key={x} className="absolute inset-y-0 w-px bg-[hsl(var(--border))]/20" style={{ left: x }} />
-                        ))}
-                        {/* Today line */}
-                        {todayLeft >= 0 && todayLeft <= totalW && (
-                          <div className="absolute inset-y-0 w-0.5 bg-indigo-500/50 z-[1]" style={{ left: todayLeft }} />
-                        )}
-                        {/* Task bar */}
+                        {todayLeft <= totalW && <div className="absolute inset-y-0 w-0.5 bg-indigo-400/40 z-[1]" style={{ left: todayLeft }} />}
                         <div
-                          className="absolute rounded z-[2] flex items-center px-1.5 overflow-hidden"
-                          style={{
-                            left,
-                            width,
-                            height: 22,
-                            background: color,
-                            opacity: t.status === "completed" ? 0.55 : overdue ? 1 : 0.85,
-                            boxShadow: overdue ? `0 0 0 1.5px ${color}` : undefined,
-                          }}
+                          className="absolute rounded z-[2] flex items-center px-1 overflow-hidden"
+                          style={{ left, width, height: 18, top: 6, background: color, opacity: t.status === "completed" ? 0.5 : 0.82 }}
                         >
-                          {width > 60 && (
-                            <span className="text-white text-[9px] font-medium truncate drop-shadow">
-                              {t.title}
-                            </span>
-                          )}
+                          {width > 55 && <span className="text-white text-[9px] font-medium truncate drop-shadow">{t.title}</span>}
                         </div>
                       </div>
                     </div>
@@ -326,58 +404,30 @@ function GanttChart({ tasks, onOpen }: { tasks: TimelineTask[]; onOpen: (id: num
         </div>
       </div>
 
-      {/* ── Tooltip ── */}
+      {/* Tooltip */}
       {tooltip && (
-        <div
-          className="fixed z-50 pointer-events-none"
-          style={{ left: tooltip.x + 16, top: tooltip.y - 8 }}
-        >
-          <div className="rounded-lg border bg-[hsl(var(--card))] shadow-xl p-3 text-xs space-y-1 min-w-[200px] max-w-[260px]">
-            <p className="font-semibold text-sm leading-snug">{tooltip.task.title}</p>
-            {tooltip.task.client && (
-              <p className="flex items-center gap-1 text-[hsl(var(--muted-foreground))]">
-                <Tag className="h-3 w-3" />{tooltip.task.client}
-              </p>
-            )}
-            <div className="flex items-center gap-2 flex-wrap pt-0.5">
-              <Badge className={`text-[10px] px-1.5 ${STATUS_CLASS[tooltip.task.status] ?? ""}`}>
-                {STATUS_LABEL[tooltip.task.status] ?? tooltip.task.status}
-              </Badge>
-              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${PRIORITY_CLS[tooltip.task.priority] ?? ""}`}>
-                {PRIORITY_LABEL[tooltip.task.priority]}
-              </span>
-            </div>
-            {tooltip.task.assignee && (
-              <p className="text-[hsl(var(--muted-foreground))]">Editor: <span className="text-[hsl(var(--foreground))] font-medium">{tooltip.task.assignee.name}</span></p>
-            )}
-            <p className="text-[hsl(var(--muted-foreground))]">
-              Criada: <span className="text-[hsl(var(--foreground))]">{format(parseISO(tooltip.task.createdAt), "dd/MM/yy", { locale: ptBR })}</span>
-            </p>
-            {tooltip.task.dueDate && (
-              <p className={isOverdue(tooltip.task) ? "text-red-600 font-semibold" : "text-[hsl(var(--muted-foreground))]"}>
-                Prazo: <span>{format(parseISO(tooltip.task.dueDate), "dd/MM/yy", { locale: ptBR })}</span>
-                {isOverdue(tooltip.task) && " ⚠ atrasada"}
-              </p>
-            )}
-            {tooltip.task.revisionCount > 0 && (
-              <p className="text-orange-600">{tooltip.task.revisionCount} revisão{tooltip.task.revisionCount !== 1 ? "ões" : ""}</p>
-            )}
-            <p className="text-[hsl(var(--muted-foreground))]/60 text-[10px] mt-1">Clique para abrir</p>
+        <div className="fixed z-50 pointer-events-none" style={{ left: tooltip.x + 14, top: tooltip.y - 6 }}>
+          <div className="rounded-lg border bg-[hsl(var(--card))] shadow-xl p-2.5 text-xs space-y-1 min-w-[180px]">
+            <p className="font-semibold text-sm">{tooltip.task.title}</p>
+            {tooltip.task.client && <p className="text-[hsl(var(--muted-foreground))] flex items-center gap-1"><Tag className="h-3 w-3" />{tooltip.task.client}</p>}
+            <Badge className={`text-[10px] px-1.5 ${STATUS_CLASS[tooltip.task.status] ?? ""}`}>{STATUS_LABEL[tooltip.task.status]}</Badge>
+            {tooltip.task.assignee && <p className="text-[hsl(var(--muted-foreground))]">Editor: <b className="text-[hsl(var(--foreground))]">{tooltip.task.assignee.name}</b></p>}
+            {tooltip.task.dueDate && <p className={isOverdue(tooltip.task) ? "text-red-600 font-semibold" : "text-[hsl(var(--muted-foreground))]"}>Prazo: {fmtShort(tooltip.task.dueDate)}</p>}
+            <p className="text-[9px] text-[hsl(var(--muted-foreground))]/60 pt-0.5">Clique para ver ciclo de vida</p>
           </div>
         </div>
       )}
 
       {/* Legend */}
-      <div className="flex items-center gap-4 mt-2 px-1">
-        {Object.entries(STATUS_BAR_COLOR).map(([s, c]) => (
+      <div className="flex flex-wrap items-center gap-3 mt-2 px-0.5">
+        {Object.entries(STATUS_BAR).map(([s, c]) => (
           <span key={s} className="flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))]">
             <span className="inline-block h-2 w-4 rounded-sm" style={{ background: c, opacity: 0.85 }} />
             {STATUS_LABEL[s]}
           </span>
         ))}
         <span className="flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))]">
-          <span className="inline-block h-2 w-4 rounded-sm bg-red-500" />
-          Atrasada
+          <span className="inline-block h-2 w-4 rounded-sm bg-red-500" />Atrasada
         </span>
       </div>
     </div>
@@ -391,15 +441,22 @@ export default function TimelinePage() {
   const { toast }    = useToast();
   const { openTask } = useTaskModal();
   const { user }     = useAuth();
-  const [tasks, setTasks]   = useState<TimelineTask[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const [search,         setSearch]         = useState("");
-  const [statusFilter,   setStatusFilter]   = useState<Set<string>>(new Set());
-  const [priorityFilter, setPriorityFilter] = useState("");
-  const [assigneeFilter, setAssigneeFilter] = useState<number | "">("");
-  const [hideCompleted,  setHideCompleted]  = useState(false);
-  const [onlyOverdue,    setOnlyOverdue]    = useState(false);
+  const [tasks, setTasks]           = useState<TimelineTask[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [lifecycle, setLifecycle]   = useState<LifecycleData | null>(null);
+  const [lifLoading, setLifLoading] = useState(false);
+  const lifecycleRef                = useRef<HTMLDivElement>(null);
+
+  // Filters
+  const [search,      setSearch]      = useState("");
+  const [statusF,     setStatusF]     = useState("");
+  const [clientF,     setClientF]     = useState("");
+  const [editorF,     setEditorF]     = useState<number | "">("");
+  const [coordF,      setCoordF]      = useState<number | "">("");
+
+  // Table sort
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "dueDate", dir: "asc" });
 
   const isCoord = COORD_ROLES.includes(user?.role ?? "");
@@ -414,30 +471,52 @@ export default function TimelinePage() {
   useEffect(() => { if (!isCoord) { setLoading(false); return; } load(); }, [load, isCoord]);
   useRealtime({ onTasksChanged: load });
 
-  const assignees = useMemo(() => {
+  // Fetch lifecycle when task selected
+  const handleSelect = useCallback(async (id: number) => {
+    if (selectedId === id) { setSelectedId(null); setLifecycle(null); return; }
+    setSelectedId(id);
+    setLifecycle(null);
+    setLifLoading(true);
+    try {
+      const data = await apiFetch<LifecycleData>(`/api/tasks/${id}/lifecycle`);
+      setLifecycle(data);
+      setTimeout(() => lifecycleRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 80);
+    } catch {
+      toast({ title: "Erro ao carregar ciclo de vida", variant: "destructive" });
+    } finally {
+      setLifLoading(false);
+    }
+  }, [selectedId, toast]);
+
+  // Derived filter options
+  const clients = useMemo(() => {
+    const s = new Set(tasks.map(t => t.client).filter(Boolean) as string[]);
+    return [...s].sort();
+  }, [tasks]);
+
+  const editors = useMemo(() => {
     const m = new Map<number, string>();
     tasks.forEach(t => { if (t.assignee) m.set(t.assignee.id, t.assignee.name); });
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [tasks]);
 
-  const kpi = useMemo(() => {
-    const overdue = tasks.filter(isOverdue).length;
-    const byStatus: Record<string, number> = {};
-    ALL_STATUSES.forEach(s => { byStatus[s] = tasks.filter(t => t.status === s).length; });
-    return { total: tasks.length, overdue, byStatus };
+  const coords = useMemo(() => {
+    const m = new Map<number, string>();
+    tasks.forEach(t => { if (t.coordinator) m.set(t.coordinator.id, t.coordinator.name); });
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [tasks]);
 
+  // Filtered tasks
   const filtered = useMemo(() => {
     let list = tasks.filter(t => {
       if (search) {
         const q = search.toLowerCase();
         if (!t.title.toLowerCase().includes(q) && !(t.client?.toLowerCase().includes(q)) && !(t.assignee?.name.toLowerCase().includes(q))) return false;
       }
-      if (statusFilter.size > 0 && !statusFilter.has(t.status)) return false;
-      if (priorityFilter && t.priority !== priorityFilter) return false;
-      if (assigneeFilter !== "" && t.assignee?.id !== assigneeFilter) return false;
-      if (hideCompleted && t.status === "completed") return false;
-      if (onlyOverdue && !isOverdue(t)) return false;
+      if (statusF && t.status !== statusF) return false;
+      if (clientF && t.client !== clientF) return false;
+      if (editorF !== "" && t.assignee?.id !== editorF) return false;
+      if (coordF  !== "" && t.coordinator?.id !== coordF) return false;
       return true;
     });
 
@@ -450,109 +529,72 @@ export default function TimelinePage() {
           else if (!b.dueDate) cmp = -1;
           else cmp = a.dueDate.localeCompare(b.dueDate);
           break;
-        case "title": cmp = a.title.localeCompare(b.title); break;
-        case "status": cmp = ALL_STATUSES.indexOf(a.status) - ALL_STATUSES.indexOf(b.status); break;
-        case "priority": {
-          const o: Record<string, number> = { high: 0, medium: 1, low: 2 };
-          cmp = (o[a.priority] ?? 1) - (o[b.priority] ?? 1);
-          break;
-        }
-        case "client": cmp = (a.client ?? "").localeCompare(b.client ?? ""); break;
-        case "assignee": cmp = (a.assignee?.name ?? "").localeCompare(b.assignee?.name ?? ""); break;
+        case "title":         cmp = a.title.localeCompare(b.title); break;
+        case "status":        cmp = ALL_STATUSES.indexOf(a.status) - ALL_STATUSES.indexOf(b.status); break;
+        case "priority":      { const o: Record<string,number> = { high:0, medium:1, low:2 }; cmp = (o[a.priority]??1)-(o[b.priority]??1); break; }
+        case "client":        cmp = (a.client??"").localeCompare(b.client??""); break;
+        case "assignee":      cmp = (a.assignee?.name??"").localeCompare(b.assignee?.name??""); break;
         case "revisionCount": cmp = a.revisionCount - b.revisionCount; break;
       }
       return sort.dir === "asc" ? cmp : -cmp;
     });
     return list;
-  }, [tasks, search, statusFilter, priorityFilter, assigneeFilter, hideCompleted, onlyOverdue, sort]);
-
-  const toggleStatus = (s: string) =>
-    setStatusFilter(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
+  }, [tasks, search, statusF, clientF, editorF, coordF, sort]);
 
   const toggleSort = (key: SortKey) =>
-    setSort(prev => prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
+    setSort(p => p.key === key ? { key, dir: p.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
 
   if (!isCoord) return <div className="text-sm text-[hsl(var(--muted-foreground))] py-8 text-center">Acesso restrito a coordenadores.</div>;
 
   return (
     <div className="space-y-4">
 
-      {/* ── KPIs ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-
-        <div className="rounded-xl border bg-[hsl(var(--card))] card-float p-4 flex flex-col gap-1">
-          <div className="flex items-center gap-2 text-[hsl(var(--muted-foreground))]"><Layers className="h-3.5 w-3.5" /><span className="text-[11px]">Total</span></div>
-          <p className="text-2xl font-bold tracking-tight">{kpi.total}</p>
-        </div>
-
-        <button onClick={() => setOnlyOverdue(v => !v)}
-          className={`rounded-xl border card-float p-4 flex flex-col gap-1 text-left transition-colors ${onlyOverdue ? "bg-red-50 border-red-200" : "bg-[hsl(var(--card))]"}`}>
-          <div className="flex items-center gap-2 text-red-500"><AlertTriangle className="h-3.5 w-3.5" /><span className="text-[11px]">Atrasadas</span></div>
-          <p className={`text-2xl font-bold tracking-tight ${kpi.overdue > 0 ? "text-red-600" : "text-[hsl(var(--muted-foreground))]"}`}>{kpi.overdue}</p>
-        </button>
-
-        <button onClick={() => toggleStatus("pending")}
-          className={`rounded-xl border card-float p-4 flex flex-col gap-1 text-left transition-colors ${statusFilter.has("pending") ? "bg-slate-100 border-slate-300" : "bg-[hsl(var(--card))]"}`}>
-          <div className="flex items-center gap-2 text-slate-500"><Clock className="h-3.5 w-3.5" /><span className="text-[11px]">Pendentes</span></div>
-          <p className="text-2xl font-bold tracking-tight text-slate-600">{kpi.byStatus.pending ?? 0}</p>
-        </button>
-
-        <button onClick={() => toggleStatus("in_progress")}
-          className={`rounded-xl border card-float p-4 flex flex-col gap-1 text-left transition-colors ${statusFilter.has("in_progress") ? "bg-blue-50 border-blue-200" : "bg-[hsl(var(--card))]"}`}>
-          <div className="flex items-center gap-2 text-blue-500"><BarChart3 className="h-3.5 w-3.5" /><span className="text-[11px]">Em edição</span></div>
-          <p className="text-2xl font-bold tracking-tight text-blue-600">{kpi.byStatus.in_progress ?? 0}</p>
-        </button>
-
-        <button onClick={() => { toggleStatus("review"); toggleStatus("in_revision"); }}
-          className={`rounded-xl border card-float p-4 flex flex-col gap-1 text-left transition-colors ${statusFilter.has("review") ? "bg-amber-50 border-amber-200" : "bg-[hsl(var(--card))]"}`}>
-          <div className="flex items-center gap-2 text-amber-500"><Eye className="h-3.5 w-3.5" /><span className="text-[11px]">Aguardando</span></div>
-          <p className="text-2xl font-bold tracking-tight text-amber-600">{(kpi.byStatus.review ?? 0) + (kpi.byStatus.in_revision ?? 0)}</p>
-        </button>
-
-        <button onClick={() => toggleStatus("completed")}
-          className={`rounded-xl border card-float p-4 flex flex-col gap-1 text-left transition-colors ${statusFilter.has("completed") ? "bg-green-50 border-green-200" : "bg-[hsl(var(--card))]"}`}>
-          <div className="flex items-center gap-2 text-green-500"><CheckCircle2 className="h-3.5 w-3.5" /><span className="text-[11px]">Aprovadas</span></div>
-          <p className="text-2xl font-bold tracking-tight text-green-600">{kpi.byStatus.completed ?? 0}</p>
-        </button>
-      </div>
-
-      {/* ── Filters ───────────────────────────────────────────────── */}
+      {/* ── Filter bar ────────────────────────────────────────────── */}
       <div className="rounded-xl border bg-[hsl(var(--card))] card-float p-3 flex flex-wrap items-center gap-2">
-        <ListFilter className="h-4 w-4 text-[hsl(var(--muted-foreground))] shrink-0" />
+        <Search className="h-4 w-4 text-[hsl(var(--muted-foreground))] shrink-0" />
 
-        <div className="flex items-center gap-2 rounded-lg border bg-[hsl(var(--muted))]/40 px-2.5 h-8 w-56">
-          <Search className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] shrink-0" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Tarefa, cliente, editor…"
+        <div className="flex items-center gap-2 rounded-lg border bg-[hsl(var(--muted))]/40 px-2.5 h-8 w-52">
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar tarefa ou cliente…"
             className="flex-1 bg-transparent text-xs outline-none placeholder:text-[hsl(var(--muted-foreground))]" />
+          {search && <button onClick={() => setSearch("")}><X className="h-3 w-3 text-[hsl(var(--muted-foreground))]" /></button>}
         </div>
 
-        {ALL_STATUSES.map(s => (
-          <button key={s} onClick={() => toggleStatus(s)}
-            className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${statusFilter.has(s) ? STATUS_CLASS[s] : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/40"}`}>
-            {STATUS_LABEL[s]}
-          </button>
-        ))}
-
-        <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}
+        <select value={statusF} onChange={e => setStatusF(e.target.value)}
           className="h-8 text-xs rounded-lg border bg-[hsl(var(--background))] px-2 outline-none cursor-pointer">
-          <option value="">Prioridade</option>
-          <option value="high">Alta</option>
-          <option value="medium">Média</option>
-          <option value="low">Baixa</option>
+          <option value="">Todos os status</option>
+          {ALL_STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
         </select>
 
-        {assignees.length > 0 && (
-          <select value={assigneeFilter} onChange={e => setAssigneeFilter(e.target.value === "" ? "" : Number(e.target.value))}
+        {clients.length > 0 && (
+          <select value={clientF} onChange={e => setClientF(e.target.value)}
             className="h-8 text-xs rounded-lg border bg-[hsl(var(--background))] px-2 outline-none cursor-pointer">
-            <option value="">Editor</option>
-            {assignees.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            <option value="">Todos os clientes</option>
+            {clients.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         )}
 
-        <button onClick={() => setHideCompleted(v => !v)}
-          className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${hideCompleted ? "bg-[hsl(var(--primary))]/10 border-[hsl(var(--primary))]/30 text-[hsl(var(--primary))]" : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/40"}`}>
-          Ocultar aprovadas
-        </button>
+        {editors.length > 0 && (
+          <select value={editorF} onChange={e => setEditorF(e.target.value === "" ? "" : Number(e.target.value))}
+            className="h-8 text-xs rounded-lg border bg-[hsl(var(--background))] px-2 outline-none cursor-pointer">
+            <option value="">Todos os editores</option>
+            {editors.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+        )}
+
+        {coords.length > 0 && (
+          <select value={coordF} onChange={e => setCoordF(e.target.value === "" ? "" : Number(e.target.value))}
+            className="h-8 text-xs rounded-lg border bg-[hsl(var(--background))] px-2 outline-none cursor-pointer">
+            <option value="">Todos os coordenadores</option>
+            {coords.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+        )}
+
+        {(search || statusF || clientF || editorF !== "" || coordF !== "") && (
+          <button onClick={() => { setSearch(""); setStatusF(""); setClientF(""); setEditorF(""); setCoordF(""); }}
+            className="flex items-center gap-1 text-[11px] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors">
+            <X className="h-3 w-3" /> Limpar
+          </button>
+        )}
 
         <span className="ml-auto text-[11px] text-[hsl(var(--muted-foreground))]">
           {filtered.length} tarefa{filtered.length !== 1 ? "s" : ""}
@@ -560,34 +602,48 @@ export default function TimelinePage() {
       </div>
 
       {/* ── Gantt ─────────────────────────────────────────────────── */}
-      <div className="rounded-2xl border bg-[hsl(var(--card))] card-float p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <Calendar className="h-4 w-4 text-[hsl(var(--primary))]" />
+      <div className="rounded-2xl border bg-[hsl(var(--card))] card-float p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <CalendarIcon className="h-4 w-4 text-[hsl(var(--primary))]" />
           <span className="text-sm font-semibold">Gantt</span>
           <span className="text-[11px] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">
             {filtered.filter(t => t.dueDate).length} com prazo
           </span>
+          {selectedId && (
+            <span className="ml-2 text-[11px] text-[hsl(var(--primary))]">
+              · clique na mesma tarefa para fechar o ciclo de vida
+            </span>
+          )}
         </div>
         {loading
-          ? <div className="py-10 text-center text-sm text-[hsl(var(--muted-foreground))]">Carregando…</div>
-          : <GanttChart tasks={filtered} onOpen={openTask} />
+          ? <div className="py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">Carregando…</div>
+          : <GanttChart tasks={filtered} onOpen={openTask} selectedId={selectedId} onSelect={handleSelect} />
         }
+      </div>
+
+      {/* ── Lifecycle Flowchart ───────────────────────────────────── */}
+      <div ref={lifecycleRef}>
+        {lifLoading && (
+          <div className="rounded-2xl border bg-[hsl(var(--card))] card-float p-6 text-center text-sm text-[hsl(var(--muted-foreground))]">
+            Carregando ciclo de vida…
+          </div>
+        )}
+        {lifecycle && !lifLoading && (
+          <LifecycleFlow data={lifecycle} onClose={() => { setLifecycle(null); setSelectedId(null); }} onOpen={openTask} />
+        )}
       </div>
 
       {/* ── Table ─────────────────────────────────────────────────── */}
       <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
-        <div className="flex items-center gap-2 px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30">
+        <div className="flex items-center gap-2 px-5 py-3 border-b bg-[hsl(var(--muted))]/30">
           <span className="font-semibold text-sm">Todas as tarefas</span>
           <span className="text-[11px] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{filtered.length}</span>
         </div>
-
-        {loading ? (
-          <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">Carregando…</div>
-        ) : filtered.length === 0 ? (
-          <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">Nenhuma tarefa encontrada.</div>
+        {!loading && filtered.length === 0 ? (
+          <div className="py-10 text-center text-sm text-[hsl(var(--muted-foreground))]">Nenhuma tarefa encontrada.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[900px]">
+            <table className="w-full text-sm min-w-[860px]">
               <thead>
                 <tr className="border-b bg-[hsl(var(--muted))]/10">
                   {([
@@ -603,72 +659,50 @@ export default function TimelinePage() {
                     { key: null,            label: "Pasta" },
                   ] as { key: SortKey | null; label: string }[]).map(({ key, label }) => (
                     <th key={label} onClick={() => key && toggleSort(key)}
-                      className={`text-left px-4 py-2.5 text-xs font-medium text-[hsl(var(--muted-foreground))] whitespace-nowrap select-none ${key ? "cursor-pointer hover:text-[hsl(var(--foreground))]" : ""}`}>
-                      <span className="flex items-center gap-1">
-                        {label}
-                        {key && <SortIcon col={key} sort={sort} />}
-                      </span>
+                      className={`text-left px-3 py-2 text-[11px] font-medium text-[hsl(var(--muted-foreground))] whitespace-nowrap select-none ${key ? "cursor-pointer hover:text-[hsl(var(--foreground))]" : ""}`}>
+                      <span className="flex items-center gap-1">{label}{key && <SortIcon col={key} sort={sort} />}</span>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {filtered.map(t => {
-                  const dd = dueDateLabel(t.dueDate);
                   const overdue = isOverdue(t);
+                  const isSel = selectedId === t.id;
+                  const dueStr = t.dueDate
+                    ? (overdue
+                        ? <span className="text-red-600 font-semibold flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{fmtShort(t.dueDate)}</span>
+                        : <span className="text-[hsl(var(--muted-foreground))]">{fmtShort(t.dueDate)}</span>)
+                    : <span className="text-[hsl(var(--muted-foreground))]">—</span>;
+
                   return (
-                    <tr key={t.id} role="button" onClick={() => openTask(t.id)}
-                      className={`cursor-pointer transition-colors hover:bg-[hsl(var(--muted))]/20 ${overdue ? "bg-red-50/40" : ""}`}>
-
-                      <td className="px-4 py-3" style={{ borderLeft: `3px solid ${t.color}` }}>
-                        <div className="flex items-start gap-2 max-w-[220px]">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm leading-snug line-clamp-2">{t.title}</p>
-                            {t.description && <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5 line-clamp-1">{t.description}</p>}
-                          </div>
-                          {overdue && <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0 mt-0.5" />}
-                        </div>
+                    <tr key={t.id} role="button" onClick={() => handleSelect(t.id)}
+                      className={`cursor-pointer transition-colors hover:bg-[hsl(var(--muted))]/20 ${isSel ? "bg-[hsl(var(--primary))]/8" : overdue ? "bg-red-50/40" : ""}`}>
+                      <td className="px-3 py-2.5" style={{ borderLeft: `3px solid ${t.color}` }}>
+                        <p className="font-medium text-[13px] leading-snug line-clamp-1">{t.title}</p>
+                        {t.description && <p className="text-[10px] text-[hsl(var(--muted-foreground))] line-clamp-1">{t.description}</p>}
                       </td>
-
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5">
                         {t.client
-                          ? <div className="flex items-center gap-1 text-xs max-w-[120px]"><Tag className="h-3 w-3 text-[hsl(var(--muted-foreground))] shrink-0" /><span className="truncate">{t.client}</span></div>
+                          ? <span className="flex items-center gap-1 text-xs"><Tag className="h-3 w-3 text-[hsl(var(--muted-foreground))]" />{t.client}</span>
                           : <span className="text-xs text-[hsl(var(--muted-foreground))]">—</span>}
                       </td>
-
-                      <td className="px-4 py-3">
-                        <Badge className={`text-[10px] px-1.5 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
-                          {STATUS_LABEL[t.status] ?? t.status}
-                        </Badge>
+                      <td className="px-3 py-2.5">
+                        <Badge className={`text-[10px] px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>{STATUS_LABEL[t.status]}</Badge>
                       </td>
-
-                      <td className="px-4 py-3">
-                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${PRIORITY_CLS[t.priority] ?? ""}`}>
-                          {PRIORITY_LABEL[t.priority] ?? t.priority}
-                        </span>
+                      <td className="px-3 py-2.5">
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${PRIORITY_CLS[t.priority] ?? ""}`}>{PRIORITY_LABEL[t.priority]}</span>
                       </td>
-
-                      <td className="px-4 py-3 text-xs text-[hsl(var(--muted-foreground))]">
-                        {COMPLEXITY_LABEL[t.complexity] ?? t.complexity}
-                      </td>
-
-                      <td className={`px-4 py-3 text-xs whitespace-nowrap ${dd.cls}`}>
-                        <span className="flex items-center gap-1">
-                          {t.dueDate && <Calendar className="h-3 w-3 shrink-0" />}
-                          {dd.text}
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-3"><Avatar p={t.assignee} /></td>
-                      <td className="px-4 py-3"><Avatar p={t.coordinator} /></td>
-
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5 text-xs text-[hsl(var(--muted-foreground))]">{COMPLEXITY_LABEL[t.complexity]}</td>
+                      <td className="px-3 py-2.5 text-xs whitespace-nowrap">{dueStr}</td>
+                      <td className="px-3 py-2.5"><Avatar p={t.assignee} /></td>
+                      <td className="px-3 py-2.5"><Avatar p={t.coordinator} /></td>
+                      <td className="px-3 py-2.5">
                         {t.revisionCount > 0
-                          ? <div className="flex items-center gap-1 text-orange-600"><RotateCcw className="h-3 w-3" /><span className="text-xs font-semibold">{t.revisionCount}</span></div>
+                          ? <span className="flex items-center gap-1 text-orange-600"><RotateCcw className="h-3 w-3" /><span className="text-xs font-semibold">{t.revisionCount}</span></span>
                           : <span className="text-xs text-[hsl(var(--muted-foreground))]">—</span>}
                       </td>
-
-                      <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                      <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
                         {t.folderUrl
                           ? <a href={t.folderUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[hsl(var(--primary))] hover:underline text-[11px]"><ExternalLink className="h-3 w-3" />Abrir</a>
                           : <span className="text-xs text-[hsl(var(--muted-foreground))]">—</span>}
