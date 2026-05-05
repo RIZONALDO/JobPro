@@ -131,9 +131,9 @@ function LifecycleFlow({ data, onClose, onOpen }: { data: LifecycleData; onClose
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-      <div className="relative w-full max-h-[94vh] flex flex-col rounded-2xl border bg-[hsl(var(--card))] shadow-2xl overflow-hidden" style={{ maxWidth: "min(96vw, 1600px)" }} onClick={e => e.stopPropagation()}>
+      <div className="relative flex flex-col rounded-2xl border bg-[hsl(var(--card))] shadow-2xl overflow-hidden" style={{ width: "min(94vw, 1480px)", height: "min(92vh, 860px)", minWidth: 320, minHeight: 400 }} onClick={e => e.stopPropagation()}>
       {/* Header */}
       <div className="flex items-center gap-3 px-5 py-3 border-b bg-[hsl(var(--muted))]/20 shrink-0">
         <div className="h-3 w-3 rounded-full shrink-0" style={{ background: task.color }} />
@@ -170,8 +170,8 @@ function LifecycleFlow({ data, onClose, onOpen }: { data: LifecycleData; onClose
       </div>
 
       {/* Flowchart */}
-      <div className="overflow-x-auto overflow-y-auto flex-1 px-5 py-5">
-        <div className="flex items-start gap-0 min-w-max">
+      <div className="overflow-auto flex-1 px-4 py-4 sm:px-6 sm:py-6">
+        <div className="flex flex-wrap items-start gap-2">
           {steps.map((step, i) => {
             const style = styleFor(step);
             const isLast = i === steps.length - 1;
@@ -179,7 +179,11 @@ function LifecycleFlow({ data, onClose, onOpen }: { data: LifecycleData; onClose
             return (
               <div key={i} className="flex items-start">
                 {/* Node */}
-                <div className={`rounded-xl border-2 ${style.border} ${style.bg} p-3 w-[200px] flex flex-col gap-1.5 shadow-sm`}>
+                <div className={`rounded-xl border-2 ${style.border} ${style.bg} p-3 flex flex-col gap-1.5 shadow-sm`} style={{ width: "clamp(172px, 18vw, 220px)" }}>
+                  {/* Step number */}
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className={`text-[9px] font-bold uppercase tracking-widest ${style.text} opacity-60`}>Etapa {i + 1}</span>
+                  </div>
                   {/* Icon + label */}
                   <div className={`flex items-center gap-1.5 ${style.text} font-semibold text-[11px]`}>
                     {style.icon}
@@ -236,9 +240,9 @@ function LifecycleFlow({ data, onClose, onOpen }: { data: LifecycleData; onClose
 
                 {/* Arrow connector */}
                 {!isLast && (
-                  <div className="flex items-center self-center mx-1 shrink-0">
-                    <div className="w-10 h-px bg-[hsl(var(--border))]" />
-                    <ArrowRight className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] -ml-1" />
+                  <div className="flex items-center self-start mt-[22px] mx-0.5 shrink-0">
+                    <div className="w-5 h-px bg-[hsl(var(--border))]" />
+                    <ArrowRight className="h-3 w-3 text-[hsl(var(--muted-foreground))]/60 -ml-px" />
                   </div>
                 )}
               </div>
@@ -311,7 +315,7 @@ function GanttChart({
 
   return (
     <div className="relative" onMouseLeave={() => setTooltip(null)}>
-      <div className="overflow-auto rounded-lg border" style={{ maxHeight: 460 }}>
+      <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 220px)", minHeight: 320 }}>
         <div style={{ width: LEFT_W + totalW, minWidth: "100%" }}>
 
           {/* Header */}
@@ -557,17 +561,16 @@ export default function TimelinePage() {
       </div>
 
       {/* ── Gantt ─────────────────────────────────────────────────── */}
-      <div className="rounded-2xl border bg-[hsl(var(--card))] card-float p-4">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="rounded-2xl border bg-[hsl(var(--card))] card-float overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b bg-[hsl(var(--muted))]/20">
           <CalendarIcon className="h-4 w-4 text-[hsl(var(--primary))]" />
           <span className="text-sm font-semibold">Gantt</span>
           <span className="text-[11px] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">
             {filtered.filter(t => t.dueDate).length} com prazo
           </span>
-
         </div>
         {loading
-          ? <div className="py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">Carregando…</div>
+          ? <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">Carregando…</div>
           : <GanttChart tasks={filtered} onOpen={openTask} selectedId={selectedId} onSelect={handleSelect} />
         }
       </div>
