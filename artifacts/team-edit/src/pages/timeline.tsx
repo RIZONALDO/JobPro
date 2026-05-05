@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import {
   parseISO, isBefore, isToday, differenceInDays, format,
-  min as dateMin, max as dateMax, startOfMonth, endOfMonth, addMonths,
+  min as dateMin, max as dateMax, startOfMonth, endOfMonth, addMonths, addDays, getISOWeek,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -258,12 +258,13 @@ function LifecycleFlow({ data, onClose, onOpen }: { data: LifecycleData; onClose
 // ── Compact Gantt ─────────────────────────────────────────────────────────────
 
 function GanttChart({
-  tasks, onOpen, selectedId, onSelect,
+  tasks, onOpen, selectedId, onSelect, zoom,
 }: {
   tasks: TimelineTask[];
   onOpen: (id: number) => void;
   selectedId: number | null;
   onSelect: (id: number) => void;
+  zoom: GanttZoom;
 }) {
   const [tooltip, setTooltip] = useState<{ task: TimelineTask; x: number; y: number } | null>(null);
 
@@ -274,26 +275,47 @@ function GanttChart({
   const today = new Date();
   const allStarts = withDate.map(t => parseISO(t.createdAt));
   const allEnds   = withDate.map(t => parseISO(t.dueDate!));
+
+  // Zoom-based pixel density
+  const DAY_W = zoom === "week" ? 38 : zoom === "year" ? 4 : 14;
+
+  // Date range: always covers all tasks + padding
   const rangeStart = startOfMonth(dateMin([...allStarts, today]));
   const rangeEnd   = endOfMonth(dateMax([...allEnds, today]));
   const totalDays  = differenceInDays(rangeEnd, rangeStart) + 1;
-  const DAY_W      = totalDays > 365 ? 7 : totalDays > 180 ? 12 : totalDays > 90 ? 18 : 24;
   const totalW     = totalDays * DAY_W;
 
+  // Month header segments
   const months: { label: string; left: number; width: number }[] = [];
   let cur = startOfMonth(rangeStart);
   while (isBefore(cur, rangeEnd)) {
     const mS = cur < rangeStart ? rangeStart : cur;
     const mE = endOfMonth(cur) > rangeEnd ? rangeEnd : endOfMonth(cur);
     months.push({
-      label: format(cur, "MMM/yy", { locale: ptBR }),
+      label: zoom === "year"
+        ? format(cur, "MMM yy", { locale: ptBR })
+        : format(cur, "MMMM yyyy", { locale: ptBR }),
       left: differenceInDays(mS, rangeStart) * DAY_W,
       width: (differenceInDays(mE, mS) + 1) * DAY_W,
     });
     cur = addMonths(cur, 1);
   }
 
+  // Week markers (used in week/month zoom)
+  const weekMarkers: { label: string; left: number }[] = [];
+  if (zoom !== "year") {
+    let wd = rangeStart;
+    while (isBefore(wd, rangeEnd)) {
+      weekMarkers.push({
+        label: zoom === "week" ? format(wd, "dd/MM", { locale: ptBR }) : `Sem ${getISOWeek(wd)}`,
+        left: differenceInDays(wd, rangeStart) * DAY_W,
+      });
+      wd = addDays(wd, 7);
+    }
+  }
+
   const todayLeft = Math.max(0, differenceInDays(today, rangeStart)) * DAY_W;
+  const HEADER_H = zoom !== "year" ? HEAD_H * 2 : HEAD_H;
 
   // Flat list sorted by dueDate
   const sortedTasks = [...withDate].sort((a, b) => {
@@ -319,22 +341,38 @@ function GanttChart({
         <div style={{ width: LEFT_W + totalW, minWidth: "100%" }}>
 
           {/* Header */}
-          <div className="flex sticky top-0 z-20" style={{ height: HEAD_H }}>
-            <div className="sticky left-0 shrink-0 bg-[hsl(var(--muted))]/60 border-r border-b flex items-center px-3 z-30 text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide" style={{ width: LEFT_W }}>
-              Tarefa
+          <div className="flex sticky top-0 z-20 flex-col" style={{ height: HEADER_H }}>
+            {/* Month row */}
+            <div className="flex" style={{ height: HEAD_H }}>
+              <div className="sticky left-0 shrink-0 bg-[hsl(var(--muted))]/70 border-r border-b flex items-center px-3 z-30 text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide" style={{ width: LEFT_W }}>
+                Tarefa
+              </div>
+              <div className="relative bg-[hsl(var(--muted))]/50 border-b flex-1" style={{ minWidth: totalW }}>
+                {months.map(m => (
+                  <div key={m.label} className="absolute inset-y-0 border-r border-[hsl(var(--border))]/60 flex items-center px-2" style={{ left: m.left, width: m.width }}>
+                    <span className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] capitalize truncate">{m.label}</span>
+                  </div>
+                ))}
+                {todayLeft <= totalW && (
+                  <div className="absolute top-0 flex flex-col items-center z-10" style={{ left: todayLeft, transform: "translateX(-50%)" }}>
+                    <div className="bg-indigo-500 text-white text-[9px] font-bold px-1.5 rounded whitespace-nowrap leading-5">Hoje</div>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="relative bg-[hsl(var(--muted))]/40 border-b" style={{ width: totalW }}>
-              {months.map(m => (
-                <div key={m.label} className="absolute inset-y-0 border-r border-[hsl(var(--border))]/50 flex items-center px-1.5" style={{ left: m.left, width: m.width }}>
-                  <span className="text-[10px] font-medium text-[hsl(var(--muted-foreground))] capitalize">{m.label}</span>
+            {/* Week/day sub-row */}
+            {zoom !== "year" && (
+              <div className="flex" style={{ height: HEAD_H }}>
+                <div className="sticky left-0 shrink-0 bg-[hsl(var(--muted))]/40 border-r border-b z-30" style={{ width: LEFT_W }} />
+                <div className="relative bg-[hsl(var(--muted))]/20 border-b flex-1" style={{ minWidth: totalW }}>
+                  {weekMarkers.map(wk => (
+                    <div key={wk.left} className="absolute inset-y-0 border-r border-[hsl(var(--border))]/30 flex items-center px-1" style={{ left: wk.left }}>
+                      <span className="text-[9px] text-[hsl(var(--muted-foreground))]/70 whitespace-nowrap">{wk.label}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              {todayLeft <= totalW && (
-                <div className="absolute top-0 flex flex-col items-center z-10" style={{ left: todayLeft, transform: "translateX(-50%)" }}>
-                  <div className="bg-indigo-500 text-white text-[9px] font-bold px-1.5 rounded whitespace-nowrap leading-5">Hoje</div>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {sortedTasks.map(t => {
@@ -424,6 +462,7 @@ export default function TimelinePage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [lifecycle, setLifecycle]   = useState<LifecycleData | null>(null);
   const [lifLoading, setLifLoading] = useState(false);
+  const [zoom, setZoom]             = useState<GanttZoom>("month");
 
   // Filters
   const [search,      setSearch]      = useState("");
@@ -568,10 +607,18 @@ export default function TimelinePage() {
           <span className="text-[11px] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">
             {filtered.filter(t => t.dueDate).length} com prazo
           </span>
+          <div className="ml-auto flex items-center gap-0.5 rounded-lg border bg-[hsl(var(--muted))]/30 p-0.5">
+            {(["week", "month", "year"] as GanttZoom[]).map(z => (
+              <button key={z} onClick={() => setZoom(z)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${zoom === z ? "bg-[hsl(var(--primary))] text-white shadow-sm" : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}>
+                {z === "week" ? "Semana" : z === "month" ? "Mês" : "Ano"}
+              </button>
+            ))}
+          </div>
         </div>
         {loading
           ? <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">Carregando…</div>
-          : <GanttChart tasks={filtered} onOpen={openTask} selectedId={selectedId} onSelect={handleSelect} />
+          : <GanttChart tasks={filtered} onOpen={openTask} selectedId={selectedId} onSelect={handleSelect} zoom={zoom} />
         }
       </div>
 
