@@ -21,29 +21,8 @@ export function broadcastPresence(userId: number, isOnline: boolean, user: { id:
   try { getIo().emit("presence:update", { userId, isOnline, user }); } catch {}
 }
 
-export function broadcastTaskChange(jobId: number, projectId: number) {
-  try {
-    getIo().emit("tasks:changed", { jobId, projectId });
-  } catch {}
-}
-
-export function broadcastJobChange(
-  projectId: number,
-  meta?: { jobId?: number; deleted?: boolean; newStatus?: string },
-) {
-  try {
-    getIo().emit("jobs:changed", { projectId, ...meta });
-  } catch {}
-}
-
-export function broadcastProjectChange(meta?: {
-  projectId?: number;
-  deleted?: boolean;
-  newStatus?: string;
-}) {
-  try {
-    getIo().emit("projects:changed", meta ?? {});
-  } catch {}
+export function broadcastTaskChange() {
+  try { getIo().emit("tasks:changed", {}); } catch {}
 }
 
 export function broadcastNotification(userId: number, notification: AppNotification) {

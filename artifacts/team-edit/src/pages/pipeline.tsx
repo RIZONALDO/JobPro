@@ -1,146 +1,159 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRealtime } from "@/hooks/use-realtime";
 import { apiFetch } from "@/lib/api";
-import { ProjectModal } from "@/components/ProjectModal";
 import { useToast } from "@/hooks/use-toast";
-import { Briefcase } from "lucide-react";
-import { CoordinatorAvatar } from "@/components/ui/avatar-group";
+import { useTaskModal } from "@/contexts/TaskModalContext";
 import { usePageTitle } from "@/lib/use-page-title";
+import { fmtDate } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Calendar, Tag, AlertTriangle } from "lucide-react";
+import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
-interface PipelineProject {
+
+interface PipelineTask {
   id: number;
-  name: string;
-  client: string | null;
-  color: string;
+  title: string;
   status: string;
-  stage: "briefing" | "producao" | "aprovacao" | "entregue";
-  jobCount: number;
-  completedJobCount: number;
-  taskCount: number;
-  completedTaskCount: number;
+  priority: string;
+  complexity: string;
+  dueDate: string | null;
+  color: string;
+  client: string | null;
+  revisionCount: number;
+  assignee: Person | null;
   coordinator: Person | null;
-  number: number;
+  createdAt: string;
 }
 
-const STAGES: {
-  key: PipelineProject["stage"];
-  label: string;
-  desc: string;
-  accent: string;
-  track: string;
-}[] = [
-  { key: "briefing",  label: "Briefing",     desc: "Aguardando início",   accent: "#94a3b8", track: "bg-slate-200" },
-  { key: "producao",  label: "Em produção",   desc: "Equipe trabalhando",  accent: "#3b82f6", track: "bg-blue-200"  },
-  { key: "aprovacao", label: "Aprovação",     desc: "Aguardando ok final", accent: "#f59e0b", track: "bg-amber-200" },
-  { key: "entregue",  label: "No ar",         desc: "Concluído",           accent: "#22c55e", track: "bg-green-200" },
+const COLUMNS: { key: string; label: string; desc: string; accent: string }[] = [
+  { key: "pending",     label: "Pendente",      desc: "Aguardando início",     accent: "#94a3b8" },
+  { key: "in_progress", label: "Em andamento",  desc: "Editor trabalhando",    accent: "#3b82f6" },
+  { key: "review",      label: "Aprovação",     desc: "Aguardando aprovação",  accent: "#f59e0b" },
+  { key: "in_revision", label: "Em alteração",  desc: "Pedido de alteração",   accent: "#f97316" },
 ];
+
+const PRIORITY_CLS: Record<string, string> = {
+  low: "bg-green-100 text-green-700 border-green-200",
+  medium: "bg-amber-100 text-amber-700 border-amber-200",
+  high: "bg-red-100 text-red-700 border-red-200",
+};
+const PRIORITY_LABEL: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta" };
 
 export default function Pipeline() {
   usePageTitle("Pipeline");
   const { toast } = useToast();
-  const [projects, setProjects] = useState<PipelineProject[]>([]);
+  const { openTask } = useTaskModal();
+  const [tasks, setTasks] = useState<PipelineTask[]>([]);
   const [loading, setLoading] = useState(true);
-  const [openProjectId, setOpenProjectId] = useState<number | null>(null);
 
   const load = useCallback(() => {
-    apiFetch<PipelineProject[]>("/api/pipeline")
-      .then(setProjects)
+    apiFetch<PipelineTask[]>("/api/pipeline")
+      .then(setTasks)
       .catch(() => toast({ title: "Erro ao carregar pipeline", variant: "destructive" }))
       .finally(() => setLoading(false));
   }, [toast]);
 
   useEffect(() => { load(); }, [load]);
-
-  useRealtime({ onProjectsChanged: load, onJobsChanged: load, onTasksChanged: load });
+  useRealtime({ onTasksChanged: load });
 
   if (loading) return <div className="text-[hsl(var(--muted-foreground))] text-sm">Carregando...</div>;
 
-  const total = projects.length;
+  const today = new Date().toISOString().split("T")[0];
+  const total = tasks.length;
 
   return (
     <div className="space-y-4">
-      {/* Resumo rápido */}
+      {/* Summary */}
       <div className="flex items-center gap-6 text-xs text-[hsl(var(--muted-foreground))]">
-        <span>{total} {total === 1 ? "projeto" : "projetos"} ativos</span>
-        {STAGES.map(s => {
-          const n = projects.filter(p => p.stage === s.key).length;
+        <span>{total} {total === 1 ? "tarefa ativa" : "tarefas ativas"}</span>
+        {COLUMNS.map(col => {
+          const n = tasks.filter(t => t.status === col.key).length;
           return n > 0 ? (
-            <span key={s.key} className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: s.accent }} />
-              {n} {s.label}
+            <span key={col.key} className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: col.accent }} />
+              {n} {col.label}
             </span>
           ) : null;
         })}
       </div>
 
-      {/* Kanban columns */}
+      {/* Kanban */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
-        {STAGES.map(stage => {
-          const cols = projects.filter(p => p.stage === stage.key);
+        {COLUMNS.map(col => {
+          const colTasks = tasks.filter(t => t.status === col.key);
           return (
-            <div key={stage.key} className="flex flex-col gap-3">
+            <div key={col.key} className="flex flex-col gap-3">
               {/* Header */}
               <div className="flex items-center gap-2 px-1">
-                <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: stage.accent }} />
+                <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: col.accent }} />
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold leading-tight">{stage.label}</p>
-                  <p className="text-[10px] text-[hsl(var(--muted-foreground))]">{stage.desc}</p>
+                  <p className="text-sm font-semibold leading-tight">{col.label}</p>
+                  <p className="text-[10px] text-[hsl(var(--muted-foreground))]">{col.desc}</p>
                 </div>
                 <span className="ml-auto text-[11px] font-semibold shrink-0 bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">
-                  {cols.length}
+                  {colTasks.length}
                 </span>
               </div>
 
               {/* Cards */}
-              {cols.length === 0 ? (
+              {colTasks.length === 0 ? (
                 <div className="rounded-xl border border-dashed py-10 flex items-center justify-center bg-[hsl(var(--muted))]/10">
-                  <p className="text-xs text-[hsl(var(--muted-foreground))]">Nenhum projeto</p>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))]">Nenhuma tarefa</p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
-                  {cols.map(p => {
-                    const pct = p.taskCount > 0 ? Math.round(p.completedTaskCount / p.taskCount * 100) : 0;
+                  {colTasks.map(t => {
+                    const isOverdue = t.dueDate && t.dueDate < today;
                     return (
                       <div
-                        key={p.id}
-                        onClick={() => setOpenProjectId(p.id)}
-                        className="rounded-xl border bg-[hsl(var(--card))] card-float p-4 flex flex-col gap-3 hover:shadow-md transition-shadow cursor-pointer"
-                        style={{ borderTop: `3px solid ${p.color}` }}
+                        key={t.id}
+                        onClick={() => openTask(t.id)}
+                        className="rounded-xl border bg-[hsl(var(--card))] card-float p-3.5 flex flex-col gap-2.5 hover:shadow-md transition-shadow cursor-pointer"
+                        style={{ borderTop: `3px solid ${t.color}` }}
                       >
-                          {/* Topo */}
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">{p.number}</span>
-                                <p className="text-sm font-semibold leading-snug truncate">{p.name}</p>
+                        {/* Title + revision badge */}
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold leading-snug">{t.title}</p>
+                            {t.client && (
+                              <p className="text-[10px] text-[hsl(var(--muted-foreground))] flex items-center gap-1 mt-0.5 truncate">
+                                <Tag className="h-2.5 w-2.5 shrink-0" />{t.client}
+                              </p>
+                            )}
+                          </div>
+                          {t.revisionCount > 0 && (
+                            <span className="text-[10px] font-bold text-orange-500 shrink-0">Alt.{t.revisionCount}</span>
+                          )}
+                        </div>
+
+                        {/* Priority + due date */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="outline" className={`text-[9px] px-1 py-0 ${PRIORITY_CLS[t.priority] ?? ""}`}>
+                            {PRIORITY_LABEL[t.priority] ?? t.priority}
+                          </Badge>
+                          {t.dueDate && (
+                            <span className={`flex items-center gap-1 text-[10px] ${isOverdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
+                              {isOverdue && <AlertTriangle className="h-2.5 w-2.5" />}
+                              <Calendar className="h-2.5 w-2.5" />
+                              {fmtDate(t.dueDate)}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Assignee */}
+                        {t.assignee && (
+                          <div className="flex items-center gap-1.5">
+                            {t.assignee.avatarUrl ? (
+                              <img src={t.assignee.avatarUrl} alt={t.assignee.name} className="h-5 w-5 rounded-full object-cover shrink-0" />
+                            ) : (
+                              <div className="h-5 w-5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] flex items-center justify-center text-[9px] font-bold shrink-0">
+                                {t.assignee.name[0]}
                               </div>
-                              {p.client && <p className="text-[11px] text-[hsl(var(--muted-foreground))] truncate">{p.client}</p>}
-                            </div>
-                            {p.coordinator && <CoordinatorAvatar person={p.coordinator} />}
+                            )}
+                            <span className="text-[10px] text-[hsl(var(--muted-foreground))] truncate">{t.assignee.name}</span>
                           </div>
-
-                          {/* Progresso */}
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-[10px] text-[hsl(var(--muted-foreground))]">
-                              <span>{p.completedTaskCount}/{p.taskCount} tarefas</span>
-                              <span className="font-semibold" style={{ color: p.color }}>{pct}%</span>
-                            </div>
-                            <div className={`h-1.5 rounded-full ${stage.track}`}>
-                              <div
-                                className="h-full rounded-full transition-all duration-500"
-                                style={{ width: `${pct}%`, backgroundColor: p.color }}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Rodapé */}
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))]">
-                              <Briefcase className="h-3 w-3 opacity-60" />
-                              <span>{p.completedJobCount}/{p.jobCount} {p.jobCount === 1 ? "job" : "jobs"}</span>
-                            </div>
-                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -150,13 +163,6 @@ export default function Pipeline() {
           );
         })}
       </div>
-
-      {openProjectId !== null && (
-        <ProjectModal
-          projectId={openProjectId}
-          onClose={() => setOpenProjectId(null)}
-        />
-      )}
     </div>
   );
 }

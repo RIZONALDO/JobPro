@@ -1,6 +1,4 @@
 export * from "./users";
-export * from "./projects";
-export * from "./jobs";
 export * from "./tasks";
 export * from "./app_settings";
 export * from "./task_revisions";

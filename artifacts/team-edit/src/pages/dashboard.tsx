@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRealtime } from "@/hooks/use-realtime";
 import { fmtDate, fmtDateHuman, fmtShort } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { useJobModal } from "@/contexts/JobModalContext";
+import { useTaskModal } from "@/contexts/TaskModalContext";
 import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock } from "lucide-react";
@@ -11,7 +11,6 @@ import { StatusBars } from "@/components/charts/StatusBars";
 import { WaffleChart } from "@/components/charts/WaffleChart";
 import { useSize } from "@/hooks/use-size";
 import { Link } from "wouter";
-import { ProjectModal } from "@/components/ProjectModal";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { usePageTitle } from "@/lib/use-page-title";
 
@@ -21,22 +20,9 @@ interface Task {
   status: string;
   priority: string;
   dueDate: string | null;
-  jobId: number;
+  client?: string | null;
+  color?: string;
   number?: number;
-  jobNumber?: number;
-  projectNumber?: number;
-  projectClient?: string | null;
-}
-
-interface WeekJob {
-  id: number;
-  name: string;
-  projectName: string;
-  projectColor: string;
-  taskCount: number;
-  completedCount: number;
-  projectNumber: number;
-  jobNumber: number;
 }
 
 interface AtRiskTask {
@@ -44,25 +30,11 @@ interface AtRiskTask {
   title: string;
   status: string;
   dueDate: string;
-  jobId: number;
-  jobName: string;
-  projectName: string;
-  projectColor: string;
-  assigneeName: string | null;
-  projectNumber: number;
-  jobNumber: number;
-  number?: number;
-}
-
-interface Project {
-  id: number;
-  name: string;
+  client: string | null;
   color: string;
-  status: string;
-  jobCount: number;
-  taskCount: number;
-  completedCount: number;
-  number: number;
+  assigneeName: string | null;
+  assignee?: { id: number; name: string; avatarUrl: string | null } | null;
+  number?: number;
 }
 
 interface EditorWorkload {
@@ -80,8 +52,7 @@ interface ActivityEvent {
   id: number;
   taskId: number;
   taskTitle: string;
-  jobId: number;
-  jobName: string | null;
+  taskClient: string | null;
   fromStatus: string;
   toStatus: string;
   changedByName: string | null;
@@ -91,8 +62,7 @@ interface ActivityEvent {
 interface DeadlineBucket { key: string; label: string; color: string; count: number; }
 interface UrgentTask {
   id: number; title: string; status: string; priority: string;
-  dueDate: string; jobId: number; jobName: string;
-  projectName: string; projectColor: string;
+  dueDate: string; client: string | null; color: string;
   assigneeName: string | null; bucket: string;
 }
 interface DeadlineOverview {
@@ -290,7 +260,7 @@ const BUCKET_COLOR: Record<string, string> = {
 
 function TaskDeadlineCard({ data, onOpenJob }: {
   data: DeadlineOverview | null;
-  onOpenJob: (jobId: number) => void;
+  onOpenTask: (taskId: number) => void;
 }) {
   const { ref, w, h } = useSize();
 
@@ -341,7 +311,7 @@ function TaskDeadlineCard({ data, onOpenJob }: {
                 <button
                   key={t.id}
                   type="button"
-                  onClick={() => onOpenJob(t.jobId)}
+                  onClick={() => onOpenTask(t.id)}
                   className="text-left flex items-start gap-1.5 group hover:bg-[hsl(var(--muted))]/40 rounded px-1 py-0.5 -mx-1 transition-colors min-w-0"
                 >
                   <span
@@ -353,7 +323,7 @@ function TaskDeadlineCard({ data, onOpenJob }: {
                       {t.title}
                     </p>
                     <p className="text-[9px] text-[hsl(var(--muted-foreground))] truncate">
-                      {t.assigneeName ? t.assigneeName.split(" ")[0] : t.projectName}
+                      {t.assigneeName ? t.assigneeName.split(" ")[0] : (t.client ?? "")}
                     </p>
                   </div>
                 </button>
@@ -418,13 +388,10 @@ function WaffleCard({ tasks }: { tasks: Task[] }) {
 export default function Dashboard() {
   usePageTitle("Dashboard");
   const { user } = useAuth();
-  const { openJob } = useJobModal();
-  const [openProjectId, setOpenProjectId] = useState<number | null>(null);
+  const { openTask } = useTaskModal();
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [workload, setWorkload] = useState<EditorWorkload[]>([]);
-  const [weekJobs, setWeekJobs] = useState<WeekJob[]>([]);
   const [atRisk, setAtRisk] = useState<AtRiskTask[]>([]);
   const [deadlineData, setDeadlineData] = useState<DeadlineOverview | null>(null);
 
@@ -433,25 +400,19 @@ export default function Dashboard() {
     apiFetch<ActivityEvent[]>("/api/activity").then(setActivity).catch(() => {});
     apiFetch<DeadlineOverview>("/api/deadline-overview").then(setDeadlineData).catch(() => {});
     if (user?.role !== "editor") {
-      apiFetch<Project[]>("/api/projects").then(setProjects).catch(() => {});
       apiFetch<EditorWorkload[]>("/api/workload").then(setWorkload).catch(() => {});
-      apiFetch<{ weekDeliveries: WeekJob[]; atRisk: AtRiskTask[] }>("/api/dashboard-extras")
-        .then(d => { setWeekJobs(d.weekDeliveries); setAtRisk(d.atRisk); })
+      apiFetch<{ atRisk: AtRiskTask[] }>("/api/dashboard-extras")
+        .then(d => { setAtRisk(d.atRisk); })
         .catch(() => {});
     }
   }, [user]);
 
   useEffect(() => { load(); }, [load]);
 
-  useRealtime({
-    onTasksChanged: load,
-    onJobsChanged:  load,
-    onProjectsChanged: load,
-  });
+  useRealtime({ onTasksChanged: load });
 
   const byStatus = (s: string) => tasks.filter(t => t.status === s).length;
   const openTasks      = tasks.filter(t => t.status !== "completed");
-  const activeProjects = projects.filter(p => p.status === "ativo");
   const isEditor       = user?.role === "editor";
 
   const actionCount = isEditor
@@ -529,41 +490,40 @@ export default function Dashboard() {
         />
 
         {/* Card 3+4 — urgency deadline chart (all tasks, col-span-2) */}
-        <TaskDeadlineCard data={deadlineData} onOpenJob={openJob} />
+        <TaskDeadlineCard data={deadlineData} onOpenTask={openTask} />
       </div>
 
       {/* ── COORDINATOR LAYOUT ──────────────────────────────────── */}
       {!isEditor && (
         <div className="grid gap-5 md:grid-cols-3">
 
-          {/* Projetos ativos */}
+          {/* Todas as tarefas em aberto */}
           <div className="md:col-span-2 rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
               <div className="flex items-center gap-2">
-                <FolderOpen className="h-4 w-4 text-[hsl(var(--primary))]" />
-                <span className="font-semibold text-sm">Projetos ativos</span>
+                <ListTodo className="h-4 w-4 text-[hsl(var(--primary))]" />
+                <span className="font-semibold text-sm">Tarefas em andamento</span>
+                {openTasks.length > 0 && <span className="text-[11px] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{openTasks.length}</span>}
               </div>
-              <Link href="/projects" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
-                Ver todos <ArrowRight className="h-3 w-3" />
+              <Link href="/tasks" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
+                Ver todas <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
             <div className="overflow-y-auto max-h-[340px] divide-y">
-              {activeProjects.length === 0 ? (
-                <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhum projeto ativo.</p>
-              ) : activeProjects.map(p => (
-                <button key={p.id} onClick={() => setOpenProjectId(p.id)}
-                  className="w-full text-left flex items-center gap-4 py-3 pr-5 hover:bg-[hsl(var(--muted))]/30 transition-colors group"
-                  style={{ borderLeft: `6px solid ${p.color}88` }}>
-                  <div className="flex-1 min-w-0 pl-4 flex items-center gap-2">
-                    <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">{p.number}</span>
-                    <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{p.name}</p>
+              {openTasks.length === 0 ? (
+                <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma tarefa em andamento.</p>
+              ) : openTasks.slice(0, 8).map(t => (
+                <div key={t.id} role="button" onClick={() => openTask(t.id)}
+                  className="flex items-center gap-3 px-5 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer"
+                  style={{ borderLeft: `4px solid ${t.color ?? "#6366f1"}88` }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
+                    {t.client && <p className="text-[10px] text-[hsl(var(--muted-foreground))] truncate">{t.client}</p>}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 text-xs text-[hsl(var(--muted-foreground))]">
-                    <span>{p.jobCount} {p.jobCount === 1 ? "job" : "jobs"}</span>
-                    <span className="opacity-30">·</span>
-                    <span>{p.taskCount} {p.taskCount === 1 ? "tarefa" : "tarefas"}</span>
-                  </div>
-                </button>
+                  <Badge className={`text-[10px] px-1.5 shrink-0 ${STATUS_CLASS[t.status] ?? ""}`}>
+                    {STATUS_LABEL[t.status] ?? t.status}
+                  </Badge>
+                </div>
               ))}
             </div>
           </div>
@@ -589,14 +549,12 @@ export default function Dashboard() {
               {openTasks.length === 0 ? (
                 <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma tarefa em aberto.</p>
               ) : openTasks.map(t => (
-                <div key={t.id} role="button" onClick={() => openJob(t.jobId)}
+                <div key={t.id} role="button" onClick={() => openTask(t.id)}
                   className="flex items-center gap-3 px-5 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
                   <div className={`w-0.5 h-8 rounded-full shrink-0 ${STATUS_BAR[t.status] ?? "bg-slate-300"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      {(t.projectNumber && t.jobNumber && t.number) ? (
-                        <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">{t.projectNumber}.{t.jobNumber}.{t.number}</span>
-                      ) : null}
+                      {t.number ? <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">#{t.number}</span> : null}
                       <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
                     </div>
                     {t.dueDate && (() => {
@@ -628,7 +586,7 @@ export default function Dashboard() {
               {activity.length === 0 ? (
                 <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-8 font-sans">Nenhuma atividade ainda.</p>
               ) : activity.map((e, idx) => (
-                <div key={e.id} role="button" onClick={() => openJob(e.jobId)}
+                <div key={e.id} role="button" onClick={() => openTask(e.taskId)}
                   className="flex items-center gap-4 px-5 py-2 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
                   <span className="text-[11px] text-[hsl(var(--muted-foreground))]/40 w-5 shrink-0 text-right select-none">{String(idx + 1).padStart(2, "0")}</span>
                   <span className="text-[11px] text-[hsl(var(--muted-foreground))]/60 shrink-0 w-28">
@@ -647,7 +605,7 @@ export default function Dashboard() {
       )}
 
       {/* ── ENTREGAS DA SEMANA + EM RISCO ──────────────────────── */}
-      {!isEditor && (weekJobs.length > 0 || atRisk.length > 0) && (
+      {!isEditor && (atRisk.length > 0) && (
         <div className="grid gap-5 md:grid-cols-2">
 
           {/* Entregas da semana */}
@@ -656,26 +614,24 @@ export default function Dashboard() {
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
                 <span className="font-semibold text-sm">Entregas desta semana</span>
-                {weekJobs.length > 0 && (
-                  <span className="text-[11px] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{weekJobs.length}</span>
-                )}
+                
               </div>
               <Link href="/timeline" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
                 Ver linha do tempo <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
             <div className="overflow-y-auto max-h-[280px] divide-y">
-              {weekJobs.length === 0 ? (
+              {[].length === 0 ? (
                 <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma entrega esta semana.</p>
-              ) : weekJobs.map(j => {
+              ) : [].map(j => {
                 const pct = j.taskCount > 0 ? Math.round(j.completedCount / j.taskCount * 100) : 0;
                 return (
                   <div key={j.id} className="flex items-center gap-4 px-5 py-3 hover:bg-[hsl(var(--muted))]/20 transition-colors"
-                    style={{ borderLeft: `4px solid ${j.projectColor}88` }}>
+                    style={{ borderLeft: `4px solid ${j.color ?? "#6366f1"}88` }}>
                     <div className="flex-1 min-w-0 pl-1">
                       <p className="text-sm font-medium truncate">{j.name}</p>
                       <p className="text-[11px] text-[hsl(var(--muted-foreground))] truncate">
-                        <span className="font-mono">{j.projectNumber}.{j.jobNumber}</span> · {j.projectName}
+                        {j.taskClient ?? j.taskTitle}
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
@@ -703,16 +659,14 @@ export default function Dashboard() {
                 <p className="text-sm text-green-600 text-center py-10">Tudo dentro do prazo.</p>
               ) : atRisk.map(t => (
                 <div key={t.id} className="flex items-center gap-4 px-5 py-3 hover:bg-[hsl(var(--muted))]/20 transition-colors"
-                  style={{ borderLeft: `4px solid ${t.projectColor}88` }}>
+                  style={{ borderLeft: `4px solid ${t.color ?? "#6366f1"}88` }}>
                   <div className="flex-1 min-w-0 pl-1">
                     <div className="flex items-center gap-1.5">
-                      {(t.projectNumber && t.jobNumber && t.number) ? (
-                        <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">{t.projectNumber}.{t.jobNumber}.{t.number}</span>
-                      ) : null}
+                      {t.number ? <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">#{t.number}</span> : null}
                       <p className="text-sm font-medium truncate">{t.title}</p>
                     </div>
                     <p className="text-[11px] text-[hsl(var(--muted-foreground))] truncate">
-                      {t.projectName} · {t.jobName}
+                      {t.client ?? ""}
                       {t.assigneeName && ` · ${t.assigneeName}`}
                     </p>
                   </div>
@@ -754,18 +708,16 @@ export default function Dashboard() {
                   <div className={`w-0.5 h-8 rounded-full shrink-0 ${STATUS_BAR[t.status] ?? "bg-slate-300"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      {(t.projectNumber && t.jobNumber && t.number) ? (
-                        <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">{t.projectNumber}.{t.jobNumber}.{t.number}</span>
-                      ) : null}
+                      {t.number ? <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">#{t.number}</span> : null}
                       <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      {t.projectClient && (
-                        <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.projectClient}</span>
+                      {t.client && (
+                        <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.client}</span>
                       )}
                       {t.dueDate && (
                         <span className="text-xs text-[hsl(var(--muted-foreground))]">
-                          {t.projectClient ? "· " : ""}Entrega: {fmtDateHuman(t.dueDate)}
+                          Entrega: {fmtDateHuman(t.dueDate)}
                         </span>
                       )}
                     </div>
@@ -809,9 +761,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {openProjectId !== null && (
-        <ProjectModal projectId={openProjectId} onClose={() => setOpenProjectId(null)} />
-      )}
     </div>
   );
 }

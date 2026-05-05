@@ -11,7 +11,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
-import { useJobModal } from "@/contexts/JobModalContext";
+import { useTaskModal } from "@/contexts/TaskModalContext";
 import { apiFetch, apiPut } from "@/lib/api";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -64,14 +64,9 @@ const ALL_ROLES   = ["admin", "supervisor", "coordinator", "editor"];
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/",         label: "Dashboard",      icon: LayoutDashboard, roles: ALL_ROLES },
-  {
-    href: "/projects", label: "Projetos",        icon: FolderOpen,      roles: COORD_ROLES,
-    children: [
-      { href: "/pipeline", label: "Pipeline",       icon: Kanban,       roles: COORD_ROLES },
-      { href: "/timeline", label: "Linha do tempo", icon: CalendarRange, roles: COORD_ROLES },
-      { href: "/reports",  label: "Relatórios",     icon: BarChart3,    roles: COORD_ROLES },
-    ],
-  },
+  { href: "/pipeline", label: "Pipeline",       icon: Kanban,       roles: COORD_ROLES },
+  { href: "/timeline", label: "Linha do tempo", icon: CalendarRange, roles: COORD_ROLES },
+  { href: "/reports",  label: "Relatórios",     icon: BarChart3,    roles: COORD_ROLES },
   { href: "/feed",     label: "Feed",             icon: Zap,             roles: ALL_ROLES },
   { href: "/my-tasks", label: "Meu Quadro",      icon: ListTodo,        roles: ALL_ROLES },
   { href: "/calendar", label: "Meu Calendário",  icon: CalendarDays,    roles: ALL_ROLES },
@@ -93,7 +88,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const searchRef = useRef<HTMLInputElement>(null);
   const { user, logout } = useAuth();
   const { settings } = useSettings();
-  const { openJob } = useJobModal();
+  const { openTask } = useTaskModal();
 
   const fetchNotifications = useCallback(() => {
     apiFetch<AppNotification[]>("/api/notifications").then(data => {
@@ -432,11 +427,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
                         onClick={() => {
                           markRead(n);
                           setNotifOpen(false);
-                          if (user?.role !== "editor" && n.jobId) {
-                            openJob(n.jobId);
+                          if (n.taskId) {
+                            openTask(n.taskId);
                           } else {
-                            const href = n.taskId ? "/my-tasks" : "/";
-                            if (href !== location) window.location.href = href;
+                            window.location.href = "/";
                           }
                         }}
                         className={cn(

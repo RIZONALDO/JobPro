@@ -26,18 +26,14 @@ interface Task {
   priority: string;
   complexity: string;
   folderUrl: string | null;
-  jobId: number;
   revisionCount: number;
   revisions: Revision[];
   createdBy: { id: number; name: string; avatarUrl?: string | null } | null;
   assignedToId: number | null;
   assignedTo?: { id: number; name: string; avatarUrl?: string | null } | null;
   number?: number;
-  jobNumber?: number;
-  projectNumber?: number;
-  jobName?: string | null;
-  projectName?: string | null;
-  projectClient?: string | null;
+  client?: string | null;
+  color?: string;
 }
 
 const PRIORITY_COLOR: Record<string, string> = { low: "text-green-600", medium: "text-yellow-600", high: "text-red-600" };
@@ -151,8 +147,8 @@ export default function MyTasks() {
                 <span className="text-[9px] font-mono text-[hsl(var(--muted-foreground))]/50 block mb-0.5">{t.projectNumber}.{t.jobNumber}.{t.number}</span>
               ) : null}
               <p className="text-xs font-semibold leading-snug line-clamp-2">{t.title}</p>
-              {t.projectClient && (
-                <p className="text-[9px] text-[hsl(var(--muted-foreground))]/70 truncate mt-0.5">{t.projectClient}</p>
+              {t.client && (
+                <p className="text-[9px] text-[hsl(var(--muted-foreground))]/70 truncate mt-0.5">{t.client}</p>
               )}
             </div>
             <div className="flex items-center gap-1 shrink-0">
@@ -541,18 +537,12 @@ export default function MyTasks() {
                 <div className="flex items-start gap-8">
                   <div className="min-w-0">
                     <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60">Projeto</p>
-                    <p className="text-sm font-semibold truncate">{infoTarget.projectName ?? "—"}</p>
+                    <p className="text-sm font-semibold truncate">{infoTarget.client ?? "—"}</p>
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60">Job</p>
                     <p className="text-sm font-semibold truncate">{infoTarget.jobName ?? "—"}</p>
                   </div>
-                  {infoTarget.projectClient && (
-                    <div className="min-w-0">
-                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60">Cliente</p>
-                      <p className="text-sm font-semibold truncate">{infoTarget.projectClient}</p>
-                    </div>
-                  )}
                 </div>
 
                 <hr className="border-dashed border-muted-foreground/20" />
@@ -573,7 +563,7 @@ export default function MyTasks() {
                   {(infoTarget.projectNumber && infoTarget.jobNumber && infoTarget.number) && (
                     <Row label="Código">
                       <span className="font-mono text-xs text-muted-foreground">
-                        {infoTarget.projectNumber}.{infoTarget.jobNumber}.{infoTarget.number}
+                        #{infoTarget.number}
                       </span>
                     </Row>
                   )}

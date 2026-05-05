@@ -7,19 +7,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Search, TrendingUp, Users, FolderOpen } from "lucide-react";
+import { Search, TrendingUp, Users, Tag } from "lucide-react";
 import { usePageTitle } from "@/lib/use-page-title";
 
 interface ReportTask {
-  task: { id: number; title: string; priority: string; complexity: string; updatedAt: string; revisionCount: number };
-  job: { id: number; name: string; dueDate: string | null };
-  project: { id: number; name: string; client: string | null; color: string };
+  task: {
+    id: number; title: string; priority: string; complexity: string;
+    updatedAt: string; revisionCount: number; client: string | null; color: string;
+  };
   assignee: { id: number; name: string; avatarUrl: string | null } | null;
   revisionCount: number;
 }
 interface ReportSummary {
   totalDelivered: number;
-  byProject: { projectId: number; projectName: string; count: number }[];
+  byClient: { client: string; count: number }[];
   byEditor: { userId: number; name: string; count: number }[];
 }
 interface ReportData { data: ReportTask[]; summary: ReportSummary; }
@@ -62,8 +63,7 @@ export default function Reports() {
     const q = search.toLowerCase();
     return (
       t.task.title.toLowerCase().includes(q) ||
-      t.project.name.toLowerCase().includes(q) ||
-      t.job.name.toLowerCase().includes(q) ||
+      (t.task.client?.toLowerCase().includes(q) ?? false) ||
       (t.assignee?.name.toLowerCase().includes(q) ?? false)
     );
   }) ?? [];
@@ -91,17 +91,17 @@ export default function Reports() {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar tarefa, projeto, editor..."
+            placeholder="Buscar tarefa, cliente, editor..."
             className="flex-1 bg-transparent text-xs outline-none placeholder:text-[hsl(var(--muted-foreground))]"
           />
         </div>
       </div>
 
-      {/* Cards de resumo */}
+      {/* Summary cards */}
       {data && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
 
-          {/* Total entregue */}
+          {/* Total */}
           <div className="rounded-xl border bg-[hsl(var(--card))] card-float p-5 flex items-center gap-4">
             <div className="h-11 w-11 rounded-2xl bg-green-500/10 flex items-center justify-center shrink-0">
               <TrendingUp className="h-5 w-5 text-green-500" />
@@ -112,20 +112,20 @@ export default function Reports() {
             </div>
           </div>
 
-          {/* Por projeto */}
+          {/* Por cliente */}
           <div className="rounded-xl border bg-[hsl(var(--card))] card-float p-4">
             <div className="flex items-center gap-2 mb-3">
-              <FolderOpen className="h-4 w-4 text-[hsl(var(--primary))]" />
-              <p className="text-sm font-semibold">Por projeto</p>
+              <Tag className="h-4 w-4 text-[hsl(var(--primary))]" />
+              <p className="text-sm font-semibold">Por cliente</p>
             </div>
             <div className="space-y-2">
-              {data.summary.byProject.length === 0 ? (
+              {data.summary.byClient.length === 0 ? (
                 <p className="text-xs text-[hsl(var(--muted-foreground))]">Nenhum dado</p>
-              ) : data.summary.byProject.slice(0, 5).map(p => (
-                <div key={p.projectId} className="flex items-center gap-2">
+              ) : data.summary.byClient.slice(0, 5).map(p => (
+                <div key={p.client} className="flex items-center gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between text-[11px] mb-0.5">
-                      <span className="truncate text-[hsl(var(--foreground))]">{p.projectName}</span>
+                      <span className="truncate text-[hsl(var(--foreground))]">{p.client}</span>
                       <span className="font-semibold shrink-0 ml-2">{p.count}</span>
                     </div>
                     <div className="h-1 rounded-full bg-[hsl(var(--muted))]">
@@ -170,7 +170,7 @@ export default function Reports() {
         </div>
       )}
 
-      {/* Tabela */}
+      {/* Table */}
       <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30">
           <div className="flex items-center gap-2">
@@ -192,7 +192,7 @@ export default function Reports() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-[hsl(var(--muted))]/10">
-                  {["Tarefa", "Projeto / Job", "Editor", "Entregue em", "Prioridade", "Complexidade", "Revisões"].map(h => (
+                  {["Tarefa", "Cliente", "Editor", "Entregue em", "Prioridade", "Complexidade", "Revisões"].map(h => (
                     <th key={h} className="text-left px-4 py-2.5 text-xs font-medium text-[hsl(var(--muted-foreground))] whitespace-nowrap">
                       {h}
                     </th>
@@ -206,10 +206,13 @@ export default function Reports() {
                       <p className="truncate">{t.task.title}</p>
                     </td>
                     <td className="px-4 py-3">
-                      <div style={{ borderLeft: `3px solid ${t.project.color}88` }} className="pl-2.5">
-                        <p className="text-xs font-medium truncate max-w-[140px]">{t.project.name}</p>
-                        <p className="text-[10px] text-[hsl(var(--muted-foreground))] truncate">{t.job.name}</p>
-                      </div>
+                      {t.task.client ? (
+                        <div style={{ borderLeft: `3px solid ${t.task.color}88` }} className="pl-2.5">
+                          <p className="text-xs font-medium truncate max-w-[120px]">{t.task.client}</p>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-[hsl(var(--muted-foreground))]">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-xs text-[hsl(var(--muted-foreground))]">
                       {t.assignee?.name ?? "—"}

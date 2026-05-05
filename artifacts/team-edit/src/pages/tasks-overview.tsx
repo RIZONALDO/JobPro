@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useRealtime } from "@/hooks/use-realtime";
 import { usePageTitle } from "@/lib/use-page-title";
-import { useJobModal } from "@/contexts/JobModalContext";
+import { useTaskModal } from "@/contexts/TaskModalContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,11 +34,8 @@ interface OverviewTask {
   dueDate: string | null;
   folderUrl: string | null;
   revisionCount: number;
-  jobId: number;
-  jobName: string | null;
-  projectId: number | null;
-  projectName: string | null;
-  projectColor: string | null;
+  client: string | null;
+  color: string;
   assignee: Person | null;
   coordinator: Person | null;
   isOwn: boolean;
@@ -68,7 +65,7 @@ export default function TasksOverview() {
   usePageTitle("Tarefas");
   const { user } = useAuth();
   const { toast } = useToast();
-  const { openJob } = useJobModal();
+  const { openTask } = useTaskModal();
 
   const isSuper = user?.role === "admin" || user?.role === "supervisor";
 
@@ -396,8 +393,8 @@ export default function TasksOverview() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openJob(t.jobId)}>
-                          <ArrowUpRight className="h-3.5 w-3.5" />Abrir job
+                        <DropdownMenuItem onClick={() => openTask(t.id)}>
+                          <ArrowUpRight className="h-3.5 w-3.5" />Ver detalhes
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

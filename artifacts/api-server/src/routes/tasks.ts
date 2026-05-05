@@ -1,39 +1,25 @@
 import { Router } from "express";
-import { db, tasksTable, usersTable, taskRevisionsTable, taskEventsTable, jobsTable, projectsTable } from "@workspace/db";
-import { eq, ne, desc, asc, and, gte, lte, isNotNull, lt, notInArray, inArray } from "drizzle-orm";
+import { db, tasksTable, usersTable, taskRevisionsTable, taskEventsTable } from "@workspace/db";
+import { eq, ne, desc, asc, and, gte, lte, isNotNull, lt, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireCoordinator } from "../lib/auth.js";
-import { notify, notifyAdmins } from "../lib/notify.js";
-import { broadcastTaskChange, broadcastJobChange, broadcastProjectChange } from "../lib/broadcast.js";
+import { notify } from "../lib/notify.js";
+import { broadcastTaskChange } from "../lib/broadcast.js";
 import { createFeedItem } from "../lib/feed.js";
 
 const router = Router();
 
-router.post("/jobs/:jobId/tasks", requireCoordinator, async (req, res): Promise<void> => {
-  const jobId = parseInt(req.params.jobId, 10);
-  if (isNaN(jobId)) { res.status(400).json({ error: "ID inválido" }); return; }
-
-  const { title, description, dueDate, priority, complexity, assignedToId, folderUrl } = req.body ?? {};
+// ── Create task ──────────────────────────────────────────────────────────────
+router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
+  const { title, description, dueDate, priority, complexity, assignedToId, folderUrl, client, color } = req.body ?? {};
   if (!title) { res.status(400).json({ error: "Título obrigatório" }); return; }
 
-  if (dueDate) {
-    const [job] = await db.select({ dueDate: jobsTable.dueDate, createdAt: jobsTable.createdAt }).from(jobsTable).where(eq(jobsTable.id, jobId));
-    const taskDate = new Date(String(dueDate));
-    if (job?.createdAt && taskDate < job.createdAt) {
-      const d = job.createdAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-      res.status(400).json({ error: `Data da tarefa é anterior ao início do job (${d})` }); return;
-    }
-    if (job?.dueDate && taskDate > job.dueDate) {
-      const d = job.dueDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-      res.status(400).json({ error: `Data da tarefa ultrapassa o prazo do job (${d})` }); return;
-    }
-  }
-
-  const parsedAssignee = assignedToId ? parseInt(assignedToId, 10) : null;
+  const parsedAssignee = assignedToId ? parseInt(String(assignedToId), 10) : null;
   const [task] = await db.insert(tasksTable).values({
-    jobId,
     title: String(title),
     description: description ? String(description) : null,
-    dueDate: dueDate ? new Date(String(dueDate)) : null,
+    client: client ? String(client) : null,
+    color: color ? String(color) : "#6366f1",
+    dueDate: dueDate ? String(dueDate) : null,
     priority: priority ?? "medium",
     complexity: complexity ?? "medium",
     assignedToId: parsedAssignee,
@@ -41,20 +27,94 @@ router.post("/jobs/:jobId/tasks", requireCoordinator, async (req, res): Promise<
     createdById: req.session.userId,
   }).returning();
 
-  // Notificar editor ao ser atribuído
-  const [jobForNotif] = await db.select({ name: jobsTable.name, projectId: jobsTable.projectId }).from(jobsTable).where(eq(jobsTable.id, jobId));
-  if (parsedAssignee && jobForNotif) {
+  if (parsedAssignee) {
     await notify(parsedAssignee, "task_assigned",
       "Nova tarefa atribuída",
-      `A tarefa "${task.title}" no job "${jobForNotif.name}" foi atribuída a você`,
-      { taskId: task.id, jobId }
+      `A tarefa "${task.title}" foi atribuída a você`,
+      { taskId: task.id }
     );
   }
 
-  broadcastTaskChange(jobId, jobForNotif?.projectId ?? 0);
+  broadcastTaskChange();
   res.status(201).json(task);
 });
 
+// ── Overview (coordinator: all tasks created by coordinators) ────────────────
+router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void> => {
+  const { status, assignedToId, createdById } = req.query;
+
+  const coordUsers = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(inArray(usersTable.role, ["coordinator", "supervisor", "admin"]));
+  const coordIds = coordUsers.map(u => u.id);
+  if (coordIds.length === 0) { res.json([]); return; }
+
+  const conditions: any[] = [inArray(tasksTable.createdById, coordIds)];
+  if (status && status !== "all") conditions.push(eq(tasksTable.status, String(status)));
+  if (assignedToId) conditions.push(eq(tasksTable.assignedToId, parseInt(String(assignedToId), 10)));
+  if (createdById) conditions.push(eq(tasksTable.createdById, parseInt(String(createdById), 10)));
+
+  const rows = await db
+    .select()
+    .from(tasksTable)
+    .where(and(...conditions))
+    .orderBy(desc(tasksTable.createdAt));
+
+  const personIds = [...new Set([
+    ...rows.map(r => r.assignedToId),
+    ...rows.map(r => r.createdById),
+  ].filter((id): id is number => id !== null))];
+
+  const persons = personIds.length
+    ? await db
+        .select({ id: usersTable.id, name: usersTable.name, login: usersTable.login, avatarUrl: usersTable.avatarUrl })
+        .from(usersTable)
+        .where(inArray(usersTable.id, personIds))
+    : [];
+  const personMap = new Map(persons.map(p => [p.id, p]));
+
+  const userId = req.session.userId!;
+  res.json(rows.map(r => ({
+    id: r.id,
+    title: r.title,
+    description: r.description,
+    status: r.status,
+    priority: r.priority,
+    complexity: r.complexity,
+    dueDate: r.dueDate,
+    folderUrl: r.folderUrl,
+    revisionCount: r.revisionCount ?? 0,
+    client: r.client,
+    color: r.color,
+    assignee: r.assignedToId ? (personMap.get(r.assignedToId) ?? null) : null,
+    coordinator: r.createdById ? (personMap.get(r.createdById) ?? null) : null,
+    isOwn: r.createdById === userId,
+  })));
+});
+
+// ── Get single task ──────────────────────────────────────────────────────────
+router.get("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+  if (!task) { res.status(404).json({ error: "Tarefa não encontrada" }); return; }
+
+  const [createdBy] = task.createdById
+    ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, task.createdById))
+    : [null];
+  const [assignedTo] = task.assignedToId
+    ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, task.assignedToId))
+    : [null];
+  const revisions = await db
+    .select({ id: taskRevisionsTable.id, revisionNumber: taskRevisionsTable.revisionNumber, comment: taskRevisionsTable.comment, createdAt: taskRevisionsTable.createdAt })
+    .from(taskRevisionsTable).where(eq(taskRevisionsTable.taskId, id)).orderBy(asc(taskRevisionsTable.revisionNumber));
+
+  res.json({ ...task, createdBy: createdBy ?? null, assignedTo: assignedTo ?? null, revisions });
+});
+
+// ── Update task ──────────────────────────────────────────────────────────────
 router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
@@ -65,7 +125,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   const role = req.session.userRole!;
   const userId = req.session.userId!;
 
-  const { title, description, dueDate, priority, complexity, assignedToId, folderUrl, status, revisionComment } = req.body ?? {};
+  const { title, description, dueDate, priority, complexity, assignedToId, folderUrl, status, revisionComment, client, color } = req.body ?? {};
   const update: Record<string, unknown> = {};
 
   if (role === "editor") {
@@ -88,24 +148,12 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     }
     if (title) update.title = String(title);
     if (description !== undefined) update.description = description ? String(description) : null;
-    if (dueDate !== undefined) {
-      if (dueDate) {
-        const [job] = await db.select({ dueDate: jobsTable.dueDate, createdAt: jobsTable.createdAt }).from(jobsTable).where(eq(jobsTable.id, task.jobId));
-        const taskDate = new Date(String(dueDate));
-        if (job?.createdAt && taskDate < job.createdAt) {
-          const d = job.createdAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-          res.status(400).json({ error: `Data da tarefa é anterior ao início do job (${d})` }); return;
-        }
-        if (job?.dueDate && taskDate > job.dueDate) {
-          const d = job.dueDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-          res.status(400).json({ error: `Data da tarefa ultrapassa o prazo do job (${d})` }); return;
-        }
-      }
-      update.dueDate = dueDate ? new Date(String(dueDate)) : null;
-    }
+    if (client !== undefined) update.client = client ? String(client) : null;
+    if (color) update.color = String(color);
+    if (dueDate !== undefined) update.dueDate = dueDate ? String(dueDate) : null;
     if (priority) update.priority = String(priority);
     if (complexity) update.complexity = String(complexity);
-    if (assignedToId !== undefined) update.assignedToId = assignedToId ? parseInt(assignedToId, 10) : null;
+    if (assignedToId !== undefined) update.assignedToId = assignedToId ? parseInt(String(assignedToId), 10) : null;
     if (folderUrl !== undefined) update.folderUrl = folderUrl ? String(folderUrl) : null;
     if (status) {
       const s = String(status);
@@ -138,38 +186,29 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     });
   }
 
-  // ── Notificações por mudança de status ─────────────────────────
   const newStatus = update.status as string | undefined;
   if (newStatus && newStatus !== task.status) {
-    const [job] = await db.select({ name: jobsTable.name, createdById: jobsTable.createdById })
-      .from(jobsTable).where(eq(jobsTable.id, updated.jobId));
-
     if (newStatus === "review" && task.createdById) {
-      // Editor enviou para aprovação → notifica coordenador criador
       const [editor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
       await notify(task.createdById, "task_review",
         "Tarefa enviada para aprovação",
         `${editor?.name ?? "Editor"} enviou "${task.title}" para aprovação`,
-        { taskId: id, jobId: updated.jobId }
+        { taskId: id }
       );
     }
-
     if (newStatus === "in_revision" && task.assignedToId) {
-      // Coordenador pediu alteração → notifica editor
       const comment = revisionComment ? String(revisionComment).trim() : "";
       await notify(task.assignedToId, "task_revision",
         "Alteração solicitada",
         `Alteração solicitada em "${task.title}"${comment ? `: ${comment}` : ""}`,
-        { taskId: id, jobId: updated.jobId }
+        { taskId: id }
       );
     }
-
     if (newStatus === "completed" && task.assignedToId) {
-      // Tarefa aprovada → notifica editor
       await notify(task.assignedToId, "task_approved",
         "Tarefa aprovada",
         `Sua tarefa "${task.title}" foi aprovada`,
-        { taskId: id, jobId: updated.jobId }
+        { taskId: id }
       );
       await createFeedItem({
         type: "task_completed",
@@ -177,71 +216,24 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         actorId: userId,
         entityId: id,
         entityType: "task",
-        jobId: updated.jobId,
       }).catch(() => {});
     }
   }
 
-  // Reatribuição → notifica novo editor
   if (update.assignedToId && update.assignedToId !== task.assignedToId) {
     const newEditor = update.assignedToId as number;
-    const [job] = await db.select({ name: jobsTable.name }).from(jobsTable).where(eq(jobsTable.id, updated.jobId));
     await notify(newEditor, "task_reassigned",
       "Tarefa atribuída a você",
-      `A tarefa "${task.title}" no job "${job?.name ?? ""}" foi atribuída a você`,
-      { taskId: id, jobId: updated.jobId }
+      `A tarefa "${task.title}" foi atribuída a você`,
+      { taskId: id }
     );
   }
 
-  // ── Auto-close job e projeto ───────────────────────────────────
-  if (update.status === "completed") {
-    const jobId = updated.jobId;
-    const allJobTasks = await db.select({ status: tasksTable.status }).from(tasksTable).where(eq(tasksTable.jobId, jobId));
-    if (allJobTasks.length > 0 && allJobTasks.every(t => t.status === "completed")) {
-      const [closedJob] = await db.update(jobsTable).set({ status: "entregue" })
-        .where(eq(jobsTable.id, jobId))
-        .returning({ projectId: jobsTable.projectId, name: jobsTable.name, createdById: jobsTable.createdById });
-
-      if (closedJob) {
-        // Notificar coordenador do job
-        if (closedJob.createdById) {
-          await notify(closedJob.createdById, "job_completed",
-            "Job concluído",
-            `O job "${closedJob.name}" foi concluído automaticamente`,
-            { jobId }
-          );
-        }
-
-        const projectId = closedJob.projectId;
-        const allProjectJobs = await db.select({ status: jobsTable.status }).from(jobsTable).where(eq(jobsTable.projectId, projectId));
-        if (allProjectJobs.length > 0 && allProjectJobs.every(j => ["entregue", "aprovado"].includes(j.status))) {
-          const [closedProject] = await db.update(projectsTable).set({ status: "concluido" })
-            .where(eq(projectsTable.id, projectId))
-            .returning({ name: projectsTable.name, createdById: projectsTable.createdById });
-
-          // Notificar coordenador + admins do projeto concluído
-          if (closedProject?.createdById) {
-            await notify(closedProject.createdById, "project_completed",
-              "Projeto concluído",
-              `O projeto "${closedProject.name}" foi concluído`
-            );
-          }
-          await notifyAdmins("project_completed",
-            "Projeto concluído",
-            `O projeto "${closedProject?.name ?? ""}" foi concluído`
-          );
-          broadcastProjectChange();
-        }
-        broadcastJobChange(projectId);
-      }
-    }
-  }
-
-  const [jobCtx] = await db.select({ projectId: jobsTable.projectId }).from(jobsTable).where(eq(jobsTable.id, updated.jobId));
-  broadcastTaskChange(updated.jobId, jobCtx?.projectId ?? 0);
+  broadcastTaskChange();
   res.json(updated);
 });
 
+// ── Return task (editor gives back) ─────────────────────────────────────────
 router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
@@ -252,11 +244,9 @@ router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> =>
   const role = req.session.userRole!;
   const userId = req.session.userId!;
 
-  // Editor só pode devolver tarefa atribuída a si mesmo
   if (role === "editor" && task.assignedToId !== userId) {
     res.status(403).json({ error: "Você só pode devolver tarefas atribuídas a você." }); return;
   }
-
   if (task.status === "completed") {
     res.status(400).json({ error: "Não é possível devolver uma tarefa já concluída." }); return;
   }
@@ -268,167 +258,58 @@ router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> =>
     .returning();
 
   await db.insert(taskEventsTable).values({
-    taskId: id,
-    fromStatus: prevStatus,
-    toStatus: "pending",
-    changedById: userId,
+    taskId: id, fromStatus: prevStatus, toStatus: "pending", changedById: userId,
   });
-
-  const [job] = await db.select({ projectId: jobsTable.projectId }).from(jobsTable).where(eq(jobsTable.id, task.jobId));
 
   if (task.createdById) {
     const [editor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
     await notify(task.createdById, "task_returned",
       "Tarefa devolvida",
       `${editor?.name ?? "Editor"} devolveu a tarefa "${task.title}".`,
-      { taskId: id, jobId: task.jobId },
+      { taskId: id },
     );
   }
 
-  broadcastTaskChange(task.jobId, job?.projectId ?? 0);
+  broadcastTaskChange();
   res.json(updated);
 });
 
+// ── Delete task ──────────────────────────────────────────────────────────────
 router.delete("/tasks/:id", requireCoordinator, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
   const [task] = await db
-    .select({ jobId: tasksTable.jobId, status: tasksTable.status, assignedToId: tasksTable.assignedToId, title: tasksTable.title, createdById: tasksTable.createdById })
+    .select({ id: tasksTable.id, status: tasksTable.status, assignedToId: tasksTable.assignedToId, createdById: tasksTable.createdById })
     .from(tasksTable).where(eq(tasksTable.id, id));
 
   if (!task) { res.sendStatus(204); return; }
 
   if (req.session.userRole === "coordinator" && task.createdById !== req.session.userId) {
-    res.status(403).json({ error: "Sem permissão para excluir esta tarefa. Apenas o criador ou um Supervisor pode fazer isso." }); return;
+    res.status(403).json({ error: "Sem permissão para excluir esta tarefa." }); return;
   }
-
-  // Hard block: assigned + actively being worked on
   if (task.assignedToId !== null && (task.status === "in_progress" || task.status === "in_revision")) {
-    res.status(409).json({
-      error: "Esta tarefa está atribuída e em edição. Remova a atribuição antes de excluir.",
-      blocked: true,
-    });
+    res.status(409).json({ error: "Esta tarefa está atribuída e em edição. Remova a atribuição antes de excluir.", blocked: true });
     return;
   }
 
   await db.delete(tasksTable).where(eq(tasksTable.id, id));
-  const [job] = await db.select({ projectId: jobsTable.projectId }).from(jobsTable).where(eq(jobsTable.id, task.jobId));
-  broadcastTaskChange(task.jobId, job?.projectId ?? 0);
+  broadcastTaskChange();
   res.sendStatus(204);
 });
 
-router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void> => {
-  const { status, assignedToId, createdById } = req.query;
-
-  const coordUsers = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(inArray(usersTable.role, ["coordinator", "supervisor", "admin"]));
-  const coordIds = coordUsers.map(u => u.id);
-  if (coordIds.length === 0) { res.json([]); return; }
-
-  const conditions: ReturnType<typeof eq>[] = [inArray(tasksTable.createdById, coordIds) as any];
-  if (status && status !== "all") conditions.push(eq(tasksTable.status, String(status)) as any);
-  if (assignedToId) conditions.push(eq(tasksTable.assignedToId, parseInt(String(assignedToId), 10)) as any);
-  if (createdById) conditions.push(eq(tasksTable.createdById, parseInt(String(createdById), 10)) as any);
-
-  const rows = await db
-    .select({
-      id: tasksTable.id,
-      title: tasksTable.title,
-      description: tasksTable.description,
-      status: tasksTable.status,
-      priority: tasksTable.priority,
-      complexity: tasksTable.complexity,
-      dueDate: tasksTable.dueDate,
-      folderUrl: tasksTable.folderUrl,
-      revisionCount: tasksTable.revisionCount,
-      createdById: tasksTable.createdById,
-      assignedToId: tasksTable.assignedToId,
-      jobId: tasksTable.jobId,
-      jobName: jobsTable.name,
-      projectId: projectsTable.id,
-      projectName: projectsTable.name,
-      projectColor: projectsTable.color,
-    })
-    .from(tasksTable)
-    .leftJoin(jobsTable, eq(tasksTable.jobId, jobsTable.id))
-    .leftJoin(projectsTable, eq(jobsTable.projectId, projectsTable.id))
-    .where(and(...conditions))
-    .orderBy(desc(tasksTable.createdAt));
-
-  const personIds = [...new Set([
-    ...rows.map(r => r.assignedToId),
-    ...rows.map(r => r.createdById),
-  ].filter((id): id is number => id !== null))];
-
-  const persons = personIds.length
-    ? await db
-        .select({ id: usersTable.id, name: usersTable.name, login: usersTable.login, avatarUrl: usersTable.avatarUrl })
-        .from(usersTable)
-        .where(inArray(usersTable.id, personIds))
-    : [];
-  const personMap = new Map(persons.map(p => [p.id, p]));
-
-  const userId = req.session.userId!;
-  res.json(rows.map(r => ({
-    id: r.id,
-    title: r.title,
-    description: r.description,
-    status: r.status,
-    priority: r.priority,
-    complexity: r.complexity,
-    dueDate: r.dueDate,
-    folderUrl: r.folderUrl,
-    revisionCount: r.revisionCount ?? 0,
-    jobId: r.jobId,
-    jobName: r.jobName,
-    projectId: r.projectId,
-    projectName: r.projectName,
-    projectColor: r.projectColor,
-    assignee: r.assignedToId ? (personMap.get(r.assignedToId) ?? null) : null,
-    coordinator: r.createdById ? (personMap.get(r.createdById) ?? null) : null,
-    isOwn: r.createdById === userId,
-  })));
-});
-
+// ── My tasks ─────────────────────────────────────────────────────────────────
 router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const role = req.session.userRole!;
   const filter = role === "editor"
     ? eq(tasksTable.assignedToId, userId)
     : eq(tasksTable.createdById, userId);
-  const tasks = await db.select().from(tasksTable)
-    .where(filter)
-    .orderBy(desc(tasksTable.createdAt));
 
-  // Hierarchical numbering
-  const allProjectIds = await db.select({ id: projectsTable.id }).from(projectsTable).orderBy(asc(projectsTable.id));
-  const projectNumberMap = new Map(allProjectIds.map((p, i) => [p.id, i + 1]));
-  const uniqueJobIds = [...new Set(tasks.map(t => t.jobId))];
-  const jobNumberMap = new Map<number, number>();
-  const jobProjectMap = new Map<number, number>();
+  const tasks = await db.select().from(tasksTable).where(filter).orderBy(desc(tasksTable.createdAt));
+
   const taskNumMap = new Map<number, number>();
-  const jobNameMap  = new Map<number, string>();
-  const jobClientMap = new Map<number, string | null>();
-  const jobProjectNameMap = new Map<number, string>();
-
-  await Promise.all(uniqueJobIds.map(async (jobId) => {
-    const [job] = await db.select({ projectId: jobsTable.projectId, name: jobsTable.name }).from(jobsTable).where(eq(jobsTable.id, jobId));
-    if (!job) return;
-    jobProjectMap.set(jobId, job.projectId);
-    jobNameMap.set(jobId, job.name);
-    const allJobIds = await db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.projectId, job.projectId)).orderBy(asc(jobsTable.id));
-    jobNumberMap.set(jobId, allJobIds.findIndex(j => j.id === jobId) + 1);
-    const allTaskIds = await db.select({ id: tasksTable.id }).from(tasksTable).where(eq(tasksTable.jobId, jobId)).orderBy(asc(tasksTable.id));
-    allTaskIds.forEach((t, i) => taskNumMap.set(t.id, i + 1));
-    const [project] = await db.select({ name: projectsTable.name, client: projectsTable.client }).from(projectsTable).where(eq(projectsTable.id, job.projectId));
-    if (project) {
-      jobClientMap.set(jobId, project.client);
-      jobProjectNameMap.set(jobId, project.name);
-    }
-  }));
+  [...tasks].sort((a, b) => a.id - b.id).forEach((t, i) => taskNumMap.set(t.id, i + 1));
 
   const tasksWithDetails = await Promise.all(tasks.map(async (t) => {
     const [createdBy] = t.createdById
@@ -443,24 +324,19 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
       comment: taskRevisionsTable.comment,
       createdAt: taskRevisionsTable.createdAt,
     }).from(taskRevisionsTable).where(eq(taskRevisionsTable.taskId, t.id)).orderBy(asc(taskRevisionsTable.revisionNumber));
-    const projectId = jobProjectMap.get(t.jobId);
     return {
       ...t,
       createdBy: createdBy ?? null,
       assignedTo: assignedTo ?? null,
       revisions,
       number: taskNumMap.get(t.id) ?? 0,
-      jobNumber: jobNumberMap.get(t.jobId) ?? 0,
-      projectNumber: projectId ? (projectNumberMap.get(projectId) ?? 0) : 0,
-      jobName: jobNameMap.get(t.jobId) ?? null,
-      projectName: jobProjectNameMap.get(t.jobId) ?? null,
-      projectClient: jobClientMap.get(t.jobId) ?? null,
     };
   }));
 
   res.json(tasksWithDetails);
 });
 
+// ── Activity feed ─────────────────────────────────────────────────────────────
 router.get("/activity", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const role = req.session.userRole!;
@@ -474,17 +350,11 @@ router.get("/activity", requireAuth, async (req, res): Promise<void> => {
       changedById: taskEventsTable.changedById,
       createdAt: taskEventsTable.createdAt,
       taskTitle: tasksTable.title,
-      jobId: tasksTable.jobId,
-      jobName: jobsTable.name,
+      taskClient: tasksTable.client,
     })
     .from(taskEventsTable)
     .innerJoin(tasksTable, eq(taskEventsTable.taskId, tasksTable.id))
-    .leftJoin(jobsTable, eq(tasksTable.jobId, jobsTable.id))
-    .where(
-      role === "editor"
-        ? eq(tasksTable.assignedToId, userId)
-        : eq(tasksTable.createdById, userId)
-    )
+    .where(role === "editor" ? eq(tasksTable.assignedToId, userId) : eq(tasksTable.createdById, userId))
     .orderBy(desc(taskEventsTable.createdAt))
     .limit(15);
 
@@ -495,12 +365,10 @@ router.get("/activity", requireAuth, async (req, res): Promise<void> => {
     if (u) changers[u.id] = u.name;
   }));
 
-  res.json(events.map(e => ({
-    ...e,
-    changedByName: e.changedById ? changers[e.changedById] ?? null : null,
-  })));
+  res.json(events.map(e => ({ ...e, changedByName: e.changedById ? changers[e.changedById] ?? null : null })));
 });
 
+// ── Calendar ──────────────────────────────────────────────────────────────────
 router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const role = req.session.userRole!;
@@ -518,7 +386,8 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekEnd.getDate() + 6);
 
-  weekEnd.setHours(23, 59, 59, 999);
+  const weekStartStr = weekStart.toISOString().split("T")[0];
+  const weekEndStr   = weekEnd.toISOString().split("T")[0];
 
   const roleFilter = role === "editor"
     ? eq(tasksTable.assignedToId, userId)
@@ -531,136 +400,70 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
       status: tasksTable.status,
       priority: tasksTable.priority,
       dueDate: tasksTable.dueDate,
-      jobId: tasksTable.jobId,
-      jobName: jobsTable.name,
+      color: tasksTable.color,
+      client: tasksTable.client,
       assignedToId: tasksTable.assignedToId,
     })
     .from(tasksTable)
-    .leftJoin(jobsTable, eq(tasksTable.jobId, jobsTable.id))
-    .where(and(roleFilter, gte(tasksTable.dueDate, weekStart), lte(tasksTable.dueDate, weekEnd)))
+    .where(and(
+      roleFilter,
+      isNotNull(tasksTable.dueDate),
+      sql`${tasksTable.dueDate} >= ${weekStartStr}`,
+      sql`${tasksTable.dueDate} <= ${weekEndStr}`,
+    ))
     .orderBy(asc(tasksTable.dueDate));
 
   const assigneeIds = [...new Set(rows.map(r => r.assignedToId).filter(Boolean))] as number[];
-  const assignees = assigneeIds.length
-    ? await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable)
-        .where(eq(usersTable.id, assigneeIds[0]))
-    : [];
-  const assigneeMap = Object.fromEntries(assignees.map(a => [a.id, a.name]));
-
-  if (assigneeIds.length > 1) {
-    const rest = await Promise.all(
-      assigneeIds.slice(1).map(id =>
-        db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, id))
-      )
-    );
-    rest.flat().forEach(a => { assigneeMap[a.id] = a.name; });
+  const assigneeMap: Record<number, string> = {};
+  if (assigneeIds.length > 0) {
+    const assignees = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable)
+      .where(inArray(usersTable.id, assigneeIds));
+    assignees.forEach(a => { assigneeMap[a.id] = a.name; });
   }
 
-  res.json(rows.map(r => ({
-    ...r,
-    assigneeName: r.assignedToId ? assigneeMap[r.assignedToId] ?? null : null,
-  })));
+  res.json(rows.map(r => ({ ...r, assigneeName: r.assignedToId ? assigneeMap[r.assignedToId] ?? null : null })));
 });
 
+// ── Workload ──────────────────────────────────────────────────────────────────
 const COMPLEXITY_WEIGHT: Record<string, number> = { low: 1, medium: 3, high: 6 };
 
 router.get("/workload", requireCoordinator, async (_req, res): Promise<void> => {
   const editors = await db
     .select({ id: usersTable.id, name: usersTable.name, login: usersTable.login, avatarUrl: usersTable.avatarUrl })
-    .from(usersTable)
-    .where(eq(usersTable.role, "editor"));
+    .from(usersTable).where(eq(usersTable.role, "editor"));
 
   const open = await db
-    .select({
-      id: tasksTable.id,
-      status: tasksTable.status,
-      complexity: tasksTable.complexity,
-      assignedToId: tasksTable.assignedToId,
-    })
+    .select({ id: tasksTable.id, status: tasksTable.status, complexity: tasksTable.complexity, assignedToId: tasksTable.assignedToId })
     .from(tasksTable)
     .where(and(ne(tasksTable.status, "completed"), isNotNull(tasksTable.assignedToId)));
 
   const result = editors.map(editor => {
     const editorTasks = open.filter(t => t.assignedToId === editor.id);
-
-    const score = editorTasks.reduce((sum, t) =>
-      sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 3), 0);
-
-    const byComplexity = {
-      low:    editorTasks.filter(t => t.complexity === "low").length,
-      medium: editorTasks.filter(t => t.complexity === "medium").length,
-      high:   editorTasks.filter(t => t.complexity === "high").length,
-    };
-
-    const byStatus = {
-      pending:     editorTasks.filter(t => t.status === "pending").length,
-      in_progress: editorTasks.filter(t => t.status === "in_progress").length,
-      in_revision: editorTasks.filter(t => t.status === "in_revision").length,
-      review:      editorTasks.filter(t => t.status === "review").length,
-    };
-
+    const score = editorTasks.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 3), 0);
     return {
-      id: editor.id,
-      name: editor.name,
-      login: editor.login,
-      avatarUrl: editor.avatarUrl ?? null,
-      taskCount: editorTasks.length,
-      score,
-      byComplexity,
-      byStatus,
+      id: editor.id, name: editor.name, login: editor.login, avatarUrl: editor.avatarUrl ?? null,
+      taskCount: editorTasks.length, score,
+      byComplexity: {
+        low:    editorTasks.filter(t => t.complexity === "low").length,
+        medium: editorTasks.filter(t => t.complexity === "medium").length,
+        high:   editorTasks.filter(t => t.complexity === "high").length,
+      },
+      byStatus: {
+        pending:     editorTasks.filter(t => t.status === "pending").length,
+        in_progress: editorTasks.filter(t => t.status === "in_progress").length,
+        in_revision: editorTasks.filter(t => t.status === "in_revision").length,
+        review:      editorTasks.filter(t => t.status === "review").length,
+      },
     };
   });
-
   result.sort((a, b) => b.score - a.score);
-
   res.json(result);
 });
 
+// ── Dashboard extras ──────────────────────────────────────────────────────────
 router.get("/dashboard-extras", requireAuth, async (_req, res): Promise<void> => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const sevenDaysLater = new Date(today);
-  sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
-  sevenDaysLater.setHours(23, 59, 59, 999);
+  const todayStr = new Date().toISOString().split("T")[0];
 
-  // Week deliveries: jobs with dueDate in the next 7 days and not completed
-  const weekJobRows = await db
-    .select({
-      id: jobsTable.id,
-      name: jobsTable.name,
-      status: jobsTable.status,
-      dueDate: jobsTable.dueDate,
-      projectId: projectsTable.id,
-      projectName: projectsTable.name,
-      projectColor: projectsTable.color,
-    })
-    .from(jobsTable)
-    .innerJoin(projectsTable, eq(jobsTable.projectId, projectsTable.id))
-    .where(
-      and(
-        notInArray(jobsTable.status, ["entregue", "aprovado"]),
-        gte(jobsTable.dueDate, today),
-        lte(jobsTable.dueDate, sevenDaysLater)
-      )
-    );
-
-  const allProjectIds = await db.select({ id: projectsTable.id }).from(projectsTable).orderBy(asc(projectsTable.id));
-  const projectNumberMap = new Map(allProjectIds.map((p, i) => [p.id, i + 1]));
-
-  const weekDeliveries = await Promise.all(weekJobRows.map(async (j) => {
-    const tasks = await db.select({ status: tasksTable.status }).from(tasksTable).where(eq(tasksTable.jobId, j.id));
-    const allJobIds = await db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.projectId, j.projectId)).orderBy(asc(jobsTable.id));
-    const jobNumber = allJobIds.findIndex(jj => jj.id === j.id) + 1;
-    return {
-      ...j,
-      taskCount: tasks.length,
-      completedCount: tasks.filter(t => t.status === "completed").length,
-      projectNumber: projectNumberMap.get(j.projectId) ?? 0,
-      jobNumber,
-    };
-  }));
-
-  // At-risk: tasks NOT completed AND dueDate < today, grouped by job/project, with assignee
   const overdueRows = await db
     .select({
       id: tasksTable.id,
@@ -668,48 +471,40 @@ router.get("/dashboard-extras", requireAuth, async (_req, res): Promise<void> =>
       status: tasksTable.status,
       dueDate: tasksTable.dueDate,
       assignedToId: tasksTable.assignedToId,
-      jobId: jobsTable.id,
-      jobName: jobsTable.name,
-      projectId: projectsTable.id,
-      projectName: projectsTable.name,
-      projectColor: projectsTable.color,
+      client: tasksTable.client,
+      color: tasksTable.color,
     })
     .from(tasksTable)
-    .innerJoin(jobsTable, eq(tasksTable.jobId, jobsTable.id))
-    .innerJoin(projectsTable, eq(jobsTable.projectId, projectsTable.id))
-    .where(
-      and(
-        ne(tasksTable.status, "completed"),
-        isNotNull(tasksTable.dueDate),
-        lt(tasksTable.dueDate, today)
-      )
-    );
+    .where(and(
+      ne(tasksTable.status, "completed"),
+      isNotNull(tasksTable.dueDate),
+      sql`${tasksTable.dueDate} < ${todayStr}`,
+    ));
 
-  const atRisk = await Promise.all(overdueRows.map(async (t) => {
-    const [assignee] = t.assignedToId
-      ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, t.assignedToId))
-      : [null];
-    const allJobIds = await db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.projectId, t.projectId)).orderBy(asc(jobsTable.id));
-    const jobNumber = allJobIds.findIndex(j => j.id === t.jobId) + 1;
-    const allTaskIds = await db.select({ id: tasksTable.id }).from(tasksTable).where(eq(tasksTable.jobId, t.jobId)).orderBy(asc(tasksTable.id));
-    const taskNumber = allTaskIds.findIndex(tt => tt.id === t.id) + 1;
-    return {
-      ...t,
-      assigneeName: assignee?.name ?? null,
-      projectNumber: projectNumberMap.get(t.projectId) ?? 0,
-      jobNumber,
-      number: taskNumber,
-    };
+  const assigneeIds = [...new Set(overdueRows.map(t => t.assignedToId).filter(Boolean))] as number[];
+  const assigneeMap = new Map<number, { id: number; name: string; avatarUrl: string | null }>();
+  if (assigneeIds.length > 0) {
+    const assignees = await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+      .from(usersTable).where(inArray(usersTable.id, assigneeIds));
+    assignees.forEach(a => assigneeMap.set(a.id, a));
+  }
+
+  const atRisk = overdueRows.map(t => ({
+    ...t,
+    assignee: t.assignedToId ? (assigneeMap.get(t.assignedToId) ?? null) : null,
+    assigneeName: t.assignedToId ? (assigneeMap.get(t.assignedToId)?.name ?? null) : null,
   }));
 
-  res.json({ weekDeliveries, atRisk });
+  res.json({ atRisk });
 });
 
+// ── Deadline overview ─────────────────────────────────────────────────────────
 router.get("/deadline-overview", requireAuth, async (req, res): Promise<void> => {
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const tomorrow  = new Date(today); tomorrow.setDate(today.getDate() + 1);
-  const in3days   = new Date(today); in3days.setDate(today.getDate() + 3);
-  const in7days   = new Date(today); in7days.setDate(today.getDate() + 7);
+  const todayStr    = today.toISOString().split("T")[0];
+  const tomorrowStr = new Date(today.getTime() + 86400000).toISOString().split("T")[0];
+  const in3daysStr  = new Date(today.getTime() + 3 * 86400000).toISOString().split("T")[0];
+  const in7daysStr  = new Date(today.getTime() + 7 * 86400000).toISOString().split("T")[0];
 
   const userId = req.session.userId!;
   const role   = req.session.userRole!;
@@ -722,146 +517,164 @@ router.get("/deadline-overview", requireAuth, async (req, res): Promise<void> =>
     { key: "later",   label: "+7 dias",   color: "#94a3b8" },
   ];
 
-  const taskWhere = role === "editor"
-    ? and(ne(tasksTable.status, "completed"), isNotNull(tasksTable.dueDate), eq(tasksTable.assignedToId, userId))
-    : and(ne(tasksTable.status, "completed"), isNotNull(tasksTable.dueDate));
+  const baseWhere = and(ne(tasksTable.status, "completed"), isNotNull(tasksTable.dueDate));
+  const taskWhere = role === "editor" ? and(baseWhere, eq(tasksTable.assignedToId, userId)) : baseWhere;
 
   const rows = await db
     .select({
-      id:           tasksTable.id,
-      title:        tasksTable.title,
-      status:       tasksTable.status,
-      priority:     tasksTable.priority,
-      dueDate:      tasksTable.dueDate,
-      assignedToId: tasksTable.assignedToId,
-      jobId:        jobsTable.id,
-      jobName:      jobsTable.name,
-      projectName:  projectsTable.name,
-      projectColor: projectsTable.color,
+      id: tasksTable.id, title: tasksTable.title, status: tasksTable.status,
+      priority: tasksTable.priority, dueDate: tasksTable.dueDate,
+      assignedToId: tasksTable.assignedToId, client: tasksTable.client, color: tasksTable.color,
     })
-    .from(tasksTable)
-    .innerJoin(jobsTable, eq(tasksTable.jobId, jobsTable.id))
-    .innerJoin(projectsTable, eq(jobsTable.projectId, projectsTable.id))
-    .where(taskWhere)
-    .orderBy(asc(tasksTable.dueDate));
+    .from(tasksTable).where(taskWhere).orderBy(asc(tasksTable.dueDate));
 
-  const getBucket = (d: Date): string => {
-    const t = d.getTime();
-    if (t < today.getTime())    return "overdue";
-    if (t < tomorrow.getTime()) return "today";
-    if (t < in3days.getTime())  return "in3days";
-    if (t < in7days.getTime())  return "week";
+  const getBucket = (d: string): string => {
+    if (d < todayStr)    return "overdue";
+    if (d < tomorrowStr) return "today";
+    if (d < in3daysStr)  return "in3days";
+    if (d < in7daysStr)  return "week";
     return "later";
   };
 
   const counts: Record<string, number> = { overdue: 0, today: 0, in3days: 0, week: 0, later: 0 };
-  rows.forEach(t => { if (t.dueDate) counts[getBucket(t.dueDate)]++; });
+  rows.forEach(t => { if (t.dueDate) counts[getBucket(String(t.dueDate))]++; });
 
   const PRIORITY_W: Record<string, number> = { high: 3, medium: 2, low: 1 };
   const urgentRows = rows
-    .filter(t => t.dueDate && ["overdue", "today", "in3days"].includes(getBucket(t.dueDate)))
+    .filter(t => t.dueDate && ["overdue", "today", "in3days"].includes(getBucket(String(t.dueDate))))
     .sort((a, b) => {
-      const bA = getBucket(a.dueDate!), bB = getBucket(b.dueDate!);
+      const bA = getBucket(String(a.dueDate)), bB = getBucket(String(b.dueDate));
       const ORDER = ["overdue", "today", "in3days"];
       if (bA !== bB) return ORDER.indexOf(bA) - ORDER.indexOf(bB);
       const pw = (PRIORITY_W[b.priority] ?? 1) - (PRIORITY_W[a.priority] ?? 1);
-      if (pw !== 0) return pw;
-      return a.dueDate!.getTime() - b.dueDate!.getTime();
+      return pw !== 0 ? pw : String(a.dueDate).localeCompare(String(b.dueDate));
     })
     .slice(0, 5);
 
-  const urgent = await Promise.all(urgentRows.map(async (t) => {
-    const [assignee] = t.assignedToId
-      ? await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, t.assignedToId))
-      : [null];
-    return {
-      id:           t.id,
-      title:        t.title,
-      status:       t.status,
-      priority:     t.priority,
-      dueDate:      t.dueDate!.toISOString(),
-      jobId:        t.jobId,
-      jobName:      t.jobName,
-      projectName:  t.projectName,
-      projectColor: t.projectColor,
-      assigneeName: assignee?.name ?? null,
-      bucket:       getBucket(t.dueDate!),
-    };
+  const assigneeIds = [...new Set(urgentRows.map(t => t.assignedToId).filter(Boolean))] as number[];
+  const assigneeMap = new Map<number, string>();
+  if (assigneeIds.length > 0) {
+    const assignees = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable)
+      .where(inArray(usersTable.id, assigneeIds));
+    assignees.forEach(a => assigneeMap.set(a.id, a.name));
+  }
+
+  const urgent = urgentRows.map(t => ({
+    id: t.id, title: t.title, status: t.status, priority: t.priority,
+    dueDate: t.dueDate, client: t.client, color: t.color,
+    assigneeName: t.assignedToId ? (assigneeMap.get(t.assignedToId) ?? null) : null,
+    bucket: getBucket(String(t.dueDate)),
   }));
 
   res.json({
-    buckets:      BUCKETS.map(b => ({ ...b, count: counts[b.key] ?? 0 })),
-    urgent,
-    total:        rows.length,
-    urgentCount:  (counts.overdue ?? 0) + (counts.today ?? 0),
+    buckets: BUCKETS.map(b => ({ ...b, count: counts[b.key] ?? 0 })),
+    urgent, total: rows.length,
+    urgentCount: (counts.overdue ?? 0) + (counts.today ?? 0),
   });
 });
 
-router.get("/reports", requireCoordinator, async (req, res): Promise<void> => {
-  const { from, to, projectId, userId } = req.query as Record<string, string | undefined>;
+// ── Pipeline (all active tasks kanban) ───────────────────────────────────────
+router.get("/pipeline", requireAuth, async (_req, res): Promise<void> => {
+  const tasks = await db
+    .select({
+      id: tasksTable.id, title: tasksTable.title, status: tasksTable.status,
+      priority: tasksTable.priority, complexity: tasksTable.complexity,
+      dueDate: tasksTable.dueDate, color: tasksTable.color, client: tasksTable.client,
+      revisionCount: tasksTable.revisionCount, assignedToId: tasksTable.assignedToId,
+      createdById: tasksTable.createdById, createdAt: tasksTable.createdAt,
+    })
+    .from(tasksTable)
+    .where(ne(tasksTable.status, "completed"))
+    .orderBy(desc(tasksTable.createdAt));
 
-  // Build where clause using sql`` fragments for optional filters
+  const personIds = [...new Set([
+    ...tasks.map(t => t.assignedToId), ...tasks.map(t => t.createdById),
+  ].filter((id): id is number => id !== null))];
+
+  const personMap = new Map<number, { id: number; name: string; avatarUrl: string | null }>();
+  if (personIds.length > 0) {
+    const persons = await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+      .from(usersTable).where(inArray(usersTable.id, personIds));
+    persons.forEach(p => personMap.set(p.id, p));
+  }
+
+  res.json(tasks.map(t => ({
+    ...t,
+    assignee: t.assignedToId ? (personMap.get(t.assignedToId) ?? null) : null,
+    coordinator: t.createdById ? (personMap.get(t.createdById) ?? null) : null,
+  })));
+});
+
+// ── Timeline (tasks with due dates) ──────────────────────────────────────────
+router.get("/timeline", requireCoordinator, async (_req, res): Promise<void> => {
+  const tasks = await db
+    .select({
+      id: tasksTable.id, title: tasksTable.title, status: tasksTable.status,
+      priority: tasksTable.priority, dueDate: tasksTable.dueDate,
+      color: tasksTable.color, client: tasksTable.client,
+      revisionCount: tasksTable.revisionCount, assignedToId: tasksTable.assignedToId,
+      createdById: tasksTable.createdById, createdAt: tasksTable.createdAt,
+    })
+    .from(tasksTable)
+    .where(isNotNull(tasksTable.dueDate))
+    .orderBy(asc(tasksTable.dueDate));
+
+  const personIds = [...new Set([
+    ...tasks.map(t => t.assignedToId), ...tasks.map(t => t.createdById),
+  ].filter((id): id is number => id !== null))];
+
+  const personMap = new Map<number, { id: number; name: string; avatarUrl: string | null }>();
+  if (personIds.length > 0) {
+    const persons = await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+      .from(usersTable).where(inArray(usersTable.id, personIds));
+    persons.forEach(p => personMap.set(p.id, p));
+  }
+
+  res.json(tasks.map(t => ({
+    ...t,
+    assignee: t.assignedToId ? (personMap.get(t.assignedToId) ?? null) : null,
+    coordinator: t.createdById ? (personMap.get(t.createdById) ?? null) : null,
+  })));
+});
+
+// ── Reports ───────────────────────────────────────────────────────────────────
+router.get("/reports", requireCoordinator, async (req, res): Promise<void> => {
+  const { from, to, userId } = req.query as Record<string, string | undefined>;
+
   const whereClause = and(
     eq(tasksTable.status, "completed"),
     from ? gte(tasksTable.updatedAt, new Date(from + "T00:00:00")) : undefined,
-    to ? lte(tasksTable.updatedAt, new Date(to + "T23:59:59")) : undefined,
-    projectId ? eq(projectsTable.id, parseInt(projectId, 10)) : undefined,
+    to   ? lte(tasksTable.updatedAt, new Date(to   + "T23:59:59")) : undefined,
     userId ? eq(tasksTable.assignedToId, parseInt(userId, 10)) : undefined,
   );
 
-  const rows = await db
-    .select({
-      taskId: tasksTable.id,
-      taskTitle: tasksTable.title,
-      taskStatus: tasksTable.status,
-      taskPriority: tasksTable.priority,
-      taskComplexity: tasksTable.complexity,
-      taskUpdatedAt: tasksTable.updatedAt,
-      taskRevisionCount: tasksTable.revisionCount,
-      assignedToId: tasksTable.assignedToId,
-      jobId: jobsTable.id,
-      jobName: jobsTable.name,
-      jobDueDate: jobsTable.dueDate,
-      projectId: projectsTable.id,
-      projectName: projectsTable.name,
-      projectClient: projectsTable.client,
-      projectColor: projectsTable.color,
-    })
-    .from(tasksTable)
-    .innerJoin(jobsTable, eq(tasksTable.jobId, jobsTable.id))
-    .innerJoin(projectsTable, eq(jobsTable.projectId, projectsTable.id))
-    .where(whereClause)
-    .orderBy(desc(tasksTable.updatedAt));
+  const rows = await db.select().from(tasksTable).where(whereClause).orderBy(desc(tasksTable.updatedAt));
 
-  const enriched = await Promise.all(rows.map(async (r) => {
-    const [assignee] = r.assignedToId
-      ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, r.assignedToId))
-      : [null];
-    return {
-      task: {
-        id: r.taskId,
-        title: r.taskTitle,
-        status: r.taskStatus,
-        priority: r.taskPriority,
-        complexity: r.taskComplexity,
-        updatedAt: r.taskUpdatedAt,
-        revisionCount: r.taskRevisionCount,
-      },
-      job: { id: r.jobId, name: r.jobName, dueDate: r.jobDueDate },
-      project: { id: r.projectId, name: r.projectName, client: r.projectClient, color: r.projectColor },
-      assignee: assignee ?? null,
-      revisionCount: r.taskRevisionCount,
-    };
+  const assigneeIds = [...new Set(rows.map(r => r.assignedToId).filter(Boolean))] as number[];
+  const assigneeMap = new Map<number, { id: number; name: string; avatarUrl: string | null }>();
+  if (assigneeIds.length > 0) {
+    const assignees = await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+      .from(usersTable).where(inArray(usersTable.id, assigneeIds));
+    assignees.forEach(a => assigneeMap.set(a.id, a));
+  }
+
+  const enriched = rows.map(r => ({
+    task: {
+      id: r.id, title: r.title, status: r.status, priority: r.priority,
+      complexity: r.complexity, updatedAt: r.updatedAt, revisionCount: r.revisionCount,
+      client: r.client, color: r.color,
+    },
+    assignee: r.assignedToId ? (assigneeMap.get(r.assignedToId) ?? null) : null,
+    revisionCount: r.revisionCount,
   }));
 
-  // Build summary
   const totalDelivered = enriched.length;
 
-  const byProjectMap = new Map<number, { projectId: number; projectName: string; count: number }>();
+  const byClientMap = new Map<string, { client: string; count: number }>();
   for (const item of enriched) {
-    const key = item.project.id;
-    if (!byProjectMap.has(key)) byProjectMap.set(key, { projectId: key, projectName: item.project.name, count: 0 });
-    byProjectMap.get(key)!.count++;
+    const key = item.task.client ?? "Sem cliente";
+    if (!byClientMap.has(key)) byClientMap.set(key, { client: key, count: 0 });
+    byClientMap.get(key)!.count++;
   }
 
   const byEditorMap = new Map<number, { userId: number; name: string; count: number }>();
@@ -876,7 +689,7 @@ router.get("/reports", requireCoordinator, async (req, res): Promise<void> => {
     data: enriched,
     summary: {
       totalDelivered,
-      byProject: [...byProjectMap.values()],
+      byClient: [...byClientMap.values()].sort((a, b) => b.count - a.count),
       byEditor: [...byEditorMap.values()],
     },
   });

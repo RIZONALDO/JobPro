@@ -1,6 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable, tasksTable, jobsTable } from "@workspace/db";
+import { db, usersTable, tasksTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireCoordinator } from "../lib/auth.js";
 
@@ -40,11 +40,10 @@ router.get("/users/:id/tasks", requireCoordinator, async (req, res): Promise<voi
       priority: tasksTable.priority,
       complexity: tasksTable.complexity,
       dueDate: tasksTable.dueDate,
-      jobId: tasksTable.jobId,
-      jobName: jobsTable.name,
+      client: tasksTable.client,
+      color: tasksTable.color,
     })
     .from(tasksTable)
-    .leftJoin(jobsTable, eq(tasksTable.jobId, jobsTable.id))
     .where(eq(tasksTable.assignedToId, id))
     .orderBy(desc(tasksTable.createdAt));
 

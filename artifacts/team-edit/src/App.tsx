@@ -2,13 +2,13 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
-import { JobModalProvider } from "@/contexts/JobModalContext";
+import { TaskModalProvider } from "@/contexts/TaskModalContext";
 import { Shell } from "@/components/layout/Shell";
 import { Toaster } from "@/components/ui/toaster";
 import LoginPage from "@/pages/login";
 import ChangePasswordPage from "@/pages/change-password";
 import Dashboard from "@/pages/dashboard";
-import ProjectsList from "@/pages/projects/index";
+
 import MyTasks from "@/pages/my-tasks";
 import CalendarPage from "@/pages/calendar";
 import Team from "@/pages/team";
@@ -37,11 +37,11 @@ function Router() {
   if (user.mustChangePassword) return <ChangePasswordPage />;
 
   return (
-    <JobModalProvider>
+    <TaskModalProvider>
     <Shell>
       <Switch>
         <Route path="/" component={Dashboard} />
-        <Route path="/projects" component={ProjectsList} />
+        
         <Route path="/my-tasks" component={MyTasks} />
         <Route path="/calendar" component={CalendarPage} />
         <Route path="/team" component={Team} />
@@ -60,7 +60,7 @@ function Router() {
         </Route>
       </Switch>
     </Shell>
-    </JobModalProvider>
+    </TaskModalProvider>
   );
 }
 

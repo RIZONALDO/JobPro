@@ -21,14 +21,12 @@ interface CalendarTask {
   status: string;
   priority: string;
   dueDate: string;
-  jobId: number;
-  jobName: string | null;
+  color: string;
+  client: string | null;
   assignedToId: number | null;
   assigneeName: string | null;
 }
 
-interface ProjectSummary { id: number; name: string; client: string | null; status: string; }
-interface JobSummary { id: number; name: string; createdAt: string; dueDate: string | null; }
 interface Editor { id: number; name: string; login: string; role: string; }
 interface EditorWorkload { id: number; score: number; taskCount: number; byComplexity: { low: number; medium: number; high: number }; }
 
@@ -70,7 +68,7 @@ function workloadLevel(score: number): "ok" | "moderate" | "high" | "critical" {
   return "critical";
 }
 
-const EMPTY_FORM = { title: "", description: "", dueDateTime: "", priority: "medium", complexity: "medium", assignedToId: "", folderUrl: "", projectId: "", jobId: "" };
+const EMPTY_FORM = { title: "", description: "", dueDateTime: "", priority: "medium", complexity: "medium", assignedToId: "", folderUrl: "", client: "", color: "#6366f1" };
 
 export default function Calendar() {
   usePageTitle("Calendário");
@@ -82,19 +80,13 @@ export default function Calendar() {
 
   const isCoord = user?.role !== "editor";
 
-  // Coordinator data
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [editors, setEditors] = useState<Editor[]>([]);
   const [workload, setWorkload] = useState<EditorWorkload[]>([]);
-
-  // Jobs for selected project (lazy-loaded)
-  const [jobs, setJobs] = useState<JobSummary[]>([]);
 
   // Dialog
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editTaskId, setEditTaskId] = useState<number | null>(null);
-  const [editJobInfo, setEditJobInfo] = useState<{ jobName: string; projectName: string } | null>(null);
   const [taskForm, setTaskForm] = useState(EMPTY_FORM);
   const [savingTask, setSavingTask] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(false);
@@ -111,26 +103,15 @@ export default function Calendar() {
 
   useEffect(() => {
     if (!isCoord) return;
-    apiFetch<ProjectSummary[]>("/api/projects").then(setProjects).catch(() => {});
     apiFetch<Editor[]>("/api/users")
       .then(u => setEditors(u.filter(x => x.role === "editor")))
       .catch(() => {});
     apiFetch<EditorWorkload[]>("/api/workload").then(setWorkload).catch(() => {});
   }, [isCoord]);
 
-  // Load jobs when project changes in create mode
-  useEffect(() => {
-    if (editMode || !taskForm.projectId) { setJobs([]); return; }
-    apiFetch<{ jobs: JobSummary[] }>(`/api/projects/${taskForm.projectId}`)
-      .then(p => setJobs(p.jobs ?? []))
-      .catch(() => setJobs([]));
-  }, [taskForm.projectId, editMode]);
-
   const openCreate = (dateStr: string) => {
     setEditMode(false);
     setEditTaskId(null);
-    setEditJobInfo(null);
-    setJobs([]);
     setTaskForm({ ...EMPTY_FORM, dueDateTime: dateStr });
     setDialogOpen(true);
   };
@@ -138,25 +119,21 @@ export default function Calendar() {
   const openEdit = async (t: CalendarTask) => {
     setEditMode(true);
     setEditTaskId(t.id);
-    setEditJobInfo(null);
     setTaskForm(EMPTY_FORM);
     setLoadingEdit(true);
     setDialogOpen(true);
     try {
-      const job = await apiFetch<{ name: string; project: { name: string } | null; tasks: any[] }>(`/api/jobs/${t.jobId}`);
-      const fullTask = job.tasks.find((x: any) => x.id === t.id);
-      if (!fullTask) throw new Error("Tarefa não encontrada no job");
-      setEditJobInfo({ jobName: job.name, projectName: job.project?.name ?? "—" });
+      const task = await apiFetch<{ title: string; description: string | null; dueDate: string | null; priority: string; complexity: string; assignedToId: number | null; folderUrl: string | null; client: string | null; color: string }>(`/api/tasks/${t.id}`);
       setTaskForm({
-        title: fullTask.title ?? "",
-        description: fullTask.description ?? "",
-        dueDateTime: fullTask.dueDate ?? "",
-        priority: fullTask.priority ?? "medium",
-        complexity: fullTask.complexity ?? "medium",
-        assignedToId: fullTask.assignedToId ? String(fullTask.assignedToId) : "",
-        folderUrl: fullTask.folderUrl ?? "",
-        projectId: "",
-        jobId: String(t.jobId),
+        title: task.title ?? "",
+        description: task.description ?? "",
+        dueDateTime: task.dueDate ?? "",
+        priority: task.priority ?? "medium",
+        complexity: task.complexity ?? "medium",
+        assignedToId: task.assignedToId ? String(task.assignedToId) : "",
+        folderUrl: task.folderUrl ?? "",
+        client: task.client ?? "",
+        color: task.color ?? "#6366f1",
       });
     } catch {
       toast({ title: "Erro ao carregar tarefa", variant: "destructive" });
@@ -168,7 +145,6 @@ export default function Calendar() {
 
   const saveTask = async () => {
     if (!taskForm.title.trim()) { toast({ title: "Título obrigatório", variant: "destructive" }); return; }
-    if (!editMode && !taskForm.jobId) { toast({ title: "Selecione um job", variant: "destructive" }); return; }
     const payload = {
       title: taskForm.title,
       description: taskForm.description || null,
@@ -177,6 +153,8 @@ export default function Calendar() {
       complexity: taskForm.complexity,
       assignedToId: taskForm.assignedToId || null,
       folderUrl: taskForm.folderUrl || null,
+      client: taskForm.client || null,
+      color: taskForm.color || "#6366f1",
     };
     setSavingTask(true);
     try {
@@ -184,7 +162,7 @@ export default function Calendar() {
         await apiPut(`/api/tasks/${editTaskId}`, payload);
         toast({ title: "Tarefa atualizada" });
       } else {
-        await apiPost(`/api/jobs/${taskForm.jobId}/tasks`, payload);
+        await apiPost(`/api/tasks`, payload);
         toast({ title: "Tarefa criada" });
       }
       setDialogOpen(false);
@@ -274,11 +252,11 @@ export default function Calendar() {
                     {dayTasks.map(t => (
                       <div key={t.id}
                         onClick={() => isCoord && openEdit(t)}
-                        className={`rounded-lg border bg-white px-2 py-1.5 border-l-2 ${PRIORITY_COLOR[t.priority] ?? "border-l-slate-300"} shadow-sm ${isCoord ? "cursor-pointer hover:shadow-md hover:border-[hsl(var(--primary))]/40 transition-all" : ""}`}
+                        className={`rounded-lg border bg-white px-2 py-1.5 border-l-2 shadow-sm ${isCoord ? "cursor-pointer hover:shadow-md hover:border-[hsl(var(--primary))]/40 transition-all" : ""}`} style={{ borderLeftColor: t.color }}
                       >
                         <p className="text-xs font-medium leading-tight line-clamp-2">{t.title}</p>
-                        {t.jobName && (
-                          <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5 truncate">{t.jobName}</p>
+                        {t.client && (
+                          <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5 truncate">{t.client}</p>
                         )}
                         <div className="flex items-center justify-between mt-1 gap-1 flex-wrap">
                           <Badge className={`text-[9px] px-1 py-0 leading-4 ${STATUS_CLASS[t.status] ?? ""}`}>
@@ -326,58 +304,18 @@ export default function Calendar() {
               </div>
             ) : (
               <div className="space-y-4 py-2">
-                {/* Project/job: selectors on create, labels on edit */}
-                {editMode ? (
-                  editJobInfo && (
-                    <div className="rounded-lg border bg-[hsl(var(--muted))]/30 px-3 py-2.5 text-xs text-[hsl(var(--muted-foreground))]">
-                      <span className="font-medium text-[hsl(var(--foreground))]">{editJobInfo.projectName}</span>
-                      <span className="mx-1.5">·</span>
-                      <span>{editJobInfo.jobName}</span>
-                    </div>
-                  )
-                ) : (
-                  <>
-                    <div className="space-y-1.5">
-                      <Label>Projeto *</Label>
-                      <Select
-                        value={taskForm.projectId || "none"}
-                        onValueChange={v => setTaskForm(f => ({ ...f, projectId: v === "none" ? "" : v, jobId: "" }))}
-                      >
-                        <SelectTrigger><SelectValue placeholder="Selecionar projeto…" /></SelectTrigger>
-                        <SelectContent>
-                          {projects
-                            .filter(p => p.status === "ativo")
-                            .map(p => (
-                              <SelectItem key={p.id} value={String(p.id)}>
-                                {p.name}{p.client ? ` · ${p.client}` : ""}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Job *</Label>
-                      <Select
-                        value={taskForm.jobId || "none"}
-                        onValueChange={v => setTaskForm(f => ({ ...f, jobId: v === "none" ? "" : v }))}
-                        disabled={!taskForm.projectId || jobs.length === 0}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={
-                            !taskForm.projectId ? "Selecione um projeto primeiro" :
-                            jobs.length === 0 ? "Nenhum job disponível" :
-                            "Selecionar job…"
-                          } />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {jobs.map(j => (
-                            <SelectItem key={j.id} value={String(j.id)}>{j.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
-                )}
+                {/* Client + Color */}
+                <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
+                  <div className="space-y-1.5">
+                    <Label>Cliente</Label>
+                    <Input value={taskForm.client} onChange={e => setTaskForm(f => ({ ...f, client: e.target.value }))} placeholder="Nome do cliente…" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Cor</Label>
+                    <input type="color" value={taskForm.color} onChange={e => setTaskForm(f => ({ ...f, color: e.target.value }))}
+                      className="h-9 w-9 rounded-md border cursor-pointer p-0.5" />
+                  </div>
+                </div>
 
                 {/* Title */}
                 <div className="space-y-1.5">

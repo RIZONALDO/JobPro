@@ -1,16 +1,17 @@
-import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/pg-core";
-import { jobsTable } from "./jobs";
+import { pgTable, text, serial, timestamp, integer, date } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 
 export const tasksTable = pgTable("te_tasks", {
   id: serial("id").primaryKey(),
-  jobId: integer("job_id").notNull().references(() => jobsTable.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   description: text("description"),
-  dueDate: timestamp("due_date", { withTimezone: true }),
-  status: text("status").notNull().default("pending"), // 'pending' | 'in_progress' | 'review' | 'completed'
-  priority: text("priority").notNull().default("medium"), // 'low' | 'medium' | 'high'
-  complexity: text("complexity").notNull().default("medium"), // 'low' | 'medium' | 'high'
+  client: text("client"),
+  color: text("color").notNull().default("#6366f1"),
+  notes: text("notes"),
+  dueDate: date("due_date"),
+  status: text("status").notNull().default("pending"),
+  priority: text("priority").notNull().default("medium"),
+  complexity: text("complexity").notNull().default("medium"),
   assignedToId: integer("assigned_to_id").references(() => usersTable.id),
   revisionCount: integer("revision_count").notNull().default(0),
   folderUrl: text("folder_url"),
