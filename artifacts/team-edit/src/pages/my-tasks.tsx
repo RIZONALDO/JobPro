@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { ListTodo, MessageSquare, LayoutGrid, List, Calendar, AlertCircle, Undo2, MoreVertical, FolderOpen, Info, Copy, ExternalLink, ChevronRight } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -69,8 +71,9 @@ export default function MyTasks() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"kanban" | "table">("kanban");
   const [expandedRevisions, setExpandedRevisions] = useState<Set<number>>(new Set());
-  const [revisionTarget, setRevisionTarget] = useState<number | null>(null);
+  const [revisionTarget, setRevisionTarget] = useState<Task | null>(null);
   const [revisionComment, setRevisionComment] = useState("");
+  const [revisionSubmitting, setRevisionSubmitting] = useState(false);
   const [returnTarget, setReturnTarget] = useState<Task | null>(null);
   const [returning, setReturning] = useState(false);
   const [infoTarget, setInfoTarget] = useState<Task | null>(null);
@@ -114,6 +117,19 @@ export default function MyTasks() {
     });
   };
 
+  const submitRevision = async () => {
+    if (!revisionTarget || !revisionComment.trim()) return;
+    setRevisionSubmitting(true);
+    try {
+      await apiPut(`/api/tasks/${revisionTarget.id}`, { status: "in_progress", revisionComment });
+      setRevisionTarget(null);
+      setRevisionComment("");
+      load();
+      toast({ title: "Alteração solicitada." });
+    } catch { toast({ title: "Erro ao solicitar alteração", variant: "destructive" }); }
+    finally { setRevisionSubmitting(false); }
+  };
+
   const isEditor = user?.role === "editor";
   const active = tasks.filter(t => t.status !== "completed");
   const completed = tasks.filter(t => t.status === "completed");
@@ -123,17 +139,6 @@ export default function MyTasks() {
     const overdue = isOverdue(t.dueDate) && t.status !== "completed";
     const person = isEditor ? t.createdBy : t.assignedTo ?? null;
     const firstName = person ? person.name.split(" ")[0] : null;
-    const showRevisionForm = revisionTarget === t.id;
-
-    const submitRevision = async () => {
-      if (!revisionComment.trim()) return;
-      try {
-        await apiPut(`/api/tasks/${t.id}`, { status: "in_progress", revisionComment });
-        setRevisionTarget(null);
-        setRevisionComment("");
-        load();
-      } catch { toast({ title: "Erro ao solicitar alteração", variant: "destructive" }); }
-    };
 
     return (
       <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden hover:shadow-md transition-shadow">
@@ -251,39 +256,16 @@ export default function MyTasks() {
           )}
 
           {/* Coordenador: aprovar ou pedir alteração (só em review) */}
-          {!isEditor && t.status === "review" && !showRevisionForm && (
+          {!isEditor && t.status === "review" && (
             <div className="flex gap-1.5">
               <Button size="sm" variant="outline" className="flex-1 h-7 text-[10px] border-green-300 text-green-700 hover:bg-green-50"
                 onClick={() => updateStatus(t, "completed")}>
                 Aprovar
               </Button>
               <Button size="sm" variant="outline" className="flex-1 h-7 text-[10px] border-orange-200 text-orange-600 hover:bg-orange-50"
-                onClick={() => { setRevisionTarget(t.id); setRevisionComment(""); }}>
+                onClick={() => { setRevisionTarget(t); setRevisionComment(""); }}>
                 Pedir alt.
               </Button>
-            </div>
-          )}
-
-          {/* Coordenador: formulário inline de comentário */}
-          {!isEditor && showRevisionForm && (
-            <div className="space-y-1.5 border-t pt-2">
-              <textarea
-                value={revisionComment}
-                onChange={e => setRevisionComment(e.target.value)}
-                placeholder="Descreva a alteração..."
-                rows={2}
-                className="w-full text-[11px] rounded-lg border px-2 py-1.5 resize-none bg-[hsl(var(--background))] focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary))]"
-              />
-              <div className="flex gap-1.5">
-                <Button size="sm" className="flex-1 h-7 text-[10px]"
-                  onClick={submitRevision} disabled={!revisionComment.trim()}>
-                  Enviar
-                </Button>
-                <Button size="sm" variant="ghost" className="h-7 text-[10px] px-2"
-                  onClick={() => { setRevisionTarget(null); setRevisionComment(""); }}>
-                  Cancelar
-                </Button>
-              </div>
             </div>
           )}
         </div>
@@ -371,6 +353,18 @@ export default function MyTasks() {
                 onClick={() => updateStatus(t, transitions[t.status].next)}>
                 {transitions[t.status].label}
               </Button>
+            )}
+            {!isEditor && t.status === "review" && (
+              <>
+                <Button size="sm" variant="outline" className="h-7 text-xs px-2.5 border-green-300 text-green-700 hover:bg-green-50"
+                  onClick={() => updateStatus(t, "completed")}>
+                  Aprovar
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs px-2.5 border-orange-200 text-orange-600 hover:bg-orange-50"
+                  onClick={() => { setRevisionTarget(t); setRevisionComment(""); }}>
+                  Pedir alt.
+                </Button>
+              </>
             )}
             {isEditor && (
               <DropdownMenu>
@@ -648,6 +642,41 @@ export default function MyTasks() {
               </div>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Revision dialog ───────────────────────────────────── */}
+      <Dialog open={!!revisionTarget} onOpenChange={v => { if (!v && !revisionSubmitting) { setRevisionTarget(null); setRevisionComment(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Solicitar alteração</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            {revisionTarget && (
+              <p className="text-sm text-muted-foreground">
+                Tarefa: <strong className="text-foreground">{revisionTarget.title}</strong>
+              </p>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="rev-comment">Descreva a alteração</Label>
+              <Textarea
+                id="rev-comment"
+                value={revisionComment}
+                onChange={e => setRevisionComment(e.target.value)}
+                placeholder="Descreva detalhadamente o que precisa ser alterado…"
+                rows={5}
+                className="resize-none"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRevisionTarget(null); setRevisionComment(""); }} disabled={revisionSubmitting}>
+              Cancelar
+            </Button>
+            <Button onClick={submitRevision} disabled={!revisionComment.trim() || revisionSubmitting}>
+              {revisionSubmitting ? "Enviando…" : "Solicitar alteração"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
