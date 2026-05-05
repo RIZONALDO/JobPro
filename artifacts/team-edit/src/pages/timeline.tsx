@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRealtime } from "@/hooks/use-realtime";
 import { apiFetch } from "@/lib/api";
 import { useTaskModal } from "@/contexts/TaskModalContext";
@@ -9,8 +9,7 @@ import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { usePageTitle } from "@/lib/use-page-title";
 import {
   Search, Tag, AlertTriangle, CheckCircle2, Clock, Eye,
-  RotateCcw, ChevronUp, ChevronDown, ChevronsUpDown,
-  ExternalLink, ChevronRight, X, User, UserCheck,
+  RotateCcw, ExternalLink, ChevronRight, X,
   ArrowRight, Pencil, MessageSquare, Play, Send,
   Calendar as CalendarIcon,
 } from "lucide-react";
@@ -49,8 +48,6 @@ interface LifecycleData {
   steps: LifecycleStep[];
 }
 
-type SortKey = "dueDate" | "title" | "status" | "priority" | "client" | "assignee" | "revisionCount";
-type SortDir = "asc" | "desc";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -112,10 +109,6 @@ function Avatar({ p, size = 5 }: { p: Person | null; size?: number }) {
   );
 }
 
-function SortIcon({ col, sort }: { col: SortKey; sort: { key: SortKey; dir: SortDir } }) {
-  if (sort.key !== col) return <ChevronsUpDown className="h-3 w-3 opacity-30" />;
-  return sort.dir === "asc" ? <ChevronUp className="h-3 w-3 text-[hsl(var(--primary))]" /> : <ChevronDown className="h-3 w-3 text-[hsl(var(--primary))]" />;
-}
 
 // ── Lifecycle Flowchart ───────────────────────────────────────────────────────
 
@@ -138,9 +131,11 @@ function LifecycleFlow({ data, onClose, onOpen }: { data: LifecycleData; onClose
   };
 
   return (
-    <div className="rounded-2xl border bg-[hsl(var(--card))] card-float overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="relative w-full max-w-5xl max-h-[90vh] flex flex-col rounded-2xl border bg-[hsl(var(--card))] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-3 border-b bg-[hsl(var(--muted))]/20">
+      <div className="flex items-center gap-3 px-5 py-3 border-b bg-[hsl(var(--muted))]/20 shrink-0">
         <div className="h-3 w-3 rounded-full shrink-0" style={{ background: task.color }} />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold truncate">{task.title}</p>
@@ -175,7 +170,7 @@ function LifecycleFlow({ data, onClose, onOpen }: { data: LifecycleData; onClose
       </div>
 
       {/* Flowchart */}
-      <div className="overflow-x-auto px-5 py-5">
+      <div className="overflow-x-auto overflow-y-auto flex-1 px-5 py-5">
         <div className="flex items-start gap-0 min-w-max">
           {steps.map((step, i) => {
             const style = styleFor(step);
@@ -250,6 +245,7 @@ function LifecycleFlow({ data, onClose, onOpen }: { data: LifecycleData; onClose
             );
           })}
         </div>
+      </div>
       </div>
     </div>
   );
@@ -447,7 +443,6 @@ export default function TimelinePage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [lifecycle, setLifecycle]   = useState<LifecycleData | null>(null);
   const [lifLoading, setLifLoading] = useState(false);
-  const lifecycleRef                = useRef<HTMLDivElement>(null);
 
   // Filters
   const [search,      setSearch]      = useState("");
@@ -456,8 +451,6 @@ export default function TimelinePage() {
   const [editorF,     setEditorF]     = useState<number | "">("");
   const [coordF,      setCoordF]      = useState<number | "">("");
 
-  // Table sort
-  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "dueDate", dir: "asc" });
 
   const isCoord = COORD_ROLES.includes(user?.role ?? "");
 
@@ -480,7 +473,6 @@ export default function TimelinePage() {
     try {
       const data = await apiFetch<LifecycleData>(`/api/tasks/${id}/lifecycle`);
       setLifecycle(data);
-      setTimeout(() => lifecycleRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 80);
     } catch {
       toast({ title: "Erro ao carregar ciclo de vida", variant: "destructive" });
     } finally {
@@ -541,8 +533,6 @@ export default function TimelinePage() {
     return list;
   }, [tasks, search, statusF, clientF, editorF, coordF, sort]);
 
-  const toggleSort = (key: SortKey) =>
-    setSort(p => p.key === key ? { key, dir: p.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
 
   if (!isCoord) return <div className="text-sm text-[hsl(var(--muted-foreground))] py-8 text-center">Acesso restrito a coordenadores.</div>;
 
@@ -609,11 +599,7 @@ export default function TimelinePage() {
           <span className="text-[11px] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">
             {filtered.filter(t => t.dueDate).length} com prazo
           </span>
-          {selectedId && (
-            <span className="ml-2 text-[11px] text-[hsl(var(--primary))]">
-              · clique na mesma tarefa para fechar o ciclo de vida
-            </span>
-          )}
+
         </div>
         {loading
           ? <div className="py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">Carregando…</div>
@@ -621,100 +607,17 @@ export default function TimelinePage() {
         }
       </div>
 
-      {/* ── Lifecycle Flowchart ───────────────────────────────────── */}
-      <div ref={lifecycleRef}>
-        {lifLoading && (
-          <div className="rounded-2xl border bg-[hsl(var(--card))] card-float p-6 text-center text-sm text-[hsl(var(--muted-foreground))]">
+      {/* ── Lifecycle Modal ───────────────────────────────────────── */}
+      {lifLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="rounded-xl bg-[hsl(var(--card))] border px-8 py-6 text-sm text-[hsl(var(--muted-foreground))]">
             Carregando ciclo de vida…
           </div>
-        )}
-        {lifecycle && !lifLoading && (
-          <LifecycleFlow data={lifecycle} onClose={() => { setLifecycle(null); setSelectedId(null); }} onOpen={openTask} />
-        )}
-      </div>
-
-      {/* ── Table ─────────────────────────────────────────────────── */}
-      <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
-        <div className="flex items-center gap-2 px-5 py-3 border-b bg-[hsl(var(--muted))]/30">
-          <span className="font-semibold text-sm">Todas as tarefas</span>
-          <span className="text-[11px] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{filtered.length}</span>
         </div>
-        {!loading && filtered.length === 0 ? (
-          <div className="py-10 text-center text-sm text-[hsl(var(--muted-foreground))]">Nenhuma tarefa encontrada.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[860px]">
-              <thead>
-                <tr className="border-b bg-[hsl(var(--muted))]/10">
-                  {([
-                    { key: "title",         label: "Tarefa" },
-                    { key: "client",        label: "Cliente" },
-                    { key: "status",        label: "Status" },
-                    { key: "priority",      label: "Prioridade" },
-                    { key: null,            label: "Complexidade" },
-                    { key: "dueDate",       label: "Prazo" },
-                    { key: "assignee",      label: "Editor" },
-                    { key: null,            label: "Coordenador" },
-                    { key: "revisionCount", label: "Rev." },
-                    { key: null,            label: "Pasta" },
-                  ] as { key: SortKey | null; label: string }[]).map(({ key, label }) => (
-                    <th key={label} onClick={() => key && toggleSort(key)}
-                      className={`text-left px-3 py-2 text-[11px] font-medium text-[hsl(var(--muted-foreground))] whitespace-nowrap select-none ${key ? "cursor-pointer hover:text-[hsl(var(--foreground))]" : ""}`}>
-                      <span className="flex items-center gap-1">{label}{key && <SortIcon col={key} sort={sort} />}</span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {filtered.map(t => {
-                  const overdue = isOverdue(t);
-                  const isSel = selectedId === t.id;
-                  const dueStr = t.dueDate
-                    ? (overdue
-                        ? <span className="text-red-600 font-semibold flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{fmtShort(t.dueDate)}</span>
-                        : <span className="text-[hsl(var(--muted-foreground))]">{fmtShort(t.dueDate)}</span>)
-                    : <span className="text-[hsl(var(--muted-foreground))]">—</span>;
-
-                  return (
-                    <tr key={t.id} role="button" onClick={() => handleSelect(t.id)}
-                      className={`cursor-pointer transition-colors hover:bg-[hsl(var(--muted))]/20 ${isSel ? "bg-[hsl(var(--primary))]/8" : overdue ? "bg-red-50/40" : ""}`}>
-                      <td className="px-3 py-2.5" style={{ borderLeft: `3px solid ${t.color}` }}>
-                        <p className="font-medium text-[13px] leading-snug line-clamp-1">{t.title}</p>
-                        {t.description && <p className="text-[10px] text-[hsl(var(--muted-foreground))] line-clamp-1">{t.description}</p>}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {t.client
-                          ? <span className="flex items-center gap-1 text-xs"><Tag className="h-3 w-3 text-[hsl(var(--muted-foreground))]" />{t.client}</span>
-                          : <span className="text-xs text-[hsl(var(--muted-foreground))]">—</span>}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <Badge className={`text-[10px] px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>{STATUS_LABEL[t.status]}</Badge>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${PRIORITY_CLS[t.priority] ?? ""}`}>{PRIORITY_LABEL[t.priority]}</span>
-                      </td>
-                      <td className="px-3 py-2.5 text-xs text-[hsl(var(--muted-foreground))]">{COMPLEXITY_LABEL[t.complexity]}</td>
-                      <td className="px-3 py-2.5 text-xs whitespace-nowrap">{dueStr}</td>
-                      <td className="px-3 py-2.5"><Avatar p={t.assignee} /></td>
-                      <td className="px-3 py-2.5"><Avatar p={t.coordinator} /></td>
-                      <td className="px-3 py-2.5">
-                        {t.revisionCount > 0
-                          ? <span className="flex items-center gap-1 text-orange-600"><RotateCcw className="h-3 w-3" /><span className="text-xs font-semibold">{t.revisionCount}</span></span>
-                          : <span className="text-xs text-[hsl(var(--muted-foreground))]">—</span>}
-                      </td>
-                      <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
-                        {t.folderUrl
-                          ? <a href={t.folderUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[hsl(var(--primary))] hover:underline text-[11px]"><ExternalLink className="h-3 w-3" />Abrir</a>
-                          : <span className="text-xs text-[hsl(var(--muted-foreground))]">—</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      )}
+      {lifecycle && !lifLoading && (
+        <LifecycleFlow data={lifecycle} onClose={() => { setLifecycle(null); setSelectedId(null); }} onOpen={openTask} />
+      )}
     </div>
   );
 }
