@@ -8,9 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { usePageTitle } from "@/lib/use-page-title";
 import {
-  Search, Tag, AlertTriangle, CheckCircle2, Clock, Eye,
+  Search, Tag, AlertTriangle, Eye,
   RotateCcw, ExternalLink, ChevronRight, X,
-  ArrowRight, Pencil, MessageSquare, Play, Send,
   Calendar as CalendarIcon,
 } from "lucide-react";
 import {
@@ -18,6 +17,8 @@ import {
   min as dateMin, max as dateMax, startOfMonth, endOfMonth, addMonths, addDays, getISOWeek,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { LifecycleFlow } from "@/components/LifecycleFlow";
+import "@xyflow/react/dist/style.css";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -67,15 +68,7 @@ const STATUS_BAR: Record<string, string> = {
   review: "#f59e0b", in_revision: "#f97316", completed: "#22c55e",
 };
 
-// Node styles for lifecycle flowchart
-const STEP_STYLE: Record<string, { bg: string; border: string; text: string; icon: JSX.Element; label: string }> = {
-  created:      { bg: "bg-indigo-50",  border: "border-indigo-300",  text: "text-indigo-700",  icon: <Play className="h-3.5 w-3.5" />,        label: "Criação" },
-  pending:      { bg: "bg-slate-50",   border: "border-slate-300",   text: "text-slate-600",   icon: <Clock className="h-3.5 w-3.5" />,        label: "Pendente" },
-  in_progress:  { bg: "bg-blue-50",    border: "border-blue-300",    text: "text-blue-700",    icon: <Pencil className="h-3.5 w-3.5" />,       label: "Em edição" },
-  review:       { bg: "bg-amber-50",   border: "border-amber-300",   text: "text-amber-700",   icon: <Send className="h-3.5 w-3.5" />,         label: "Enviado p/ aprovação" },
-  in_revision:  { bg: "bg-orange-50",  border: "border-orange-400",  text: "text-orange-700",  icon: <MessageSquare className="h-3.5 w-3.5" />, label: "Alteração solicitada" },
-  completed:    { bg: "bg-green-50",   border: "border-green-400",   text: "text-green-700",   icon: <CheckCircle2 className="h-3.5 w-3.5" />, label: "Aprovada" },
-};
+
 
 const LEFT_W = 210;
 const ROW_H  = 30;
@@ -109,151 +102,6 @@ function Avatar({ p, size = 5 }: { p: Person | null; size?: number }) {
   );
 }
 
-
-// ── Lifecycle Flowchart ───────────────────────────────────────────────────────
-
-function LifecycleFlow({ data, onClose, onOpen }: { data: LifecycleData; onClose: () => void; onOpen: (id: number) => void }) {
-  const { task, steps } = data;
-
-  const nodeKey = (step: LifecycleStep, i: number) => {
-    if (step.type === "created") return "created";
-    return step.meta.toStatus ?? `step-${i}`;
-  };
-
-  const styleFor = (step: LifecycleStep) => {
-    if (step.type === "created") return STEP_STYLE.created;
-    const key = step.meta.toStatus ?? "pending";
-    return STEP_STYLE[key] ?? STEP_STYLE.pending;
-  };
-
-  const roleLabel: Record<string, string> = {
-    admin: "Admin", coordinator: "Coordenador", supervisor: "Supervisor", editor: "Editor",
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-      <div className="relative flex flex-col rounded-2xl border bg-[hsl(var(--card))] shadow-2xl overflow-hidden" style={{ width: "min(94vw, 1480px)", height: "min(92vh, 860px)", minWidth: 320, minHeight: 400 }} onClick={e => e.stopPropagation()}>
-      {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-3 border-b bg-[hsl(var(--muted))]/20 shrink-0">
-        <div className="h-3 w-3 rounded-full shrink-0" style={{ background: task.color }} />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold truncate">{task.title}</p>
-          {task.client && (
-            <p className="text-[11px] text-[hsl(var(--muted-foreground))] flex items-center gap-1">
-              <Tag className="h-3 w-3" />{task.client}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Badge className={`text-[10px] px-1.5 ${STATUS_CLASS[task.status] ?? ""}`}>
-            {STATUS_LABEL[task.status] ?? task.status}
-          </Badge>
-          <button
-            onClick={() => onOpen(task.id)}
-            className="text-[11px] text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5"
-          >
-            Abrir <ExternalLink className="h-3 w-3" />
-          </button>
-          <button onClick={onClose} className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Sub-header info */}
-      <div className="flex items-center gap-6 px-5 py-2 border-b bg-[hsl(var(--muted))]/10 text-[11px] text-[hsl(var(--muted-foreground))]">
-        <span>Coordenador: <strong className="text-[hsl(var(--foreground))]">{task.coordinator?.name ?? "—"}</strong></span>
-        <span>Editor: <strong className="text-[hsl(var(--foreground))]">{task.assignee?.name ?? "—"}</strong></span>
-        {task.dueDate && <span>Prazo: <strong className={isOverdue(task) ? "text-red-600" : "text-[hsl(var(--foreground))]"}>{fmtShort(task.dueDate)}</strong></span>}
-        <span>{task.revisionCount} revisão{task.revisionCount !== 1 ? "ões" : ""}</span>
-      </div>
-
-      {/* Flowchart */}
-      <div className="overflow-auto flex-1 px-4 py-4 sm:px-6 sm:py-6">
-        <div className="flex flex-wrap items-start gap-2">
-          {steps.map((step, i) => {
-            const style = styleFor(step);
-            const isLast = i === steps.length - 1;
-
-            return (
-              <div key={i} className="flex items-start">
-                {/* Node */}
-                <div className={`rounded-xl border-2 ${style.border} ${style.bg} p-3 flex flex-col gap-1.5 shadow-sm`} style={{ width: "clamp(172px, 18vw, 220px)" }}>
-                  {/* Step number */}
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className={`text-[9px] font-bold uppercase tracking-widest ${style.text} opacity-60`}>Etapa {i + 1}</span>
-                  </div>
-                  {/* Icon + label */}
-                  <div className={`flex items-center gap-1.5 ${style.text} font-semibold text-[11px]`}>
-                    {style.icon}
-                    <span>{style.label}</span>
-                  </div>
-
-                  {/* From → To badge (for status changes) */}
-                  {step.type === "status_change" && step.meta.fromStatus && (
-                    <div className="flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))]">
-                      <span className="opacity-60 line-through">{STATUS_LABEL[step.meta.fromStatus] ?? step.meta.fromStatus}</span>
-                      <ArrowRight className="h-2.5 w-2.5 shrink-0" />
-                      <span className={style.text + " font-medium"}>{STATUS_LABEL[step.meta.toStatus!] ?? step.meta.toStatus}</span>
-                    </div>
-                  )}
-
-                  {/* Actor */}
-                  {step.by && (
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      {step.by.avatarUrl
-                        ? <img src={step.by.avatarUrl} className="h-5 w-5 rounded-full object-cover shrink-0" />
-                        : <div className="h-5 w-5 rounded-full bg-[hsl(var(--primary))]/20 flex items-center justify-center shrink-0">
-                            <span className="text-[8px] font-bold text-[hsl(var(--primary))]">
-                              {step.by.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
-                            </span>
-                          </div>
-                      }
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-medium truncate">{step.by.name}</p>
-                        <p className="text-[9px] text-[hsl(var(--muted-foreground))]">{roleLabel[step.by.role] ?? step.by.role}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Revision comment */}
-                  {step.meta.revisionComment && (
-                    <div className="mt-1 rounded-lg bg-orange-100/80 border border-orange-200 px-2 py-1.5 text-[10px] text-orange-800 leading-snug">
-                      <span className="font-semibold block mb-0.5">Revisão #{step.meta.revisionNumber}</span>
-                      {step.meta.revisionComment}
-                    </div>
-                  )}
-
-                  {/* Creation meta */}
-                  {step.type === "created" && step.meta.client && (
-                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] flex items-center gap-1">
-                      <Tag className="h-2.5 w-2.5" />{step.meta.client}
-                    </p>
-                  )}
-
-                  {/* Timestamp */}
-                  <p className="text-[9px] text-[hsl(var(--muted-foreground))] mt-auto pt-1 border-t border-[hsl(var(--border))]/40">
-                    {fmt(step.at)}
-                  </p>
-                </div>
-
-                {/* Arrow connector */}
-                {!isLast && (
-                  <div className="flex items-center self-start mt-[22px] mx-0.5 shrink-0">
-                    <div className="w-5 h-px bg-[hsl(var(--border))]" />
-                    <ArrowRight className="h-3 w-3 text-[hsl(var(--muted-foreground))]/60 -ml-px" />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      </div>
-    </div>
-  );
-}
 
 // ── Compact Gantt ─────────────────────────────────────────────────────────────
 
