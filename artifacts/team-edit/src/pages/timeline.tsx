@@ -513,25 +513,13 @@ export default function TimelinePage() {
     });
 
     list.sort((a, b) => {
-      let cmp = 0;
-      switch (sort.key) {
-        case "dueDate":
-          if (!a.dueDate && !b.dueDate) cmp = 0;
-          else if (!a.dueDate) cmp = 1;
-          else if (!b.dueDate) cmp = -1;
-          else cmp = a.dueDate.localeCompare(b.dueDate);
-          break;
-        case "title":         cmp = a.title.localeCompare(b.title); break;
-        case "status":        cmp = ALL_STATUSES.indexOf(a.status) - ALL_STATUSES.indexOf(b.status); break;
-        case "priority":      { const o: Record<string,number> = { high:0, medium:1, low:2 }; cmp = (o[a.priority]??1)-(o[b.priority]??1); break; }
-        case "client":        cmp = (a.client??"").localeCompare(b.client??""); break;
-        case "assignee":      cmp = (a.assignee?.name??"").localeCompare(b.assignee?.name??""); break;
-        case "revisionCount": cmp = a.revisionCount - b.revisionCount; break;
-      }
-      return sort.dir === "asc" ? cmp : -cmp;
+      if (!a.dueDate && !b.dueDate) return 0;
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return a.dueDate.localeCompare(b.dueDate);
     });
     return list;
-  }, [tasks, search, statusF, clientF, editorF, coordF, sort]);
+  }, [tasks, search, statusF, clientF, editorF, coordF]);
 
 
   if (!isCoord) return <div className="text-sm text-[hsl(var(--muted-foreground))] py-8 text-center">Acesso restrito a coordenadores.</div>;
