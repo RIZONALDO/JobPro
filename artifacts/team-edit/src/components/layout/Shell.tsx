@@ -142,10 +142,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
     setUnreadCount(0);
   };
 
-  const notifHref = (n: AppNotification) => {
-    if (user?.role === "editor") return n.taskId ? "/my-tasks" : "/";
-    return n.jobId ? `/jobs/${n.jobId}` : n.taskId ? `/my-tasks` : "/";
-  };
 
   const closeSearch = () => setSearchQuery("");
   const navItems = NAV_ITEMS.filter(item => user && item.roles.includes(user.role));
