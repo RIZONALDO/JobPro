@@ -5,11 +5,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useJobModal } from "@/contexts/JobModalContext";
 import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { FolderOpen, ListTodo, ArrowRight, Activity, Users } from "lucide-react";
+import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { StatusBars } from "@/components/charts/StatusBars";
 import { WaffleChart } from "@/components/charts/WaffleChart";
-import { ProjectBars, RISK_COLOR, type RiskLevel, type ProjectBarDatum } from "@/components/charts/ProjectBars";
 import { useSize } from "@/hooks/use-size";
 import { Link } from "wouter";
 import { ProjectModal } from "@/components/ProjectModal";
@@ -89,6 +88,20 @@ interface ActivityEvent {
   createdAt: string;
 }
 
+interface DeadlineBucket { key: string; label: string; color: string; count: number; }
+interface UrgentTask {
+  id: number; title: string; status: string; priority: string;
+  dueDate: string; jobId: number; jobName: string;
+  projectName: string; projectColor: string;
+  assigneeName: string | null; bucket: string;
+}
+interface DeadlineOverview {
+  buckets: DeadlineBucket[];
+  urgent: UrgentTask[];
+  total: number;
+  urgentCount: number;
+}
+
 const PRIORITY_COLOR: Record<string, string> = { low: "text-green-600", medium: "text-amber-600", high: "text-red-600" };
 
 function scoreColor(score: number): string {
@@ -119,13 +132,10 @@ function Battery({ score, maxScore, color }: { score: number; maxScore: number; 
 
   return (
     <svg width={bw + termW + 2} height={bh} viewBox={`0 0 ${bw + termW + 2} ${bh}`} style={{ display: "block" }}>
-      {/* Body outline */}
       <rect x={0} y={0} width={bw} height={bh} rx={3} fill="none"
         stroke={color} strokeWidth={1.5} opacity={0.35} />
-      {/* Terminal */}
       <rect x={bw + 1} y={(bh - termH) / 2} width={termW} height={termH} rx={1.5}
         fill={color} opacity={0.35} />
-      {/* Segments */}
       {Array.from({ length: BATTERY_SEGS }).map((_, i) => (
         <rect
           key={i}
@@ -165,30 +175,23 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
         <div className="overflow-y-auto divide-y" style={{ maxHeight: 4 * 52 }}>
           {sorted.map(editor => {
             const color = scoreColor(editor.score);
-            const initials = editor.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
             const firstName = editor.name.split(" ")[0];
             return (
               <div key={editor.id} className="group relative flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/30 transition-colors">
-                {/* Avatar */}
                 <AvatarDisplay
                   name={editor.name}
                   avatarUrl={editor.avatarUrl}
                   className="h-7 w-7 text-[10px]"
                   style={{ backgroundColor: color + "22", color, border: `1.5px solid ${color}` }}
                 />
-                {/* Nome */}
                 <span className="text-xs font-medium w-16 shrink-0 truncate">{firstName}</span>
-                {/* Bateria */}
                 <div className="flex-1 flex items-center">
                   <Battery score={editor.score} maxScore={maxScore} color={color} />
                 </div>
-                {/* Prioridade */}
                 <span className="text-[10px] font-semibold shrink-0 px-1.5 py-0.5 rounded-full"
                   style={{ backgroundColor: color + "22", color }}>
                   {scoreLabel(editor.score)}
                 </span>
-
-                {/* Tooltip hover */}
                 <div className="pointer-events-none absolute left-4 top-full mt-1 z-20 hidden group-hover:block
                   rounded-lg border bg-[hsl(var(--card))] shadow-lg p-3 text-xs space-y-1.5 min-w-[170px]">
                   <p className="font-semibold">{editor.name}</p>
@@ -212,6 +215,7 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
     </div>
   );
 }
+
 const PRIORITY_LABEL: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta" };
 
 const STATUS_BAR: Record<string, string> = {
@@ -275,86 +279,94 @@ function DeadlineCard({ label, sub, subCls, pill, days, color }: {
   );
 }
 
-function calcRisk(p: Project): RiskLevel {
-  const pct = p.taskCount > 0 ? p.completedCount / p.taskCount : 0;
-  if (pct >= 1) return "ok";
-  if (pct >= 0.6) return "ok";
-  if (pct >= 0.3) return "warning";
-  return p.taskCount > 0 ? "critical" : "none";
-}
+/* ── Task Deadline Card (replaces Saúde dos projetos) ──────────── */
+const BUCKET_COLOR: Record<string, string> = {
+  overdue: "#ef4444",
+  today:   "#f97316",
+  in3days: "#f59e0b",
+  week:    "#22c55e",
+  later:   "#94a3b8",
+};
 
-function ProjectHealthCard({ projects }: { projects: Project[] }) {
+function TaskDeadlineCard({ data, onOpenJob }: {
+  data: DeadlineOverview | null;
+  onOpenJob: (jobId: number) => void;
+}) {
   const { ref, w, h } = useSize();
-  const active = projects.filter(p => p.status === "ativo");
 
-  const RISK_ORDER: Record<RiskLevel, number> = { critical: 0, warning: 1, none: 2, ok: 3 };
+  const barData = data
+    ? data.buckets.map((b, i) => ({ label: b.label, count: b.count, color: b.color, gradientId: `tdl-${i}` }))
+    : [];
 
-  const barData: ProjectBarDatum[] = [...active]
-    .sort((a, b) => {
-      const ra = RISK_ORDER[calcRisk(a)];
-      const rb = RISK_ORDER[calcRisk(b)];
-      if (ra !== rb) return ra - rb;
-      const pctA = a.taskCount > 0 ? a.completedCount / a.taskCount : 0;
-      const pctB = b.taskCount > 0 ? b.completedCount / b.taskCount : 0;
-      return pctA - pctB;
-    })
-    .slice(0, 5)
-    .map(p => ({
-      name: p.name,
-      color: p.color,
-      pct: p.taskCount > 0 ? Math.round(p.completedCount / p.taskCount * 100) : 0,
-      risk: calcRisk(p),
-      daysLeft: null,
-    }));
-
-  const critical = active.filter(p => calcRisk(p) === "critical").length;
-  const warning  = active.filter(p => calcRisk(p) === "warning").length;
-  const ok       = active.filter(p => ["ok", "none"].includes(calcRisk(p))).length;
+  const hasUrgent = (data?.urgentCount ?? 0) > 0;
 
   return (
     <div className="col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float px-4 pt-4 pb-3 flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
       <div className="flex items-center justify-between shrink-0">
-        <p className="text-[11px] font-semibold text-[hsl(var(--foreground))]/80">Saúde dos projetos</p>
-        <div className="flex items-center gap-1.5">
-          {critical > 0 && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-500">
-              {critical} crítico{critical > 1 ? "s" : ""}
-            </span>
-          )}
-          {warning > 0 && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500">
-              {warning} atenção
-            </span>
+        <div className="flex items-center gap-2">
+          <Clock className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
+          <p className="text-[11px] font-semibold text-[hsl(var(--foreground))]/80">Prazos das tarefas</p>
+          {data && (
+            <span className="text-[9px] text-[hsl(var(--muted-foreground))]">{data.total} com prazo</span>
           )}
         </div>
+        {!data ? null : hasUrgent ? (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-500">
+            {data.urgentCount} urgente{data.urgentCount > 1 ? "s" : ""}
+          </span>
+        ) : (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600">Em dia</span>
+        )}
       </div>
-      <div className="flex-1 min-h-0 flex items-stretch gap-3 mt-1">
+
+      <div className="flex-1 min-h-0 flex items-stretch gap-2 mt-1">
+        {/* Bar chart — urgency buckets */}
         <div ref={ref} className="flex-1 min-w-0 min-h-0">
-          {active.length === 0
-            ? <p className="text-xs text-[hsl(var(--muted-foreground))] text-center mt-8">Nenhum projeto ativo.</p>
-            : <ProjectBars data={barData} width={w} height={h} />
-          }
+          {!data ? (
+            <p className="text-[10px] text-[hsl(var(--muted-foreground))] text-center pt-8">Carregando…</p>
+          ) : data.total === 0 ? (
+            <p className="text-[10px] text-[hsl(var(--muted-foreground))] text-center pt-8">Nenhuma tarefa com prazo definido.</p>
+          ) : (
+            <StatusBars data={barData} width={w} height={h} />
+          )}
         </div>
-        <div className="w-px self-stretch bg-[hsl(var(--border))] shrink-0" />
-        <div className="shrink-0 w-[68px] flex flex-col justify-around py-1 text-center">
-          <div>
-            <p className="text-[20px] font-bold tabular-nums leading-none" style={{ color: RISK_COLOR.critical }}>{critical}</p>
-            <p className="text-[8px] text-[hsl(var(--muted-foreground))] mt-0.5">Crítico</p>
-          </div>
-          <div>
-            <p className="text-[20px] font-bold tabular-nums leading-none" style={{ color: RISK_COLOR.warning }}>{warning}</p>
-            <p className="text-[8px] text-[hsl(var(--muted-foreground))] mt-0.5">Atenção</p>
-          </div>
-          <div>
-            <p className="text-[20px] font-bold tabular-nums leading-none" style={{ color: RISK_COLOR.ok }}>{ok}</p>
-            <p className="text-[8px] text-[hsl(var(--muted-foreground))] mt-0.5">Saudável</p>
-          </div>
-        </div>
+
+        {/* Urgent task list */}
+        {data && data.urgent.length > 0 && (
+          <>
+            <div className="w-px self-stretch bg-[hsl(var(--border))] shrink-0" />
+            <div className="shrink-0 w-[132px] flex flex-col gap-0.5 overflow-hidden pt-0.5">
+              <p className="text-[8px] uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-1">Mais urgentes</p>
+              {data.urgent.slice(0, 4).map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onOpenJob(t.jobId)}
+                  className="text-left flex items-start gap-1.5 group hover:bg-[hsl(var(--muted))]/40 rounded px-1 py-0.5 -mx-1 transition-colors min-w-0"
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
+                    style={{ backgroundColor: BUCKET_COLOR[t.bucket] ?? "#94a3b8" }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-medium truncate leading-tight group-hover:text-[hsl(var(--primary))] transition-colors">
+                      {t.title}
+                    </p>
+                    <p className="text-[9px] text-[hsl(var(--muted-foreground))] truncate">
+                      {t.assigneeName ? t.assigneeName.split(" ")[0] : t.projectName}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
+/* ── Waffle Card (editors only) ─────────────────────────────────── */
 const WAFFLE_STATUSES = [
   { key: "completed",   label: "Concluído", color: "#22c55e" },
   { key: "in_progress", label: "Em edição", color: "#3b82f6" },
@@ -386,11 +398,9 @@ function WaffleCard({ tasks }: { tasks: Task[] }) {
         <span className="text-[10px] text-[hsl(var(--muted-foreground))]">{total} tarefas · 1 quadrado = 1%</span>
       </div>
       <div className="flex-1 min-h-0 flex items-center gap-4 mt-1.5">
-        {/* Waffle grid */}
         <div ref={ref} className="flex-1 min-w-0 min-h-0">
           <WaffleChart cells={cells} width={Math.min(w, h * 1.05)} height={h} />
         </div>
-        {/* Legend */}
         <div className="shrink-0 flex flex-col justify-center gap-2">
           {counts.map(s => (
             <div key={s.key} className="flex items-center gap-1.5">
@@ -416,10 +426,12 @@ export default function Dashboard() {
   const [workload, setWorkload] = useState<EditorWorkload[]>([]);
   const [weekJobs, setWeekJobs] = useState<WeekJob[]>([]);
   const [atRisk, setAtRisk] = useState<AtRiskTask[]>([]);
+  const [deadlineData, setDeadlineData] = useState<DeadlineOverview | null>(null);
 
   const load = useCallback(() => {
     apiFetch<Task[]>("/api/my-tasks").then(setTasks).catch(() => {});
     apiFetch<ActivityEvent[]>("/api/activity").then(setActivity).catch(() => {});
+    apiFetch<DeadlineOverview>("/api/deadline-overview").then(setDeadlineData).catch(() => {});
     if (user?.role !== "editor") {
       apiFetch<Project[]>("/api/projects").then(setProjects).catch(() => {});
       apiFetch<EditorWorkload[]>("/api/workload").then(setWorkload).catch(() => {});
@@ -442,7 +454,7 @@ export default function Dashboard() {
   const activeProjects = projects.filter(p => p.status === "ativo");
   const isEditor       = user?.role === "editor";
 
-  const actionCount    = isEditor
+  const actionCount = isEditor
     ? tasks.filter(t => t.status === "pending" || t.status === "in_revision").length
     : byStatus("review");
 
@@ -461,7 +473,6 @@ export default function Dashboard() {
   const deadlineValue = overdueCount > 0 ? overdueCount : dueSoonCount;
   const deadlineLabel = overdueCount > 0 ? "Atrasadas" : dueSoonCount > 0 ? "Vencem esta semana" : "Sem prazo urgente";
 
-  // Card 2 — barras: entregas nos próximos 7 dias
   const duePerDay = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(todayStart);
     d.setDate(d.getDate() + i);
@@ -481,7 +492,6 @@ export default function Dashboard() {
     { label: "Aprovar",   count: byStatus("review"),      color: "#f59e0b" },
     { label: "Feito",     count: byStatus("completed"),   color: "#22c55e" },
   ];
-  const actionTotal = actionRows.reduce((s, r) => s + r.count, 0) || 1;
 
   const deadlinePill = overdueCount > 0 ? { text: "Urgente", cls: "bg-red-500/10 text-red-600" }
     : dueSoonCount > 0 ? { text: "Esta semana", cls: "bg-orange-500/10 text-orange-600" }
@@ -500,7 +510,7 @@ export default function Dashboard() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
 
-        {/* Card 1 — Visx bar chart */}
+        {/* Card 1 — status distribution */}
         <ActionCard
           label={isEditor ? "Para revisar / alterar" : "Aguardando aprovação"}
           actionCount={actionCount}
@@ -508,7 +518,7 @@ export default function Dashboard() {
           rows={actionRows}
         />
 
-        {/* Card 2 — deadline Visx */}
+        {/* Card 2 — week deadline bars (my tasks) */}
         <DeadlineCard
           label={deadlineLabel}
           sub={deadlineSub}
@@ -518,11 +528,8 @@ export default function Dashboard() {
           color={deadlineBarColor}
         />
 
-        {/* Coord: saúde dos projetos · Editor: distribuição de tarefas */}
-        {isEditor
-          ? <WaffleCard tasks={tasks} />
-          : <ProjectHealthCard projects={projects} />
-        }
+        {/* Card 3+4 — urgency deadline chart (all tasks, col-span-2) */}
+        <TaskDeadlineCard data={deadlineData} onOpenJob={openJob} />
       </div>
 
       {/* ── COORDINATOR LAYOUT ──────────────────────────────────── */}

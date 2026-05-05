@@ -705,6 +705,98 @@ router.get("/dashboard-extras", requireAuth, async (_req, res): Promise<void> =>
   res.json({ weekDeliveries, atRisk });
 });
 
+router.get("/deadline-overview", requireAuth, async (req, res): Promise<void> => {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const tomorrow  = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  const in3days   = new Date(today); in3days.setDate(today.getDate() + 3);
+  const in7days   = new Date(today); in7days.setDate(today.getDate() + 7);
+
+  const userId = req.session.userId!;
+  const role   = req.session.userRole!;
+
+  const BUCKETS = [
+    { key: "overdue", label: "Atrasadas", color: "#ef4444" },
+    { key: "today",   label: "Hoje",      color: "#f97316" },
+    { key: "in3days", label: "Próx. 3d",  color: "#f59e0b" },
+    { key: "week",    label: "Semana",    color: "#22c55e" },
+    { key: "later",   label: "+7 dias",   color: "#94a3b8" },
+  ];
+
+  const taskWhere = role === "editor"
+    ? and(ne(tasksTable.status, "completed"), isNotNull(tasksTable.dueDate), eq(tasksTable.assignedToId, userId))
+    : and(ne(tasksTable.status, "completed"), isNotNull(tasksTable.dueDate));
+
+  const rows = await db
+    .select({
+      id:           tasksTable.id,
+      title:        tasksTable.title,
+      status:       tasksTable.status,
+      priority:     tasksTable.priority,
+      dueDate:      tasksTable.dueDate,
+      assignedToId: tasksTable.assignedToId,
+      jobId:        jobsTable.id,
+      jobName:      jobsTable.name,
+      projectName:  projectsTable.name,
+      projectColor: projectsTable.color,
+    })
+    .from(tasksTable)
+    .innerJoin(jobsTable, eq(tasksTable.jobId, jobsTable.id))
+    .innerJoin(projectsTable, eq(jobsTable.projectId, projectsTable.id))
+    .where(taskWhere)
+    .orderBy(asc(tasksTable.dueDate));
+
+  const getBucket = (d: Date): string => {
+    const t = d.getTime();
+    if (t < today.getTime())    return "overdue";
+    if (t < tomorrow.getTime()) return "today";
+    if (t < in3days.getTime())  return "in3days";
+    if (t < in7days.getTime())  return "week";
+    return "later";
+  };
+
+  const counts: Record<string, number> = { overdue: 0, today: 0, in3days: 0, week: 0, later: 0 };
+  rows.forEach(t => { if (t.dueDate) counts[getBucket(t.dueDate)]++; });
+
+  const PRIORITY_W: Record<string, number> = { high: 3, medium: 2, low: 1 };
+  const urgentRows = rows
+    .filter(t => t.dueDate && ["overdue", "today", "in3days"].includes(getBucket(t.dueDate)))
+    .sort((a, b) => {
+      const bA = getBucket(a.dueDate!), bB = getBucket(b.dueDate!);
+      const ORDER = ["overdue", "today", "in3days"];
+      if (bA !== bB) return ORDER.indexOf(bA) - ORDER.indexOf(bB);
+      const pw = (PRIORITY_W[b.priority] ?? 1) - (PRIORITY_W[a.priority] ?? 1);
+      if (pw !== 0) return pw;
+      return a.dueDate!.getTime() - b.dueDate!.getTime();
+    })
+    .slice(0, 5);
+
+  const urgent = await Promise.all(urgentRows.map(async (t) => {
+    const [assignee] = t.assignedToId
+      ? await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, t.assignedToId))
+      : [null];
+    return {
+      id:           t.id,
+      title:        t.title,
+      status:       t.status,
+      priority:     t.priority,
+      dueDate:      t.dueDate!.toISOString(),
+      jobId:        t.jobId,
+      jobName:      t.jobName,
+      projectName:  t.projectName,
+      projectColor: t.projectColor,
+      assigneeName: assignee?.name ?? null,
+      bucket:       getBucket(t.dueDate!),
+    };
+  }));
+
+  res.json({
+    buckets:      BUCKETS.map(b => ({ ...b, count: counts[b.key] ?? 0 })),
+    urgent,
+    total:        rows.length,
+    urgentCount:  (counts.overdue ?? 0) + (counts.today ?? 0),
+  });
+});
+
 router.get("/reports", requireCoordinator, async (req, res): Promise<void> => {
   const { from, to, projectId, userId } = req.query as Record<string, string | undefined>;
 
