@@ -609,15 +609,24 @@ router.get("/pipeline", requireAuth, async (_req, res): Promise<void> => {
 router.get("/timeline", requireCoordinator, async (_req, res): Promise<void> => {
   const tasks = await db
     .select({
-      id: tasksTable.id, title: tasksTable.title, status: tasksTable.status,
-      priority: tasksTable.priority, dueDate: tasksTable.dueDate,
-      color: tasksTable.color, client: tasksTable.client,
-      revisionCount: tasksTable.revisionCount, assignedToId: tasksTable.assignedToId,
-      createdById: tasksTable.createdById, createdAt: tasksTable.createdAt,
+      id: tasksTable.id,
+      title: tasksTable.title,
+      description: tasksTable.description,
+      status: tasksTable.status,
+      priority: tasksTable.priority,
+      complexity: tasksTable.complexity,
+      dueDate: tasksTable.dueDate,
+      color: tasksTable.color,
+      client: tasksTable.client,
+      revisionCount: tasksTable.revisionCount,
+      folderUrl: tasksTable.folderUrl,
+      assignedToId: tasksTable.assignedToId,
+      createdById: tasksTable.createdById,
+      createdAt: tasksTable.createdAt,
+      updatedAt: tasksTable.updatedAt,
     })
     .from(tasksTable)
-    .where(isNotNull(tasksTable.dueDate))
-    .orderBy(asc(tasksTable.dueDate));
+    .orderBy(asc(tasksTable.dueDate), asc(tasksTable.createdAt));
 
   const personIds = [...new Set([
     ...tasks.map(t => t.assignedToId), ...tasks.map(t => t.createdById),
@@ -631,7 +640,19 @@ router.get("/timeline", requireCoordinator, async (_req, res): Promise<void> => 
   }
 
   res.json(tasks.map(t => ({
-    ...t,
+    id: t.id,
+    title: t.title,
+    description: t.description,
+    status: t.status,
+    priority: t.priority,
+    complexity: t.complexity,
+    dueDate: t.dueDate,
+    color: t.color,
+    client: t.client,
+    revisionCount: t.revisionCount,
+    folderUrl: t.folderUrl,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
     assignee: t.assignedToId ? (personMap.get(t.assignedToId) ?? null) : null,
     coordinator: t.createdById ? (personMap.get(t.createdById) ?? null) : null,
   })));
