@@ -14,7 +14,6 @@ import CalendarPage from "@/pages/calendar";
 import Team from "@/pages/team";
 import SettingsPage from "@/pages/settings";
 import Profile from "@/pages/profile";
-import Pipeline from "@/pages/pipeline";
 import TimelinePage from "@/pages/timeline";
 import Reports from "@/pages/reports";
 import FeedPage from "@/pages/feed";
@@ -47,7 +46,6 @@ function Router() {
         <Route path="/team" component={Team} />
         <Route path="/settings" component={SettingsPage} />
         <Route path="/profile" component={Profile} />
-        <Route path="/pipeline" component={Pipeline} />
         <Route path="/timeline" component={TimelinePage} />
         <Route path="/reports" component={Reports} />
         <Route path="/feed" component={FeedPage} />
