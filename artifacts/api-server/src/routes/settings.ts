@@ -42,9 +42,7 @@ router.post("/admin/reset", requireAdmin, async (req, res): Promise<void> => {
         te_feed_reactions,
         te_feed_comments,
         te_feed_items,
-        te_tasks,
-        te_jobs,
-        te_projects
+        te_tasks
       CASCADE;
     `);
     await client.query(`DELETE FROM te_users WHERE role != 'admin'`);

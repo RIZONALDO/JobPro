@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, tasksTable, usersTable, taskRevisionsTable, taskEventsTable } from "@workspace/db";
+import { db, tasksTable, usersTable, taskRevisionsTable, taskEventsTable, taskEditorsTable } from "@workspace/db";
 import { eq, ne, desc, asc, and, gte, lte, isNotNull, lt, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireCoordinator } from "../lib/auth.js";
 import { notify } from "../lib/notify.js";
@@ -8,9 +8,15 @@ import { createFeedItem } from "../lib/feed.js";
 
 const router = Router();
 
+const dueDateKey = (d: Date | string | null | undefined): string => {
+  if (!d) return '';
+  if (typeof d === 'string') return d.slice(0, 10);
+  return d.toISOString().slice(0, 10);
+};
+
 // ── Create task ──────────────────────────────────────────────────────────────
 router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
-  const { title, description, dueDate, priority, complexity, assignedToId, folderUrl, client, color } = req.body ?? {};
+  const { title, description, dueDate, priority, complexity, assignedToId, editorIds, folderUrl, client, color } = req.body ?? {};
   if (!title) { res.status(400).json({ error: "Título obrigatório" }); return; }
 
   const parsedAssignee = assignedToId ? parseInt(String(assignedToId), 10) : null;
@@ -19,7 +25,7 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
     description: description ? String(description) : null,
     client: client ? String(client) : null,
     color: color ? String(color) : "#6366f1",
-    dueDate: dueDate ? String(dueDate) : null,
+    dueDate: dueDate ? new Date(String(dueDate)) : null,
     priority: priority ?? "medium",
     complexity: complexity ?? "medium",
     assignedToId: parsedAssignee,
@@ -27,8 +33,21 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
     createdById: req.session.userId,
   }).returning();
 
-  if (parsedAssignee) {
-    await notify(parsedAssignee, "task_assigned",
+  // Collect all editor IDs (primary + additional), deduplicated
+  const allEditorIds = new Set<number>();
+  if (parsedAssignee) allEditorIds.add(parsedAssignee);
+  if (Array.isArray(editorIds)) {
+    editorIds.map(Number).filter(n => !isNaN(n) && n > 0).forEach(n => allEditorIds.add(n));
+  }
+
+  // Insert into junction table and notify each editor
+  for (const editorId of allEditorIds) {
+    await db.insert(taskEditorsTable).values({
+      taskId: task.id,
+      userId: editorId,
+      assignedById: req.session.userId,
+    }).onConflictDoNothing();
+    await notify(editorId, "task_assigned",
       "Nova tarefa atribuída",
       `A tarefa "${task.title}" foi atribuída a você`,
       { taskId: task.id }
@@ -111,7 +130,13 @@ router.get("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     .select({ id: taskRevisionsTable.id, revisionNumber: taskRevisionsTable.revisionNumber, comment: taskRevisionsTable.comment, createdAt: taskRevisionsTable.createdAt })
     .from(taskRevisionsTable).where(eq(taskRevisionsTable.taskId, id)).orderBy(asc(taskRevisionsTable.revisionNumber));
 
-  res.json({ ...task, createdBy: createdBy ?? null, assignedTo: assignedTo ?? null, revisions });
+  const editorRows = await db
+    .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+    .from(taskEditorsTable)
+    .innerJoin(usersTable, eq(taskEditorsTable.userId, usersTable.id))
+    .where(eq(taskEditorsTable.taskId, id));
+
+  res.json({ ...task, createdBy: createdBy ?? null, assignedTo: assignedTo ?? null, revisions, editors: editorRows });
 });
 
 // ── Update task ──────────────────────────────────────────────────────────────
@@ -150,27 +175,41 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     if (description !== undefined) update.description = description ? String(description) : null;
     if (client !== undefined) update.client = client ? String(client) : null;
     if (color) update.color = String(color);
-    if (dueDate !== undefined) update.dueDate = dueDate ? String(dueDate) : null;
+    if (dueDate !== undefined) update.dueDate = dueDate ? new Date(String(dueDate)) : null;
     if (priority) update.priority = String(priority);
     if (complexity) update.complexity = String(complexity);
     if (assignedToId !== undefined) update.assignedToId = assignedToId ? parseInt(String(assignedToId), 10) : null;
     if (folderUrl !== undefined) update.folderUrl = folderUrl ? String(folderUrl) : null;
     if (status) {
       const s = String(status);
-      if (task.status !== "review") { res.status(400).json({ error: `Coordenador só pode avaliar tarefas em revisão (status atual: ${task.status})` }); return; }
-      if (!["completed", "in_progress"].includes(s)) { res.status(400).json({ error: "Transição inválida" }); return; }
-      update.status = s === "in_progress" ? "in_revision" : s;
-      if (s === "in_progress") {
-        const newRevision = (task.revisionCount ?? 0) + 1;
-        update.revisionCount = newRevision;
-        const comment = revisionComment ? String(revisionComment).trim() : "";
-        if (!comment) { res.status(400).json({ error: "Informe o comentário da alteração" }); return; }
-        await db.insert(taskRevisionsTable).values({
-          taskId: id,
-          revisionNumber: newRevision,
-          comment,
-          createdById: userId,
-        });
+      const TERMINAL = ["completed", "cancelled"];
+
+      // Cancelar ou pausar: permitido de qualquer status ativo
+      if (s === "cancelled" || s === "paused") {
+        if (TERMINAL.includes(task.status)) {
+          res.status(400).json({ error: "Não é possível alterar uma tarefa já finalizada ou cancelada" }); return;
+        }
+        update.status = s;
+      } else if (s === "pending" && task.status === "paused") {
+        // Retomar tarefa pausada
+        update.status = "pending";
+      } else {
+        // Fluxo normal de aprovação/revisão
+        if (task.status !== "review") { res.status(400).json({ error: `Coordenador só pode avaliar tarefas em revisão (status atual: ${task.status})` }); return; }
+        if (!["completed", "in_progress"].includes(s)) { res.status(400).json({ error: "Transição inválida" }); return; }
+        update.status = s === "in_progress" ? "in_revision" : s;
+        if (s === "in_progress") {
+          const newRevision = (task.revisionCount ?? 0) + 1;
+          update.revisionCount = newRevision;
+          const comment = revisionComment ? String(revisionComment).trim() : "";
+          if (!comment) { res.status(400).json({ error: "Informe o comentário da alteração" }); return; }
+          await db.insert(taskRevisionsTable).values({
+            taskId: id,
+            revisionNumber: newRevision,
+            comment,
+            createdById: userId,
+          });
+        }
       }
     }
   }
@@ -204,6 +243,27 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         { taskId: id }
       );
     }
+    if (newStatus === "cancelled" && task.assignedToId) {
+      await notify(task.assignedToId, "task_cancelled",
+        "Tarefa cancelada",
+        `A tarefa "${task.title}" foi cancelada pelo coordenador`,
+        { taskId: id }
+      );
+    }
+    if (newStatus === "paused" && task.assignedToId) {
+      await notify(task.assignedToId, "task_paused",
+        "Tarefa pausada",
+        `A tarefa "${task.title}" foi pausada pelo coordenador`,
+        { taskId: id }
+      );
+    }
+    if (newStatus === "pending" && task.status === "paused" && task.assignedToId) {
+      await notify(task.assignedToId, "task_resumed",
+        "Tarefa retomada",
+        `A tarefa "${task.title}" foi retomada pelo coordenador`,
+        { taskId: id }
+      );
+    }
     if (newStatus === "completed" && task.assignedToId) {
       await notify(task.assignedToId, "task_approved",
         "Tarefa aprovada",
@@ -220,13 +280,37 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     }
   }
 
-  if (update.assignedToId && update.assignedToId !== task.assignedToId) {
-    const newEditor = update.assignedToId as number;
-    await notify(newEditor, "task_reassigned",
-      "Tarefa atribuída a você",
-      `A tarefa "${task.title}" foi atribuída a você`,
-      { taskId: id }
-    );
+  if (update.assignedToId !== undefined && update.assignedToId !== task.assignedToId) {
+    const newEditor = update.assignedToId as number | null;
+    const oldEditor = task.assignedToId;
+
+    // Notify old editor they were removed
+    if (oldEditor) {
+      await notify(oldEditor, "task_reassigned",
+        "Tarefa reatribuída",
+        `A tarefa "${task.title}" foi reatribuída a outro editor`,
+        { taskId: id }
+      );
+    }
+
+    // Notify new editor they received the task
+    if (newEditor) {
+      await notify(newEditor, "task_assigned",
+        "Nova tarefa atribuída",
+        `A tarefa "${task.title}" foi atribuída a você`,
+        { taskId: id }
+      );
+      // Keep junction table in sync
+      await db.insert(taskEditorsTable).values({
+        taskId: id, userId: newEditor, assignedById: req.session.userId,
+      }).onConflictDoNothing();
+    }
+
+    // Remove old editor from junction table if not reassigned
+    if (oldEditor && oldEditor !== newEditor) {
+      await db.delete(taskEditorsTable)
+        .where(and(eq(taskEditorsTable.taskId, id), eq(taskEditorsTable.userId, oldEditor)));
+    }
   }
 
   broadcastTaskChange();
@@ -247,8 +331,8 @@ router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> =>
   if (role === "editor" && task.assignedToId !== userId) {
     res.status(403).json({ error: "Você só pode devolver tarefas atribuídas a você." }); return;
   }
-  if (task.status === "completed") {
-    res.status(400).json({ error: "Não é possível devolver uma tarefa já concluída." }); return;
+  if (task.status === "completed" || task.status === "cancelled") {
+    res.status(400).json({ error: "Não é possível devolver uma tarefa já concluída ou cancelada." }); return;
   }
 
   const prevStatus = task.status;
@@ -302,11 +386,26 @@ router.delete("/tasks/:id", requireCoordinator, async (req, res): Promise<void> 
 router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const role = req.session.userRole!;
-  const filter = role === "editor"
-    ? eq(tasksTable.assignedToId, userId)
-    : eq(tasksTable.createdById, userId);
 
-  const tasks = await db.select().from(tasksTable).where(filter).orderBy(desc(tasksTable.createdAt));
+  let tasks: (typeof tasksTable.$inferSelect)[];
+  if (role === "editor") {
+    // Include tasks where user is primary assignee OR in the editors junction table
+    const [primary, secondary] = await Promise.all([
+      db.select().from(tasksTable).where(eq(tasksTable.assignedToId, userId)),
+      db.select({ taskId: taskEditorsTable.taskId }).from(taskEditorsTable)
+        .where(eq(taskEditorsTable.userId, userId)),
+    ]);
+    const secondaryIds = secondary.map(r => r.taskId);
+    const primaryIds = primary.map(t => t.id);
+    const missingIds = secondaryIds.filter(id => !primaryIds.includes(id));
+    const extra = missingIds.length > 0
+      ? await db.select().from(tasksTable).where(inArray(tasksTable.id, missingIds))
+      : [];
+    tasks = [...primary, ...extra].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  } else {
+    tasks = await db.select().from(tasksTable)
+      .where(eq(tasksTable.createdById, userId)).orderBy(desc(tasksTable.createdAt));
+  }
 
   const taskNumMap = new Map<number, number>();
   [...tasks].sort((a, b) => a.id - b.id).forEach((t, i) => taskNumMap.set(t.id, i + 1));
@@ -435,7 +534,7 @@ router.get("/workload", requireCoordinator, async (_req, res): Promise<void> => 
   const open = await db
     .select({ id: tasksTable.id, status: tasksTable.status, complexity: tasksTable.complexity, assignedToId: tasksTable.assignedToId })
     .from(tasksTable)
-    .where(and(ne(tasksTable.status, "completed"), isNotNull(tasksTable.assignedToId)));
+    .where(and(ne(tasksTable.status, "completed"), ne(tasksTable.status, "cancelled"), isNotNull(tasksTable.assignedToId)));
 
   const result = editors.map(editor => {
     const editorTasks = open.filter(t => t.assignedToId === editor.id);
@@ -517,7 +616,7 @@ router.get("/deadline-overview", requireAuth, async (req, res): Promise<void> =>
     { key: "later",   label: "+7 dias",   color: "#94a3b8" },
   ];
 
-  const baseWhere = and(ne(tasksTable.status, "completed"), isNotNull(tasksTable.dueDate));
+  const baseWhere = and(ne(tasksTable.status, "completed"), ne(tasksTable.status, "cancelled"), ne(tasksTable.status, "paused"), isNotNull(tasksTable.dueDate));
   const taskWhere = role === "editor" ? and(baseWhere, eq(tasksTable.assignedToId, userId)) : baseWhere;
 
   const rows = await db
@@ -537,17 +636,17 @@ router.get("/deadline-overview", requireAuth, async (req, res): Promise<void> =>
   };
 
   const counts: Record<string, number> = { overdue: 0, today: 0, in3days: 0, week: 0, later: 0 };
-  rows.forEach(t => { if (t.dueDate) counts[getBucket(String(t.dueDate))]++; });
+  rows.forEach(t => { if (t.dueDate) counts[getBucket(dueDateKey(t.dueDate))]++; });
 
   const PRIORITY_W: Record<string, number> = { high: 3, medium: 2, low: 1 };
   const urgentRows = rows
-    .filter(t => t.dueDate && ["overdue", "today", "in3days"].includes(getBucket(String(t.dueDate))))
+    .filter(t => t.dueDate && ["overdue", "today", "in3days"].includes(getBucket(dueDateKey(t.dueDate))))
     .sort((a, b) => {
-      const bA = getBucket(String(a.dueDate)), bB = getBucket(String(b.dueDate));
+      const bA = getBucket(dueDateKey(a.dueDate)), bB = getBucket(dueDateKey(b.dueDate));
       const ORDER = ["overdue", "today", "in3days"];
       if (bA !== bB) return ORDER.indexOf(bA) - ORDER.indexOf(bB);
       const pw = (PRIORITY_W[b.priority] ?? 1) - (PRIORITY_W[a.priority] ?? 1);
-      return pw !== 0 ? pw : String(a.dueDate).localeCompare(String(b.dueDate));
+      return pw !== 0 ? pw : dueDateKey(a.dueDate).localeCompare(dueDateKey(b.dueDate));
     })
     .slice(0, 5);
 
@@ -563,7 +662,7 @@ router.get("/deadline-overview", requireAuth, async (req, res): Promise<void> =>
     id: t.id, title: t.title, status: t.status, priority: t.priority,
     dueDate: t.dueDate, client: t.client, color: t.color,
     assigneeName: t.assignedToId ? (assigneeMap.get(t.assignedToId) ?? null) : null,
-    bucket: getBucket(String(t.dueDate)),
+    bucket: getBucket(dueDateKey(t.dueDate)),
   }));
 
   res.json({
@@ -700,7 +799,11 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
 });
 
 
-router.get("/timeline", requireCoordinator, async (_req, res): Promise<void> => {
+router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.session.userId!;
+  const role   = req.session.userRole!;
+  const editorFilter = role === "editor" ? eq(tasksTable.assignedToId, userId) : undefined;
+
   const tasks = await db
     .select({
       id: tasksTable.id,
@@ -720,6 +823,7 @@ router.get("/timeline", requireCoordinator, async (_req, res): Promise<void> => 
       updatedAt: tasksTable.updatedAt,
     })
     .from(tasksTable)
+    .where(editorFilter)
     .orderBy(asc(tasksTable.dueDate), asc(tasksTable.createdAt));
 
   const personIds = [...new Set([
@@ -754,60 +858,153 @@ router.get("/timeline", requireCoordinator, async (_req, res): Promise<void> => 
 
 // ── Reports ───────────────────────────────────────────────────────────────────
 router.get("/reports", requireCoordinator, async (req, res): Promise<void> => {
-  const { from, to, userId } = req.query as Record<string, string | undefined>;
+  const { from, to } = req.query as Record<string, string | undefined>;
 
   const whereClause = and(
-    eq(tasksTable.status, "completed"),
-    from ? gte(tasksTable.updatedAt, new Date(from + "T00:00:00")) : undefined,
-    to   ? lte(tasksTable.updatedAt, new Date(to   + "T23:59:59")) : undefined,
-    userId ? eq(tasksTable.assignedToId, parseInt(userId, 10)) : undefined,
+    from ? gte(tasksTable.createdAt, new Date(from + "T00:00:00")) : undefined,
+    to   ? lte(tasksTable.createdAt, new Date(to   + "T23:59:59")) : undefined,
   );
 
-  const rows = await db.select().from(tasksTable).where(whereClause).orderBy(desc(tasksTable.updatedAt));
+  const rows = await db.select().from(tasksTable).where(whereClause).orderBy(desc(tasksTable.createdAt));
 
-  const assigneeIds = [...new Set(rows.map(r => r.assignedToId).filter(Boolean))] as number[];
-  const assigneeMap = new Map<number, { id: number; name: string; avatarUrl: string | null }>();
-  if (assigneeIds.length > 0) {
-    const assignees = await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
-      .from(usersTable).where(inArray(usersTable.id, assigneeIds));
-    assignees.forEach(a => assigneeMap.set(a.id, a));
-  }
+  const personIds = [...new Set([
+    ...rows.map(r => r.assignedToId),
+    ...rows.map(r => r.createdById),
+  ].filter((id): id is number => id !== null))];
 
-  const enriched = rows.map(r => ({
-    task: {
-      id: r.id, title: r.title, status: r.status, priority: r.priority,
-      complexity: r.complexity, updatedAt: r.updatedAt, revisionCount: r.revisionCount,
-      client: r.client, color: r.color,
-    },
-    assignee: r.assignedToId ? (assigneeMap.get(r.assignedToId) ?? null) : null,
-    revisionCount: r.revisionCount,
-  }));
-
-  const totalDelivered = enriched.length;
-
-  const byClientMap = new Map<string, { client: string; count: number }>();
-  for (const item of enriched) {
-    const key = item.task.client ?? "Sem cliente";
-    if (!byClientMap.has(key)) byClientMap.set(key, { client: key, count: 0 });
-    byClientMap.get(key)!.count++;
-  }
-
-  const byEditorMap = new Map<number, { userId: number; name: string; count: number }>();
-  for (const item of enriched) {
-    if (!item.assignee) continue;
-    const key = item.assignee.id;
-    if (!byEditorMap.has(key)) byEditorMap.set(key, { userId: key, name: item.assignee.name, count: 0 });
-    byEditorMap.get(key)!.count++;
+  const personMap = new Map<number, { id: number; name: string; avatarUrl: string | null }>();
+  if (personIds.length > 0) {
+    const persons = await db
+      .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+      .from(usersTable).where(inArray(usersTable.id, personIds));
+    persons.forEach(p => personMap.set(p.id, p));
   }
 
   res.json({
-    data: enriched,
-    summary: {
-      totalDelivered,
-      byClient: [...byClientMap.values()].sort((a, b) => b.count - a.count),
-      byEditor: [...byEditorMap.values()],
-    },
+    tasks: rows.map(r => ({
+      id: r.id,
+      title: r.title,
+      status: r.status,
+      priority: r.priority,
+      complexity: r.complexity,
+      client: r.client,
+      color: r.color,
+      revisionCount: r.revisionCount,
+      dueDate: r.dueDate,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+      assignee:    r.assignedToId ? (personMap.get(r.assignedToId) ?? null) : null,
+      coordinator: r.createdById  ? (personMap.get(r.createdById)  ?? null) : null,
+    })),
   });
+});
+
+
+// ── Task editors: add / remove / reassign ────────────────────────────────────
+
+// List editors for a task
+router.get("/tasks/:id/editors", requireAuth, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  const editors = await db
+    .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, login: usersTable.login })
+    .from(taskEditorsTable)
+    .innerJoin(usersTable, eq(taskEditorsTable.userId, usersTable.id))
+    .where(eq(taskEditorsTable.taskId, id));
+  res.json(editors);
+});
+
+// Add an editor to a task
+router.post("/tasks/:id/editors", requireCoordinator, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const editorId = parseInt(String(req.body.editorId), 10);
+  if (isNaN(id) || isNaN(editorId)) { res.status(400).json({ error: "IDs inválidos" }); return; }
+
+  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+  if (!task) { res.status(404).json({ error: "Tarefa não encontrada" }); return; }
+
+  await db.insert(taskEditorsTable).values({
+    taskId: id, userId: editorId, assignedById: req.session.userId,
+  }).onConflictDoNothing();
+
+  await notify(editorId, "task_assigned",
+    "Tarefa atribuída a você",
+    `Você foi adicionado à tarefa "${task.title}"`,
+    { taskId: id }
+  );
+
+  broadcastTaskChange();
+  res.json({ ok: true });
+});
+
+// Remove an editor from a task
+router.delete("/tasks/:id/editors/:editorId", requireCoordinator, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const editorId = parseInt(req.params.editorId, 10);
+  if (isNaN(id) || isNaN(editorId)) { res.status(400).json({ error: "IDs inválidos" }); return; }
+
+  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+  if (!task) { res.status(404).json({ error: "Tarefa não encontrada" }); return; }
+
+  await db.delete(taskEditorsTable)
+    .where(and(eq(taskEditorsTable.taskId, id), eq(taskEditorsTable.userId, editorId)));
+
+  await notify(editorId, "task_reassigned",
+    "Removido de tarefa",
+    `Você foi removido da tarefa "${task.title}"`,
+    { taskId: id }
+  );
+
+  broadcastTaskChange();
+  res.json({ ok: true });
+});
+
+// Reassign primary editor (replaces assignedToId + notifies both sides)
+router.post("/tasks/:id/reassign", requireCoordinator, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const newEditorId = parseInt(String(req.body.editorId), 10);
+  if (isNaN(id) || isNaN(newEditorId)) { res.status(400).json({ error: "IDs inválidos" }); return; }
+
+  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+  if (!task) { res.status(404).json({ error: "Tarefa não encontrada" }); return; }
+
+  const [newEditorUser] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, newEditorId));
+  if (!newEditorUser) { res.status(404).json({ error: "Editor não encontrado" }); return; }
+
+  const oldEditorId = task.assignedToId;
+
+  // Notify old editor (if different)
+  if (oldEditorId && oldEditorId !== newEditorId) {
+    await notify(oldEditorId, "task_reassigned",
+      "Tarefa reatribuída",
+      `A tarefa "${task.title}" foi reatribuída para ${newEditorUser.name}`,
+      { taskId: id }
+    );
+    // Remove old editor from junction table
+    await db.delete(taskEditorsTable)
+      .where(and(eq(taskEditorsTable.taskId, id), eq(taskEditorsTable.userId, oldEditorId)));
+  }
+
+  // Update primary assignee
+  const [updated] = await db.update(tasksTable)
+    .set({ assignedToId: newEditorId })
+    .where(eq(tasksTable.id, id))
+    .returning();
+
+  // Add new editor to junction table
+  await db.insert(taskEditorsTable).values({
+    taskId: id, userId: newEditorId, assignedById: req.session.userId,
+  }).onConflictDoNothing();
+
+  // Notify new editor
+  await notify(newEditorId, "task_assigned",
+    "Tarefa atribuída a você",
+    `A tarefa "${task.title}" foi atribuída a você`,
+    { taskId: id }
+  );
+
+  broadcastTaskChange();
+  res.json(updated);
 });
 
 export default router;

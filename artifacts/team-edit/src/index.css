@@ -3,62 +3,196 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: 220 9% 96%;         /* cinza Linear */
-  --foreground: 230 25% 18%;
+  --background: 258 45% 96%;
+  --foreground: 262 45% 12%;
   --card: 0 0% 100%;
-  --card-foreground: 230 25% 18%;
+  --card-foreground: 262 45% 12%;
   --popover: 0 0% 100%;
-  --popover-foreground: 230 25% 18%;
-  --primary: 230 85% 55%;           /* azul Operand */
+  --popover-foreground: 262 45% 12%;
+  --primary: 262 83% 58%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 258 30% 90%;
-  --secondary-foreground: 230 25% 30%;
-  --muted: 258 25% 91%;
-  --muted-foreground: 230 15% 50%;
-  --accent: 258 30% 88%;
-  --accent-foreground: 230 25% 18%;
-  --destructive: 0 84.2% 60.2%;
+  --secondary: 258 35% 90%;
+  --secondary-foreground: 262 45% 25%;
+  --muted: 258 30% 92%;
+  --muted-foreground: 260 20% 50%;
+  --accent: 258 35% 88%;
+  --accent-foreground: 262 45% 18%;
+  --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  --border: 258 20% 88%;
-  --input: 258 20% 88%;
-  --ring: 230 85% 55%;
+  --border: 258 25% 87%;
+  --input: 258 25% 87%;
+  --ring: 262 83% 58%;
   --radius: 0.75rem;
-  --sidebar: 230 30% 16%;
-  --sidebar-foreground: 258 40% 95%;
+  --sidebar: 260 55% 14%;
+  --sidebar-foreground: 258 60% 96%;
 }
 
+/* ── macOS Sequoia dark — cool blue-black com glow ─────────────────────── */
 .dark {
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
-  --card: 222.2 47.4% 8%;
-  --card-foreground: 210 40% 98%;
-  --popover: 222.2 47.4% 8%;
-  --popover-foreground: 210 40% 98%;
-  --primary: 239 84% 67%;
+  --background: 240 8% 6%;          /* #0d0d10 — azul-preto macOS */
+  --foreground: 240 11% 95%;        /* #f0f0f5 — texto Apple */
+  --card: 240 5% 11%;               /* #1a1a1e — surface macOS */
+  --card-foreground: 240 11% 95%;
+  --popover: 240 5% 11%;
+  --popover-foreground: 240 11% 95%;
+  --primary: 258 89% 68%;           /* violeta — accent color */
   --primary-foreground: 0 0% 100%;
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 62.8% 40.6%;
+  --secondary: 240 4% 17%;          /* #29292e */
+  --secondary-foreground: 240 11% 95%;
+  --muted: 240 4% 16%;              /* #272730 */
+  --muted-foreground: 240 3% 55%;   /* #8a8a90 — secondary label */
+  --accent: 240 4% 18%;
+  --accent-foreground: 240 11% 95%;
+  --destructive: 0 70% 52%;
   --destructive-foreground: 0 0% 100%;
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 239 84% 67%;
-  --sidebar: 222.2 47.4% 6%;
-  --sidebar-foreground: 210 40% 98%;
+  --border: 240 4% 20%;             /* #313138 — separator */
+  --input: 240 4% 17%;
+  --ring: 258 89% 68%;
+  --sidebar: 240 8% 5%;             /* #0b0b0f — sidebar mais escura */
+  --sidebar-foreground: 240 8% 85%;
 }
+
+html { font-size: 16px; }
+html.scale-sm { font-size: 13px; }
+html.scale-lg { font-size: 19px; }
 
 * { border-color: hsl(var(--border)); }
-body { background-color: hsl(var(--background)); color: hsl(var(--foreground)); font-family: system-ui, sans-serif; }
 
-/* Cards com sombra suave flutuando no fundo lilás */
-.card-float {
-  box-shadow: 0 2px 8px rgba(80, 60, 140, 0.10), 0 1px 3px rgba(80, 60, 140, 0.06);
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* Glow sutil no topo da página estilo macOS */
+.dark body {
+  background-image: radial-gradient(
+    ellipse 90% 35% at 50% -5%,
+    hsl(258 89% 68% / 0.09) 0%,
+    transparent 70%
+  );
+}
+
+/* Card-float: highlight de borda + glow profundo macOS */
+.card-float {
+  box-shadow:
+    0 1px 3px hsl(258 83% 58% / 0.08),
+    0 2px 8px hsl(258 83% 58% / 0.05);
+}
+.dark .card-float {
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.07),   /* highlight topo — luz de cima */
+    0 0 0 0.5px hsl(0 0% 100% / 0.04),      /* borda sutil */
+    0 4px 24px hsl(0 0% 0% / 0.55),         /* sombra profunda */
+    0 1px 4px hsl(0 0% 0% / 0.35),          /* sombra próxima */
+    0 0 32px hsl(258 89% 68% / 0.05);       /* violet glow suave */
+}
+
+
+/* ── Scrollbars ─────────────────────────────────────────────────────────── */
+/* Firefox */
+* { scrollbar-width: thin; scrollbar-color: hsl(258 18% 80%) transparent; }
+.dark * { scrollbar-color: hsl(240 4% 24%) transparent; }
+
+/* WebKit (Chrome, Safari, Edge) */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: hsl(258 18% 80%);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover { background: hsl(258 18% 68%); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+.dark ::-webkit-scrollbar-thumb { background: hsl(240 4% 24%); }
+.dark ::-webkit-scrollbar-thumb:hover { background: hsl(240 4% 34%); }
+
+/* ── Micro-interações globais ────────────────────────────────────────────── */
+button, [role=button] {
+  transition: background-color 0.12s ease, color 0.12s ease,
+              box-shadow 0.12s ease, transform 0.1s ease,
+              border-color 0.12s ease;
+}
+button:active:not(:disabled):not([data-state]) {
+  transform: scale(0.97);
+}
+a { transition: color 0.12s ease, opacity 0.12s ease; }
+
+input, textarea, select {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Card hover lift */
+.card-float {
+  transition: box-shadow 0.18s ease, transform 0.18s ease !important;
+}
+.card-float:hover {
+  transform: translateY(-1px);
+}
+
+/* ── Radix Dropdown Menu ─────────────────────────────────────────────────── */
+[data-radix-popper-content-wrapper] > [data-state] {
+  transform-origin: var(--radix-popper-transform-origin, top center);
+}
+[role=menu][data-state=open] {
+  animation: dropIn 0.14s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+}
+[role=menu][data-state=closed] {
+  animation: dropOut 0.1s ease-in forwards;
+}
+@keyframes dropIn {
+  from { opacity: 0; transform: scale(0.95) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);    }
+}
+@keyframes dropOut {
+  from { opacity: 1; transform: scale(1);    }
+  to   { opacity: 0; transform: scale(0.97); }
+}
+
+/* ── Radix Select ────────────────────────────────────────────────────────── */
+[role=listbox][data-state=open] {
+  animation: dropIn 0.14s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+}
+[role=listbox][data-state=closed] {
+  animation: dropOut 0.1s ease-in forwards;
+}
+
+/* ── Radix Tooltip ───────────────────────────────────────────────────────── */
+[data-radix-tooltip-content][data-state=delayed-open],
+[data-radix-tooltip-content][data-state=instant-open] {
+  animation: tooltipIn 0.12s ease forwards;
+}
+[data-radix-tooltip-content][data-state=closed] {
+  animation: tooltipOut 0.08s ease-in forwards;
+}
+@keyframes tooltipIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1);    }
+}
+@keyframes tooltipOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+
+
+/* ── Toast slide-up ─────────────────────────────────────────────────────── */
+[data-radix-toast-announce-exclude][data-state=open] {
+  animation: toastIn 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+}
+[data-radix-toast-announce-exclude][data-state=closed] {
+  animation: toastOut 0.15s ease-in forwards;
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+@keyframes toastOut {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(4px); }
+}
 @keyframes collapsible-down {
   from { height: 0; opacity: 0 }
   to   { height: var(--radix-collapsible-content-height); opacity: 1 }

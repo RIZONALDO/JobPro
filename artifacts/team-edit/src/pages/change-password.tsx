@@ -32,7 +32,7 @@ export default function ChangePasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-[hsl(var(--background))] p-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center space-y-1">
-          <h1 className="text-2xl font-bold">Alterar senha</h1>
+          <h1 className="text-[28px] font-bold">Alterar senha</h1>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">Por segurança, defina uma nova senha antes de continuar.</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">

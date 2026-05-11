@@ -11,7 +11,7 @@ import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { fmtDate } from "@/lib/utils";
 import {
   Clock, User, FolderOpen, AlertTriangle, CheckCircle2,
-  RotateCcw, Calendar, Tag,
+  RotateCcw, Calendar, Tag, PauseCircle, XCircle, PlayCircle,
 } from "lucide-react";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
@@ -54,6 +54,7 @@ export function TaskModal({ taskId, onClose }: Props) {
   const [revisionComment, setRevisionComment] = useState("");
   const [showRevisionForm, setShowRevisionForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<"cancel" | "pause" | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -67,6 +68,10 @@ export function TaskModal({ taskId, onClose }: Props) {
 
   const isCoord = user?.role !== "editor";
   const canApprove = isCoord && task?.status === "review";
+  const INACTIVE = ["completed", "cancelled"];
+  const canPause   = isCoord && task !== null && !INACTIVE.includes(task.status) && task.status !== "paused";
+  const canCancel  = isCoord && task !== null && !INACTIVE.includes(task.status);
+  const canResume  = isCoord && task?.status === "paused";
 
   const approve = async () => {
     if (!task) return;
@@ -88,6 +93,21 @@ export function TaskModal({ taskId, onClose }: Props) {
       toast({ title: "Alteração solicitada" });
       setRevisionComment("");
       setShowRevisionForm(false);
+      load();
+    } catch (e: unknown) {
+      toast({ title: e instanceof Error ? e.message : "Erro", variant: "destructive" });
+    } finally { setSubmitting(false); }
+  };
+
+  const performAction = async (action: "cancel" | "pause" | "resume") => {
+    if (!task) return;
+    setSubmitting(true);
+    try {
+      const statusMap = { cancel: "cancelled", pause: "paused", resume: "pending" };
+      await apiPut(`/api/tasks/${task.id}`, { status: statusMap[action] });
+      const labels = { cancel: "Tarefa cancelada", pause: "Tarefa pausada", resume: "Tarefa retomada" };
+      toast({ title: labels[action] });
+      setConfirmAction(null);
       load();
     } catch (e: unknown) {
       toast({ title: e instanceof Error ? e.message : "Erro", variant: "destructive" });
@@ -124,7 +144,7 @@ export function TaskModal({ taskId, onClose }: Props) {
                 <Badge variant="outline" className={PRIORITY_CLS[task.priority] ?? ""}>
                   {PRIORITY_LABEL[task.priority] ?? task.priority}
                 </Badge>
-                <Badge variant="outline" className="text-[10px]">
+                <Badge variant="outline" className="text-xs">
                   {COMPLEXITY_LABEL[task.complexity] ?? task.complexity}
                 </Badge>
                 {task.revisionCount > 0 && (
@@ -167,10 +187,10 @@ export function TaskModal({ taskId, onClose }: Props) {
 
               {/* Folder link */}
               {task.folderUrl && (
-                <a href={task.folderUrl} target="_blank" rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-[hsl(var(--primary))] hover:underline">
-                  <FolderOpen className="h-3.5 w-3.5" /> Abrir pasta do projeto
-                </a>
+                <div className="flex items-center gap-1.5">
+                  <FolderOpen className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] shrink-0" />
+                  <span className="text-xs text-[hsl(var(--muted-foreground))] break-all select-all">{task.folderUrl}</span>
+                </div>
               )}
 
               {/* Revision history */}
@@ -183,8 +203,8 @@ export function TaskModal({ taskId, onClose }: Props) {
                     {task.revisions.map(r => (
                       <div key={r.id} className="rounded-lg border border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-900 p-3">
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-bold text-orange-600">Alteração #{r.revisionNumber}</span>
-                          <span className="text-[10px] text-[hsl(var(--muted-foreground))]">{fmtDate(r.createdAt)}</span>
+                          <span className="text-xs font-bold text-orange-600">Alteração #{r.revisionNumber}</span>
+                          <span className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(r.createdAt)}</span>
                         </div>
                         <p className="text-xs text-[hsl(var(--foreground))] leading-snug">{r.comment}</p>
                       </div>
@@ -203,6 +223,55 @@ export function TaskModal({ taskId, onClose }: Props) {
                     onClick={() => setShowRevisionForm(true)}>
                     <AlertTriangle className="h-4 w-4" /> Solicitar alteração
                   </Button>
+                </div>
+              )}
+
+              {/* Pause / Cancel / Resume */}
+              {(canPause || canCancel || canResume) && !showRevisionForm && confirmAction === null && (
+                <div className="flex gap-2 pt-1">
+                  {canResume && (
+                    <Button variant="outline" className="flex-1 text-purple-700 border-purple-300 hover:bg-purple-50 gap-1.5"
+                      onClick={() => performAction("resume")} disabled={submitting}>
+                      <PlayCircle className="h-4 w-4" /> Retomar
+                    </Button>
+                  )}
+                  {canPause && (
+                    <Button variant="outline" className="flex-1 text-purple-700 border-purple-300 hover:bg-purple-50 gap-1.5"
+                      onClick={() => setConfirmAction("pause")} disabled={submitting}>
+                      <PauseCircle className="h-4 w-4" /> Pausar
+                    </Button>
+                  )}
+                  {canCancel && (
+                    <Button variant="outline" className="flex-1 text-red-600 border-red-300 hover:bg-red-50 gap-1.5"
+                      onClick={() => setConfirmAction("cancel")} disabled={submitting}>
+                      <XCircle className="h-4 w-4" /> Cancelar
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {/* Confirm dialog */}
+              {confirmAction !== null && (
+                <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900 p-4 space-y-3">
+                  <p className="text-sm font-medium text-red-700">
+                    {confirmAction === "cancel"
+                      ? "Tem certeza que deseja cancelar esta tarefa? O editor será notificado."
+                      : "Tem certeza que deseja pausar esta tarefa? O editor será notificado."}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={() => setConfirmAction(null)} disabled={submitting}>
+                      Voltar
+                    </Button>
+                    <Button
+                      className={`flex-1 gap-1.5 ${confirmAction === "cancel" ? "bg-red-600 hover:bg-red-700" : "bg-purple-600 hover:bg-purple-700"}`}
+                      onClick={() => performAction(confirmAction)}
+                      disabled={submitting}
+                    >
+                      {confirmAction === "cancel"
+                        ? <><XCircle className="h-4 w-4" />{submitting ? "Cancelando…" : "Confirmar cancelamento"}</>
+                        : <><PauseCircle className="h-4 w-4" />{submitting ? "Pausando…" : "Confirmar pausa"}</>}
+                    </Button>
+                  </div>
                 </div>
               )}
 

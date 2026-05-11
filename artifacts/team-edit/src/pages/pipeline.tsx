@@ -89,9 +89,9 @@ export default function Pipeline() {
                 <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: col.accent }} />
                 <div className="min-w-0">
                   <p className="text-sm font-semibold leading-tight">{col.label}</p>
-                  <p className="text-[10px] text-[hsl(var(--muted-foreground))]">{col.desc}</p>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))]">{col.desc}</p>
                 </div>
-                <span className="ml-auto text-[11px] font-semibold shrink-0 bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">
+                <span className="ml-auto text-xs font-semibold shrink-0 bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">
                   {colTasks.length}
                 </span>
               </div>
@@ -117,23 +117,23 @@ export default function Pipeline() {
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold leading-snug">{t.title}</p>
                             {t.client && (
-                              <p className="text-[10px] text-[hsl(var(--muted-foreground))] flex items-center gap-1 mt-0.5 truncate">
+                              <p className="text-xs text-[hsl(var(--muted-foreground))] flex items-center gap-1 mt-0.5 truncate">
                                 <Tag className="h-2.5 w-2.5 shrink-0" />{t.client}
                               </p>
                             )}
                           </div>
                           {t.revisionCount > 0 && (
-                            <span className="text-[10px] font-bold text-orange-500 shrink-0">Alt.{t.revisionCount}</span>
+                            <span className="text-xs font-bold text-orange-500 shrink-0">Alt.{t.revisionCount}</span>
                           )}
                         </div>
 
                         {/* Priority + due date */}
                         <div className="flex items-center gap-2 flex-wrap">
-                          <Badge variant="outline" className={`text-[9px] px-1 py-0 ${PRIORITY_CLS[t.priority] ?? ""}`}>
+                          <Badge variant="outline" className={`text-xs px-1 py-0 ${PRIORITY_CLS[t.priority] ?? ""}`}>
                             {PRIORITY_LABEL[t.priority] ?? t.priority}
                           </Badge>
                           {t.dueDate && (
-                            <span className={`flex items-center gap-1 text-[10px] ${isOverdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
+                            <span className={`flex items-center gap-1 text-xs ${isOverdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
                               {isOverdue && <AlertTriangle className="h-2.5 w-2.5" />}
                               <Calendar className="h-2.5 w-2.5" />
                               {fmtDate(t.dueDate)}
@@ -147,11 +147,11 @@ export default function Pipeline() {
                             {t.assignee.avatarUrl ? (
                               <img src={t.assignee.avatarUrl} alt={t.assignee.name} className="h-5 w-5 rounded-full object-cover shrink-0" />
                             ) : (
-                              <div className="h-5 w-5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] flex items-center justify-center text-[9px] font-bold shrink-0">
+                              <div className="h-5 w-5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] flex items-center justify-center text-xs font-bold shrink-0">
                                 {t.assignee.name[0]}
                               </div>
                             )}
-                            <span className="text-[10px] text-[hsl(var(--muted-foreground))] truncate">{t.assignee.name}</span>
+                            <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.assignee.name}</span>
                           </div>
                         )}
                       </div>

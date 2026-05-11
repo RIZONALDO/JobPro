@@ -24,11 +24,11 @@ export function EditorAvatars({ people, max = 3 }: { people: Person[]; max?: num
           key={p.id}
           name={p.name}
           avatarUrl={p.avatarUrl}
-          className="h-6 w-6 text-[10px] bg-slate-100 text-slate-600 border border-white"
+          className="h-6 w-6 text-xs bg-slate-100 text-slate-600 border border-white"
         />
       ))}
       {rest > 0 && (
-        <div className="h-6 w-6 rounded-full bg-slate-200 text-slate-500 border border-white flex items-center justify-center text-[10px] font-semibold shrink-0">
+        <div className="h-6 w-6 rounded-full bg-slate-200 text-slate-500 border border-white flex items-center justify-center text-xs font-semibold shrink-0">
           +{rest}
         </div>
       )}

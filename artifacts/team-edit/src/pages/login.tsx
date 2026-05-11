@@ -41,7 +41,7 @@ export default function LoginPage() {
               <ListTodo className="h-8 w-8 text-white" />
             </div>
           )}
-          <h1 className="text-2xl font-bold"><BrandName name={settings.company_name} /></h1>
+          <h1 className="text-[28px] font-bold"><BrandName name={settings.company_name} /></h1>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">Faça login para continuar</p>
         </div>
 

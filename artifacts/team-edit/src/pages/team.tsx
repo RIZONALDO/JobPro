@@ -1,3 +1,5 @@
+import { motion } from "framer-motion";
+import { staggerContainer, staggerItem } from "@/lib/motion";
 import { useEffect, useState } from "react";
 import { apiFetch, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { useJobModal } from "@/contexts/JobModalContext";
@@ -209,7 +211,7 @@ export default function Team() {
             <Users className="h-5 w-5 text-[hsl(var(--primary))]" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Membros</h1>
+            <h1 className="text-[28px] font-semibold tracking-tight">Membros</h1>
             <p className="text-xs text-[hsl(var(--muted-foreground))]">{users.length} {users.length === 1 ? "membro" : "membros"}</p>
           </div>
         </div>
@@ -256,28 +258,28 @@ export default function Team() {
                           <AvatarDisplay
                             name={editor.name}
                             avatarUrl={editor.avatarUrl}
-                            className="h-8 w-8 text-[11px]"
+                            className="h-8 w-8 text-xs"
                             style={{ backgroundColor: color + "22", color, border: `1.5px solid ${color}` }}
                           />
 
                           {/* Name + login */}
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">{editor.name}</p>
-                            <p className="text-[11px] text-[hsl(var(--muted-foreground))] font-mono">@{editor.login}</p>
-                            {(() => { const u = users.find(x => x.id === editor.id); return u?.jobTitle ? <p className="text-[10px] text-[hsl(var(--muted-foreground))]/70 truncate">{u.jobTitle}</p> : null; })()}
+                            <p className="text-xs text-[hsl(var(--muted-foreground))] font-mono">@{editor.login}</p>
+                            {(() => { const u = users.find(x => x.id === editor.id); return u?.jobTitle ? <p className="text-xs text-[hsl(var(--muted-foreground))]/70 truncate">{u.jobTitle}</p> : null; })()}
                           </div>
 
                           {/* Battery */}
                           <Battery score={editor.score} maxScore={maxScore} color={color} />
 
                           {/* Label */}
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 hidden sm:inline"
+                          <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full shrink-0 hidden sm:inline"
                             style={{ backgroundColor: color + "22", color }}>
                             {scoreLabel(editor.score)}
                           </span>
 
                           {/* Task count */}
-                          <span className="text-[11px] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5 shrink-0">
+                          <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5 shrink-0">
                             {editor.taskCount} tarefa{editor.taskCount !== 1 ? "s" : ""}
                           </span>
 
@@ -316,21 +318,21 @@ export default function Team() {
                                 <div className="flex-1 min-w-0">
                                   <p className="text-xs font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{task.title}</p>
                                   {task.jobName && (
-                                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] truncate">{task.jobName}</p>
+                                    <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{task.jobName}</p>
                                   )}
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
                                   {task.dueDate && (() => {
                                     const h = fmtDateHuman(task.dueDate); const n = fmtDate(task.dueDate);
                                     return <span className="flex flex-col items-end gap-0">
-                                      <span className="text-[10px] text-[hsl(var(--muted-foreground))]">{h}</span>
-                                      {h !== n && <span className="text-[10px] text-[hsl(var(--muted-foreground))]/50">{n}</span>}
+                                      <span className="text-xs text-[hsl(var(--muted-foreground))]">{h}</span>
+                                      {h !== n && <span className="text-xs text-[hsl(var(--muted-foreground))]/50">{n}</span>}
                                     </span>;
                                   })()}
-                                  <span className={`text-[10px] font-medium ${PRIORITY_COLOR[task.priority] ?? ""}`}>
+                                  <span className={`text-xs font-medium ${PRIORITY_COLOR[task.priority] ?? ""}`}>
                                     {PRIORITY_LABEL[task.priority] ?? task.priority}
                                   </span>
-                                  <Badge className={`text-[10px] px-1.5 ${STATUS_CLASS[task.status] ?? ""}`}>
+                                  <Badge className={`text-xs px-1.5 ${STATUS_CLASS[task.status] ?? ""}`}>
                                     {STATUS_LABEL[task.status] ?? task.status}
                                   </Badge>
                                 </div>
@@ -364,14 +366,14 @@ export default function Team() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-sm">{u.name}</span>
                         <span className="text-xs text-[hsl(var(--muted-foreground))] font-mono">@{u.login}</span>
-                        {u.id === user?.id && <Badge variant="outline" className="text-[10px] px-1.5">você</Badge>}
+                        {u.id === user?.id && <Badge variant="outline" className="text-xs px-1.5">você</Badge>}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <Badge variant={u.role === "admin" ? "default" : "secondary"} className="text-[10px] px-1.5">
+                        <Badge variant={u.role === "admin" ? "default" : "secondary"} className="text-xs px-1.5">
                           {ROLE_LABEL[u.role] ?? u.role}
                         </Badge>
-                        {u.jobTitle && <span className="text-[10px] text-[hsl(var(--muted-foreground))]">{u.jobTitle}</span>}
-                        {u.status !== "active" && <Badge variant="destructive" className="text-[10px] px-1.5">Inativo</Badge>}
+                        {u.jobTitle && <span className="text-xs text-[hsl(var(--muted-foreground))]">{u.jobTitle}</span>}
+                        {u.status !== "active" && <Badge variant="destructive" className="text-xs px-1.5">Inativo</Badge>}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">

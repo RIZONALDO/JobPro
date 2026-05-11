@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Briefcase, Pencil, Trash2, MoreVertical, MessageSquare, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Undo2, FolderOpen, ExternalLink } from "lucide-react";
+import { Plus, Briefcase, Pencil, Trash2, MoreVertical, MessageSquare, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Undo2, FolderOpen, ExternalLink, PauseCircle, XCircle } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { CoordinatorAvatar, EditorAvatars } from "@/components/ui/avatar-group";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
@@ -127,6 +127,8 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
 
   // ── Revision ──────────────────────────────────────────────────────────────
   const [revisionTask,    setRevisionTask]    = useState<Task | null>(null);
+  const [confirmTask, setConfirmTask] = useState<{ id: number; title: string; action: "cancel" | "pause" } | null>(null);
+  const [sendingConfirm, setSendingConfirm] = useState(false);
   const [revisionComment, setRevisionComment] = useState("");
   const [sendingRevision, setSendingRevision] = useState(false);
   const [expandedRev,     setExpandedRev]     = useState<Set<number>>(new Set());
@@ -139,6 +141,18 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
       .catch(() => toast({ title: "Erro ao carregar projeto", variant: "destructive" }))
       .finally(() => setLoadingProj(false));
   }, [currentId]);
+
+  const doTaskAction = async (taskId: number, action: "cancel" | "pause") => {
+    setSendingConfirm(true);
+    try {
+      await apiPut(`/api/tasks/${taskId}`, { status: action === "cancel" ? "cancelled" : "paused" });
+      toast({ title: action === "cancel" ? "Tarefa cancelada" : "Tarefa pausada" });
+      setConfirmTask(null);
+      loadJob();
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "Erro", variant: "destructive" });
+    } finally { setSendingConfirm(false); }
+  };
 
   const loadJob = useCallback(() => {
     if (!selectedJobId) return;
@@ -331,22 +345,22 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                   <span className="h-6 w-52 rounded bg-[hsl(var(--muted))]/60 animate-pulse block" />
                 ) : (
                   <div className="flex items-center gap-2 flex-wrap min-w-0">
-                    <span className="text-lg font-bold uppercase tracking-[0.1em] shrink-0 text-[hsl(var(--primary))]">
+                    <span className="text-sm font-bold uppercase tracking-[0.1em] shrink-0 text-[hsl(var(--primary))]">
                       Projeto
                     </span>
-                    <span className="text-lg font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">
+                    <span className="text-sm font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">
                       #{project?.number}
                     </span>
-                    <span className="text-lg font-bold truncate" style={{ color }}>
+                    <span className="text-sm font-bold truncate" style={{ color }}>
                       {project?.name}
                     </span>
                     {project?.client && (
-                      <span className="text-lg text-[hsl(var(--muted-foreground))] truncate hidden sm:block shrink-0">
+                      <span className="text-sm text-[hsl(var(--muted-foreground))] truncate hidden sm:block shrink-0">
                         · {project.client}
                       </span>
                     )}
                     {project?.status && (
-                      <Badge className={`text-[10px] px-1.5 shrink-0 ${PROJ_STATUS_CLASS[project.status] ?? ""}`}>
+                      <Badge className={`text-xs px-1.5 shrink-0 ${PROJ_STATUS_CLASS[project.status] ?? ""}`}>
                         {PROJ_STATUS_LABEL[project.status] ?? project.status}
                       </Badge>
                     )}
@@ -420,7 +434,7 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
 
               {/* Sidebar header */}
               <div className="flex items-center justify-between px-4 py-2.5 shrink-0" style={{ borderBottom: `1px solid ${color}20` }}>
-                <span className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                <span className="text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
                   Jobs
                 </span>
                 {isCoord && (
@@ -479,7 +493,7 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                           className="w-full text-left px-3 py-2.5 pl-4"
                         >
                           <div className="flex items-center gap-1.5 mb-1">
-                            <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">
+                            <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">
                               {project.number}.{j.number}
                             </span>
                             <span className={`text-xs font-semibold truncate flex-1 ${isSel ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--foreground))]/80"}`}>
@@ -487,7 +501,7 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Badge className={`text-[9px] px-1 py-0 ${JOB_STATUS_CLASS[j.status] ?? ""}`}>
+                            <Badge className={`text-xs px-1 py-0 ${JOB_STATUS_CLASS[j.status] ?? ""}`}>
                               {JOB_STATUS_LABEL[j.status] ?? j.status}
                             </Badge>
                             {j.taskCount > 0 && (
@@ -498,7 +512,7 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                                     style={{ width: `${pct}%`, backgroundColor: isSel ? color : `${color}99` }}
                                   />
                                 </div>
-                                <span className="text-[9px] text-[hsl(var(--muted-foreground))] shrink-0">{pct}%</span>
+                                <span className="text-xs text-[hsl(var(--muted-foreground))] shrink-0">{pct}%</span>
                               </div>
                             )}
                           </div>
@@ -568,11 +582,11 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                 <>
                   {/* ── Job sub-header ──────────────────────────────── */}
                   <div className="shrink-0 flex items-center gap-3 px-6" style={{ height: 54, borderBottom: `1px solid ${color}20` }}>
-                    <span className="text-[11px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">
+                    <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">
                       {jobDetail.projectNumber}.{jobDetail.jobNumber}
                     </span>
                     <span className="font-semibold truncate flex-1">{jobDetail.name}</span>
-                    <Badge className={`text-[10px] px-1.5 shrink-0 ${JOB_STATUS_CLASS[jobDetail.status] ?? ""}`}>
+                    <Badge className={`text-xs px-1.5 shrink-0 ${JOB_STATUS_CLASS[jobDetail.status] ?? ""}`}>
                       {JOB_STATUS_LABEL[jobDetail.status] ?? jobDetail.status}
                     </Badge>
                     {isCoord && (
@@ -584,10 +598,10 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
 
                   {/* ── Column headers ───────────────────────────────── */}
                   <div className="shrink-0 flex items-center px-6 py-2.5 bg-[hsl(var(--muted))]/25" style={{ borderBottom: `1px solid ${color}20` }}>
-                    <div className="flex-1 text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 pr-3">Tarefa</div>
-                    <div className="w-48 shrink-0 text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Status</div>
-                    <div className="w-32 shrink-0 text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Editor</div>
-                    <div className="w-28 shrink-0 text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Entrega</div>
+                    <div className="flex-1 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 pr-3">Tarefa</div>
+                    <div className="w-48 shrink-0 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Status</div>
+                    <div className="w-32 shrink-0 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Editor</div>
+                    <div className="w-28 shrink-0 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Entrega</div>
                     <div className="w-52 shrink-0" />
                   </div>
 
@@ -611,7 +625,7 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                           {/* Title */}
                           <div className="flex-1 min-w-0 flex flex-col justify-center py-2.5 pr-3">
                             <div className="flex items-baseline gap-2">
-                              <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/40 shrink-0">
+                              <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]/40 shrink-0">
                                 {jobDetail.projectNumber}.{jobDetail.jobNumber}.{t.number}
                               </span>
                               <span className="text-sm font-medium truncate">{t.title}</span>
@@ -622,11 +636,11 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                           </div>
                           {/* Status */}
                           <div className="w-48 shrink-0 flex items-center gap-1.5">
-                            <Badge className={`text-[10px] px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
+                            <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
                               {STATUS_LABEL[t.status] ?? t.status}
                             </Badge>
                             {t.revisionCount > 0 && (
-                              <span className="text-[10px] font-bold text-orange-500">Alt.{t.revisionCount}</span>
+                              <span className="text-xs font-bold text-orange-500">Alt.{t.revisionCount}</span>
                             )}
                             {t.revisions.length > 0 && (
                               <button type="button" onClick={() => toggleRev(t.id)}
@@ -648,7 +662,7 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                               const h = fmtDateHuman(t.dueDate); const n = fmtDate(t.dueDate);
                               return <>
                                 <span className="text-xs text-[hsl(var(--muted-foreground))]">{h}</span>
-                                {h !== n && <span className="text-[10px] text-[hsl(var(--muted-foreground))]/50">{n}</span>}
+                                {h !== n && <span className="text-xs text-[hsl(var(--muted-foreground))]/50">{n}</span>}
                               </>;
                             })()}
                           </div>
@@ -693,6 +707,21 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                                   <DropdownMenuItem onClick={() => delTask(t.id)} className="text-[hsl(var(--destructive))] focus:text-[hsl(var(--destructive))]">
                                     <Trash2 className="h-3.5 w-3.5" />Excluir
                                   </DropdownMenuItem>
+                                  {!["completed","cancelled"].includes(t.status) && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      {t.status !== "paused" && (
+                                        <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "pause" })}
+                                          className="text-purple-700 focus:text-purple-700">
+                                          <PauseCircle className="h-3.5 w-3.5" />Pausar tarefa
+                                        </DropdownMenuItem>
+                                      )}
+                                      <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "cancel" })}
+                                        className="text-red-600 focus:text-red-600">
+                                        <XCircle className="h-3.5 w-3.5" />Cancelar tarefa
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             )}
@@ -703,8 +732,8 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                           <div className="px-6 pb-3 pt-2 space-y-2 border-t border-orange-100 bg-orange-50/40">
                             {t.revisions.map(r => (
                               <div key={r.id}>
-                                <span className="text-[10px] font-bold text-orange-600 mr-2">Alt. #{r.revisionNumber}</span>
-                                <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                                <span className="text-xs font-bold text-orange-600 mr-2">Alt. #{r.revisionNumber}</span>
+                                <span className="text-xs text-[hsl(var(--muted-foreground))]">
                                   {fmtShort(r.createdAt)}
                                 </span>
                                 <p className="text-xs mt-0.5">{r.comment}</p>
@@ -833,7 +862,7 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                         <SelectItem key={e.id} value={String(e.id)}>
                           <span className="flex items-center gap-2">
                             {e.name}
-                            <span className={`text-[10px] font-semibold ${cls}`}>{label}</span>
+                            <span className={`text-xs font-semibold ${cls}`}>{label}</span>
                           </span>
                         </SelectItem>
                       );
@@ -886,6 +915,30 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Cancel / Pause confirm */}
+      <Dialog open={!!confirmTask} onOpenChange={open => !open && setConfirmTask(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{confirmTask?.action === "cancel" ? "Cancelar tarefa" : "Pausar tarefa"}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">
+            {confirmTask?.action === "cancel"
+              ? <>Tem certeza que deseja <strong>cancelar</strong> a tarefa <em>"{confirmTask?.title}"</em>? O editor sera notificado.</>
+              : <>Tem certeza que deseja <strong>pausar</strong> a tarefa <em>"{confirmTask?.title}"</em>? O editor sera notificado.</>}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmTask(null)} disabled={sendingConfirm}>Voltar</Button>
+            <Button
+              className={confirmTask?.action === "cancel" ? "bg-red-600 hover:bg-red-700" : "bg-purple-600 hover:bg-purple-700"}
+              onClick={() => confirmTask && doTaskAction(confirmTask.id, confirmTask.action)}
+              disabled={sendingConfirm}
+            >
+              {sendingConfirm ? "Aguarde..." : confirmTask?.action === "cancel" ? "Confirmar cancelamento" : "Confirmar pausa"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ════════════════════════════════════════════════════════════════════
           Revision dialog

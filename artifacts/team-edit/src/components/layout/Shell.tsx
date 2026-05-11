@@ -4,6 +4,7 @@ import {
   CalendarDays, Menu, Bell, Search, ChevronRight, X, UserCircle,
   CalendarRange, BarChart3, Zap, AtSign, ClipboardList,
   CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2,
+  Paintbrush2, Sun, Moon, ALargeSmall,
 } from "lucide-react";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { BreadcrumbBar } from "./BreadcrumbBar";
@@ -11,6 +12,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { apiFetch, apiPut } from "@/lib/api";
 import {
@@ -18,6 +20,8 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { BrandName } from "@/components/brand-name";
+import { AnimatePresence, motion } from "framer-motion";
+import { panelVariants, drawerVariants, backdropVariants, pageVariants } from "@/lib/motion";
 import { getSocket } from "@/lib/socket";
 import { ChatWidget } from "@/components/layout/ChatWidget";
 
@@ -63,15 +67,13 @@ const COORD_ROLES = ["admin", "supervisor", "coordinator"];
 const ALL_ROLES   = ["admin", "supervisor", "coordinator", "editor"];
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/",         label: "Dashboard",      icon: LayoutDashboard, roles: ALL_ROLES },
-  { href: "/timeline", label: "Linha do tempo", icon: CalendarRange, roles: COORD_ROLES },
-  { href: "/reports",  label: "Relatórios",     icon: BarChart3,    roles: COORD_ROLES },
-  { href: "/feed",     label: "Feed",             icon: Zap,             roles: ALL_ROLES },
-  { href: "/my-tasks", label: "Meu Quadro",      icon: ListTodo,        roles: ALL_ROLES },
-  { href: "/calendar", label: "Meu Calendário",  icon: CalendarDays,    roles: ALL_ROLES },
-  { href: "/tasks",    label: "Tarefas",           icon: ClipboardList,   roles: COORD_ROLES },
+  { href: "/",         label: "Dashboard",      icon: LayoutDashboard, roles: ALL_ROLES   },
+  { href: "/tasks",    label: "Tarefas",         icon: ClipboardList,   roles: ALL_ROLES   },
+  { href: "/calendar", label: "Meu Calendário",  icon: CalendarDays,    roles: ALL_ROLES   },
+  { href: "/feed",     label: "Feed",             icon: Zap,             roles: ALL_ROLES   },
+  { href: "/reports",  label: "Relatórios",       icon: BarChart3,       roles: COORD_ROLES },
   { href: "/team",     label: "Membros",          icon: Users,           roles: COORD_ROLES },
-  { href: "/settings", label: "Configurações",    icon: Settings,        roles: ["admin"] },
+  { href: "/settings", label: "Configurações",    icon: Settings,        roles: ["admin"]   },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -83,11 +85,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  const customRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const { user, logout } = useAuth();
   const { settings } = useSettings();
   const { openTask } = useTaskModal();
+  const { theme, scale, toggleTheme, setScale } = useTheme();
 
   const fetchNotifications = useCallback(() => {
     apiFetch<AppNotification[]>("/api/notifications").then(data => {
@@ -119,9 +124,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   // Fechar dropdown ao clicar fora
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-        setNotifOpen(false);
-      }
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
+      if (customRef.current && !customRef.current.contains(e.target as Node)) setCustomOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -298,7 +302,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 ? <img src={settings.logo_url} alt={settings.company_name} className="h-6 object-contain" />
                 : <>
                     <p className="font-bold text-sm leading-tight text-[hsl(var(--foreground))] truncate"><BrandName name={settings.company_name} /></p>
-                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-tight truncate"><BrandName name={settings.system_name} /></p>
+                    <p className="text-xs text-[hsl(var(--muted-foreground))] leading-tight truncate"><BrandName name={settings.system_name} /></p>
                   </>
               }
             </div>
@@ -346,7 +350,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 ? <img src={settings.logo_url} alt={settings.company_name} className="h-6 object-contain" />
                 : <>
                     <p className="font-bold text-sm leading-tight text-[hsl(var(--foreground))] truncate"><BrandName name={settings.company_name} /></p>
-                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-tight truncate"><BrandName name={settings.system_name} /></p>
+                    <p className="text-xs text-[hsl(var(--muted-foreground))] leading-tight truncate"><BrandName name={settings.system_name} /></p>
                   </>
               }
             </div>
@@ -384,25 +388,28 @@ export function Shell({ children }: { children: React.ReactNode }) {
               >
                 <Bell className="h-4 w-4" />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-0.5 rounded-full bg-orange-500 text-white text-[9px] font-bold flex items-center justify-center leading-none shadow-[0_0_0_1.5px_theme(colors.orange.300)]">
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-0.5 rounded-full bg-orange-500 text-white text-xs font-bold flex items-center justify-center leading-none shadow-[0_0_0_1.5px_theme(colors.orange.300)]">
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
               </button>
 
+              <AnimatePresence>
               {notifOpen && (
-                <div className="absolute right-0 top-full mt-1.5 w-80 rounded-xl border bg-[hsl(var(--card))] shadow-xl z-50 overflow-hidden">
+                <motion.div
+                  variants={panelVariants} initial="initial" animate="animate" exit="exit"
+                  className="absolute right-0 top-full mt-1.5 w-80 rounded-xl border bg-[hsl(var(--card))] shadow-xl z-50 overflow-hidden">
                   {/* Header */}
                   <div className="flex items-center justify-between px-4 py-3 border-b bg-[hsl(var(--muted))]/30">
                     <div className="flex items-center gap-2">
                       <Bell className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
                       <span className="text-sm font-semibold">Notificações</span>
                       {unreadCount > 0 && (
-                        <span className="text-[10px] font-bold bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))] rounded-full px-1.5 py-0.5">{unreadCount} nova{unreadCount !== 1 ? "s" : ""}</span>
+                        <span className="text-xs font-bold bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))] rounded-full px-1.5 py-0.5">{unreadCount} nova{unreadCount !== 1 ? "s" : ""}</span>
                       )}
                     </div>
                     {unreadCount > 0 && (
-                      <button onClick={markAllRead} className="text-[10px] text-[hsl(var(--primary))] hover:underline shrink-0">
+                      <button onClick={markAllRead} className="text-xs text-[hsl(var(--primary))] hover:underline shrink-0">
                         Marcar todas
                       </button>
                     )}
@@ -440,8 +447,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
                           <p className={cn("text-xs leading-snug", !n.read ? "font-semibold text-[hsl(var(--foreground))]" : "font-medium text-[hsl(var(--foreground))]/80")}>
                             {n.title}
                           </p>
-                          <p className="text-[11px] text-[hsl(var(--muted-foreground))] mt-0.5 leading-snug line-clamp-2">{n.message}</p>
-                          <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 mt-1">{timeAgo(n.createdAt)}</p>
+                          <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 leading-snug line-clamp-2">{n.message}</p>
+                          <p className="text-xs text-[hsl(var(--muted-foreground))]/60 mt-1">{timeAgo(n.createdAt)}</p>
                         </div>
                         {!n.read && (
                           <span className="mt-1.5 h-2 w-2 rounded-full bg-[hsl(var(--primary))] shrink-0" />
@@ -449,8 +456,86 @@ export function Shell({ children }: { children: React.ReactNode }) {
                       </div>
                     ))}
                   </div>
-                </div>
+                </motion.div>
               )}
+              </AnimatePresence>
+            </div>
+
+            {/* Customization panel */}
+            <div ref={customRef} className="relative">
+              <button
+                onClick={() => setCustomOpen(v => !v)}
+                title="Personalizar"
+                className={cn(
+                  "h-8 w-8 flex items-center justify-center rounded-lg transition-colors",
+                  customOpen
+                    ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
+                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
+                )}
+              >
+                <Paintbrush2 className="h-4 w-4" />
+              </button>
+
+              <AnimatePresence>
+              {customOpen && (
+                <motion.div variants={panelVariants} initial="initial" animate="animate" exit="exit"
+                  className="absolute right-0 top-full mt-1.5 w-60 rounded-xl border bg-[hsl(var(--card))] shadow-xl z-50 overflow-hidden">
+                  {/* Header */}
+                  <div className="flex items-center gap-2 px-4 py-3 border-b bg-[hsl(var(--muted))]/30">
+                    <Paintbrush2 className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
+                    <span className="text-sm font-semibold">Personalização</span>
+                  </div>
+
+                  {/* Appearance */}
+                  <div className="px-4 py-3 border-b">
+                    <p className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-widest mb-2.5">Aparência</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["light", "dark"] as const).map(t => (
+                        <button
+                          key={t}
+                          onClick={() => t !== theme && toggleTheme()}
+                          className={cn(
+                            "flex items-center justify-center gap-1.5 h-9 rounded-lg border text-xs font-medium transition-all",
+                            theme === t
+                              ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/8 text-[hsl(var(--primary))]"
+                              : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--foreground))]/20 hover:text-[hsl(var(--foreground))]"
+                          )}
+                        >
+                          {t === "light" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+                          {t === "light" ? "Claro" : "Escuro"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Size */}
+                  <div className="px-4 py-3">
+                    <p className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-widest mb-2.5">Tamanho</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { key: "sm" as const, label: "Pequeno", px: 10 },
+                        { key: "md" as const, label: "Normal",  px: 13 },
+                        { key: "lg" as const, label: "Grande",  px: 17 },
+                      ]).map(({ key, label, px }) => (
+                        <button
+                          key={key}
+                          onClick={() => setScale(key)}
+                          className={cn(
+                            "flex flex-col items-center justify-center gap-1 h-14 rounded-lg border text-xs font-medium transition-all",
+                            scale === key
+                              ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/8 text-[hsl(var(--primary))]"
+                              : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--foreground))]/20 hover:text-[hsl(var(--foreground))]"
+                          )}
+                        >
+                          <ALargeSmall style={{ width: px + 2, height: px + 2 }} />
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+              </AnimatePresence>
             </div>
 
             {/* Avatar + dropdown */}
@@ -466,7 +551,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   )}
                   <div className="hidden sm:block text-left">
                     <p className="text-xs font-medium leading-tight text-[hsl(var(--foreground))] max-w-[100px] truncate">{user?.name}</p>
-                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-tight truncate max-w-[100px]">{user?.jobTitle || ({ admin: "Admin", supervisor: "Supervisor", coordinator: "Gestor", editor: "Operacional" } as Record<string,string>)[user?.role ?? ""] || user?.role}</p>
+                    <p className="text-xs text-[hsl(var(--muted-foreground))] leading-tight truncate max-w-[100px]">{user?.jobTitle || ({ admin: "Admin", supervisor: "Supervisor", coordinator: "Gestor", editor: "Operacional" } as Record<string,string>)[user?.role ?? ""] || user?.role}</p>
                   </div>
                   <ChevronRight className="hidden sm:block h-3 w-3 text-[hsl(var(--muted-foreground))] rotate-90" />
                 </button>
@@ -482,7 +567,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   )}
                   <div className="min-w-0">
                     <p className="text-xs font-medium truncate">{user?.name}</p>
-                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] truncate">{user?.jobTitle || ({ admin: "Admin", supervisor: "Supervisor", coordinator: "Gestor", editor: "Operacional" } as Record<string,string>)[user?.role ?? ""] || user?.role}</p>
+                    <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{user?.jobTitle || ({ admin: "Admin", supervisor: "Supervisor", coordinator: "Gestor", editor: "Operacional" } as Record<string,string>)[user?.role ?? ""] || user?.role}</p>
                   </div>
                 </div>
                 <DropdownMenuSeparator />
@@ -503,8 +588,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
         {/* Main content */}
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <BreadcrumbBar />
-          <div className="flex-1 overflow-auto">
-            <div className="p-4 md:p-8 max-w-7xl mx-auto pb-8">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden">
+            <div className="p-4 md:p-6 pb-8">
               {children}
             </div>
           </div>
@@ -514,10 +599,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <ChatWidget />
 
       {/* ── Mobile drawer ────────────────────────────────────────── */}
+      <AnimatePresence>
       {mobileOpen && (
         <div className="md:hidden fixed inset-0 z-40" onClick={() => setMobileOpen(false)}>
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-          <div
+          <motion.div
+            variants={backdropVariants} initial="initial" animate="animate" exit="exit"
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+          />
+          <motion.div
+            variants={drawerVariants} initial="initial" animate="animate" exit="exit"
             className="absolute left-0 top-0 h-full w-72 bg-[hsl(var(--card))] border-r flex flex-col shadow-xl"
             onClick={e => e.stopPropagation()}
           >
@@ -532,7 +622,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               )}
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-sm leading-tight truncate"><BrandName name={settings.company_name} /></p>
-                <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-tight truncate"><BrandName name={settings.system_name} /></p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))] leading-tight truncate"><BrandName name={settings.system_name} /></p>
               </div>
               <button
                 onClick={() => setMobileOpen(false)}
@@ -556,9 +646,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 <LogOut className="h-4 w-4 shrink-0" /> Sair
               </button>
             </div>
-          </div>
+          </motion.div>
         </div>
       )}
+      </AnimatePresence>
     </div>
   );
 }

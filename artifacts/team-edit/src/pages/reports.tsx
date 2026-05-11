@@ -1,249 +1,301 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { fmtDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Search, TrendingUp, Users, Tag } from "lucide-react";
+import { Search, Printer, X } from "lucide-react";
 import { usePageTitle } from "@/lib/use-page-title";
+import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { format, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
+
+interface Person { id: number; name: string; avatarUrl: string | null }
 
 interface ReportTask {
-  task: {
-    id: number; title: string; priority: string; complexity: string;
-    updatedAt: string; revisionCount: number; client: string | null; color: string;
-  };
-  assignee: { id: number; name: string; avatarUrl: string | null } | null;
-  revisionCount: number;
+  id: number; title: string; status: string; priority: string;
+  complexity: string; client: string | null; color: string;
+  revisionCount: number; dueDate: string | null;
+  createdAt: string; updatedAt: string;
+  assignee: Person | null; coordinator: Person | null;
 }
-interface ReportSummary {
-  totalDelivered: number;
-  byClient: { client: string; count: number }[];
-  byEditor: { userId: number; name: string; count: number }[];
-}
-interface ReportData { data: ReportTask[]; summary: ReportSummary; }
 
+const STATUS_ORDER = ["pending", "in_progress", "in_revision", "review", "completed"];
 const PRIORITY_LABEL: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta" };
 const COMPLEXITY_LABEL: Record<string, string> = { low: "Simples", medium: "Moderada", high: "Complexa" };
 const PRIORITY_CLS: Record<string, string> = {
   low: "text-green-600", medium: "text-amber-600", high: "text-red-600",
 };
-
 const COORD_ROLES = ["admin", "supervisor", "coordinator"];
+
+function fmtShort(iso: string) {
+  try { return format(parseISO(iso), "dd/MM/yy", { locale: ptBR }); } catch { return iso; }
+}
+
+function Select({ value, onChange, children }: {
+  value: string; onChange: (v: string) => void; children: React.ReactNode;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      className="h-8 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 text-xs text-[hsl(var(--foreground))] outline-none focus:ring-1 focus:ring-[hsl(var(--primary))] min-w-[140px]"
+    >
+      {children}
+    </select>
+  );
+}
 
 export default function Reports() {
   usePageTitle("Relatórios");
   const { toast } = useToast();
-  const { user } = useAuth();
-  const isCoord = COORD_ROLES.includes(user?.role ?? "");
-  const today = new Date();
-  const [from, setFrom] = useState(
-    new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0]
-  );
-  const [to, setTo] = useState(today.toISOString().split("T")[0]);
-  const [search, setSearch] = useState("");
-  const [data, setData] = useState<ReportData | null>(null);
+  const { user }  = useAuth();
+  const isCoord   = COORD_ROLES.includes(user?.role ?? "");
+  const today     = new Date();
+
+  const [from, setFrom]   = useState(new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0]);
+  const [to, setTo]       = useState(today.toISOString().split("T")[0]);
+  const [tasks, setTasks] = useState<ReportTask[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Filters
+  const [search,      setSearch]      = useState("");
+  const [fStatus,     setFStatus]     = useState("all");
+  const [fClient,     setFClient]     = useState("all");
+  const [fEditor,     setFEditor]     = useState("all");
+  const [fCoord,      setFCoord]      = useState("all");
+  const [fPriority,   setFPriority]   = useState("all");
+  const [fComplexity, setFComplexity] = useState("all");
 
   const load = () => {
     if (!isCoord) return;
     setLoading(true);
-    apiFetch<ReportData>(`/api/reports?from=${from}&to=${to}`)
-      .then(setData)
+    apiFetch<{ tasks: ReportTask[] }>(`/api/reports?from=${from}&to=${to}`)
+      .then(d => setTasks(d.tasks))
       .catch(() => toast({ title: "Erro ao carregar relatório", variant: "destructive" }))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, [isCoord]);
 
-  const filtered = data?.data?.filter(t => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      t.task.title.toLowerCase().includes(q) ||
-      (t.task.client?.toLowerCase().includes(q) ?? false) ||
-      (t.assignee?.name.toLowerCase().includes(q) ?? false)
-    );
-  }) ?? [];
+  // Derive filter options from loaded data
+  const clients = useMemo(() => [...new Set(tasks.map(t => t.client).filter(Boolean) as string[])].sort(), [tasks]);
+  const editors  = useMemo(() => {
+    const map = new Map<number, string>();
+    tasks.forEach(t => { if (t.assignee) map.set(t.assignee.id, t.assignee.name); });
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [tasks]);
+  const coords = useMemo(() => {
+    const map = new Map<number, string>();
+    tasks.forEach(t => { if (t.coordinator) map.set(t.coordinator.id, t.coordinator.name); });
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [tasks]);
 
-  if (!isCoord) return <div className="text-[hsl(var(--muted-foreground))] text-sm py-8 text-center">Acesso restrito a coordenadores.</div>;
+  const filtered = useMemo(() => tasks.filter(t => {
+    if (fStatus     !== "all" && t.status                    !== fStatus)               return false;
+    if (fClient     !== "all" && (t.client ?? "")            !== fClient)               return false;
+    if (fEditor     !== "all" && String(t.assignee?.id ?? "") !== fEditor)              return false;
+    if (fCoord      !== "all" && String(t.coordinator?.id ?? "") !== fCoord)            return false;
+    if (fPriority   !== "all" && t.priority                  !== fPriority)             return false;
+    if (fComplexity !== "all" && t.complexity                !== fComplexity)           return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!t.title.toLowerCase().includes(q)
+        && !(t.client?.toLowerCase().includes(q) ?? false)
+        && !(t.assignee?.name.toLowerCase().includes(q) ?? false)
+        && !(t.coordinator?.name.toLowerCase().includes(q) ?? false)) return false;
+    }
+    return true;
+  }), [tasks, fStatus, fClient, fEditor, fCoord, fPriority, fComplexity, search]);
+
+  const hasFilters = fStatus !== "all" || fClient !== "all" || fEditor !== "all"
+    || fCoord !== "all" || fPriority !== "all" || fComplexity !== "all" || search;
+
+  const clearFilters = () => {
+    setFStatus("all"); setFClient("all"); setFEditor("all");
+    setFCoord("all"); setFPriority("all"); setFComplexity("all"); setSearch("");
+  };
+
+  // Summary counts from filtered set
+  const total     = filtered.length;
+  const completed = filtered.filter(t => t.status === "completed").length;
+  const inRev     = filtered.filter(t => t.status === "in_revision").length;
+  const revTotal  = filtered.reduce((s, t) => s + t.revisionCount, 0);
+
+  if (!isCoord)
+    return <div className="text-[hsl(var(--muted-foreground))] text-sm py-8 text-center">Acesso restrito a coordenadores.</div>;
 
   return (
-    <div className="space-y-4">
+    <>
+      <style>{`@media print { .no-print { display: none !important; } body { background: white !important; } }`}</style>
 
-      {/* Filtros */}
-      <div className="rounded-xl border bg-[hsl(var(--card))] card-float p-4 flex flex-wrap items-end gap-4">
-        <div className="space-y-1.5">
-          <Label className="text-xs text-[hsl(var(--muted-foreground))]">De</Label>
-          <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-40 h-8 text-sm" />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs text-[hsl(var(--muted-foreground))]">Até</Label>
-          <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-40 h-8 text-sm" />
-        </div>
-        <Button size="sm" onClick={load} disabled={loading}>
-          {loading ? "Buscando..." : "Aplicar filtro"}
-        </Button>
-        <div className="flex items-center gap-2 rounded-lg border bg-[hsl(var(--muted))]/40 px-2.5 h-8 w-52 ml-auto">
-          <Search className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] shrink-0" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar tarefa, cliente, editor..."
-            className="flex-1 bg-transparent text-xs outline-none placeholder:text-[hsl(var(--muted-foreground))]"
-          />
-        </div>
-      </div>
+      <div className="space-y-3">
 
-      {/* Summary cards */}
-      {data && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-
-          {/* Total */}
-          <div className="rounded-xl border bg-[hsl(var(--card))] card-float p-5 flex items-center gap-4">
-            <div className="h-11 w-11 rounded-2xl bg-green-500/10 flex items-center justify-center shrink-0">
-              <TrendingUp className="h-5 w-5 text-green-500" />
-            </div>
-            <div>
-              <p className="text-3xl font-bold tracking-tight text-green-500">{data.summary.totalDelivered}</p>
-              <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">Tarefas entregues no período</p>
-            </div>
+        {/* ── Period + Print ── */}
+        <div className="no-print flex flex-wrap items-end gap-3 rounded-xl border bg-[hsl(var(--card))] card-float p-4">
+          <div className="space-y-1">
+            <Label className="text-xs text-[hsl(var(--muted-foreground))]">De</Label>
+            <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-36 h-8 text-xs" />
           </div>
-
-          {/* Por cliente */}
-          <div className="rounded-xl border bg-[hsl(var(--card))] card-float p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Tag className="h-4 w-4 text-[hsl(var(--primary))]" />
-              <p className="text-sm font-semibold">Por cliente</p>
-            </div>
-            <div className="space-y-2">
-              {data.summary.byClient.length === 0 ? (
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">Nenhum dado</p>
-              ) : data.summary.byClient.slice(0, 5).map(p => (
-                <div key={p.client} className="flex items-center gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between text-[11px] mb-0.5">
-                      <span className="truncate text-[hsl(var(--foreground))]">{p.client}</span>
-                      <span className="font-semibold shrink-0 ml-2">{p.count}</span>
-                    </div>
-                    <div className="h-1 rounded-full bg-[hsl(var(--muted))]">
-                      <div
-                        className="h-full rounded-full bg-[hsl(var(--primary))]"
-                        style={{ width: `${Math.round(p.count / data.summary.totalDelivered * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-[hsl(var(--muted-foreground))]">Até</Label>
+            <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-36 h-8 text-xs" />
           </div>
-
-          {/* Por editor */}
-          <div className="rounded-xl border bg-[hsl(var(--card))] card-float p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Users className="h-4 w-4 text-[hsl(var(--primary))]" />
-              <p className="text-sm font-semibold">Por editor</p>
-            </div>
-            <div className="space-y-2">
-              {data.summary.byEditor.length === 0 ? (
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">Nenhum dado</p>
-              ) : data.summary.byEditor.slice(0, 5).map(e => (
-                <div key={e.userId} className="flex items-center gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between text-[11px] mb-0.5">
-                      <span className="truncate text-[hsl(var(--foreground))]">{e.name}</span>
-                      <span className="font-semibold shrink-0 ml-2">{e.count}</span>
-                    </div>
-                    <div className="h-1 rounded-full bg-[hsl(var(--muted))]">
-                      <div
-                        className="h-full rounded-full bg-violet-500"
-                        style={{ width: `${Math.round(e.count / data.summary.totalDelivered * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Table */}
-      <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold">Tarefas entregues</span>
-            <span className="text-[11px] bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] rounded-full px-2 py-0.5">
-              {filtered.length}
-            </span>
+          <Button size="sm" onClick={load} disabled={loading}>{loading ? "Buscando…" : "Buscar"}</Button>
+          <div className="ml-auto flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => window.print()} className="flex items-center gap-1.5 no-print">
+              <Printer className="h-3.5 w-3.5" /> Imprimir
+            </Button>
           </div>
         </div>
 
-        {loading ? (
-          <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">Carregando...</div>
-        ) : filtered.length === 0 ? (
-          <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">
-            Nenhuma tarefa encontrada no período.
+        {/* ── Filters ── */}
+        <div className="no-print flex flex-wrap items-center gap-2 rounded-xl border bg-[hsl(var(--card))] card-float p-3">
+          {/* Search */}
+          <div className="flex items-center gap-2 rounded-md border bg-[hsl(var(--muted))]/30 px-2.5 h-8 w-52">
+            <Search className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] shrink-0" />
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar…"
+              className="flex-1 bg-transparent text-xs outline-none placeholder:text-[hsl(var(--muted-foreground))]" />
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-[hsl(var(--muted))]/10">
-                  {["Tarefa", "Cliente", "Editor", "Entregue em", "Prioridade", "Complexidade", "Revisões"].map(h => (
-                    <th key={h} className="text-left px-4 py-2.5 text-xs font-medium text-[hsl(var(--muted-foreground))] whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {filtered.map(t => (
-                  <tr key={t.task.id} className="hover:bg-[hsl(var(--muted))]/20 transition-colors">
-                    <td className="px-4 py-3 font-medium max-w-[200px]">
-                      <p className="truncate">{t.task.title}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      {t.task.client ? (
-                        <div style={{ borderLeft: `3px solid ${t.task.color}88` }} className="pl-2.5">
-                          <p className="text-xs font-medium truncate max-w-[120px]">{t.task.client}</p>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-[hsl(var(--muted-foreground))]">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-[hsl(var(--muted-foreground))]">
-                      {t.assignee?.name ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">
-                      {fmtDate(t.task.updatedAt)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs font-medium ${PRIORITY_CLS[t.task.priority] ?? ""}`}>
-                        {PRIORITY_LABEL[t.task.priority] ?? t.task.priority}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-[hsl(var(--muted-foreground))]">
-                      {COMPLEXITY_LABEL[t.task.complexity] ?? t.task.complexity}
-                    </td>
-                    <td className="px-4 py-3">
-                      {t.revisionCount > 0 ? (
-                        <Badge className="bg-orange-100 text-orange-700 border border-orange-200 text-[10px] px-1.5">
-                          {t.revisionCount}×
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-[hsl(var(--muted-foreground))]">—</span>
-                      )}
-                    </td>
+
+          <Select value={fStatus} onChange={setFStatus}>
+            <option value="all">Todos os status</option>
+            {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_LABEL[s] ?? s}</option>)}
+          </Select>
+
+          <Select value={fClient} onChange={setFClient}>
+            <option value="all">Todos os clientes</option>
+            {clients.map(c => <option key={c} value={c}>{c}</option>)}
+          </Select>
+
+          <Select value={fEditor} onChange={setFEditor}>
+            <option value="all">Todos os editores</option>
+            {editors.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
+          </Select>
+
+          <Select value={fCoord} onChange={setFCoord}>
+            <option value="all">Todos os coordenadores</option>
+            {coords.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
+          </Select>
+
+          <Select value={fPriority} onChange={setFPriority}>
+            <option value="all">Todas as prioridades</option>
+            <option value="high">Alta</option>
+            <option value="medium">Média</option>
+            <option value="low">Baixa</option>
+          </Select>
+
+          <Select value={fComplexity} onChange={setFComplexity}>
+            <option value="all">Todas as complexidades</option>
+            <option value="high">Complexa</option>
+            <option value="medium">Moderada</option>
+            <option value="low">Simples</option>
+          </Select>
+
+          {hasFilters && (
+            <button onClick={clearFilters}
+              className="flex items-center gap-1 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors ml-1">
+              <X className="h-3 w-3" /> Limpar
+            </button>
+          )}
+        </div>
+
+        {/* ── Summary ── */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 print:grid-cols-4">
+          {[
+            { label: "Total no período", value: total,     cls: "" },
+            { label: "Concluídas",       value: completed, cls: "text-green-600" },
+            { label: "Em revisão",       value: inRev,     cls: "text-orange-500" },
+            { label: "Revisões totais",  value: revTotal,  cls: "text-[hsl(var(--primary))]" },
+          ].map(k => (
+            <div key={k.label} className="rounded-xl border bg-[hsl(var(--card))] card-float p-4">
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">{k.label}</p>
+              <p className={`text-xl font-semibold tabular-nums mt-0.5 ${k.cls || "text-[hsl(var(--foreground))]"}`}>{k.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Print header ── */}
+        <div className="hidden print:block mb-2">
+          <h1 className="text-[28px] font-semibold">Relatório de tarefas</h1>
+          <p className="text-sm text-gray-500">Período: {from} → {to} · {total} tarefa{total !== 1 ? "s" : ""}</p>
+          <hr className="mt-2 mb-4" />
+        </div>
+
+        {/* ── Table ── */}
+        <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
+          <div className="no-print flex items-center justify-between px-5 py-3 border-b bg-[hsl(var(--muted))]/20">
+            <span className="text-sm font-semibold">Tarefas</span>
+            <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{total}</span>
+          </div>
+
+          {loading ? (
+            <p className="py-16 text-center text-sm text-[hsl(var(--muted-foreground))]">Carregando…</p>
+          ) : total === 0 ? (
+            <p className="py-16 text-center text-sm text-[hsl(var(--muted-foreground))]">Nenhuma tarefa encontrada.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-[hsl(var(--muted))]/10">
+                    {["#", "Tarefa", "Cliente", "Editor", "Coordenador", "Status", "Prioridade", "Complexidade", "Revisões", "Criada em", "Atualizada em"].map(h => (
+                      <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide whitespace-nowrap">
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody className="divide-y">
+                  {filtered.map((t, idx) => (
+                    <tr key={t.id} className="hover:bg-[hsl(var(--muted))]/10 transition-colors">
+                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] tabular-nums">{idx + 1}</td>
+                      <td className="px-4 py-2.5 max-w-[200px]">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color ?? "#6366f1" }} />
+                          <span className="text-xs font-medium truncate">{t.title}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] max-w-[130px]">
+                        <span className="truncate block">{t.client ?? "—"}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">
+                        {t.assignee?.name ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">
+                        {t.coordinator?.name ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <Badge className={`text-xs px-1.5 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
+                          {STATUS_LABEL[t.status] ?? t.status}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className={`text-xs font-medium ${PRIORITY_CLS[t.priority] ?? ""}`}>
+                          {PRIORITY_LABEL[t.priority] ?? t.priority}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">
+                        {COMPLEXITY_LABEL[t.complexity] ?? t.complexity}
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        {t.revisionCount > 0
+                          ? <Badge className="bg-orange-100 text-orange-700 border border-orange-200 text-xs px-1.5">{t.revisionCount}×</Badge>
+                          : <span className="text-xs text-[hsl(var(--muted-foreground))]">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">{fmtShort(t.createdAt)}</td>
+                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">{fmtShort(t.updatedAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
       </div>
-    </div>
+    </>
   );
 }

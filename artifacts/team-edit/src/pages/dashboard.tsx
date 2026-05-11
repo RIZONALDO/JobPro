@@ -1,3 +1,5 @@
+import { motion } from "framer-motion";
+import { staggerContainer, staggerItem, staggerRow } from "@/lib/motion";
 import { useEffect, useState, useCallback } from "react";
 import { useRealtime } from "@/hooks/use-realtime";
 import { fmtDate, fmtDateHuman, fmtShort } from "@/lib/utils";
@@ -5,12 +7,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock } from "lucide-react";
+import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, BarChart2 } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { StatusBars } from "@/components/charts/StatusBars";
 import { WaffleChart } from "@/components/charts/WaffleChart";
 import { useSize } from "@/hooks/use-size";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { usePageTitle } from "@/lib/use-page-title";
 
@@ -57,6 +59,14 @@ interface ActivityEvent {
   toStatus: string;
   changedByName: string | null;
   createdAt: string;
+}
+
+interface AllTask {
+  id: number;
+  status: string;
+  client: string | null;
+  priority: string;
+  complexity: string;
 }
 
 interface DeadlineBucket { key: string; label: string; color: string; count: number; }
@@ -122,17 +132,145 @@ function Battery({ score, maxScore, color }: { score: number; maxScore: number; 
   );
 }
 
+// ── Production Overview Card ──────────────────────────────────────────────────
+
+const PROD_STATUS = [
+  { key: "pending",     label: "Pendente",    color: "#94a3b8" },
+  { key: "in_progress", label: "Em edição",   color: "#3b82f6" },
+  { key: "in_revision", label: "Em revisão",  color: "#f97316" },
+  { key: "review",      label: "Aprovar",     color: "#f59e0b" },
+  { key: "completed",   label: "Concluídas",  color: "#22c55e" },
+  { key: "paused",      label: "Pausadas",    color: "#a855f7" },
+  { key: "cancelled",   label: "Canceladas",  color: "#ef4444" },
+];
+
+function DonutRing({ segs }: { segs: Array<{ color: string; pct: number }> }) {
+  const R = 38; const cx = 50; const cy = 50; const SW = 16;
+  const nonZero = segs.filter(s => s.pct > 0);
+  if (nonZero.length === 0)
+    return <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%" }}><circle cx={cx} cy={cy} r={R} fill="none" stroke="hsl(var(--muted))" strokeWidth={SW} /></svg>;
+  if (nonZero.length === 1)
+    return <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%" }}><circle cx={cx} cy={cy} r={R} fill="none" stroke={nonZero[0].color} strokeWidth={SW} /></svg>;
+  let angle = -90;
+  return (
+    <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%" }}>
+      {segs.map((seg, i) => {
+        if (seg.pct === 0) return null;
+        const sweep = seg.pct * 360;
+        const startRad = (angle * Math.PI) / 180;
+        angle += sweep;
+        const endRad = ((angle - 0.01) * Math.PI) / 180;
+        const x1 = cx + R * Math.cos(startRad); const y1 = cy + R * Math.sin(startRad);
+        const x2 = cx + R * Math.cos(endRad);   const y2 = cy + R * Math.sin(endRad);
+        return (
+          <path key={i}
+            d={`M${x1.toFixed(2)},${y1.toFixed(2)} A${R},${R} 0 ${sweep > 180 ? 1 : 0},1 ${x2.toFixed(2)},${y2.toFixed(2)}`}
+            fill="none" stroke={seg.color} strokeWidth={SW} strokeLinecap="butt" />
+        );
+      })}
+    </svg>
+  );
+}
+
+function ProductionCard({ allTasks, onOpenTask }: { allTasks: AllTask[]; onOpenTask: (id: number) => void }) {
+  const total  = allTasks.length;
+  const active = allTasks.filter(t => !["completed", "cancelled", "paused"].includes(t.status)).length;
+
+  const counts = PROD_STATUS.map(s => ({
+    ...s,
+    count: allTasks.filter(t => t.status === s.key).length,
+  }));
+  const segs = counts.map(c => ({ color: c.color, pct: total > 0 ? c.count / total : 0 }));
+
+  const completedCount = counts.find(c => c.key === "completed")?.count ?? 0;
+  const revisionCount  = counts.find(c => c.key === "in_revision")?.count ?? 0;
+  const reviewCount    = counts.find(c => c.key === "review")?.count ?? 0;
+  const completionPct  = total > 0 ? Math.round(completedCount / total * 100) : 0;
+
+  const clientMap = new Map<string, number>();
+  allTasks.filter(t => !["completed", "cancelled"].includes(t.status) && t.client).forEach(t => {
+    const k = t.client!;
+    clientMap.set(k, (clientMap.get(k) ?? 0) + 1);
+  });
+  const topClients = [...clientMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const maxClientCount = topClients[0]?.[1] ?? 1;
+
+  return (
+    <div className="md:col-span-2 rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
+      <div className="flex items-center gap-2 px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <BarChart2 className="h-4 w-4 text-[hsl(var(--primary))]" />
+        <span className="font-semibold text-sm">Visão geral da produção</span>
+        <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">
+          {total} tarefa{total !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      <div className="flex flex-1 min-h-0 divide-x">
+        {/* Donut + legend */}
+        <div className="flex items-center gap-5 px-5 py-4 flex-1 min-w-0">
+          <div className="relative shrink-0" style={{ width: 96, height: 96 }}>
+            <DonutRing segs={segs} />
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-lg font-bold leading-none tabular-nums">{active}</span>
+              <span className="text-xs text-[hsl(var(--muted-foreground))] leading-tight">ativas</span>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 flex-1 min-w-0">
+            {counts.map(s => (
+              <div key={s.key} className="flex items-center gap-2 min-w-0">
+                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                <span className="text-xs text-[hsl(var(--muted-foreground))] flex-1 truncate">{s.label}</span>
+                <span className="text-xs font-bold tabular-nums ml-auto" style={{ color: s.count > 0 ? s.color : "hsl(var(--muted-foreground))" }}>
+                  {s.count}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Top clients */}
+        {topClients.length > 0 && (
+          <div className="shrink-0 w-[170px] px-4 py-4 flex flex-col gap-1">
+            <p className="text-xs uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2">Clientes com tarefas ativas</p>
+            {topClients.map(([client, count]) => (
+              <div key={client} className="flex items-center gap-2 min-w-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate">{client}</p>
+                  <div className="mt-0.5 h-1.5 rounded-full bg-[hsl(var(--muted))]">
+                    <div className="h-1.5 rounded-full bg-[hsl(var(--primary))]/50 transition-all"
+                      style={{ width: `${Math.round(count / maxClientCount * 100)}%` }} />
+                  </div>
+                </div>
+                <span className="text-xs font-bold tabular-nums shrink-0 text-[hsl(var(--muted-foreground))]">{count}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="px-5 py-2 border-t bg-[hsl(var(--muted))]/10 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-[hsl(var(--muted-foreground))] shrink-0">
+        <span><strong className="text-green-600">{completionPct}%</strong> concluídas</span>
+        {revisionCount > 0 && <span><strong className="text-orange-500">{revisionCount}</strong> em revisão</span>}
+        {reviewCount > 0 && <span><strong className="text-amber-500">{reviewCount}</strong> aguardando aprovação</span>}
+        <Link href="/tasks?tab=timeline" className="ml-auto text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
+          Ver timeline <ArrowRight className="h-3 w-3" />
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
   const sorted = [...workload].sort((a, b) => b.score - a.score);
   const maxScore = Math.max(...sorted.map(e => e.score), 1);
 
   return (
-    <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
+    <div className="rounded-xl border bg-[hsl(var(--card))] card-float">
       <div className="flex items-center justify-between px-4 py-3.5 border-b bg-[hsl(var(--muted))]/30">
         <div className="flex items-center gap-2">
           <Users className="h-4 w-4 text-[hsl(var(--primary))]" />
           <span className="font-semibold text-sm">Carga dos editores</span>
-          <span className="text-[11px] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{workload.length}</span>
+          <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{workload.length}</span>
         </div>
         <Link href="/team" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
           Ver todos <ArrowRight className="h-3 w-3" />
@@ -142,7 +280,7 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
       {workload.length === 0 ? (
         <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhum editor cadastrado.</p>
       ) : (
-        <div className="overflow-y-auto divide-y" style={{ maxHeight: 4 * 52 }}>
+        <div className="divide-y">
           {sorted.map(editor => {
             const color = scoreColor(editor.score);
             const firstName = editor.name.split(" ")[0];
@@ -151,18 +289,18 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
                 <AvatarDisplay
                   name={editor.name}
                   avatarUrl={editor.avatarUrl}
-                  className="h-7 w-7 text-[10px]"
+                  className="h-7 w-7 text-xs"
                   style={{ backgroundColor: color + "22", color, border: `1.5px solid ${color}` }}
                 />
                 <span className="text-xs font-medium w-16 shrink-0 truncate">{firstName}</span>
                 <div className="flex-1 flex items-center">
                   <Battery score={editor.score} maxScore={maxScore} color={color} />
                 </div>
-                <span className="text-[10px] font-semibold shrink-0 px-1.5 py-0.5 rounded-full"
+                <span className="text-xs font-semibold shrink-0 px-1.5 py-0.5 rounded-full"
                   style={{ backgroundColor: color + "22", color }}>
                   {scoreLabel(editor.score)}
                 </span>
-                <div className="pointer-events-none absolute left-4 top-full mt-1 z-20 hidden group-hover:block
+                <div className="pointer-events-none absolute left-4 top-full mt-1 z-[9999] hidden group-hover:block
                   rounded-lg border bg-[hsl(var(--card))] shadow-lg p-3 text-xs space-y-1.5 min-w-[170px]">
                   <p className="font-semibold">{editor.name}</p>
                   <p className="text-[hsl(var(--muted-foreground))]">{editor.taskCount} tarefa(s) ativas</p>
@@ -206,17 +344,17 @@ function ActionCard({ label, actionCount, total, rows }: {
   return (
     <div className="rounded-2xl border bg-[hsl(var(--card))] card-float px-4 pt-4 pb-2 flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
       <div className="flex items-center justify-between gap-2 shrink-0">
-        <p className="text-[11px] font-semibold text-[hsl(var(--foreground))]/80 truncate">{label}</p>
+        <p className="text-xs font-semibold text-[hsl(var(--foreground))]/80 truncate">{label}</p>
         {actionCount > 0
-          ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full leading-none shrink-0 bg-amber-500/10 text-amber-600">Atenção</span>
-          : <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full leading-none shrink-0 bg-green-500/10 text-green-600">Em dia</span>
+          ? <span className="text-xs font-semibold px-2 py-0.5 rounded-full leading-none shrink-0 bg-amber-500/10 text-amber-600">Atenção</span>
+          : <span className="text-xs font-semibold px-2 py-0.5 rounded-full leading-none shrink-0 bg-green-500/10 text-green-600">Em dia</span>
         }
       </div>
       <div className="flex items-baseline gap-1.5 mt-1 shrink-0">
         <span className={`text-2xl font-bold tabular-nums leading-none ${actionCount > 0 ? "text-amber-500" : "text-green-500"}`}>
           {actionCount}
         </span>
-        <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+        <span className="text-xs text-[hsl(var(--muted-foreground))]">
           {actionCount === 0 ? "tudo em dia" : `de ${total}`}
         </span>
       </div>
@@ -238,8 +376,8 @@ function DeadlineCard({ label, sub, subCls, pill, days, color }: {
   return (
     <div className="rounded-2xl border bg-[hsl(var(--card))] card-float px-4 pt-4 pb-3 flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
       <div className="flex items-center justify-between gap-2 shrink-0">
-        <p className="text-[11px] font-semibold text-[hsl(var(--foreground))]/80 truncate">{label}</p>
-        {pill && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full leading-none shrink-0 ${pill.cls}`}>{pill.text}</span>}
+        <p className="text-xs font-semibold text-[hsl(var(--foreground))]/80 truncate">{label}</p>
+        {pill && <span className={`text-xs font-semibold px-2 py-0.5 rounded-full leading-none shrink-0 ${pill.cls}`}>{pill.text}</span>}
       </div>
       <div ref={ref} className="flex-1 min-h-0 -mx-2 mt-1">
         <StatusBars data={data} width={w} height={h} />
@@ -275,17 +413,17 @@ function TaskDeadlineCard({ data, onOpenJob }: {
       <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <Clock className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
-          <p className="text-[11px] font-semibold text-[hsl(var(--foreground))]/80">Prazos das tarefas</p>
+          <p className="text-xs font-semibold text-[hsl(var(--foreground))]/80">Prazos das tarefas</p>
           {data && (
-            <span className="text-[9px] text-[hsl(var(--muted-foreground))]">{data.total} com prazo</span>
+            <span className="text-xs text-[hsl(var(--muted-foreground))]">{data.total} com prazo</span>
           )}
         </div>
         {!data ? null : hasUrgent ? (
-          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-500">
+          <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-500">
             {data.urgentCount} urgente{data.urgentCount > 1 ? "s" : ""}
           </span>
         ) : (
-          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600">Em dia</span>
+          <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600">Em dia</span>
         )}
       </div>
 
@@ -293,9 +431,9 @@ function TaskDeadlineCard({ data, onOpenJob }: {
         {/* Bar chart — urgency buckets */}
         <div ref={ref} className="flex-1 min-w-0 min-h-0">
           {!data ? (
-            <p className="text-[10px] text-[hsl(var(--muted-foreground))] text-center pt-8">Carregando…</p>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] text-center pt-8">Carregando…</p>
           ) : data.total === 0 ? (
-            <p className="text-[10px] text-[hsl(var(--muted-foreground))] text-center pt-8">Nenhuma tarefa com prazo definido.</p>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] text-center pt-8">Nenhuma tarefa com prazo definido.</p>
           ) : (
             <StatusBars data={barData} width={w} height={h} />
           )}
@@ -319,10 +457,10 @@ function TaskDeadlineCard({ data, onOpenJob }: {
                     style={{ backgroundColor: BUCKET_COLOR[t.bucket] ?? "#94a3b8" }}
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-medium truncate leading-tight group-hover:text-[hsl(var(--primary))] transition-colors">
+                    <p className="text-xs font-medium truncate leading-tight group-hover:text-[hsl(var(--primary))] transition-colors">
                       {t.title}
                     </p>
-                    <p className="text-[9px] text-[hsl(var(--muted-foreground))] truncate">
+                    <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
                       {t.assigneeName ? t.assigneeName.split(" ")[0] : (t.client ?? "")}
                     </p>
                   </div>
@@ -364,8 +502,8 @@ function WaffleCard({ tasks }: { tasks: Task[] }) {
   return (
     <div className="col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float px-4 pt-4 pb-3 flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
       <div className="flex items-center justify-between shrink-0">
-        <p className="text-[11px] font-semibold text-[hsl(var(--foreground))]/80">Distribuição de tarefas</p>
-        <span className="text-[10px] text-[hsl(var(--muted-foreground))]">{total} tarefas · 1 quadrado = 1%</span>
+        <p className="text-xs font-semibold text-[hsl(var(--foreground))]/80">Distribuição de tarefas</p>
+        <span className="text-xs text-[hsl(var(--muted-foreground))]">{total} tarefas · 1 quadrado = 1%</span>
       </div>
       <div className="flex-1 min-h-0 flex items-center gap-4 mt-1.5">
         <div ref={ref} className="flex-1 min-w-0 min-h-0">
@@ -375,8 +513,8 @@ function WaffleCard({ tasks }: { tasks: Task[] }) {
           {counts.map(s => (
             <div key={s.key} className="flex items-center gap-1.5">
               <div className="w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ backgroundColor: s.color }} />
-              <span className="text-[9px] text-[hsl(var(--muted-foreground))] w-16 truncate">{s.label}</span>
-              <span className="text-[9px] font-bold tabular-nums" style={{ color: s.color }}>{s.count}</span>
+              <span className="text-xs text-[hsl(var(--muted-foreground))] w-16 truncate">{s.label}</span>
+              <span className="text-xs font-bold tabular-nums" style={{ color: s.color }}>{s.count}</span>
             </div>
           ))}
         </div>
@@ -389,11 +527,13 @@ export default function Dashboard() {
   usePageTitle("Dashboard");
   const { user } = useAuth();
   const { openTask } = useTaskModal();
+  const [, navigate] = useLocation();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [workload, setWorkload] = useState<EditorWorkload[]>([]);
   const [atRisk, setAtRisk] = useState<AtRiskTask[]>([]);
   const [deadlineData, setDeadlineData] = useState<DeadlineOverview | null>(null);
+  const [allTasks, setAllTasks]         = useState<AllTask[]>([]);
 
   const load = useCallback(() => {
     apiFetch<Task[]>("/api/my-tasks").then(setTasks).catch(() => {});
@@ -401,6 +541,7 @@ export default function Dashboard() {
     apiFetch<DeadlineOverview>("/api/deadline-overview").then(setDeadlineData).catch(() => {});
     if (user?.role !== "editor") {
       apiFetch<EditorWorkload[]>("/api/workload").then(setWorkload).catch(() => {});
+      apiFetch<AllTask[]>("/api/timeline").then(setAllTasks).catch(() => {});
       apiFetch<{ atRisk: AtRiskTask[] }>("/api/dashboard-extras")
         .then(d => { setAtRisk(d.atRisk); })
         .catch(() => {});
@@ -464,7 +605,7 @@ export default function Dashboard() {
     <div className="space-y-6">
       {/* Greeting */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Olá, {user?.name?.split(" ")[0]}</h1>
+        <motion.h1 className="text-[28px] font-semibold tracking-tight" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{duration:0.18,ease:[0.25,0.1,0.25,1]}}>Olá, {user?.name?.split(" ")[0]}</motion.h1>
         <p className="text-sm text-[hsl(var(--muted-foreground))] mt-0.5">Bem-vindo ao seu painel de controle.</p>
       </div>
 
@@ -497,36 +638,7 @@ export default function Dashboard() {
       {!isEditor && (
         <div className="grid gap-5 md:grid-cols-3">
 
-          {/* Todas as tarefas em aberto */}
-          <div className="md:col-span-2 rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
-              <div className="flex items-center gap-2">
-                <ListTodo className="h-4 w-4 text-[hsl(var(--primary))]" />
-                <span className="font-semibold text-sm">Tarefas em andamento</span>
-                {openTasks.length > 0 && <span className="text-[11px] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{openTasks.length}</span>}
-              </div>
-              <Link href="/tasks" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
-                Ver todas <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
-            <div className="overflow-y-auto max-h-[340px] divide-y">
-              {openTasks.length === 0 ? (
-                <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma tarefa em andamento.</p>
-              ) : openTasks.slice(0, 8).map(t => (
-                <div key={t.id} role="button" onClick={() => openTask(t.id)}
-                  className="flex items-center gap-3 px-5 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer"
-                  style={{ borderLeft: `4px solid ${t.color ?? "#6366f1"}88` }}>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
-                    {t.client && <p className="text-[10px] text-[hsl(var(--muted-foreground))] truncate">{t.client}</p>}
-                  </div>
-                  <Badge className={`text-[10px] px-1.5 shrink-0 ${STATUS_CLASS[t.status] ?? ""}`}>
-                    {STATUS_LABEL[t.status] ?? t.status}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ProductionCard allTasks={allTasks} onOpenTask={openTask} />
 
           {/* Workload — coluna direita */}
           <WorkloadCard workload={workload} />
@@ -538,10 +650,10 @@ export default function Dashboard() {
                 <ListTodo className="h-4 w-4 text-[hsl(var(--primary))]" />
                 <span className="font-semibold text-sm">Minhas tarefas em aberto</span>
                 {openTasks.length > 0 && (
-                  <span className="text-[11px] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{openTasks.length}</span>
+                  <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{openTasks.length}</span>
                 )}
               </div>
-              <Link href="/my-tasks" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
+              <Link href="/tasks?tab=board" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
                 Ver todas <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
@@ -549,25 +661,25 @@ export default function Dashboard() {
               {openTasks.length === 0 ? (
                 <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma tarefa em aberto.</p>
               ) : openTasks.map(t => (
-                <div key={t.id} role="button" onClick={() => openTask(t.id)}
+                <div key={t.id} role="button" onClick={() => navigate("/tasks?tab=lista")}
                   className="flex items-center gap-3 px-5 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
                   <div className={`w-0.5 h-8 rounded-full shrink-0 ${STATUS_BAR[t.status] ?? "bg-slate-300"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      {t.number ? <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">#{t.number}</span> : null}
+                      {t.number ? <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">#{t.number}</span> : null}
                       <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
                     </div>
                     {t.dueDate && (() => {
                       const h = fmtDateHuman(t.dueDate); const n = fmtDate(t.dueDate);
                       return <>
                         <p className="text-xs text-[hsl(var(--muted-foreground))]">Entrega: {h}</p>
-                        {h !== n && <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50">{n}</p>}
+                        {h !== n && <p className="text-xs text-[hsl(var(--muted-foreground))]/50">{n}</p>}
                       </>;
                     })()}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className={`text-xs font-medium ${PRIORITY_COLOR[t.priority] ?? ""}`}>{PRIORITY_LABEL[t.priority] ?? t.priority}</span>
-                    <Badge className={`text-[10px] px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
+                    <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
                   </div>
@@ -588,11 +700,11 @@ export default function Dashboard() {
               ) : activity.map((e, idx) => (
                 <div key={e.id} role="button" onClick={() => openTask(e.taskId)}
                   className="flex items-center gap-4 px-5 py-2 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
-                  <span className="text-[11px] text-[hsl(var(--muted-foreground))]/40 w-5 shrink-0 text-right select-none">{String(idx + 1).padStart(2, "0")}</span>
-                  <span className="text-[11px] text-[hsl(var(--muted-foreground))]/60 shrink-0 w-28">
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]/40 w-5 shrink-0 text-right select-none">{String(idx + 1).padStart(2, "0")}</span>
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]/60 shrink-0 w-28">
                     {fmtShort(e.createdAt)}
                   </span>
-                  <span className="flex-1 text-[11px] truncate font-sans">
+                  <span className="flex-1 text-xs truncate font-sans">
                     <span className="text-[hsl(var(--foreground))] font-medium group-hover:text-[hsl(var(--primary))] transition-colors">{e.taskTitle}</span>
                     <span className="text-[hsl(var(--muted-foreground))]"> → {STATUS_LABEL[e.toStatus] ?? e.toStatus}</span>
                     {e.changedByName && <span className="text-[hsl(var(--muted-foreground))]/60"> · {e.changedByName.split(" ")[0]}</span>}
@@ -616,7 +728,7 @@ export default function Dashboard() {
                 <span className="font-semibold text-sm">Entregas desta semana</span>
                 
               </div>
-              <Link href="/timeline" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
+              <Link href="/tasks?tab=timeline" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
                 Ver linha do tempo <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
@@ -630,12 +742,12 @@ export default function Dashboard() {
                     style={{ borderLeft: `4px solid ${j.color ?? "#6366f1"}88` }}>
                     <div className="flex-1 min-w-0 pl-1">
                       <p className="text-sm font-medium truncate">{j.name}</p>
-                      <p className="text-[11px] text-[hsl(var(--muted-foreground))] truncate">
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
                         {j.taskClient ?? j.taskTitle}
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]">{pct}% concluído</p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">{pct}% concluído</p>
                     </div>
                   </div>
                 );
@@ -650,7 +762,7 @@ export default function Dashboard() {
                 <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" />
                 <span className="font-semibold text-sm">Em risco</span>
                 {atRisk.length > 0 && (
-                  <span className="text-[11px] bg-red-500/10 text-red-600 rounded-full px-2 py-0.5">{atRisk.length} atrasada{atRisk.length !== 1 ? "s" : ""}</span>
+                  <span className="text-xs bg-red-500/10 text-red-600 rounded-full px-2 py-0.5">{atRisk.length} atrasada{atRisk.length !== 1 ? "s" : ""}</span>
                 )}
               </div>
             </div>
@@ -662,17 +774,17 @@ export default function Dashboard() {
                   style={{ borderLeft: `4px solid ${t.color ?? "#6366f1"}88` }}>
                   <div className="flex-1 min-w-0 pl-1">
                     <div className="flex items-center gap-1.5">
-                      {t.number ? <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">#{t.number}</span> : null}
+                      {t.number ? <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">#{t.number}</span> : null}
                       <p className="text-sm font-medium truncate">{t.title}</p>
                     </div>
-                    <p className="text-[11px] text-[hsl(var(--muted-foreground))] truncate">
+                    <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
                       {t.client ?? ""}
                       {t.assigneeName && ` · ${t.assigneeName}`}
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-xs font-semibold text-red-500">{fmtDateHuman(t.dueDate)}</p>
-                    <p className="text-[10px] text-[hsl(var(--muted-foreground))]">{fmtDate(t.dueDate)}</p>
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(t.dueDate)}</p>
                   </div>
                 </div>
               ))}
@@ -692,10 +804,10 @@ export default function Dashboard() {
                 <ListTodo className="h-4 w-4 text-[hsl(var(--primary))]" />
                 <span className="font-semibold text-sm">Minhas tarefas em aberto</span>
                 {openTasks.length > 0 && (
-                  <span className="text-[11px] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{openTasks.length}</span>
+                  <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{openTasks.length}</span>
                 )}
               </div>
-              <Link href="/my-tasks" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
+              <Link href="/tasks?tab=board" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
                 Ver todas <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
@@ -703,12 +815,12 @@ export default function Dashboard() {
               {openTasks.length === 0 ? (
                 <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma tarefa em aberto.</p>
               ) : openTasks.map(t => (
-                <Link key={t.id} href="/my-tasks"
+                <Link key={t.id} href="/tasks?tab=lista"
                   className="flex items-center gap-3 px-5 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group">
                   <div className={`w-0.5 h-8 rounded-full shrink-0 ${STATUS_BAR[t.status] ?? "bg-slate-300"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      {t.number ? <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">#{t.number}</span> : null}
+                      {t.number ? <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">#{t.number}</span> : null}
                       <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -724,7 +836,7 @@ export default function Dashboard() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className={`text-xs font-medium ${PRIORITY_COLOR[t.priority] ?? ""}`}>{PRIORITY_LABEL[t.priority] ?? t.priority}</span>
-                    <Badge className={`text-[10px] px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
+                    <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
                   </div>
@@ -745,11 +857,11 @@ export default function Dashboard() {
               ) : activity.map((e, idx) => (
                 <Link key={e.id} href="/my-tasks"
                   className="flex items-center gap-3 px-5 py-2 hover:bg-[hsl(var(--muted))]/30 transition-colors group">
-                  <span className="text-[11px] text-[hsl(var(--muted-foreground))]/40 w-5 shrink-0 text-right select-none">{String(idx + 1).padStart(2, "0")}</span>
-                  <span className="text-[11px] text-[hsl(var(--muted-foreground))]/60 shrink-0 w-24">
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]/40 w-5 shrink-0 text-right select-none">{String(idx + 1).padStart(2, "0")}</span>
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]/60 shrink-0 w-24">
                     {fmtShort(e.createdAt)}
                   </span>
-                  <span className="flex-1 text-[11px] truncate font-sans">
+                  <span className="flex-1 text-xs truncate font-sans">
                     <span className="text-[hsl(var(--foreground))] font-medium group-hover:text-[hsl(var(--primary))] transition-colors">{e.taskTitle}</span>
                     <span className="text-[hsl(var(--muted-foreground))]"> → {STATUS_LABEL[e.toStatus] ?? e.toStatus}</span>
                     {e.changedByName && <span className="text-[hsl(var(--muted-foreground))]/60"> · {e.changedByName.split(" ")[0]}</span>}

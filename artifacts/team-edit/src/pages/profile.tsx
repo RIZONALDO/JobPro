@@ -77,7 +77,7 @@ export default function Profile() {
     <div className="max-w-2xl mx-auto space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Meu perfil</h1>
+        <h1 className="text-[28px] font-semibold tracking-tight">Meu perfil</h1>
         <p className="text-sm text-[hsl(var(--muted-foreground))] mt-0.5">Gerencie suas informações pessoais e segurança</p>
       </div>
 
@@ -95,7 +95,7 @@ export default function Profile() {
               {avatar ? (
                 <img src={avatar} alt={name} className="h-20 w-20 rounded-full object-cover border-2 border-[hsl(var(--border))]" />
               ) : (
-                <div className="h-20 w-20 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] flex items-center justify-center text-2xl font-bold border-2 border-[hsl(var(--border))]">
+                <div className="h-20 w-20 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] flex items-center justify-center text-xl font-bold border-2 border-[hsl(var(--border))]">
                   {initials}
                 </div>
               )}
@@ -109,14 +109,14 @@ export default function Profile() {
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatar} />
             </div>
             <div>
-              <p className="font-semibold text-base">{user?.name}</p>
+              <p className="font-semibold text-sm">{user?.name}</p>
               <p className="text-sm text-[hsl(var(--muted-foreground))]">@{user?.login}</p>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]">
+                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]">
                   {ROLE_LABEL[user?.role ?? ""] ?? user?.role}
                 </span>
                 {user?.jobTitle && (
-                  <span className="text-[10px] text-[hsl(var(--muted-foreground))]">{user.jobTitle}</span>
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]">{user.jobTitle}</span>
                 )}
               </div>
             </div>

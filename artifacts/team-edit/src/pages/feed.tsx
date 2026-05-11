@@ -1,3 +1,5 @@
+import { motion } from "framer-motion";
+import { staggerContainer, staggerItem } from "@/lib/motion";
 import { useEffect, useRef, useState, useCallback } from "react";
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
@@ -65,7 +67,7 @@ function timeAgo(dateStr: string) {
 }
 
 function Avatar({ name, url, size = "sm" }: { name: string | null; url: string | null; size?: "xs" | "sm" | "md" | "lg" }) {
-  const sizeClass = { xs: "h-6 w-6 text-[9px]", sm: "h-8 w-8 text-xs", md: "h-10 w-10 text-sm", lg: "h-11 w-11 text-sm" }[size];
+  const sizeClass = { xs: "h-6 w-6 text-xs", sm: "h-8 w-8 text-xs", md: "h-10 w-10 text-sm", lg: "h-11 w-11 text-sm" }[size];
   const initials = (name ?? "?").split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
   if (url) return <img src={url} alt={name ?? ""} className={cn(sizeClass, "rounded-full object-cover shrink-0")} />;
   return (
@@ -166,7 +168,7 @@ function MentionTextarea({
       {showDrop && filtered.length > 0 && (
         <div className="absolute bottom-[calc(100%+6px)] left-0 w-56 rounded-xl border bg-[hsl(var(--card))] shadow-2xl z-[200] overflow-hidden">
           <div className="px-3 py-1.5 border-b bg-[hsl(var(--muted))]/30">
-            <span className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Mencionar</span>
+            <span className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Mencionar</span>
           </div>
           {filtered.map((u, i) => (
             <button key={u.id} type="button" onMouseDown={e => { e.preventDefault(); selectUser(u); }}
@@ -443,7 +445,7 @@ function FeedCard({ item, myUserId, myRole, users, onReact, updatedReactions, on
                       <strong className="font-semibold mr-1">{c.userName ?? "?"}</strong>
                       {renderMentions(c.content)}
                     </p>
-                    <span className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5 block">{timeAgo(c.createdAt)}</span>
+                    <span className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 block">{timeAgo(c.createdAt)}</span>
                   </div>
                   {(c.userId === myUserId || ["admin", "supervisor"].includes(myRole)) && (
                     <button onClick={() => deleteComment(c.id)}

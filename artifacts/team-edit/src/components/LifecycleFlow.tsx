@@ -1,24 +1,15 @@
-// LifecycleFlow.tsx — task lifecycle modal using @xyflow/react + dagre layout
-import { useCallback, useMemo } from "react";
-import {
-  ReactFlow, Background, Controls, MiniMap,
-  useNodesState, useEdgesState,
-  type Node, type Edge, type NodeProps,
-  Handle, Position, MarkerType,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import dagre from "dagre";
-import { Badge } from "@/components/ui/badge";
-import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
-import {
-  Play, Pencil, Send, MessageSquare, CheckCircle2, Clock, ArrowRight, Tag, X, ExternalLink,
-} from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { Badge } from "@/components/ui/badge";
+import {
+  Play, Pencil, Send, MessageSquare, CheckCircle2, Clock,
+  ArrowRight, Tag, X, ExternalLink, PauseCircle, XCircle,
+} from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface Person { id: number; name: string; role: string; avatarUrl: string | null }
+interface Person { id: number; name: string; role: string; avatarUrl: string | null; }
 
 interface LifecycleStep {
   type: "created" | "status_change";
@@ -38,160 +29,169 @@ interface LifecycleTask {
   assignee: Person | null; coordinator: Person | null;
 }
 
-interface LifecycleData {
+export interface LifecycleData {
   task: LifecycleTask;
   steps: LifecycleStep[];
 }
 
-// ── Node style config ─────────────────────────────────────────────────────────
+// ── Step config ───────────────────────────────────────────────────────────────
 
-const STEP_CONFIG: Record<string, { bg: string; border: string; text: string; icon: JSX.Element; label: string }> = {
-  created:     { bg: "#eef2ff", border: "#818cf8", text: "#4338ca", icon: <Play      className="h-3.5 w-3.5" />, label: "Criação"                },
-  pending:     { bg: "#f8fafc", border: "#94a3b8", text: "#475569", icon: <Clock     className="h-3.5 w-3.5" />, label: "Pendente"               },
-  in_progress: { bg: "#eff6ff", border: "#60a5fa", text: "#1d4ed8", icon: <Pencil    className="h-3.5 w-3.5" />, label: "Em edição"              },
-  review:      { bg: "#fffbeb", border: "#fbbf24", text: "#b45309", icon: <Send      className="h-3.5 w-3.5" />, label: "Enviado p/ aprovação"   },
-  in_revision: { bg: "#fff7ed", border: "#fb923c", text: "#c2410c", icon: <MessageSquare className="h-3.5 w-3.5" />, label: "Alteração solicitada" },
-  completed:   { bg: "#f0fdf4", border: "#4ade80", text: "#15803d", icon: <CheckCircle2 className="h-3.5 w-3.5" />, label: "Aprovada"             },
+const STEP_CFG: Record<string, {
+  bg: string; border: string; text: string; dot: string;
+  icon: React.ReactNode; label: string;
+}> = {
+  created:     { bg: "bg-indigo-50",  border: "border-indigo-300", text: "text-indigo-700",  dot: "#818cf8", icon: <Play         className="h-3.5 w-3.5" />, label: "Criação"              },
+  pending:     { bg: "bg-slate-50",   border: "border-slate-300",  text: "text-slate-600",   dot: "#94a3b8", icon: <Clock        className="h-3.5 w-3.5" />, label: "Pendente"             },
+  in_progress: { bg: "bg-blue-50",    border: "border-blue-300",   text: "text-blue-700",    dot: "#3b82f6", icon: <Pencil       className="h-3.5 w-3.5" />, label: "Em edição"            },
+  review:      { bg: "bg-amber-50",   border: "border-amber-300",  text: "text-amber-700",   dot: "#f59e0b", icon: <Send         className="h-3.5 w-3.5" />, label: "Envio p/ aprovação"   },
+  in_revision: { bg: "bg-orange-50",  border: "border-orange-300", text: "text-orange-700",  dot: "#f97316", icon: <MessageSquare className="h-3.5 w-3.5"/>, label: "Alteração solicitada" },
+  completed:   { bg: "bg-green-50",   border: "border-green-300",  text: "text-green-700",   dot: "#22c55e", icon: <CheckCircle2 className="h-3.5 w-3.5" />, label: "Aprovada"             },
+  paused:      { bg: "bg-purple-50",  border: "border-purple-300", text: "text-purple-700",  dot: "#a855f7", icon: <PauseCircle  className="h-3.5 w-3.5" />, label: "Pausada"              },
+  cancelled:   { bg: "bg-red-50",     border: "border-red-300",    text: "text-red-700",     dot: "#ef4444", icon: <XCircle      className="h-3.5 w-3.5" />, label: "Cancelada"            },
 };
 
 const ROLE_LABEL: Record<string, string> = {
   admin: "Admin", coordinator: "Coordenador", supervisor: "Supervisor", editor: "Editor",
 };
 
-// ── Custom node ───────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-const NODE_W = 200;
-const NODE_H_BASE = 120; // grows with revision comment
+function fmtAt(iso: string) {
+  return format(parseISO(iso), "dd MMM yyyy · HH:mm", { locale: ptBR });
+}
 
-function StepNode({ data }: NodeProps) {
-  const d = data as {
-    step: LifecycleStep; index: number; cfg: typeof STEP_CONFIG[string];
-  };
-  const { step, index, cfg } = d;
+function getCfg(step: LifecycleStep) {
+  const key = step.type === "created" ? "created" : (step.meta.toStatus ?? "pending");
+  return STEP_CFG[key] ?? STEP_CFG.pending;
+}
 
-  const actorInitials = step.by
-    ? step.by.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
-    : null;
+// ── Avatar ────────────────────────────────────────────────────────────────────
 
+function Avatar({ p }: { p: Person }) {
+  const ini = p.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
   return (
-    <div
-      className="rounded-xl shadow-md flex flex-col overflow-hidden select-none"
-      style={{
-        width: NODE_W,
-        border: `2px solid ${cfg.border}`,
-        background: cfg.bg,
-        fontFamily: "inherit",
-      }}
-    >
-      <Handle type="target" position={Position.Left}  style={{ opacity: 0 }} />
-      <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
-
-      {/* Top bar */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: cfg.border + "44" }}>
-        <span style={{ color: cfg.text }}>{cfg.icon}</span>
-        <span className="text-[10px] font-bold uppercase tracking-wide truncate" style={{ color: cfg.text }}>{cfg.label}</span>
-        <span className="ml-auto text-[9px] font-semibold rounded-full px-1.5 py-0.5" style={{ background: cfg.border + "22", color: cfg.text }}>
-          #{index + 1}
-        </span>
-      </div>
-
-      {/* From → To (status changes) */}
-      {step.type === "status_change" && step.meta.fromStatus && (
-        <div className="flex items-center gap-1 px-3 py-1.5 text-[10px]" style={{ color: cfg.text }}>
-          <span className="opacity-50 line-through">{STATUS_LABEL[step.meta.fromStatus] ?? step.meta.fromStatus}</span>
-          <ArrowRight className="h-2.5 w-2.5 shrink-0 opacity-60" />
-          <span className="font-semibold">{STATUS_LABEL[step.meta.toStatus!] ?? step.meta.toStatus}</span>
-        </div>
-      )}
-
-      {/* Creation meta */}
-      {step.type === "created" && step.meta.client && (
-        <div className="flex items-center gap-1 px-3 py-1 text-[10px] text-slate-500">
-          <Tag className="h-2.5 w-2.5" />{step.meta.client}
-        </div>
-      )}
-
-      {/* Actor */}
-      {step.by && (
-        <div className="flex items-center gap-2 px-3 py-1.5">
-          {step.by.avatarUrl
-            ? <img src={step.by.avatarUrl} className="h-5 w-5 rounded-full object-cover shrink-0" />
-            : <div className="h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-[8px] font-bold"
-                style={{ background: cfg.border + "33", color: cfg.text }}>
-                {actorInitials}
-              </div>
-          }
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold leading-tight truncate" style={{ color: cfg.text }}>{step.by.name}</p>
-            <p className="text-[9px] text-slate-400">{ROLE_LABEL[step.by.role] ?? step.by.role}</p>
+    <div className="flex items-center gap-2 min-w-0">
+      {p.avatarUrl
+        ? <img src={p.avatarUrl} className="h-6 w-6 rounded-full object-cover shrink-0 ring-1 ring-white" />
+        : (
+          <div className="h-6 w-6 rounded-full bg-[hsl(var(--primary)/0.12)] flex items-center justify-center shrink-0 ring-1 ring-white">
+            <span className="text-[8px] font-bold text-[hsl(var(--primary))]">{ini}</span>
           </div>
-        </div>
-      )}
-
-      {/* Revision comment */}
-      {step.meta.revisionComment && (
-        <div className="mx-2 mb-2 mt-1 rounded-lg p-2 text-[10px] leading-snug"
-          style={{ background: "#fed7aa55", border: "1px solid #fb923c44", color: "#9a3412" }}>
-          <span className="font-bold block mb-0.5">Revisão #{step.meta.revisionNumber}</span>
-          <span className="leading-relaxed">{step.meta.revisionComment}</span>
-        </div>
-      )}
-
-      {/* Timestamp */}
-      <div className="px-3 py-1.5 mt-auto text-[9px] text-slate-400 border-t" style={{ borderColor: cfg.border + "33" }}>
-        {format(parseISO(step.at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+        )
+      }
+      <div className="min-w-0">
+        <p className="text-xs font-semibold truncate leading-tight">{p.name}</p>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] leading-tight">{ROLE_LABEL[p.role] ?? p.role}</p>
       </div>
     </div>
   );
 }
 
-const nodeTypes = { step: StepNode };
+// ── Arrow connector ───────────────────────────────────────────────────────────
 
-// ── Dagre layout helper ───────────────────────────────────────────────────────
-
-function layoutNodes(steps: LifecycleStep[]) {
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "LR", nodesep: 40, ranksep: 60, marginx: 20, marginy: 20 });
-
-  steps.forEach((step, i) => {
-    const hasRevision = !!step.meta.revisionComment;
-    const h = NODE_H_BASE + (hasRevision ? 60 : 0) + (step.type === "status_change" && step.meta.fromStatus ? 20 : 0);
-    g.setNode(String(i), { width: NODE_W, height: h });
-  });
-
-  steps.forEach((_, i) => {
-    if (i > 0) g.setEdge(String(i - 1), String(i));
-  });
-
-  dagre.layout(g);
-
-  return steps.map((step, i) => {
-    const node = g.node(String(i));
-    const cfg = step.type === "created"
-      ? STEP_CONFIG.created
-      : STEP_CONFIG[step.meta.toStatus ?? "pending"] ?? STEP_CONFIG.pending;
-
-    return {
-      id: String(i),
-      type: "step",
-      position: { x: node.x - NODE_W / 2, y: node.y - node.height / 2 },
-      data: { step, index: i, cfg },
-      draggable: false,
-    } satisfies Node;
-  });
+function Arrow({ color, animated }: { color: string; animated?: boolean }) {
+  return (
+    <div className="flex-shrink-0 flex items-center self-center px-0.5" aria-hidden>
+      <svg width="40" height="24" viewBox="0 0 40 24" fill="none">
+        <line
+          x1="2" y1="12" x2="30" y2="12"
+          stroke={color} strokeWidth="1.8"
+          strokeDasharray={animated ? "4 3" : undefined}
+          className={animated ? "animate-[dash_1s_linear_infinite]" : undefined}
+        />
+        <path d="M27 6 L36 12 L27 18" stroke={color} strokeWidth="1.8"
+          strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+  );
 }
 
-function buildEdges(steps: LifecycleStep[]): Edge[] {
-  return steps.slice(1).map((_, i) => ({
-    id: `e${i}-${i + 1}`,
-    source: String(i),
-    target: String(i + 1),
-    type: "smoothstep",
-    animated: i === steps.length - 2, // animate last edge
-    markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "#6366f1" },
-    style: { stroke: "#6366f155", strokeWidth: 2 },
-  }));
+// ── Step card ─────────────────────────────────────────────────────────────────
+
+function StepCard({ step, index, total }: { step: LifecycleStep; index: number; total: number }) {
+  const cfg = getCfg(step);
+  const isLast = index === total - 1;
+
+  return (
+    <div className={`
+      flex flex-col rounded-2xl border-2 overflow-hidden shadow-sm
+      bg-[hsl(var(--card))] w-[185px] shrink-0 transition-shadow hover:shadow-md
+      ${cfg.border}
+    `}>
+      {/* ── Header strip ── */}
+      <div className={`flex items-center gap-2 px-3 py-2.5 ${cfg.bg} border-b ${cfg.border}`}>
+        <span className={cfg.text}>{cfg.icon}</span>
+        <span className={`flex-1 text-xs font-bold uppercase tracking-wider truncate ${cfg.text}`}>
+          {cfg.label}
+        </span>
+        <span className={`text-xs font-bold rounded-full px-1.5 py-0.5 ${cfg.bg} border ${cfg.border} ${cfg.text}`}>
+          #{index + 1}
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-0 flex-1">
+        {/* ── Status transition ── */}
+        {step.type === "status_change" && step.meta.fromStatus && (
+          <div className="px-3 py-2 flex items-center gap-1.5 border-b border-[hsl(var(--border))]">
+            <span className="text-xs text-[hsl(var(--muted-foreground))] line-through leading-tight truncate max-w-[56px]">
+              {STATUS_LABEL[step.meta.fromStatus] ?? step.meta.fromStatus}
+            </span>
+            <ArrowRight className="h-3 w-3 shrink-0 text-[hsl(var(--muted-foreground))]" />
+            <span className={`text-xs font-semibold leading-tight truncate ${cfg.text}`}>
+              {STATUS_LABEL[step.meta.toStatus!] ?? step.meta.toStatus}
+            </span>
+          </div>
+        )}
+
+        {/* ── Created meta ── */}
+        {step.type === "created" && step.meta.client && (
+          <div className="px-3 py-2 flex items-center gap-1.5 border-b border-[hsl(var(--border))]">
+            <Tag className="h-3 w-3 text-[hsl(var(--muted-foreground))] shrink-0" />
+            <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">{step.meta.client}</span>
+          </div>
+        )}
+
+        {/* ── Actor ── */}
+        <div className="px-3 py-2.5">
+          {step.by
+            ? <Avatar p={step.by} />
+            : <span className="text-xs text-[hsl(var(--muted-foreground))]">Sistema</span>
+          }
+        </div>
+
+        {/* ── Revision comment ── */}
+        {step.meta.revisionComment && (
+          <div className="mx-2 mb-2 rounded-xl p-2.5 text-xs leading-snug
+            bg-orange-50 border border-orange-200 dark:bg-orange-950/20 dark:border-orange-800">
+            <span className="font-bold text-orange-700 block mb-1">
+              Revisão #{step.meta.revisionNumber}
+            </span>
+            <span className="text-orange-800 dark:text-orange-300 leading-relaxed">
+              {step.meta.revisionComment}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Timestamp ── */}
+      <div className="px-3 py-2 text-xs text-[hsl(var(--muted-foreground))] border-t border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.3)] font-mono">
+        {fmtAt(step.at)}
+      </div>
+    </div>
+  );
+}
+
+// ── Empty state ───────────────────────────────────────────────────────────────
+
+function EmptyFlow() {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-[hsl(var(--muted-foreground))]">
+      <div className="h-12 w-12 rounded-2xl bg-[hsl(var(--muted))] flex items-center justify-center">
+        <Clock className="h-6 w-6 opacity-40" />
+      </div>
+      <p className="text-sm">Nenhum evento registrado ainda.</p>
+    </div>
+  );
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -205,101 +205,163 @@ export function LifecycleFlow({
 }) {
   const { task, steps } = data;
 
-  const initialNodes = useMemo(() => layoutNodes(steps), [steps]);
-  const initialEdges = useMemo(() => buildEdges(steps), [steps]);
-
-  const [nodes, , onNodesChange] = useNodesState(initialNodes);
-  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
-
   const isOverdue = task.dueDate
     && task.status !== "completed"
+    && task.status !== "cancelled"
     && new Date(task.dueDate) < new Date();
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
       onClick={onClose}
     >
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+      {/* Dialog */}
       <div
-        className="relative flex flex-col rounded-2xl border bg-[hsl(var(--card))] shadow-2xl overflow-hidden"
-        style={{ width: "min(96vw, 1500px)", height: "min(90vh, 840px)", minWidth: 340, minHeight: 420 }}
+        className="
+          relative flex flex-col z-10
+          w-full sm:max-w-5xl lg:max-w-6xl
+          rounded-t-3xl sm:rounded-3xl
+          border border-[hsl(var(--border))]
+          bg-[hsl(var(--card))]
+          shadow-2xl overflow-hidden
+          max-h-[92vh] sm:max-h-[88vh]
+        "
         onClick={e => e.stopPropagation()}
       >
-        {/* ── Header ── */}
-        <div className="flex items-center gap-3 px-5 py-3 border-b bg-[hsl(var(--muted))]/20 shrink-0">
-          <div className="h-3 w-3 rounded-full shrink-0" style={{ background: task.color }} />
+        {/* ── Header ──────────────────────────────────────────────────────── */}
+        <div className="flex items-start gap-3 px-5 py-4 border-b border-[hsl(var(--border))] shrink-0">
+          {/* Color dot */}
+          <div className="h-3 w-3 rounded-full shrink-0 mt-0.5" style={{ background: task.color }} />
+
+          {/* Title + client */}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold truncate">{task.title}</p>
+            <h2 className="text-[15px] font-semibold leading-snug truncate">{task.title}</h2>
             {task.client && (
-              <p className="text-[11px] text-[hsl(var(--muted-foreground))] flex items-center gap-1">
-                <Tag className="h-3 w-3" />{task.client}
+              <p className="text-xs text-[hsl(var(--muted-foreground))] flex items-center gap-1 mt-0.5">
+                <Tag className="h-3 w-3 shrink-0" />
+                {task.client}
               </p>
             )}
           </div>
+
+          {/* Right controls */}
           <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-            <Badge className={`text-[10px] px-1.5 ${STATUS_CLASS[task.status] ?? ""}`}>
+            <Badge className={`text-xs px-2 ${STATUS_CLASS[task.status] ?? ""}`}>
               {STATUS_LABEL[task.status] ?? task.status}
             </Badge>
             {task.dueDate && (
-              <span className={`text-[11px] font-medium ${isOverdue ? "text-red-600" : "text-[hsl(var(--muted-foreground))]"}`}>
+              <span className={`text-xs font-medium hidden sm:inline ${isOverdue ? "text-red-500" : "text-[hsl(var(--muted-foreground))]"}`}>
                 Prazo: {format(parseISO(task.dueDate), "dd/MM/yy", { locale: ptBR })}
               </span>
             )}
             <button
-              onClick={() => onOpen(task.id)}
-              className="text-[11px] text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5"
+              onClick={() => { onClose(); onOpen(task.id); }}
+              className="hidden sm:flex items-center gap-1 text-xs text-[hsl(var(--primary))] hover:underline"
             >
               Abrir <ExternalLink className="h-3 w-3" />
             </button>
-            <button onClick={onClose} className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] ml-1">
+            <button
+              onClick={onClose}
+              className="h-7 w-7 rounded-full flex items-center justify-center text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] transition-colors"
+            >
               <X className="h-4 w-4" />
             </button>
           </div>
         </div>
 
-        {/* ── Sub-info bar ── */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-5 py-2 border-b bg-[hsl(var(--muted))]/10 text-[11px] text-[hsl(var(--muted-foreground))] shrink-0">
-          <span>Coordenador: <strong className="text-[hsl(var(--foreground))]">{task.coordinator?.name ?? "—"}</strong></span>
-          <span>Editor: <strong className="text-[hsl(var(--foreground))]">{task.assignee?.name ?? "—"}</strong></span>
-          <span>{task.revisionCount} revisão{task.revisionCount !== 1 ? "ões" : ""}</span>
-          <span className="ml-auto text-[10px] text-[hsl(var(--muted-foreground))]/60 hidden sm:block">
-            Arraste para explorar · scroll para zoom · clique num nó para mover o foco
+        {/* ── Meta bar ────────────────────────────────────────────────────── */}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 px-5 py-2.5 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.3)] shrink-0 text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[hsl(var(--muted-foreground))]">Coordenador</span>
+            <span className="font-semibold">{task.coordinator?.name ?? "—"}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[hsl(var(--muted-foreground))]">Editor</span>
+            <span className="font-semibold">{task.assignee?.name ?? "—"}</span>
+          </div>
+          {task.revisionCount > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[hsl(var(--muted-foreground))]">Revisões</span>
+              <span className="font-semibold text-orange-600">{task.revisionCount}</span>
+            </div>
+          )}
+          <span className="ml-auto text-xs text-[hsl(var(--muted-foreground))/0.5] hidden md:block">
+            {steps.length} evento{steps.length !== 1 ? "s" : ""} no histórico
           </span>
         </div>
 
-        {/* ── Flow canvas ── */}
-        <div className="flex-1 min-h-0">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            nodeTypes={nodeTypes}
-            fitView
-            fitViewOptions={{ padding: 0.15, maxZoom: 1.2 }}
-            minZoom={0.2}
-            maxZoom={2}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={false}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background color="#e2e8f0" gap={20} size={1} />
-            <Controls
-              showInteractive={false}
-              className="!shadow-md !rounded-lg !border !border-[hsl(var(--border))]"
-            />
-            <MiniMap
-              nodeColor={n => {
-                const step = (n.data as { step: LifecycleStep }).step;
-                const key = step.type === "created" ? "created" : step.meta.toStatus ?? "pending";
-                return STEP_CONFIG[key]?.border ?? "#94a3b8";
-              }}
-              maskColor="rgba(0,0,0,0.06)"
-              className="!rounded-lg !border !border-[hsl(var(--border))] !shadow-sm"
-            />
-          </ReactFlow>
+        {/* ── Flow area ───────────────────────────────────────────────────── */}
+        <div className="flex-1 overflow-auto min-h-0 p-5 sm:p-6">
+          {steps.length === 0 ? (
+            <EmptyFlow />
+          ) : (
+            <>
+              {/* Timeline label */}
+              <p className="text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))] mb-5">
+                Ciclo de vida
+              </p>
+
+              {/* Horizontal flow */}
+              <div className="flex items-stretch gap-0 overflow-x-auto pb-2">
+                {steps.map((step, i) => (
+                  <div key={i} className="flex items-center">
+                    <StepCard step={step} index={i} total={steps.length} />
+                    {i < steps.length - 1 && (
+                      <Arrow
+                        color={getCfg(steps[i + 1]).dot}
+                        animated={i === steps.length - 2}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Progress bar below */}
+              <div className="mt-6 pt-4 border-t border-[hsl(var(--border))]">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                    Progresso
+                  </span>
+                  <span className="text-xs text-[hsl(var(--muted-foreground))] ml-auto">
+                    {steps.length} de {steps.length} etapas
+                  </span>
+                </div>
+                <div className="relative h-1.5 rounded-full bg-[hsl(var(--muted))] overflow-hidden">
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-full transition-all duration-700"
+                    style={{
+                      width: "100%",
+                      background: `linear-gradient(to right, ${
+                        steps.map(s => getCfg(s).dot).join(", ")
+                      })`,
+                    }}
+                  />
+                </div>
+                {/* Step dots */}
+                <div className="relative flex justify-between mt-1.5">
+                  {steps.map((step, i) => {
+                    const cfg = getCfg(step);
+                    return (
+                      <div key={i} className="flex flex-col items-center gap-1" style={{ flex: 1 }}>
+                        <div
+                          className="h-2.5 w-2.5 rounded-full border-2 border-white shadow-sm"
+                          style={{ background: cfg.dot }}
+                        />
+                        {steps.length <= 8 && (
+                          <span className="text-[8px] text-[hsl(var(--muted-foreground))] truncate max-w-[48px] text-center leading-tight hidden sm:block">
+                            {cfg.label}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

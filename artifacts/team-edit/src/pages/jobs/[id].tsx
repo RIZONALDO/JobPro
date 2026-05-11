@@ -13,7 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, MessageSquare, AlertTriangle, Info, MoreVertical, Undo2, FolderOpen, ExternalLink } from "lucide-react";
+import { Plus, Pencil, Trash2, MessageSquare, AlertTriangle, Info, MoreVertical, Undo2, FolderOpen, ExternalLink, PauseCircle, XCircle } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { CoordinatorAvatar, EditorAvatars } from "@/components/ui/avatar-group";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
@@ -97,6 +97,8 @@ export default function JobDetail() {
 
   // Revision request dialog
   const [revisionDialog, setRevisionDialog] = useState<Task | null>(null);
+  const [confirmTask, setConfirmTask] = useState<{ id: number; title: string; action: "cancel" | "pause" } | null>(null);
+  const [sendingConfirm, setSendingConfirm] = useState(false);
   const [revisionComment, setRevisionComment] = useState("");
   const [sendingRevision, setSendingRevision] = useState(false);
 
@@ -108,6 +110,18 @@ export default function JobDetail() {
     open: boolean; level: GuardLevel; activeTasks: number;
     action: string; resourceName: string; onConfirm: () => Promise<void>;
   }>({ open: false, level: "warning", activeTasks: 0, action: "", resourceName: "", onConfirm: async () => {} });
+
+  const doTaskAction = async (taskId: number, action: "cancel" | "pause") => {
+    setSendingConfirm(true);
+    try {
+      await apiPut(`/api/tasks/${taskId}`, { status: action === "cancel" ? "cancelled" : "paused" });
+      toast({ title: action === "cancel" ? "Tarefa cancelada" : "Tarefa pausada" });
+      setConfirmTask(null);
+      load();
+    } catch (e: unknown) {
+      toast({ title: e instanceof Error ? e.message : "Erro", variant: "destructive" });
+    } finally { setSendingConfirm(false); }
+  };
 
   const load = useCallback(() => {
     apiFetch<Job>(`/api/jobs/${params.id}`).then(setJob).catch(() => toast({ title: "Erro ao carregar job", variant: "destructive" })).finally(() => setLoading(false));
@@ -293,7 +307,7 @@ export default function JobDetail() {
               <span className="font-semibold truncate">{job.name}</span>
               {isCoord ? (
                 <Select value={job.status} onValueChange={updateJobStatus}>
-                  <SelectTrigger className={`h-6 text-[10px] px-2 rounded-full border ${JOB_STATUS_CLASS[job.status] ?? ""} w-auto gap-1 shrink-0`}>
+                  <SelectTrigger className={`h-6 text-xs px-2 rounded-full border ${JOB_STATUS_CLASS[job.status] ?? ""} w-auto gap-1 shrink-0`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -303,7 +317,7 @@ export default function JobDetail() {
                   </SelectContent>
                 </Select>
               ) : (
-                <Badge className={`text-[10px] px-1.5 shrink-0 ${JOB_STATUS_CLASS[job.status] ?? "bg-slate-100 text-slate-600 border border-slate-200"}`}>
+                <Badge className={`text-xs px-1.5 shrink-0 ${JOB_STATUS_CLASS[job.status] ?? "bg-slate-100 text-slate-600 border border-slate-200"}`}>
                   {JOB_STATUS_LABEL[job.status] ?? job.status}
                 </Badge>
               )}
@@ -351,7 +365,7 @@ export default function JobDetail() {
                   {/* Título — flex-1 */}
                   <div className="flex-1 min-w-0 flex flex-col justify-center py-2 pr-3">
                     <div className="flex items-baseline gap-2">
-                      <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">
+                      <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">
                         {job.projectNumber}.{job.jobNumber}.{t.number}
                       </span>
                       <span className="text-sm font-medium truncate">{t.title}</span>
@@ -363,11 +377,11 @@ export default function JobDetail() {
 
                   {/* Status — w-52 */}
                   <div className="w-52 shrink-0 flex items-center gap-1.5">
-                    <Badge className={`text-[10px] px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
+                    <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
                     {t.revisionCount > 0 && (
-                      <span className="text-[10px] font-semibold text-orange-500">Alt.{t.revisionCount}</span>
+                      <span className="text-xs font-semibold text-orange-500">Alt.{t.revisionCount}</span>
                     )}
                     {t.revisions.length > 0 && (
                       <button type="button" onClick={() => toggleRevisions(t.id)}
@@ -388,7 +402,7 @@ export default function JobDetail() {
                       const h = fmtDateHuman(t.dueDate); const n = fmtDate(t.dueDate);
                       return <>
                         <span className="text-xs text-[hsl(var(--muted-foreground))]">{h}</span>
-                        {h !== n && <span className="text-[10px] text-[hsl(var(--muted-foreground))]/50">{n}</span>}
+                        {h !== n && <span className="text-xs text-[hsl(var(--muted-foreground))]/50">{n}</span>}
                       </>;
                     })()}
                   </div>
@@ -432,6 +446,21 @@ export default function JobDetail() {
                           <DropdownMenuItem onClick={() => openEdit(t)}><Pencil className="h-3.5 w-3.5" />Editar</DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => del(t.id)} className="text-[hsl(var(--destructive))] focus:text-[hsl(var(--destructive))]"><Trash2 className="h-3.5 w-3.5" />Excluir</DropdownMenuItem>
+                          {!["completed","cancelled"].includes(t.status) && (
+                            <>
+                              <DropdownMenuSeparator />
+                              {t.status !== "paused" && (
+                                <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "pause" })}
+                                  className="text-purple-700 focus:text-purple-700">
+                                  <PauseCircle className="h-3.5 w-3.5" />Pausar tarefa
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "cancel" })}
+                                className="text-red-600 focus:text-red-600">
+                                <XCircle className="h-3.5 w-3.5" />Cancelar tarefa
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     )}
@@ -444,8 +473,8 @@ export default function JobDetail() {
                 <div className="px-5 pb-3 pt-1 space-y-2 border-t border-orange-100 bg-orange-50/40">
                   {t.revisions.map(r => (
                     <div key={r.id}>
-                      <span className="text-[10px] font-semibold text-orange-600 mr-2">Alt. #{r.revisionNumber}</span>
-                      <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                      <span className="text-xs font-semibold text-orange-600 mr-2">Alt. #{r.revisionNumber}</span>
+                      <span className="text-xs text-[hsl(var(--muted-foreground))]">
                         {fmtShort(r.createdAt)}
                       </span>
                       <p className="text-xs text-[hsl(var(--foreground))] mt-0.5">{r.comment}</p>
@@ -529,7 +558,7 @@ export default function JobDetail() {
                         <SelectItem key={e.id} value={String(e.id)}>
                           <span className="flex items-center gap-2">
                             {e.name}
-                            <span className={`text-[10px] font-semibold ${cls}`}>{label}</span>
+                            <span className={`text-xs font-semibold ${cls}`}>{label}</span>
                           </span>
                         </SelectItem>
                       );
@@ -589,6 +618,30 @@ export default function JobDetail() {
       )}
 
       {/* Revision comment dialog */}
+      {/* Cancel / Pause confirm */}
+      <Dialog open={!!confirmTask} onOpenChange={open => !open && setConfirmTask(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{confirmTask?.action === "cancel" ? "Cancelar tarefa" : "Pausar tarefa"}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">
+            {confirmTask?.action === "cancel"
+              ? <>Tem certeza que deseja <strong>cancelar</strong> a tarefa <em>"{confirmTask?.title}"</em>? O editor será notificado.</>
+              : <>Tem certeza que deseja <strong>pausar</strong> a tarefa <em>"{confirmTask?.title}"</em>? O editor será notificado.</>}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmTask(null)} disabled={sendingConfirm}>Voltar</Button>
+            <Button
+              className={confirmTask?.action === "cancel" ? "bg-red-600 hover:bg-red-700" : "bg-purple-600 hover:bg-purple-700"}
+              onClick={() => confirmTask && doTaskAction(confirmTask.id, confirmTask.action)}
+              disabled={sendingConfirm}
+            >
+              {sendingConfirm ? "Aguarde…" : confirmTask?.action === "cancel" ? "Confirmar cancelamento" : "Confirmar pausa"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!revisionDialog} onOpenChange={open => !open && setRevisionDialog(null)}>
         <DialogContent>
           <DialogHeader>

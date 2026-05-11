@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { TaskModalProvider } from "@/contexts/TaskModalContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import { Shell } from "@/components/layout/Shell";
 import { Toaster } from "@/components/ui/toaster";
 import LoginPage from "@/pages/login";
@@ -18,6 +19,7 @@ import TimelinePage from "@/pages/timeline";
 import Reports from "@/pages/reports";
 import FeedPage from "@/pages/feed";
 import TasksOverview from "@/pages/tasks-overview";
+import TasksHub      from "@/pages/tasks-hub";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } });
 
@@ -36,6 +38,7 @@ function Router() {
   if (user.mustChangePassword) return <ChangePasswordPage />;
 
   return (
+    <ThemeProvider>
     <TaskModalProvider>
     <Shell>
       <Switch>
@@ -49,7 +52,7 @@ function Router() {
         <Route path="/timeline" component={TimelinePage} />
         <Route path="/reports" component={Reports} />
         <Route path="/feed" component={FeedPage} />
-        <Route path="/tasks" component={TasksOverview} />
+        <Route path="/tasks" component={TasksHub} />
         <Route>
           <div className="text-center py-20">
             <h2 className="text-2xl font-bold">404</h2>
@@ -59,6 +62,7 @@ function Router() {
       </Switch>
     </Shell>
     </TaskModalProvider>
+    </ThemeProvider>
   );
 }
 

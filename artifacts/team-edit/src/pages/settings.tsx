@@ -118,12 +118,12 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
+        <h1 className="text-[28px] font-bold tracking-tight">Configurações</h1>
         <p className="text-[hsl(var(--muted-foreground))] mt-1">Personalize a identidade visual do sistema</p>
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Identidade</CardTitle><CardDescription>Nome e visual exibidos em todo o sistema.</CardDescription></CardHeader>
+        <CardHeader><CardTitle className="text-sm">Identidade</CardTitle><CardDescription>Nome e visual exibidos em todo o sistema.</CardDescription></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -141,7 +141,7 @@ export default function SettingsPage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Cor principal</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-sm">Cor principal</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="flex gap-2 flex-wrap">
             {PROJECT_COLORS_PRIMARY.map(c => (
@@ -163,7 +163,7 @@ export default function SettingsPage() {
       {/* Zona de Perigo */}
       <Card className="border-red-200 dark:border-red-900">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2 text-red-600 dark:text-red-400">
+          <CardTitle className="text-sm flex items-center gap-2 text-red-600 dark:text-red-400">
             <TriangleAlert className="h-4 w-4" />
             Zona de Perigo
           </CardTitle>

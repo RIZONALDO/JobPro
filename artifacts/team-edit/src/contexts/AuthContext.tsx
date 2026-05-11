@@ -13,6 +13,7 @@ export interface AuthUser {
   email: string | null;
   phone: string | null;
   avatarUrl: string | null;
+  theme: "light" | "dark";
 }
 
 interface AuthContextValue {

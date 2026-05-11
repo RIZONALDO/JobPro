@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Send, MessageCircle, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -42,7 +43,7 @@ function timeAgo(dateStr: string) {
 }
 
 function Avatar({ name, url, size = "sm" }: { name: string | null; url: string | null; size?: "xs" | "sm" }) {
-  const sizeClass = size === "xs" ? "h-6 w-6 text-[9px]" : "h-8 w-8 text-xs";
+  const sizeClass = size === "xs" ? "h-6 w-6 text-xs" : "h-8 w-8 text-xs";
   const initials = (name ?? "?").split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
   if (url) return <img src={url} alt={name ?? ""} className={cn(sizeClass, "rounded-full object-cover shrink-0")} />;
   return (
@@ -118,7 +119,7 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder, rows = 1 }:
       {showDrop && filtered.length > 0 && (
         <div className="absolute bottom-[calc(100%+6px)] left-0 w-48 rounded-xl border bg-[hsl(var(--card))] shadow-2xl z-[300] overflow-hidden">
           <div className="px-3 py-1.5 border-b bg-[hsl(var(--muted))]/30">
-            <span className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Mencionar</span>
+            <span className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Mencionar</span>
           </div>
           {filtered.map((u, i) => (
             <button key={u.id} onMouseDown={() => selectUser(u)}
@@ -275,8 +276,14 @@ export function ChatWidget() {
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
 
+      <AnimatePresence>
       {chatOpen && (
-        <div className="flex w-[480px] h-[540px] rounded-2xl border bg-[hsl(var(--card))] shadow-2xl overflow-hidden">
+        <motion.div
+          initial={{ opacity: 0, y: 16, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 10, scale: 0.97 }}
+          transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+          className="flex w-[480px] h-[540px] rounded-2xl border bg-[hsl(var(--card))] shadow-2xl overflow-hidden">
 
           {/* ── Sidebar ──────────────────────────────────────── */}
           <div className="w-[148px] shrink-0 border-r flex flex-col bg-[hsl(var(--muted))]/20">
@@ -300,14 +307,14 @@ export function ChatWidget() {
               </div>
               <span className="text-xs font-medium flex-1 truncate">Geral</span>
               {(generalUnread > 0 || hasMention) && (
-                <span className="min-w-[16px] h-4 px-1 rounded-full bg-[hsl(var(--primary))] text-white text-[9px] font-bold flex items-center justify-center">
+                <span className="min-w-[16px] h-4 px-1 rounded-full bg-[hsl(var(--primary))] text-white text-xs font-bold flex items-center justify-center">
                   {generalUnread > 9 ? "9+" : generalUnread || ""}
                 </span>
               )}
             </button>
 
             <div className="mx-3 my-1 border-t" />
-            <p className="px-3 py-1 text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Direto</p>
+            <p className="px-3 py-1 text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Direto</p>
 
             <div className="flex-1 overflow-y-auto">
               {conversations.map(conv => {
@@ -325,10 +332,10 @@ export function ChatWidget() {
                       <p className={cn("text-xs truncate", activeView === conv.userId ? "font-semibold text-[hsl(var(--primary))]" : "font-medium")}>
                         {conv.userName ?? "?"}
                       </p>
-                      {conv.lastMessage && <p className="text-[10px] text-[hsl(var(--muted-foreground))] truncate">{conv.lastMessage}</p>}
+                      {conv.lastMessage && <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{conv.lastMessage}</p>}
                     </div>
                     {unread > 0 && (
-                      <span className="min-w-[16px] h-4 px-1 rounded-full bg-[hsl(var(--primary))] text-white text-[9px] font-bold flex items-center justify-center shrink-0">
+                      <span className="min-w-[16px] h-4 px-1 rounded-full bg-[hsl(var(--primary))] text-white text-xs font-bold flex items-center justify-center shrink-0">
                         {unread > 9 ? "9+" : unread}
                       </span>
                     )}
@@ -371,7 +378,7 @@ export function ChatWidget() {
                           <span className="absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-green-500 border border-[hsl(var(--card))]" />
                         </div>
                       ))}
-                      {onlineUsers.length > 4 && <span className="text-[10px] text-[hsl(var(--muted-foreground))] ml-1">+{onlineUsers.length - 4}</span>}
+                      {onlineUsers.length > 4 && <span className="text-xs text-[hsl(var(--muted-foreground))] ml-1">+{onlineUsers.length - 4}</span>}
                     </div>
                   )}
                 </div>
@@ -387,9 +394,9 @@ export function ChatWidget() {
                         {!mine && <Avatar name={msg.userName} url={msg.userAvatar} size="xs" />}
                         <div className={cn("max-w-[80%] rounded-2xl px-3 py-2 text-xs leading-relaxed",
                           mine ? "bg-[hsl(var(--primary))] text-white rounded-br-sm" : "bg-[hsl(var(--muted))] rounded-bl-sm")}>
-                          {!mine && <p className="font-semibold text-[10px] mb-0.5 opacity-60">{msg.userName}</p>}
+                          {!mine && <p className="font-semibold text-xs mb-0.5 opacity-60">{msg.userName}</p>}
                           <p>{msg.content}</p>
-                          <p className="text-[9px] mt-0.5 opacity-50 text-right">{timeAgo(msg.createdAt)}</p>
+                          <p className="text-xs mt-0.5 opacity-50 text-right">{timeAgo(msg.createdAt)}</p>
                         </div>
                       </div>
                     );
@@ -419,7 +426,7 @@ export function ChatWidget() {
                       </div>
                       <div>
                         <p className="text-sm font-semibold leading-tight">{other?.name ?? "?"}</p>
-                        <p className="text-[10px] text-[hsl(var(--muted-foreground))]">{isOnline ? "online" : "offline"}</p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))]">{isOnline ? "online" : "offline"}</p>
                       </div>
                     </div>
                   );
@@ -437,7 +444,7 @@ export function ChatWidget() {
                         <div className={cn("max-w-[80%] rounded-2xl px-3 py-2 text-xs leading-relaxed",
                           mine ? "bg-[hsl(var(--primary))] text-white rounded-br-sm" : "bg-[hsl(var(--muted))] rounded-bl-sm")}>
                           <p>{msg.content}</p>
-                          <p className="text-[9px] mt-0.5 opacity-50 text-right">{timeAgo(msg.createdAt)}</p>
+                          <p className="text-xs mt-0.5 opacity-50 text-right">{timeAgo(msg.createdAt)}</p>
                         </div>
                       </div>
                     );
@@ -455,12 +462,14 @@ export function ChatWidget() {
               </>
             )}
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* Toggle button — icon only, no circle */}
-      <button
+      <motion.button
         onClick={() => chatOpen ? setChatOpen(false) : openChat()}
+        whileTap={{ scale: 0.92 }}
         className={cn(
           "relative p-2 transition-colors",
           (totalUnread > 0 || hasAlert)
@@ -470,11 +479,11 @@ export function ChatWidget() {
       >
         <MessageCircle className="h-6 w-6" />
         {(totalUnread > 0 || hasMention) && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[hsl(var(--primary))] text-white text-[9px] font-bold flex items-center justify-center shadow">
+          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[hsl(var(--primary))] text-white text-xs font-bold flex items-center justify-center shadow">
             {totalUnread > 0 ? (totalUnread > 99 ? "99+" : totalUnread) : ""}
           </span>
         )}
-      </button>
+      </motion.button>
     </div>
   );
 }

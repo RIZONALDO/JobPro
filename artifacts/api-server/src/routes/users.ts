@@ -1,6 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable, tasksTable } from "@workspace/db";
+import { db, usersTable, tasksTable, taskRevisionsTable, taskEventsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireCoordinator } from "../lib/auth.js";
 
@@ -98,6 +98,10 @@ router.delete("/users/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
   if (id === req.session.userId) { res.status(400).json({ error: "Não é possível remover a si mesmo" }); return; }
+  await db.update(tasksTable).set({ assignedToId: null }).where(eq(tasksTable.assignedToId, id));
+  await db.update(tasksTable).set({ createdById: null }).where(eq(tasksTable.createdById, id));
+  await db.update(taskRevisionsTable).set({ createdById: null }).where(eq(taskRevisionsTable.createdById, id));
+  await db.update(taskEventsTable).set({ changedById: null }).where(eq(taskEventsTable.changedById, id));
   await db.delete(usersTable).where(eq(usersTable.id, id));
   res.sendStatus(204);
 });

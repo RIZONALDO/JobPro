@@ -49,7 +49,15 @@ router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
     email: user.email ?? null,
     phone: user.phone ?? null,
     avatarUrl: user.avatarUrl ?? null,
+    theme: (user as any).theme ?? "light",
   });
+});
+
+router.put("/auth/theme", requireAuth, async (req, res): Promise<void> => {
+  const { theme } = req.body ?? {};
+  if (theme !== "light" && theme !== "dark") { res.status(400).json({ error: "Tema invalido" }); return; }
+  await db.update(usersTable).set({ theme } as any).where(eq(usersTable.id, req.session.userId!));
+  res.json({ ok: true });
 });
 
 router.put("/auth/profile", requireAuth, async (req, res): Promise<void> => {

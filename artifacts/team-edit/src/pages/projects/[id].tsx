@@ -131,7 +131,7 @@ export default function ProjectDetail() {
               <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">{project.number}</span>
               <span className="font-semibold truncate">{project.name}</span>
               {project.client && <span className="text-xs text-[hsl(var(--muted-foreground))]">· {project.client}</span>}
-              <Badge className={`text-[10px] px-1.5 shrink-0 ${JOB_STATUS_CLASS[project.status] ?? "bg-slate-100 text-slate-600 border border-slate-200"}`}>
+              <Badge className={`text-xs px-1.5 shrink-0 ${JOB_STATUS_CLASS[project.status] ?? "bg-slate-100 text-slate-600 border border-slate-200"}`}>
                 {JOB_STATUS_LABEL[project.status] ?? project.status}
               </Badge>
             </div>
@@ -154,7 +154,7 @@ export default function ProjectDetail() {
             {project.jobs.map((j, idx) => {
               return (
                 <div key={j.id} className="group flex items-center gap-4 px-5 py-3 hover:bg-[hsl(var(--muted))]/30 transition-colors">
-                  <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0 select-none whitespace-nowrap">
+                  <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0 select-none whitespace-nowrap">
                     {project.number}.{j.number}
                   </span>
                   <div className="flex-1 min-w-0">
@@ -162,7 +162,7 @@ export default function ProjectDetail() {
                       <button type="button" onClick={() => openJob(j.id)} className="text-sm font-medium hover:text-[hsl(var(--primary))] transition-colors truncate text-left">
                         {j.name}
                       </button>
-                      <Badge className={`text-[10px] px-1.5 shrink-0 ${JOB_STATUS_CLASS[j.status] ?? ""}`}>
+                      <Badge className={`text-xs px-1.5 shrink-0 ${JOB_STATUS_CLASS[j.status] ?? ""}`}>
                         {JOB_STATUS_LABEL[j.status] ?? j.status}
                       </Badge>
                     </div>
@@ -178,7 +178,7 @@ export default function ProjectDetail() {
                             }}
                           />
                         </div>
-                        <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                        <span className="text-xs text-[hsl(var(--muted-foreground))]">
                           {j.completedCount}/{j.taskCount} entregue{j.completedCount !== 1 ? "s" : ""}
                         </span>
                       </div>

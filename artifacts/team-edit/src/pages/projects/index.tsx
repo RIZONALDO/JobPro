@@ -273,7 +273,7 @@ export default function ProjectsList() {
                     {/* Col 1 — número + nome + badge + cliente */}
                     <div className="w-[420px] shrink-0 min-w-0">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/40 shrink-0">{p.number}</span>
+                        <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]/40 shrink-0">{p.number}</span>
                         <button
                           type="button"
                           onClick={() => setOpenProjectId(p.id)}
@@ -284,7 +284,7 @@ export default function ProjectsList() {
                         </button>
                       </div>
                       <div className="flex items-center gap-1.5 mt-0.5 ml-4">
-                        <Badge className={`text-[10px] px-1.5 shrink-0 ${PROJ_STATUS_CLASS[p.status] ?? ""}`}>
+                        <Badge className={`text-xs px-1.5 shrink-0 ${PROJ_STATUS_CLASS[p.status] ?? ""}`}>
                           {PROJ_STATUS_LABEL[p.status] ?? p.status}
                         </Badge>
                         {p.client && (
@@ -307,7 +307,7 @@ export default function ProjectsList() {
                           <div className="w-24 h-1 rounded-full bg-[hsl(var(--muted))]">
                             <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: `${p.color}99` }} />
                           </div>
-                          <span className="text-[10px] text-[hsl(var(--muted-foreground))]">{p.completedCount}/{p.taskCount}</span>
+                          <span className="text-xs text-[hsl(var(--muted-foreground))]">{p.completedCount}/{p.taskCount}</span>
                         </div>
                       )}
                       <div className="flex items-center gap-1.5">
@@ -367,7 +367,7 @@ export default function ProjectsList() {
                     {p.client && (
                       <p className="text-white/60 text-xs mt-0.5 truncate">{p.client}</p>
                     )}
-                    <span className="inline-block mt-2 text-[9px] px-1.5 py-0.5 rounded-md font-semibold bg-black/20 text-white/90">
+                    <span className="inline-block mt-2 text-xs px-1.5 py-0.5 rounded-md font-semibold bg-black/20 text-white/90">
                       {PROJ_STATUS_LABEL[p.status] ?? p.status}
                     </span>
                   </div>
@@ -392,7 +392,7 @@ export default function ProjectsList() {
                 {/* Card body */}
                 <div className="flex-1 p-4 flex flex-col gap-3">
                   {/* Stats */}
-                  <div className="flex items-center gap-2 text-[11px] text-[hsl(var(--muted-foreground))]">
+                  <div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]">
                     <span>{p.jobCount} job{p.jobCount !== 1 ? "s" : ""}</span>
                     <span className="text-[hsl(var(--border))]">·</span>
                     <span>{p.taskCount} tarefa{p.taskCount !== 1 ? "s" : ""}</span>
@@ -499,7 +499,7 @@ export default function ProjectsList() {
                   className="h-7 w-24 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 text-xs font-mono"
                   placeholder="#000000"
                 />
-                <span className="text-[11px] text-[hsl(var(--muted-foreground))]">cor personalizada</span>
+                <span className="text-xs text-[hsl(var(--muted-foreground))]">cor personalizada</span>
               </div>
             </div>
           </div>

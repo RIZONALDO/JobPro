@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, date } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 
 export const tasksTable = pgTable("te_tasks", {
@@ -8,7 +8,7 @@ export const tasksTable = pgTable("te_tasks", {
   client: text("client"),
   color: text("color").notNull().default("#6366f1"),
   notes: text("notes"),
-  dueDate: date("due_date"),
+  dueDate: timestamp("due_date", { withTimezone: true }),
   status: text("status").notNull().default("pending"),
   priority: text("priority").notNull().default("medium"),
   complexity: text("complexity").notNull().default("medium"),

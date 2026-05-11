@@ -1,3 +1,5 @@
+import { motion } from "framer-motion";
+import { staggerContainer, staggerFade, staggerItem } from "@/lib/motion";
 import React, { useEffect, useState, useCallback } from "react";
 import { useRealtime } from "@/hooks/use-realtime";
 import { apiFetch, apiPut, apiPost } from "@/lib/api";
@@ -5,12 +7,11 @@ import { fmtDate, fmtDateHuman, fmtShort } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { ListTodo, MessageSquare, LayoutGrid, List, Calendar, AlertCircle, Undo2, MoreVertical, FolderOpen, Info, Copy, ExternalLink, ChevronRight } from "lucide-react";
+import { ListTodo, MessageSquare, Calendar, AlertCircle, Undo2, MoreVertical, FolderOpen, Info, Copy, ExternalLink, ChevronRight, PauseCircle, XCircle } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
@@ -47,11 +48,13 @@ const transitions: Record<string, { next: string; label: string }> = {
 };
 
 const KANBAN_COLS = [
-  { key: "pending",     label: "Pendente",     dot: "bg-slate-400",   colBg: "bg-slate-50/60",      headerBg: "bg-slate-100/80",    border: "border-slate-200",   leftBar: "bg-slate-300"   },
-  { key: "in_progress", label: "Em edição",    dot: "bg-blue-500",    colBg: "bg-blue-50/40",       headerBg: "bg-blue-100/60",     border: "border-blue-200",    leftBar: "bg-blue-400"    },
-  { key: "in_revision", label: "Em alteração",  dot: "bg-orange-500",  colBg: "bg-orange-50/40",     headerBg: "bg-orange-100/60",   border: "border-orange-200",  leftBar: "bg-orange-400"  },
-  { key: "review",      label: "Para aprovar", dot: "bg-amber-500",   colBg: "bg-amber-50/40",      headerBg: "bg-amber-100/60",    border: "border-amber-200",   leftBar: "bg-amber-400"   },
-  { key: "completed",   label: "Aprovadas",    dot: "bg-green-500",   colBg: "bg-green-50/40",      headerBg: "bg-green-100/60",    border: "border-green-200",   leftBar: "bg-green-500"   },
+  { key: "pending",     label: "Pendente",     color: "#94a3b8" },
+  { key: "in_progress", label: "Em edição",    color: "#3b82f6" },
+  { key: "in_revision", label: "Em alteração", color: "#f97316" },
+  { key: "review",      label: "Para aprovar", color: "#f59e0b" },
+  { key: "completed",   label: "Aprovadas",    color: "#22c55e" },
+  { key: "paused",      label: "Pausadas",     color: "#a855f7" },
+  { key: "cancelled",   label: "Canceladas",   color: "#ef4444" },
 ];
 
 function isOverdue(dueDate: string | null): boolean {
@@ -65,7 +68,6 @@ export default function MyTasks() {
   const { toast } = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<"kanban" | "table">("kanban");
   const [expandedRevisions, setExpandedRevisions] = useState<Set<number>>(new Set());
   const [revisionTarget, setRevisionTarget] = useState<Task | null>(null);
   const [revisionComment, setRevisionComment] = useState("");
@@ -127,394 +129,247 @@ export default function MyTasks() {
   };
 
   const isEditor = user?.role === "editor";
-  const active = tasks.filter(t => t.status !== "completed");
-  const completed = tasks.filter(t => t.status === "completed");
 
   /* ── Kanban Card ─────────────────────────────────────────────── */
   const KanbanCard = ({ t, col }: { t: Task; col: typeof KANBAN_COLS[0] }) => {
-    const overdue = isOverdue(t.dueDate) && t.status !== "completed";
-    const person = isEditor ? t.createdBy : t.assignedTo ?? null;
-    const firstName = person ? person.name.split(" ")[0] : null;
+    const overdue = isOverdue(t.dueDate) && !["completed","cancelled","paused"].includes(t.status);
+    const person  = isEditor ? t.createdBy : (t.assignedTo ?? null);
 
     return (
-      <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden hover:shadow-md transition-shadow">
-
-        {/* Header colorido por status */}
-        <div className={`px-3 py-2.5 border-b space-y-1.5 cursor-pointer ${col.headerBg}`} onClick={() => setInfoTarget(t)}>
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              {(t.projectNumber && t.jobNumber && t.number) ? (
-                <span className="text-[9px] font-mono text-[hsl(var(--muted-foreground))]/50 block mb-0.5">{t.projectNumber}.{t.jobNumber}.{t.number}</span>
-              ) : null}
-              <p className="text-xs font-semibold leading-snug line-clamp-2">{t.title}</p>
-              {t.client && (
-                <p className="text-[9px] text-[hsl(var(--muted-foreground))]/70 truncate mt-0.5">{t.client}</p>
-              )}
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
-              {person && (
-                <AvatarDisplay
-                  name={person.name}
-                  avatarUrl={person.avatarUrl}
-                  className="h-6 w-6 text-[9px] bg-white/60 text-[hsl(var(--foreground))]"
-                  title={person.name}
-                />
-              )}
-              {isEditor && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 -mr-1" onClick={e => e.stopPropagation()}>
-                      <MoreVertical className="h-3.5 w-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setInfoTarget(t)}>
-                      <Info className="h-3.5 w-3.5 mr-2" />Ver informações
-                    </DropdownMenuItem>
-                    {["pending", "in_progress", "in_revision"].includes(t.status) && (
-                      <DropdownMenuItem onClick={() => setReturnTarget(t)}>
-                        <Undo2 className="h-3.5 w-3.5 mr-2" />Devolver
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </div>
-          </div>
-          {t.description && (
-            <p className="text-[10px] text-[hsl(var(--muted-foreground))] line-clamp-2 leading-relaxed">
-              {t.description}
-            </p>
-          )}
-        </div>
-
-        {/* Body */}
-        <div className="px-3 py-2.5 space-y-2">
-
-          {/* Pessoa */}
-          {firstName && (
-            <p className="text-[10px] text-[hsl(var(--muted-foreground))]">
-              {isEditor ? "por " : "editor: "}
-              <span className="font-medium text-[hsl(var(--foreground))]">{firstName}</span>
-            </p>
-          )}
-
-          {/* Metadados: complexidade · prioridade */}
-          <div className="flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))]">
-            <span>{COMPLEXITY_LABEL[t.complexity] ?? t.complexity}</span>
-            <span className="opacity-30">·</span>
-            <span className={PRIORITY_COLOR[t.priority] ?? ""}>{PRIORITY_LABEL[t.priority] ?? t.priority}</span>
-          </div>
-
-
-          {/* Rodapé: revisões + data */}
-          <div className="flex items-center gap-2 border-t pt-2">
-            {t.revisionCount > 0 && (
-              <button type="button" onClick={() => toggleRevisions(t.id)}
-                className="flex items-center gap-0.5 text-[10px] text-orange-500 hover:text-orange-700 transition-colors">
-                <MessageSquare className="h-2.5 w-2.5" />
-                {t.revisionCount} alt.
-              </button>
-            )}
-            {t.dueDate && (
-              <span className={`flex items-center gap-0.5 text-[10px] ml-auto ${overdue ? "text-red-500 font-medium" : "text-[hsl(var(--muted-foreground))]"}`}>
-                {overdue && <AlertCircle className="h-2.5 w-2.5" />}
-                <Calendar className="h-2.5 w-2.5" />
-                {fmtDateHuman(t.dueDate)}
-                {fmtDate(t.dueDate) !== fmtDateHuman(t.dueDate) && (
-                  <span className="opacity-50 ml-0.5">· {fmtDate(t.dueDate)}</span>
-                )}
-              </span>
-            )}
-          </div>
-
-          {/* Revisões expandidas */}
-          {expandedRevisions.has(t.id) && t.revisions.length > 0 && (
-            <div className="space-y-1.5 border-t pt-1.5">
-              {t.revisions.map(r => (
-                <div key={r.id}>
-                  <span className="text-[10px] font-semibold text-orange-600 mr-1">Alt. #{r.revisionNumber}</span>
-                  <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
-                    {fmtShort(r.createdAt)}
-                  </span>
-                  <p className="text-[11px] mt-0.5">{r.comment}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Editor: avançar status */}
-          {isEditor && transitions[t.status] && (
-            <Button size="sm" variant="outline" className="w-full h-7 text-[10px] px-2"
-              onClick={() => updateStatus(t, transitions[t.status].next)}>
-              {transitions[t.status].label}
-            </Button>
-          )}
-
-          {/* Coordenador: aprovar ou pedir alteração (só em review) */}
-          {!isEditor && t.status === "review" && (
-            <div className="flex gap-1.5">
-              <Button size="sm" variant="outline" className="flex-1 h-7 text-[10px] border-green-300 text-green-700 hover:bg-green-50"
-                onClick={() => updateStatus(t, "completed")}>
-                Aprovar
-              </Button>
-              <Button size="sm" variant="outline" className="flex-1 h-7 text-[10px] border-orange-200 text-orange-600 hover:bg-orange-50"
-                onClick={() => { setRevisionTarget(t); setRevisionComment(""); }}>
-                Pedir alt.
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  /* ── Table Row ───────────────────────────────────────────────── */
-  const TaskRow = ({ t, idx, total }: { t: Task; idx: number; total: number }) => (
-    <div className={`group ${idx < total - 1 ? "border-b" : ""}`}>
-      <div className="flex">
-        <div className={`w-0.5 shrink-0 ${
-          t.status === "pending"     ? "bg-slate-200" :
-          t.status === "in_progress" ? "bg-blue-400" :
-          t.status === "in_revision" ? "bg-orange-400" :
-          t.status === "review"      ? "bg-amber-400" :
-                                       "bg-green-500"
-        }`} />
-        <div className="flex flex-1 items-stretch px-5 hover:bg-[hsl(var(--muted))]/40 transition-colors min-h-[44px]">
-          <div className="flex-1 min-w-0 flex flex-col justify-center py-2 pr-3">
-            <div className="flex items-center gap-1.5">
-              {(t.projectNumber && t.jobNumber && t.number) ? (
-                <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">{t.projectNumber}.{t.jobNumber}.{t.number}</span>
-              ) : null}
-              <span className="text-sm font-medium truncate">{t.title}</span>
-            </div>
-            <div className="flex flex-col gap-0.5 min-w-0">
-              {isEditor && t.projectClient && (
-                <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.projectClient}</span>
-              )}
-              {!isEditor && t.assignedTo && (
-                <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.assignedTo.name}</span>
-              )}
-              {isEditor && t.folderUrl && (
-                <div className="flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))]">
-                  <FolderOpen className="h-2.5 w-2.5 shrink-0" />
-                  <span className="font-mono truncate max-w-[220px]">{t.folderUrl}</span>
-                  <button
-                    type="button"
-                    title="Copiar URL"
-                    onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(t.folderUrl!); toast({ title: "URL copiada!" }); }}
-                    className="shrink-0 hover:text-[hsl(var(--primary))] transition-colors">
-                    <Copy className="h-2.5 w-2.5" />
-                  </button>
-                  <a href={t.folderUrl} target="_blank" rel="noreferrer" title="Abrir"
-                    className="shrink-0 hover:text-[hsl(var(--primary))] transition-colors">
-                    <ExternalLink className="h-2.5 w-2.5" />
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="w-52 shrink-0 flex items-center gap-1.5">
-            <Badge className={`text-[10px] px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
-              {STATUS_LABEL[t.status] ?? t.status}
-            </Badge>
-            {t.revisionCount > 0 && (
-              <span className="text-[10px] font-semibold text-orange-500">Alt.{t.revisionCount}</span>
-            )}
-            {t.revisions.length > 0 && (
-              <button type="button" onClick={() => toggleRevisions(t.id)}
-                className="text-orange-400 hover:text-orange-600 transition-colors" title="Ver alterações">
-                <MessageSquare className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-          <div className="w-20 shrink-0 flex items-center">
-            <span className={`text-xs font-medium ${PRIORITY_COLOR[t.priority] ?? ""}`}>
-              {PRIORITY_LABEL[t.priority] ?? t.priority}
-            </span>
-          </div>
-          <div className="w-28 shrink-0 flex flex-col justify-center gap-0.5">
-            {t.dueDate && (() => {
-              const h = fmtDateHuman(t.dueDate); const n = fmtDate(t.dueDate);
-              const overdue = isOverdue(t.dueDate) && t.status !== "completed";
-              return <>
-                <span className={`text-xs ${overdue ? "text-red-600 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>{h}</span>
-                {h !== n && <span className="text-[10px] text-[hsl(var(--muted-foreground))]/50">{n}</span>}
-              </>;
-            })()}
-          </div>
-          <div className="w-44 shrink-0 flex items-center justify-end gap-1 py-2">
-            {isEditor && transitions[t.status] && (
-              <Button size="sm" variant="outline" className="h-7 text-xs px-2.5"
-                onClick={() => updateStatus(t, transitions[t.status].next)}>
-                {transitions[t.status].label}
-              </Button>
-            )}
-            {!isEditor && t.status === "review" && (
-              <>
-                <Button size="sm" variant="outline" className="h-7 text-xs px-2.5 border-green-300 text-green-700 hover:bg-green-50"
-                  onClick={() => updateStatus(t, "completed")}>
-                  Aprovar
-                </Button>
-                <Button size="sm" variant="outline" className="h-7 text-xs px-2.5 border-orange-200 text-orange-600 hover:bg-orange-50"
-                  onClick={() => { setRevisionTarget(t); setRevisionComment(""); }}>
-                  Pedir alt.
-                </Button>
-              </>
-            )}
-            {isEditor && (
+      <div
+        onClick={() => setInfoTarget(t)}
+        style={{
+          border: "1px solid hsl(var(--border))",
+          borderRadius: 8,
+          overflow: "hidden",
+          cursor: "pointer",
+          height: 112,
+          display: "flex",
+          flexDirection: "column",
+          background: "hsl(var(--card))",
+          transition: "box-shadow .12s",
+          flexShrink: 0,
+        }}
+        onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 4px 14px ${col.color}30`; }}
+        onMouseLeave={e => { e.currentTarget.style.boxShadow = "none"; }}
+      >
+        {/* Header — cor da coluna, só título */}
+        <div style={{
+          background: `${col.color}18`,
+          borderBottom: `1px solid ${col.color}30`,
+          padding: "7px 8px 7px 10px",
+          display: "flex", alignItems: "center", gap: 4,
+          flexShrink: 0,
+        }}>
+          <p style={{
+            flex: 1, minWidth: 0,
+            fontSize: 13, fontWeight: 600, lineHeight: 1.3, margin: 0,
+            color: "hsl(var(--foreground))",
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
+            {t.title}
+          </p>
+          <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
+            {isEditor ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7">
-                    <MoreVertical className="h-4 w-4" />
+                  <Button variant="ghost" size="icon" className="h-5 w-5">
+                    <MoreVertical className="h-3 w-3" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => setInfoTarget(t)}>
                     <Info className="h-3.5 w-3.5 mr-2" />Ver informações
                   </DropdownMenuItem>
-                  {["pending", "in_progress", "in_revision"].includes(t.status) && (
+                  {["pending","in_progress","in_revision"].includes(t.status) && (
                     <DropdownMenuItem onClick={() => setReturnTarget(t)}>
                       <Undo2 className="h-3.5 w-3.5 mr-2" />Devolver
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
-            )}
+            ) : !["completed","cancelled"].includes(t.status) ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-5 w-5">
+                    <MoreVertical className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {t.status === "review" && (
+                    <>
+                      <DropdownMenuItem onClick={e => { e.stopPropagation(); updateStatus(t, "completed"); }}
+                        className="text-green-700 focus:text-green-700">
+                        Aprovar
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={e => { e.stopPropagation(); setRevisionTarget(t); setRevisionComment(""); }}
+                        className="text-orange-600 focus:text-orange-600">
+                        Pedir alteração
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  {t.status !== "paused" && (
+                    <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "pause" })}
+                      className="text-purple-700 focus:text-purple-700">
+                      <PauseCircle className="h-3.5 w-3.5 mr-2" />Pausar
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "cancel" })}
+                    className="text-red-600 focus:text-red-600">
+                    <XCircle className="h-3.5 w-3.5 mr-2" />Cancelar
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </div>
         </div>
-      </div>
-      {expandedRevisions.has(t.id) && t.revisions.length > 0 && (
-        <div className="px-7 pb-3 pt-1 space-y-2 border-l-2 border-orange-200 ml-0.5">
-          {t.revisions.map(r => (
-            <div key={r.id}>
-              <span className="text-[10px] font-semibold text-orange-600 mr-2">Alt. #{r.revisionNumber}</span>
-              <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
-                {fmtShort(r.createdAt)}
-              </span>
-              <p className="text-xs text-[hsl(var(--foreground))] mt-0.5">{r.comment}</p>
-            </div>
-          ))}
+
+        {/* Corpo — cliente */}
+        <div style={{
+          flex: 1, minHeight: 0,
+          padding: "6px 10px",
+          display: "flex", alignItems: "center",
+          overflow: "hidden",
+        }}>
+          {(t as any).client ? (
+            <p style={{
+              fontSize: 13, color: "hsl(var(--muted-foreground))",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              margin: 0,
+            }}>
+              {(t as any).client}
+            </p>
+          ) : (
+            <p style={{ fontSize: 13, color: "hsl(var(--muted-foreground))", opacity: 0.35, margin: 0, fontStyle: "italic" }}>
+              Sem cliente
+            </p>
+          )}
         </div>
-      )}
-    </div>
-  );
+
+        {/* Rodapé — prioridade · revisões · data · avatar */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 5,
+          padding: "5px 10px",
+          borderTop: "1px solid hsl(var(--border))",
+          flexShrink: 0,
+        }}>
+          <span style={{
+            fontSize: 13, fontWeight: 700, padding: "1px 5px", borderRadius: 99, flexShrink: 0,
+            background: t.priority === "high" ? "#fee2e2" : t.priority === "medium" ? "#fef9c3" : "#dcfce7",
+            color:      t.priority === "high" ? "#dc2626" : t.priority === "medium" ? "#ca8a04" : "#16a34a",
+          }}>
+            {PRIORITY_LABEL[t.priority] ?? t.priority}
+          </span>
+          {t.revisionCount > 0 && (
+            <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 13, color: "#ea580c", flexShrink: 0 }}>
+              <MessageSquare className="h-2.5 w-2.5" />{t.revisionCount}
+            </span>
+          )}
+          <div style={{ flex: 1 }} />
+          {t.dueDate && (
+            <span style={{
+              display: "flex", alignItems: "center", gap: 2, flexShrink: 0,
+              fontSize: 13, fontWeight: overdue ? 600 : 400,
+              color: overdue ? "#dc2626" : "hsl(var(--muted-foreground))",
+            }}>
+              {overdue && <AlertCircle className="h-2.5 w-2.5" />}
+              <Calendar className="h-2.5 w-2.5" />
+              {fmtDateHuman(t.dueDate)}
+            </span>
+          )}
+          {person && (
+            <AvatarDisplay
+              name={person.name}
+              avatarUrl={person.avatarUrl}
+              style={{
+                width: 20, height: 20, fontSize: 7, flexShrink: 0,
+                background: `${col.color}25`, color: col.color,
+                border: `1.5px solid ${col.color}40`,
+              }}
+              title={person.name}
+            />
+          )}
+        </div>
+      </div>
+    );
+  };
 
   if (loading) return <div className="text-[hsl(var(--muted-foreground))] text-sm p-4">Carregando...</div>;
 
   return (
-    <div className="space-y-4">
-      {/* Context bar */}
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-[hsl(var(--muted-foreground))]">
-          {tasks.length} {tasks.length === 1 ? "tarefa" : "tarefas"} atribuídas a você
-        </p>
-        {/* View toggle */}
-        <div className="flex items-center gap-1 rounded-lg border bg-[hsl(var(--muted))]/40 p-1">
-          <button
-            onClick={() => setView("kanban")}
-            title="Kanban"
-            className={`p-1.5 rounded-md transition-colors ${
-              view === "kanban"
-                ? "bg-[hsl(var(--card))] shadow-sm text-[hsl(var(--foreground))]"
-                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-            }`}>
-            <LayoutGrid className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => setView("table")}
-            title="Tabela"
-            className={`p-1.5 rounded-md transition-colors ${
-              view === "table"
-                ? "bg-[hsl(var(--card))] shadow-sm text-[hsl(var(--foreground))]"
-                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-            }`}>
-            <List className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
+    <div>
 
-      {/* ── KANBAN VIEW ─────────────────────────────────────────── */}
-      {view === "kanban" && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 items-start">
-          {KANBAN_COLS.map(col => {
-            const colTasks = tasks.filter(t => t.status === col.key);
-            return (
-              <div key={col.key} className={`flex flex-col gap-2 rounded-xl p-2 ${col.colBg}`}>
-                {/* Column header */}
-                <div className={`flex items-center justify-between rounded-lg px-3 py-2 border ${col.border} ${col.headerBg}`}>
-                  <span className="text-xs font-semibold text-[hsl(var(--foreground))]">{col.label}</span>
-                  <span className="text-[11px] font-bold text-[hsl(var(--muted-foreground))]">{colTasks.length}</span>
-                </div>
-                {/* Cards */}
-                <div className="flex flex-col gap-2">
-                  {colTasks.length === 0 ? (
-                    <div className={`rounded-lg border border-dashed ${col.border} px-3 py-5 text-center text-[11px] text-[hsl(var(--muted-foreground))]`}>
-                      Vazio
-                    </div>
-                  ) : colTasks.map(t => <KanbanCard key={t.id} t={t} col={col} />)}
-                </div>
+      {/* ── Board ─────────────────────────────────────────────────── */}
+      <motion.div
+        variants={staggerContainer} initial="initial" animate="animate"
+        style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
+        gap: 8,
+        alignItems: "start",
+        paddingBottom: 16,
+      }}>
+        {KANBAN_COLS.map(col => {
+          const colTasks = tasks.filter(t => t.status === col.key);
+          return (
+            <motion.div
+              key={col.key}
+              variants={staggerFade}
+              style={{
+                borderRadius: 10,
+                border: "1px solid hsl(var(--border))",
+                background: "hsl(var(--card))",
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+                boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+              }}
+            >
+              {/* Column header */}
+              <div style={{
+                padding: "10px 12px",
+                display: "flex", alignItems: "center", gap: 8,
+                borderBottom: `1px solid ${col.color}33`,
+                borderRadius: "10px 10px 0 0",
+                background: `${col.color}15`,
+                flexShrink: 0,
+              }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: col.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: "hsl(var(--foreground))", flex: 1 }}>
+                  {col.label}
+                </span>
+                <span style={{ fontSize: 13, fontFamily: "ui-monospace, monospace", color: "hsl(var(--muted-foreground))" }}>
+                  {colTasks.length}
+                </span>
               </div>
-            );
-          })}
-        </div>
-      )}
 
-      {/* ── TABLE VIEW ──────────────────────────────────────────── */}
-      {view === "table" && (
-        <Tabs defaultValue="active">
-          <TabsList>
-            <TabsTrigger value="active">Em aberto ({active.length})</TabsTrigger>
-            <TabsTrigger value="completed">Aprovadas ({completed.length})</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="active" className="mt-4">
-            {active.length === 0 ? (
-              <div className="rounded-xl bg-[hsl(var(--card))] card-float py-12 text-center text-sm text-[hsl(var(--muted-foreground))] flex flex-col items-center gap-2">
-                <ListTodo className="h-8 w-8 opacity-30" />
-                Nenhuma tarefa em aberto.
-              </div>
-            ) : (
-              <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
-                <div className="flex border-b bg-[hsl(var(--muted))]/30">
-                  <div className="w-0.5 shrink-0" />
-                  <div className="flex flex-1 items-center px-5 py-3">
-                    <div className="flex-1 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 pr-3">Tarefa</div>
-                    <div className="w-52 shrink-0 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Status</div>
-                    <div className="w-20 shrink-0 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Prior.</div>
-                    <div className="w-28 shrink-0 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Entrega</div>
-                    <div className="w-44 shrink-0" />
+              {/* Scrollable card list */}
+              <div style={{
+                overflowY: "auto",
+                maxHeight: "60vh",
+                padding: 8,
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+              }}>
+                {colTasks.length === 0 ? (
+                  <div style={{
+                    padding: "28px 12px", textAlign: "center",
+                    fontSize: 13, color: "hsl(var(--muted-foreground))",
+                    border: "1px dashed hsl(var(--border))",
+                    borderRadius: 8,
+                  }}>
+                    Vazio
                   </div>
-                </div>
-                {active.map((t, idx) => <TaskRow key={t.id} t={t} idx={idx} total={active.length} />)}
+                ) : colTasks.map(t => <KanbanCard key={t.id} t={t} col={col} />)}
               </div>
-            )}
-          </TabsContent>
+            </motion.div>
+          );
+        })}
+      </motion.div>
 
-          <TabsContent value="completed" className="mt-4">
-            {completed.length === 0 ? (
-              <div className="rounded-xl bg-[hsl(var(--card))] card-float py-10 text-center text-sm text-[hsl(var(--muted-foreground))]">
-                Nenhuma tarefa aprovada.
-              </div>
-            ) : (
-              <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
-                <div className="flex border-b bg-[hsl(var(--muted))]/30">
-                  <div className="w-0.5 shrink-0" />
-                  <div className="flex flex-1 items-center px-5 py-3">
-                    <div className="flex-1 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 pr-3">Tarefa</div>
-                    <div className="w-52 shrink-0 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Status</div>
-                    <div className="w-20 shrink-0 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Prior.</div>
-                    <div className="w-28 shrink-0 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Entrega</div>
-                    <div className="w-44 shrink-0" />
-                  </div>
-                </div>
-                {completed.map((t, idx) => <TaskRow key={t.id} t={t} idx={idx} total={completed.length} />)}
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
-      )}
-      {/* ── Task info modal ───────────────────────────────────── */}
+            {/* ── Task info modal ───────────────────────────────────── */}
       <Dialog open={!!infoTarget} onOpenChange={v => { if (!v) setInfoTarget(null); }}>
         <DialogContent
           className="max-w-xl"
@@ -526,7 +381,7 @@ export default function MyTasks() {
             const overdue = isOverdue(infoTarget.dueDate) && infoTarget.status !== "completed";
             const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
               <div className="flex items-baseline gap-3">
-                <span className="text-[10px] uppercase tracking-widest text-muted-foreground/60 w-24 shrink-0 pt-px">{label}</span>
+                <span className="text-xs uppercase tracking-widest text-muted-foreground/60 w-24 shrink-0 pt-px">{label}</span>
                 <span className="flex-1 min-w-0">{children}</span>
               </div>
             );
@@ -536,11 +391,11 @@ export default function MyTasks() {
                 {/* Contexto */}
                 <div className="flex items-start gap-8">
                   <div className="min-w-0">
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60">Projeto</p>
+                    <p className="text-xs uppercase tracking-widest text-muted-foreground/60">Projeto</p>
                     <p className="text-sm font-semibold truncate">{infoTarget.client ?? "—"}</p>
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60">Job</p>
+                    <p className="text-xs uppercase tracking-widest text-muted-foreground/60">Job</p>
                     <p className="text-sm font-semibold truncate">{infoTarget.jobName ?? "—"}</p>
                   </div>
                 </div>
@@ -553,11 +408,11 @@ export default function MyTasks() {
                     <span className="font-semibold leading-snug">{infoTarget.title}</span>
                   </Row>
                   <Row label="Status">
-                    <Badge className={`${STATUS_CLASS[infoTarget.status] ?? ""} text-[10px] px-1.5`}>
+                    <Badge className={`${STATUS_CLASS[infoTarget.status] ?? ""} text-xs px-1.5`}>
                       {STATUS_LABEL[infoTarget.status] ?? infoTarget.status}
                     </Badge>
                     {infoTarget.revisionCount > 0 && (
-                      <span className="text-[11px] text-orange-500 font-medium ml-2">{infoTarget.revisionCount} alt.</span>
+                      <span className="text-xs text-orange-500 font-medium ml-2">{infoTarget.revisionCount} alt.</span>
                     )}
                   </Row>
                   {(infoTarget.projectNumber && infoTarget.jobNumber && infoTarget.number) && (
@@ -603,7 +458,7 @@ export default function MyTasks() {
                   <>
                     <hr className="border-dashed border-muted-foreground/20" />
                     <div className="space-y-1.5">
-                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60">Descrição</p>
+                      <p className="text-xs uppercase tracking-widest text-muted-foreground/60">Descrição</p>
                       <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap">{infoTarget.description}</p>
                     </div>
                   </>
