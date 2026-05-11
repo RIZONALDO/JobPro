@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { staggerContainer, staggerRow } from "@/lib/motion";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { apiFetch, apiPut, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -18,7 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import {
   ClipboardList, MoreVertical, FolderOpen, AlertTriangle,
   CheckCircle2, Clock, ArrowUpRight, X, PauseCircle, XCircle,
-  Pencil, Trash2, Plus,
+  Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown,
 } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
@@ -89,6 +89,15 @@ export default function TasksOverview() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterEditor, setFilterEditor] = useState("all");
   const [filterCoord,  setFilterCoord]  = useState("all");
+
+  // Sort
+  const [sortKey, setSortKey] = useState<string>("taskCode");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const toggleSort = (key: string) => {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  };
 
   // Revision dialog
   const [revisionTask,    setRevisionTask]    = useState<OverviewTask | null>(null);
@@ -164,6 +173,46 @@ export default function TasksOverview() {
 
   const hasFilter = search || filterStatus !== "all" || filterEditor !== "all" || filterCoord !== "all";
   const clearFilters = () => { setSearch(""); setFilterStatus("all"); setFilterEditor("all"); setFilterCoord("all"); };
+
+  // ── Client-side sort ──────────────────────────────────────────────────────
+
+  const STATUS_ORDER_SORT = ["pending","in_progress","in_revision","review","paused","cancelled","completed"];
+  const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "taskCode": {
+          const an = a.taskCode ?? ""; const bn = b.taskCode ?? "";
+          cmp = an.localeCompare(bn, undefined, { numeric: true });
+          break;
+        }
+        case "title":
+          cmp = a.title.localeCompare(b.title);
+          break;
+        case "status":
+          cmp = STATUS_ORDER_SORT.indexOf(a.status) - STATUS_ORDER_SORT.indexOf(b.status);
+          break;
+        case "priority":
+          cmp = (PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1);
+          break;
+        case "assignee":
+          cmp = (a.assignee?.name ?? "").localeCompare(b.assignee?.name ?? "");
+          break;
+        case "dueDate": {
+          const da = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+          const db = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+          cmp = da - db;
+          break;
+        }
+        case "coordinator":
+          cmp = (a.coordinator?.name ?? "").localeCompare(b.coordinator?.name ?? "");
+          break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [filtered, sortKey, sortDir]);
 
   // ── Summary stats ─────────────────────────────────────────────────────────
 
@@ -271,15 +320,33 @@ export default function TasksOverview() {
       <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
 
         {/* Column headers */}
-        <div className="flex items-center px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b">
-          <div className="flex-1 pr-4 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Tarefa</div>
-          <div className="w-36 shrink-0 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Status</div>
-          <div className="w-24 shrink-0 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Prioridade</div>
-          <div className="w-36 shrink-0 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Editor</div>
-          <div className="w-28 shrink-0 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Prazo</div>
-          <div className="w-32 shrink-0 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Coordenador</div>
-          <div className="w-52 shrink-0" />
-        </div>
+        {(() => {
+          const SortIcon = ({ col }: { col: string }) => {
+            if (sortKey !== col) return <ChevronsUpDown className="h-3 w-3 opacity-30" />;
+            return sortDir === "asc"
+              ? <ChevronUp className="h-3 w-3 text-[hsl(var(--primary))]" />
+              : <ChevronDown className="h-3 w-3 text-[hsl(var(--primary))]" />;
+          };
+          const Th = ({ col, label, cls }: { col: string; label: string; cls: string }) => (
+            <button
+              onClick={() => toggleSort(col)}
+              className={`${cls} flex items-center gap-1 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--foreground))] transition-colors select-none ${sortKey === col ? "text-[hsl(var(--primary))]/80" : ""}`}
+            >
+              {label}<SortIcon col={col} />
+            </button>
+          );
+          return (
+            <div className="flex items-center px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b">
+              <div className="flex-1 pr-4"><Th col="taskCode" label="Tarefa" cls="" /></div>
+              <div className="w-36 shrink-0"><Th col="status" label="Status" cls="" /></div>
+              <div className="w-24 shrink-0"><Th col="priority" label="Prioridade" cls="" /></div>
+              <div className="w-36 shrink-0"><Th col="assignee" label="Editor" cls="" /></div>
+              <div className="w-28 shrink-0"><Th col="dueDate" label="Prazo" cls="" /></div>
+              <div className="w-32 shrink-0"><Th col="coordinator" label="Coordenador" cls="" /></div>
+              <div className="w-52 shrink-0" />
+            </div>
+          );
+        })()}
 
         {/* Loading skeleton */}
         {loading ? (
@@ -298,7 +365,7 @@ export default function TasksOverview() {
             ))}
           </div>
 
-        ) : filtered.length === 0 ? (
+        ) : sorted.length === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center gap-3 py-16 text-center">
             <div className="h-14 w-14 rounded-2xl bg-[hsl(var(--muted))]/40 flex items-center justify-center">
@@ -315,7 +382,7 @@ export default function TasksOverview() {
         ) : (
           /* Task rows */
           <div className="divide-y divide-[hsl(var(--muted))]">
-            {filtered.map(t => {
+            {sorted.map(t => {
               const overdue   = isOverdue(t);
               const canActNow = canAct(t);
 
