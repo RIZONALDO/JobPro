@@ -1,8 +1,10 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, smallint } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 
 export const tasksTable = pgTable("te_tasks", {
   id: serial("id").primaryKey(),
+  taskNumber: integer("task_number").notNull().default(0),
+  taskYear: smallint("task_year").notNull().default(0),
   title: text("title").notNull(),
   description: text("description"),
   client: text("client"),

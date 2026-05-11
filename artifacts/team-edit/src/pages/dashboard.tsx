@@ -18,6 +18,7 @@ import { usePageTitle } from "@/lib/use-page-title";
 
 interface Task {
   id: number;
+  taskCode?: string;
   title: string;
   status: string;
   priority: string;
@@ -29,6 +30,7 @@ interface Task {
 
 interface AtRiskTask {
   id: number;
+  taskCode?: string;
   title: string;
   status: string;
   dueDate: string;
@@ -53,6 +55,7 @@ interface EditorWorkload {
 interface ActivityEvent {
   id: number;
   taskId: number;
+  taskCode?: string;
   taskTitle: string;
   taskClient: string | null;
   fromStatus: string;
@@ -71,7 +74,7 @@ interface AllTask {
 
 interface DeadlineBucket { key: string; label: string; color: string; count: number; }
 interface UrgentTask {
-  id: number; title: string; status: string; priority: string;
+  id: number; taskCode?: string; title: string; status: string; priority: string;
   dueDate: string; client: string | null; color: string;
   assigneeName: string | null; bucket: string;
 }
@@ -457,6 +460,7 @@ function TaskDeadlineCard({ data, onOpenJob }: {
                     style={{ backgroundColor: BUCKET_COLOR[t.bucket] ?? "#94a3b8" }}
                   />
                   <div className="flex-1 min-w-0">
+                    {t.taskCode && <span className="text-[9px] font-mono text-[hsl(var(--muted-foreground))]/50 block">{t.taskCode}</span>}
                     <p className="text-xs font-medium truncate leading-tight group-hover:text-[hsl(var(--primary))] transition-colors">
                       {t.title}
                     </p>
@@ -666,7 +670,7 @@ export default function Dashboard() {
                   <div className={`w-0.5 h-8 rounded-full shrink-0 ${STATUS_BAR[t.status] ?? "bg-slate-300"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      {t.number ? <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">#{t.number}</span> : null}
+                      {t.taskCode ? <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">{t.taskCode}</span> : null}
                       <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
                     </div>
                     {t.dueDate && (() => {
@@ -701,10 +705,11 @@ export default function Dashboard() {
                 <div key={e.id} role="button" onClick={() => openTask(e.taskId)}
                   className="flex items-center gap-4 px-5 py-2 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
                   <span className="text-xs text-[hsl(var(--muted-foreground))]/40 w-5 shrink-0 text-right select-none">{String(idx + 1).padStart(2, "0")}</span>
-                  <span className="text-xs text-[hsl(var(--muted-foreground))]/60 shrink-0 w-28">
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]/60 shrink-0 w-24">
                     {fmtShort(e.createdAt)}
                   </span>
                   <span className="flex-1 text-xs truncate font-sans">
+                    {e.taskCode && <span className="font-mono text-[hsl(var(--muted-foreground))]/50 mr-1">{e.taskCode}</span>}
                     <span className="text-[hsl(var(--foreground))] font-medium group-hover:text-[hsl(var(--primary))] transition-colors">{e.taskTitle}</span>
                     <span className="text-[hsl(var(--muted-foreground))]"> → {STATUS_LABEL[e.toStatus] ?? e.toStatus}</span>
                     {e.changedByName && <span className="text-[hsl(var(--muted-foreground))]/60"> · {e.changedByName.split(" ")[0]}</span>}
@@ -774,7 +779,7 @@ export default function Dashboard() {
                   style={{ borderLeft: `4px solid ${t.color ?? "#6366f1"}88` }}>
                   <div className="flex-1 min-w-0 pl-1">
                     <div className="flex items-center gap-1.5">
-                      {t.number ? <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">#{t.number}</span> : null}
+                      {t.taskCode ? <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">{t.taskCode}</span> : null}
                       <p className="text-sm font-medium truncate">{t.title}</p>
                     </div>
                     <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
@@ -820,7 +825,7 @@ export default function Dashboard() {
                   <div className={`w-0.5 h-8 rounded-full shrink-0 ${STATUS_BAR[t.status] ?? "bg-slate-300"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      {t.number ? <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">#{t.number}</span> : null}
+                      {t.taskCode ? <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">{t.taskCode}</span> : null}
                       <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -862,6 +867,7 @@ export default function Dashboard() {
                     {fmtShort(e.createdAt)}
                   </span>
                   <span className="flex-1 text-xs truncate font-sans">
+                    {e.taskCode && <span className="font-mono text-[hsl(var(--muted-foreground))]/50 mr-1">{e.taskCode}</span>}
                     <span className="text-[hsl(var(--foreground))] font-medium group-hover:text-[hsl(var(--primary))] transition-colors">{e.taskTitle}</span>
                     <span className="text-[hsl(var(--muted-foreground))]"> → {STATUS_LABEL[e.toStatus] ?? e.toStatus}</span>
                     {e.changedByName && <span className="text-[hsl(var(--muted-foreground))]/60"> · {e.changedByName.split(" ")[0]}</span>}

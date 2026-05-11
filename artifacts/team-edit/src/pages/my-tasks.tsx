@@ -20,6 +20,7 @@ import { usePageTitle } from "@/lib/use-page-title";
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
 interface Task {
   id: number;
+  taskCode?: string;
   title: string;
   description: string | null;
   dueDate: string | null;
@@ -161,14 +162,20 @@ export default function MyTasks() {
           display: "flex", alignItems: "center", gap: 4,
           flexShrink: 0,
         }}>
-          <p style={{
-            flex: 1, minWidth: 0,
-            fontSize: 13, fontWeight: 600, lineHeight: 1.3, margin: 0,
-            color: "hsl(var(--foreground))",
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>
-            {t.title}
-          </p>
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+            {t.taskCode && (
+              <span style={{ fontSize: 10, fontFamily: "ui-monospace, monospace", color: "hsl(var(--muted-foreground))", opacity: 0.7, lineHeight: 1 }}>
+                {t.taskCode}
+              </span>
+            )}
+            <p style={{
+              fontSize: 13, fontWeight: 600, lineHeight: 1.3, margin: 0,
+              color: "hsl(var(--foreground))",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {t.title}
+            </p>
+          </div>
           <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
             {isEditor ? (
               <DropdownMenu>

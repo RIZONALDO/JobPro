@@ -15,6 +15,7 @@ interface Person { id: number; name: string; avatarUrl: string | null; }
 
 interface TimelineTask {
   id: number;
+  taskCode?: string;
   title: string;
   status: string;
   priority: string;
@@ -304,14 +305,21 @@ function GanttGrid({ tasks, zoom, onOpen }: {
                   background: barColor,
                 }} />
                 <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-                  <span style={{
-                    fontSize: 14, fontWeight: 500, lineHeight: 1.2,
-                    color: isDone || isCancel ? "hsl(var(--muted-foreground))" : "hsl(var(--foreground))",
-                    textDecoration: isDone || isCancel ? "line-through" : "none",
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}>
-                    {t.title}
-                  </span>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 5, minWidth: 0 }}>
+                    {t.taskCode && (
+                      <span style={{ fontSize: 10, fontFamily: "ui-monospace, monospace", color: "hsl(var(--muted-foreground))", opacity: 0.6, flexShrink: 0 }}>
+                        {t.taskCode}
+                      </span>
+                    )}
+                    <span style={{
+                      fontSize: 14, fontWeight: 500, lineHeight: 1.2,
+                      color: isDone || isCancel ? "hsl(var(--muted-foreground))" : "hsl(var(--foreground))",
+                      textDecoration: isDone || isCancel ? "line-through" : "none",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>
+                      {t.title}
+                    </span>
+                  </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
                     {t.client && (
                       <span style={{

@@ -8,6 +8,10 @@ import { createFeedItem } from "../lib/feed.js";
 
 const router = Router();
 
+function fmtCode(num: number, year: number): string {
+  return `${String(num).padStart(3, "0")}.${String(year).padStart(2, "0")}`;
+}
+
 const dueDateKey = (d: Date | string | null | undefined): string => {
   if (!d) return '';
   if (typeof d === 'string') return d.slice(0, 10);
@@ -20,7 +24,14 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
   if (!title) { res.status(400).json({ error: "Título obrigatório" }); return; }
 
   const parsedAssignee = assignedToId ? parseInt(String(assignedToId), 10) : null;
+
+  const [seqRow] = await db.execute<{ nextval: string }>(sql`SELECT nextval('te_task_number_seq') AS nextval`);
+  const taskNumber = Number(seqRow.nextval);
+  const taskYear = new Date().getFullYear() % 100;
+
   const [task] = await db.insert(tasksTable).values({
+    taskNumber,
+    taskYear,
     title: String(title),
     description: description ? String(description) : null,
     client: client ? String(client) : null,
@@ -96,6 +107,7 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
   const userId = req.session.userId!;
   res.json(rows.map(r => ({
     id: r.id,
+    taskCode: fmtCode(r.taskNumber, r.taskYear),
     title: r.title,
     description: r.description,
     status: r.status,
@@ -136,7 +148,7 @@ router.get("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     .innerJoin(usersTable, eq(taskEditorsTable.userId, usersTable.id))
     .where(eq(taskEditorsTable.taskId, id));
 
-  res.json({ ...task, createdBy: createdBy ?? null, assignedTo: assignedTo ?? null, revisions, editors: editorRows });
+  res.json({ ...task, taskCode: fmtCode(task.taskNumber, task.taskYear), createdBy: createdBy ?? null, assignedTo: assignedTo ?? null, revisions, editors: editorRows });
 });
 
 // ── Update task ──────────────────────────────────────────────────────────────
@@ -425,6 +437,7 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
     }).from(taskRevisionsTable).where(eq(taskRevisionsTable.taskId, t.id)).orderBy(asc(taskRevisionsTable.revisionNumber));
     return {
       ...t,
+      taskCode: fmtCode(t.taskNumber, t.taskYear),
       createdBy: createdBy ?? null,
       assignedTo: assignedTo ?? null,
       revisions,
@@ -450,6 +463,8 @@ router.get("/activity", requireAuth, async (req, res): Promise<void> => {
       createdAt: taskEventsTable.createdAt,
       taskTitle: tasksTable.title,
       taskClient: tasksTable.client,
+      taskNumber: tasksTable.taskNumber,
+      taskYear: tasksTable.taskYear,
     })
     .from(taskEventsTable)
     .innerJoin(tasksTable, eq(taskEventsTable.taskId, tasksTable.id))
@@ -464,7 +479,7 @@ router.get("/activity", requireAuth, async (req, res): Promise<void> => {
     if (u) changers[u.id] = u.name;
   }));
 
-  res.json(events.map(e => ({ ...e, changedByName: e.changedById ? changers[e.changedById] ?? null : null })));
+  res.json(events.map(e => ({ ...e, taskCode: fmtCode(e.taskNumber, e.taskYear), changedByName: e.changedById ? changers[e.changedById] ?? null : null })));
 });
 
 // ── Calendar ──────────────────────────────────────────────────────────────────
@@ -572,6 +587,8 @@ router.get("/dashboard-extras", requireAuth, async (_req, res): Promise<void> =>
       assignedToId: tasksTable.assignedToId,
       client: tasksTable.client,
       color: tasksTable.color,
+      taskNumber: tasksTable.taskNumber,
+      taskYear: tasksTable.taskYear,
     })
     .from(tasksTable)
     .where(and(
@@ -590,6 +607,7 @@ router.get("/dashboard-extras", requireAuth, async (_req, res): Promise<void> =>
 
   const atRisk = overdueRows.map(t => ({
     ...t,
+    taskCode: fmtCode(t.taskNumber, t.taskYear),
     assignee: t.assignedToId ? (assigneeMap.get(t.assignedToId) ?? null) : null,
     assigneeName: t.assignedToId ? (assigneeMap.get(t.assignedToId)?.name ?? null) : null,
   }));
@@ -624,6 +642,7 @@ router.get("/deadline-overview", requireAuth, async (req, res): Promise<void> =>
       id: tasksTable.id, title: tasksTable.title, status: tasksTable.status,
       priority: tasksTable.priority, dueDate: tasksTable.dueDate,
       assignedToId: tasksTable.assignedToId, client: tasksTable.client, color: tasksTable.color,
+      taskNumber: tasksTable.taskNumber, taskYear: tasksTable.taskYear,
     })
     .from(tasksTable).where(taskWhere).orderBy(asc(tasksTable.dueDate));
 
@@ -659,7 +678,7 @@ router.get("/deadline-overview", requireAuth, async (req, res): Promise<void> =>
   }
 
   const urgent = urgentRows.map(t => ({
-    id: t.id, title: t.title, status: t.status, priority: t.priority,
+    id: t.id, taskCode: fmtCode(t.taskNumber, t.taskYear), title: t.title, status: t.status, priority: t.priority,
     dueDate: t.dueDate, client: t.client, color: t.color,
     assigneeName: t.assignedToId ? (assigneeMap.get(t.assignedToId) ?? null) : null,
     bucket: getBucket(dueDateKey(t.dueDate)),
@@ -681,6 +700,7 @@ router.get("/pipeline", requireAuth, async (_req, res): Promise<void> => {
       dueDate: tasksTable.dueDate, color: tasksTable.color, client: tasksTable.client,
       revisionCount: tasksTable.revisionCount, assignedToId: tasksTable.assignedToId,
       createdById: tasksTable.createdById, createdAt: tasksTable.createdAt,
+      taskNumber: tasksTable.taskNumber, taskYear: tasksTable.taskYear,
     })
     .from(tasksTable)
     .where(ne(tasksTable.status, "completed"))
@@ -699,6 +719,7 @@ router.get("/pipeline", requireAuth, async (_req, res): Promise<void> => {
 
   res.json(tasks.map(t => ({
     ...t,
+    taskCode: fmtCode(t.taskNumber, t.taskYear),
     assignee: t.assignedToId ? (personMap.get(t.assignedToId) ?? null) : null,
     coordinator: t.createdById ? (personMap.get(t.createdById) ?? null) : null,
   })));
@@ -784,6 +805,7 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
   res.json({
     task: {
       id: task.id,
+      taskCode: fmtCode(task.taskNumber, task.taskYear),
       title: task.title,
       status: task.status,
       priority: task.priority,
@@ -821,6 +843,8 @@ router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
       createdById: tasksTable.createdById,
       createdAt: tasksTable.createdAt,
       updatedAt: tasksTable.updatedAt,
+      taskNumber: tasksTable.taskNumber,
+      taskYear: tasksTable.taskYear,
     })
     .from(tasksTable)
     .where(editorFilter)
@@ -839,6 +863,7 @@ router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
 
   res.json(tasks.map(t => ({
     id: t.id,
+    taskCode: fmtCode(t.taskNumber, t.taskYear),
     title: t.title,
     description: t.description,
     status: t.status,
@@ -883,6 +908,7 @@ router.get("/reports", requireCoordinator, async (req, res): Promise<void> => {
   res.json({
     tasks: rows.map(r => ({
       id: r.id,
+      taskCode: fmtCode(r.taskNumber, r.taskYear),
       title: r.title,
       status: r.status,
       priority: r.priority,

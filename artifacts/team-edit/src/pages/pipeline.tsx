@@ -13,6 +13,7 @@ interface Person { id: number; name: string; avatarUrl?: string | null; }
 
 interface PipelineTask {
   id: number;
+  taskCode?: string;
   title: string;
   status: string;
   priority: string;
@@ -115,6 +116,9 @@ export default function Pipeline() {
                         {/* Title + revision badge */}
                         <div className="flex items-start gap-2">
                           <div className="flex-1 min-w-0">
+                            {t.taskCode && (
+                              <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/60 block mb-0.5">{t.taskCode}</span>
+                            )}
                             <p className="text-sm font-semibold leading-snug">{t.title}</p>
                             {t.client && (
                               <p className="text-xs text-[hsl(var(--muted-foreground))] flex items-center gap-1 mt-0.5 truncate">

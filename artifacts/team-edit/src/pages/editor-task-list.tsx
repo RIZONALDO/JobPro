@@ -22,6 +22,7 @@ import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
 interface Task {
   id: number;
+  taskCode?: string;
   title: string;
   status: string;
   priority: string;
@@ -184,7 +185,12 @@ export default function EditorTaskList() {
 
               {/* Title + client + revision */}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate leading-snug">{t.title}</p>
+                <div className="flex items-baseline gap-1.5 min-w-0">
+                  {t.taskCode && (
+                    <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/60 shrink-0">{t.taskCode}</span>
+                  )}
+                  <p className="text-sm font-medium truncate leading-snug">{t.title}</p>
+                </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   {t.client && (
                     <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.client}</span>
