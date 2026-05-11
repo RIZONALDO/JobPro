@@ -25,8 +25,8 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
 
   const parsedAssignee = assignedToId ? parseInt(String(assignedToId), 10) : null;
 
-  const [seqRow] = await db.execute<{ nextval: string }>(sql`SELECT nextval('te_task_number_seq') AS nextval`);
-  const taskNumber = Number(seqRow.nextval);
+  const seqResult = await db.execute<{ nextval: string }>(sql`SELECT nextval('te_task_number_seq') AS nextval`);
+  const taskNumber = Number((seqResult.rows ?? seqResult)[0].nextval);
   const taskYear = new Date().getFullYear() % 100;
 
   const [task] = await db.insert(tasksTable).values({
