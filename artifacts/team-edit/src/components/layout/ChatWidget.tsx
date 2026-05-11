@@ -124,13 +124,13 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
       />
       {showDrop && filtered.length > 0 && (
         <div className="absolute bottom-[calc(100%+8px)] left-0 w-52 rounded-2xl border bg-card shadow-xl z-[300] overflow-hidden">
-          <div className="px-3 py-2 border-b bg-muted/30">
+          <div className="px-3 py-2 border-b bg-muted">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Mencionar</span>
           </div>
           {filtered.map((u, i) => (
             <button key={u.id} onMouseDown={() => selectUser(u)}
-              className={cn("w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors text-left",
-                i === selIdx && "bg-muted/50")}>
+              className={cn("w-full flex items-center gap-2 px-3 py-2 hover:bg-muted transition-colors text-left",
+                i === selIdx && "bg-muted")}>
               <Avatar name={u.name} url={u.avatarUrl} size="xs" />
               <span className="text-sm font-medium truncate">{u.name}</span>
             </button>
@@ -326,7 +326,7 @@ export function ChatWidget() {
           className={cn(
             "relative h-12 w-12 rounded-full flex items-center justify-center shadow-lg transition-colors duration-200",
             chatOpen || totalUnread > 0 || hasAlert
-              ? "bg-primary text-primary-foreground shadow-primary/25"
+              ? "bg-primary text-primary-foreground "
               : "bg-card border-2 border-border text-muted-foreground hover:text-foreground hover:border-primary/40 hover:shadow-xl"
           )}
         >
@@ -359,14 +359,14 @@ export function ChatWidget() {
           <motion.div
             ref={panelRef}
             key="panel"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 14 }}
-            transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0, y: 32, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.97 }}
+            transition={{ type: "spring", stiffness: 360, damping: 22, mass: 0.85 }}
             className={cn(
               "fixed z-50 flex overflow-hidden bg-card shadow-2xl",
               // Mobile: full-width bottom sheet
-              "bottom-0 left-0 right-0 h-[85dvh] rounded-t-3xl border-t border-x border-border/80",
+              "bottom-0 left-0 right-0 h-[85dvh] rounded-t-3xl border-t border-x border-border",
               // Desktop: floating panel above FAB
               "sm:bottom-20 sm:right-5 sm:left-auto sm:w-[440px] sm:h-[560px] sm:rounded-3xl sm:border"
             )}
@@ -377,7 +377,7 @@ export function ChatWidget() {
             </div>
 
             {/* ── Icon Nav Strip ── */}
-            <div className="w-[54px] shrink-0 border-r border-border/60 flex flex-col items-center pt-8 sm:pt-3 pb-3 gap-1.5 bg-muted/20">
+            <div className="w-[54px] shrink-0 border-r border-border flex flex-col items-center pt-8 sm:pt-3 pb-3 gap-1.5 bg-muted">
               {/* Close */}
               <button
                 onClick={() => setChatOpen(false)}
@@ -396,7 +396,7 @@ export function ChatWidget() {
                 className={cn(
                   "relative h-10 w-10 rounded-2xl flex items-center justify-center transition-all shrink-0",
                   activeView === "general"
-                    ? "bg-primary text-primary-foreground shadow-sm shadow-primary/30"
+                    ? "bg-primary text-primary-foreground shadow-sm "
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
@@ -448,7 +448,7 @@ export function ChatWidget() {
               {activeView === "general" ? (
                 <>
                   {/* General header */}
-                  <div className="shrink-0 px-4 pt-8 pb-3 sm:pt-3 border-b border-border/60 bg-gradient-to-b from-muted/40 to-transparent flex items-center gap-3">
+                  <div className="shrink-0 px-4 pt-8 pb-3 sm:pt-3 border-b border-border bg-muted flex items-center gap-3">
                     <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                       <MessageCircle className="h-4 w-4 text-primary" />
                     </div>
@@ -502,8 +502,8 @@ export function ChatWidget() {
                   </div>
 
                   {/* General input */}
-                  <div className="shrink-0 p-3 border-t border-border/60">
-                    <div className="flex gap-2 items-end bg-muted/50 rounded-2xl px-3.5 py-2.5">
+                  <div className="shrink-0 p-3 border-t border-border">
+                    <div className="flex gap-2 items-end bg-muted rounded-2xl px-3.5 py-2.5">
                       <ChatTextarea value={msgText} onChange={setMsgText} onSend={sendMsg} users={allUsers} placeholder="Mensagem..." />
                       <Button size="sm" onClick={sendMsg} disabled={sending || !msgText.trim()} className="h-8 w-8 p-0 shrink-0 rounded-xl">
                         <Send className="h-3.5 w-3.5" />
@@ -518,7 +518,7 @@ export function ChatWidget() {
                     const other = currentDmUser;
                     const isOnline = onlineUsers.some(u => u.userId === activeView);
                     return (
-                      <div className="shrink-0 px-4 pt-8 pb-3 sm:pt-3 border-b border-border/60 bg-gradient-to-b from-muted/40 to-transparent flex items-center gap-3">
+                      <div className="shrink-0 px-4 pt-8 pb-3 sm:pt-3 border-b border-border bg-muted flex items-center gap-3">
                         <div className="relative shrink-0">
                           <Avatar name={other?.name ?? null} url={other?.avatarUrl ?? null} size="md" />
                           <span className={cn(
@@ -563,8 +563,8 @@ export function ChatWidget() {
                   </div>
 
                   {/* DM input */}
-                  <div className="shrink-0 p-3 border-t border-border/60">
-                    <div className="flex gap-2 items-end bg-muted/50 rounded-2xl px-3.5 py-2.5">
+                  <div className="shrink-0 p-3 border-t border-border">
+                    <div className="flex gap-2 items-end bg-muted rounded-2xl px-3.5 py-2.5">
                       <ChatTextarea value={dmText} onChange={setDmText} onSend={sendDm} users={allUsers} placeholder="Mensagem privada..." />
                       <Button size="sm" onClick={sendDm} disabled={dmSending || !dmText.trim()} className="h-8 w-8 p-0 shrink-0 rounded-xl">
                         <Send className="h-3.5 w-3.5" />
