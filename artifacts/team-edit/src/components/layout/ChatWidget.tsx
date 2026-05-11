@@ -428,9 +428,9 @@ export function ChatWidget() {
                       onClick={() => openDm(u.id)}
                       className={cn(
                         "relative h-10 w-10 rounded-2xl flex items-center justify-center transition-all shrink-0",
-                        isActive ? "ring-2 ring-offset-2" : "opacity-75 hover:opacity-100"
+                        isActive ? "" : "opacity-75 hover:opacity-100"
                       )}
-                      style={isActive ? { ringColor: "hsl(var(--primary))", ringOffsetColor: "hsl(var(--muted))" } : {}}
+                      style={isActive ? { boxShadow: "0 0 0 2px hsl(var(--primary))" } : {}}
                     >
                       <Avatar name={u.name} url={u.avatarUrl} size="sm" />
                       {isOnline && (
