@@ -494,7 +494,10 @@ export default function TasksOverview() {
                       </a>
                     )}
                     {t.status === "rascunho" && canActNow && (
-                      <Button size="sm" className="h-7 text-xs px-2.5 bg-zinc-700 hover:bg-zinc-800"
+                      <Button size="sm"
+                        className={`h-7 text-xs px-2.5 ${t.editors?.length > 0 ? "bg-zinc-700 hover:bg-zinc-800" : "bg-zinc-300 cursor-not-allowed"}`}
+                        disabled={!t.editors || t.editors.length === 0}
+                        title={!t.editors || t.editors.length === 0 ? "Atribua um editor antes de publicar" : undefined}
                         onClick={e => { e.stopPropagation(); apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(load); }}>
                         <Send className="h-3 w-3 mr-1" />Publicar
                       </Button>

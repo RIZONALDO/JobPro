@@ -26,6 +26,13 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
   const parsedAssignee = assignedToId ? parseInt(String(assignedToId), 10) : null;
   const initialStatus = status === "rascunho" ? "rascunho" : "pending";
 
+  const allEditorIdsCheck = new Set<number>();
+  if (parsedAssignee) allEditorIdsCheck.add(parsedAssignee);
+  if (Array.isArray(editorIds)) editorIds.map(Number).filter(n => !isNaN(n) && n > 0).forEach(n => allEditorIdsCheck.add(n));
+  if (initialStatus === "pending" && allEditorIdsCheck.size === 0) {
+    res.status(400).json({ error: "Atribua ao menos um editor para publicar a tarefa" }); return;
+  }
+
   const seqResult = await db.execute<{ nextval: string }>(sql`SELECT nextval('te_task_number_seq') AS nextval`);
   const taskNumber = Number((seqResult.rows ?? seqResult)[0].nextval);
   const taskYear = new Date().getFullYear() % 100;
@@ -235,6 +242,12 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         update.status = s;
       } else if (s === "pending" && (task.status === "paused" || task.status === "rascunho")) {
         // Retomar pausada ou publicar rascunho
+        if (task.status === "rascunho") {
+          const editors = await db.select({ id: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
+          if (editors.length === 0 && !task.assignedToId) {
+            res.status(400).json({ error: "Atribua ao menos um editor para publicar a tarefa" }); return;
+          }
+        }
         update.status = "pending";
       } else {
         // Fluxo normal de aprovação/revisão

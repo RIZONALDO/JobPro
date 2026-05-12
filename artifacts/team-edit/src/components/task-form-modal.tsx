@@ -107,6 +107,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
   const save = async (publishStatus?: "rascunho" | "pending") => {
     if (!form.title.trim()) { toast({ title: "Título obrigatório", variant: "destructive" }); return; }
+    if (publishStatus === "pending" && selectedEditorIds.length === 0) {
+      toast({ title: "Atribua ao menos um editor para publicar", variant: "destructive" }); return;
+    }
     const payload: Record<string, unknown> = {
       title:        form.title,
       description:  form.description || null,
