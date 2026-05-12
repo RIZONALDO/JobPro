@@ -141,21 +141,46 @@ export function TaskModal({ taskId, onClose }: Props) {
                     </div>
                   </div>
 
-                  {/* Due date */}
+                  {/* Due date / closed date */}
                   <div>
-                    <SideLabel>Prazo</SideLabel>
-                    {task.dueDate ? (
-                      <div className={`flex flex-col gap-0.5 ${overdue ? "text-red-600" : "text-[hsl(var(--foreground))]"}`}>
-                        <div className="flex items-center gap-1.5">
+                    {task.status === "completed" ? (
+                      <>
+                        <SideLabel>Encerrada em</SideLabel>
+                        <div className="flex items-center gap-1.5 text-emerald-600">
                           <Calendar className="h-3.5 w-3.5 shrink-0" />
-                          <span className="text-sm font-semibold">{fmtDateHuman(task.dueDate)}</span>
+                          <span className="text-sm font-semibold">{fmtDateHuman(task.updatedAt)}</span>
                         </div>
-                        {overdue && (
-                          <span className="text-[10px] font-bold text-red-500 pl-5">Atrasada</span>
+                        {task.dueDate && (
+                          <span className="text-[10px] text-[hsl(var(--muted-foreground))]/50 pl-5">
+                            Prazo era {fmtDateHuman(task.dueDate)}
+                          </span>
                         )}
-                      </div>
+                      </>
+                    ) : task.status === "cancelled" ? (
+                      <>
+                        <SideLabel>Cancelada em</SideLabel>
+                        <div className="flex items-center gap-1.5 text-[hsl(var(--muted-foreground))]">
+                          <Calendar className="h-3.5 w-3.5 shrink-0" />
+                          <span className="text-sm font-semibold">{fmtDateHuman(task.updatedAt)}</span>
+                        </div>
+                      </>
                     ) : (
-                      <span className="text-sm text-[hsl(var(--muted-foreground))]/40">Sem prazo</span>
+                      <>
+                        <SideLabel>Prazo</SideLabel>
+                        {task.dueDate ? (
+                          <div className={`flex flex-col gap-0.5 ${overdue ? "text-red-600" : "text-[hsl(var(--foreground))]"}`}>
+                            <div className="flex items-center gap-1.5">
+                              <Calendar className="h-3.5 w-3.5 shrink-0" />
+                              <span className="text-sm font-semibold">{fmtDateHuman(task.dueDate)}</span>
+                            </div>
+                            {overdue && (
+                              <span className="text-[10px] font-bold text-red-500 pl-5">Atrasada</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-[hsl(var(--muted-foreground))]/40">Sem prazo</span>
+                        )}
+                      </>
                     )}
                   </div>
 

@@ -678,6 +678,8 @@ router.get("/dashboard-extras", requireAuth, async (_req, res): Promise<void> =>
     .from(tasksTable)
     .where(and(
       ne(tasksTable.status, "completed"),
+      ne(tasksTable.status, "cancelled"),
+      ne(tasksTable.status, "paused"),
       isNotNull(tasksTable.dueDate),
       sql`${tasksTable.dueDate} < ${todayStr}`,
     ));

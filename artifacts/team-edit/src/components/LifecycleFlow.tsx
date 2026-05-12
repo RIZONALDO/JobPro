@@ -1,6 +1,6 @@
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { Badge } from "@/components/ui/badge";
 import {
   Play, Pencil, Send, MessageSquare, CheckCircle2, Clock,
@@ -206,8 +206,7 @@ export function LifecycleFlow({
   const { task, steps } = data;
 
   const isOverdue = task.dueDate
-    && task.status !== "completed"
-    && task.status !== "cancelled"
+    && !isTerminal(task.status)
     && new Date(task.dueDate) < new Date();
 
   return (

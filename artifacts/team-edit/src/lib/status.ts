@@ -1,3 +1,9 @@
+// Statuses where the task lifecycle is closed — overdue logic must NOT apply.
+export const TERMINAL_STATUSES = ["completed", "cancelled", "paused"] as const;
+export function isTerminal(status: string): boolean {
+  return (TERMINAL_STATUSES as readonly string[]).includes(status);
+}
+
 export const STATUS_LABEL: Record<string, string> = {
   rascunho:    "Rascunho",
   pending:     "Pendente",

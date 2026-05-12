@@ -21,7 +21,7 @@ import {
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
   SlidersHorizontal,
 } from "lucide-react";
-import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { TaskFormModal } from "@/components/task-form-modal";
@@ -235,7 +235,7 @@ export default function TasksOverview() {
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   const canAct = (t: OverviewTask) => t.isOwn || isSuper;
-  const isOverdue = (t: OverviewTask) => !!(t.dueDate && new Date(t.dueDate) < now && t.status !== "completed");
+  const isOverdue = (t: OverviewTask) => !!(t.dueDate && new Date(t.dueDate) < now && !isTerminal(t.status));
 
   const approve = async (t: OverviewTask) => {
     try {

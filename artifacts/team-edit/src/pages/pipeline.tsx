@@ -7,7 +7,7 @@ import { usePageTitle } from "@/lib/use-page-title";
 import { fmtDateParts } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Tag, AlertTriangle } from "lucide-react";
-import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 
@@ -100,7 +100,7 @@ export default function Pipeline() {
               ) : (
                 <div className="flex flex-col gap-2">
                   {colTasks.map(t => {
-                    const isOverdue = t.dueDate && t.dueDate < today;
+                    const isOverdue = t.dueDate && t.dueDate < today && !isTerminal(t.status);
                     return (
                       <div
                         key={t.id}

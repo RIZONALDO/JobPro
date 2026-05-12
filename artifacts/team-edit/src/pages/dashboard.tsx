@@ -12,7 +12,7 @@ import { StatusBars } from "@/components/charts/StatusBars";
 import { WaffleChart } from "@/components/charts/WaffleChart";
 import { useSize } from "@/hooks/use-size";
 import { Link, useLocation } from "wouter";
-import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { usePageTitle } from "@/lib/use-page-title";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 
@@ -783,12 +783,12 @@ export default function Dashboard() {
   const coordEmptyStats: OverdueEmptyStats  = { active: coordActive,  completedPct: coordCompletedPct,  nextDueIn: null };
   const inWeek = new Date(todayStart); inWeek.setDate(inWeek.getDate() + 7);
   const overdueCount = tasks.filter(t => {
-    if (t.status === "completed" || !t.dueDate) return false;
+    if (isTerminal(t.status) || !t.dueDate) return false;
     const dt = new Date(t.dueDate.includes("T") ? t.dueDate : t.dueDate + "T00:00");
     return dt < todayStart;
   }).length;
   const dueSoonCount = tasks.filter(t => {
-    if (t.status === "completed" || !t.dueDate) return false;
+    if (isTerminal(t.status) || !t.dueDate) return false;
     const dt = new Date(t.dueDate.includes("T") ? t.dueDate : t.dueDate + "T00:00");
     return dt >= todayStart && dt <= inWeek;
   }).length;
