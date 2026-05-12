@@ -8,7 +8,7 @@ import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { fmtDate, fmtDateHuman } from "@/lib/utils";
 import {
   Clock, FolderOpen, RotateCcw, Calendar, Tag,
-  Hash, Layers, ExternalLink, ChevronRight,
+  Hash, Layers, Copy, ChevronRight,
 } from "lucide-react";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
@@ -257,22 +257,26 @@ export function TaskModal({ taskId, onClose }: Props) {
                   </div>
                 )}
 
-                {/* Folder link */}
+                {/* Folder path */}
                 {task.folderUrl && (
                   <div className="px-6 py-3 border-b">
                     <p className="text-[9px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 mb-2">
                       Pasta / Arquivos
                     </p>
-                    <a
-                      href={task.folderUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-sm text-[hsl(var(--primary))] hover:underline group"
-                    >
-                      <FolderOpen className="h-4 w-4 shrink-0" />
-                      <span className="break-all leading-snug">{task.folderUrl}</span>
-                      <ExternalLink className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </a>
+                    <div className="flex items-start gap-2">
+                      <FolderOpen className="h-4 w-4 shrink-0 mt-0.5 text-[hsl(var(--muted-foreground))]" />
+                      <span className="flex-1 text-sm text-[hsl(var(--foreground))] break-all leading-snug select-all">
+                        {task.folderUrl}
+                      </span>
+                      <button
+                        type="button"
+                        title="Copiar caminho"
+                        onClick={() => navigator.clipboard.writeText(task.folderUrl!)}
+                        className="shrink-0 p-1 rounded text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] transition-colors"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                 )}
 
