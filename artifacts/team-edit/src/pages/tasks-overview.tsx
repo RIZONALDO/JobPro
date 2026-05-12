@@ -397,7 +397,7 @@ export default function TasksOverview() {
                   <div className="flex-1 min-w-0 flex flex-col justify-center py-2.5 pr-4">
                     <div className="flex items-center gap-1.5 min-w-0">
                       {t.taskCode && (
-                        <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/60 shrink-0">{t.taskCode}</span>
+                        <span className="text-sm font-bold font-mono shrink-0" style={{ color: t.color }}>{t.taskCode}</span>
                       )}
                       <span className="text-sm font-medium truncate">{t.title}</span>
                       {t.revisionCount > 0 && (

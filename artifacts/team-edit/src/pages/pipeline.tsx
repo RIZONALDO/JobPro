@@ -117,7 +117,7 @@ export default function Pipeline() {
                         <div className="flex items-start gap-2">
                           <div className="flex-1 min-w-0">
                             {t.taskCode && (
-                              <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/60 block mb-0.5">{t.taskCode}</span>
+                              <span className="text-sm font-bold font-mono block mb-0.5" style={{ color: t.color }}>{t.taskCode}</span>
                             )}
                             <p className="text-sm font-semibold leading-snug">{t.title}</p>
                             {t.client && (

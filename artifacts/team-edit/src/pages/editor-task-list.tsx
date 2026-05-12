@@ -187,7 +187,7 @@ export default function EditorTaskList() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-1.5 min-w-0">
                   {t.taskCode && (
-                    <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]/60 shrink-0">{t.taskCode}</span>
+                    <span className="text-sm font-bold font-mono shrink-0" style={{ color: t.color }}>{t.taskCode}</span>
                   )}
                   <p className="text-sm font-medium truncate leading-snug">{t.title}</p>
                 </div>

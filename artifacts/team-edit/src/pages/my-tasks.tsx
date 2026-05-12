@@ -164,7 +164,7 @@ export default function MyTasks() {
         }}>
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
             {t.taskCode && (
-              <span style={{ fontSize: 10, fontFamily: "ui-monospace, monospace", color: "hsl(var(--muted-foreground))", opacity: 0.7, lineHeight: 1 }}>
+              <span style={{ fontSize: 14, fontFamily: "ui-monospace, monospace", fontWeight: 700, color: t.color, lineHeight: 1 }}>
                 {t.taskCode}
               </span>
             )}
