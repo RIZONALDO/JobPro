@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, BarChart2 } from "lucide-react";
+import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, BarChart2, AlertTriangle } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { StatusBars } from "@/components/charts/StatusBars";
 import { WaffleChart } from "@/components/charts/WaffleChart";
@@ -390,6 +390,59 @@ function DeadlineCard({ label, sub, subCls, pill, days, color }: {
   );
 }
 
+/* ── Coordinator Overdue Card ───────────────────────────────────── */
+function CoordOverdueCard({ atRisk, onOpenTask }: { atRisk: AtRiskTask[]; onOpenTask: (id: number) => void }) {
+  const count = atRisk.length;
+  return (
+    <div className="rounded-2xl border bg-[hsl(var(--card))] card-float px-4 pt-4 pb-3 flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+      <div className="flex items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-1.5">
+          <AlertTriangle className={`h-3.5 w-3.5 shrink-0 ${count > 0 ? "text-red-500" : "text-green-500"}`} />
+          <p className="text-xs font-semibold text-[hsl(var(--foreground))]/80">Atrasadas</p>
+        </div>
+        {count > 0
+          ? <span className="text-xs font-semibold px-2 py-0.5 rounded-full leading-none shrink-0 bg-red-500/10 text-red-600">{count} tarefa{count !== 1 ? "s" : ""}</span>
+          : <span className="text-xs font-semibold px-2 py-0.5 rounded-full leading-none shrink-0 bg-green-500/10 text-green-600">Em dia</span>
+        }
+      </div>
+
+      {count === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-xs text-green-600">Nenhuma tarefa atrasada.</p>
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 overflow-y-auto mt-2 flex flex-col gap-1.5 pr-0.5">
+          {atRisk.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onOpenTask(t.id)}
+              className="text-left flex items-start gap-2 rounded-lg border border-l-2 px-2 py-1.5 hover:bg-[hsl(var(--muted))]/40 transition-colors min-w-0 group shrink-0"
+              style={{ borderLeftColor: t.color ?? "#ef4444", borderColor: "hsl(var(--border))", borderLeftWidth: 3 }}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1 min-w-0">
+                  {t.taskCode && <span className="text-[9px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">{t.taskCode}</span>}
+                  <p className="text-xs font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
+                </div>
+                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                  {t.assigneeName && (
+                    <span className="text-xs text-[hsl(var(--muted-foreground))]">{t.assigneeName.split(" ")[0]}</span>
+                  )}
+                  {t.client && (
+                    <span className="text-xs text-[hsl(var(--muted-foreground))]/60 truncate">· {t.client}</span>
+                  )}
+                </div>
+              </div>
+              <span className="text-xs font-semibold text-red-500 shrink-0 mt-0.5">{fmtDateHuman(t.dueDate)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Task Deadline Card (replaces Saúde dos projetos) ──────────── */
 const BUCKET_COLOR: Record<string, string> = {
   overdue: "#ef4444",
@@ -624,15 +677,19 @@ export default function Dashboard() {
           rows={actionRows}
         />
 
-        {/* Card 2 — week deadline bars (my tasks) */}
-        <DeadlineCard
-          label={deadlineLabel}
-          sub={deadlineSub}
-          subCls={deadlineSubCls}
-          pill={deadlinePill}
-          days={duePerDay}
-          color={deadlineBarColor}
-        />
+        {/* Card 2 — overdue tasks (coord: task list; editor: deadline bars) */}
+        {isEditor ? (
+          <DeadlineCard
+            label={deadlineLabel}
+            sub={deadlineSub}
+            subCls={deadlineSubCls}
+            pill={deadlinePill}
+            days={duePerDay}
+            color={deadlineBarColor}
+          />
+        ) : (
+          <CoordOverdueCard atRisk={atRisk} onOpenTask={openTask} />
+        )}
 
         {/* Card 3+4 — urgency deadline chart (all tasks, col-span-2) */}
         <TaskDeadlineCard data={deadlineData} onOpenTask={openTask} />
