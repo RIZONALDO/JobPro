@@ -12,6 +12,7 @@ import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { format, parseISO } from "date-fns";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { ptBR } from "date-fns/locale";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 
 interface Person { id: number; name: string; avatarUrl: string | null }
 
@@ -134,11 +135,11 @@ export default function Reports() {
         <div className="no-print flex flex-wrap items-end gap-3 rounded-xl border bg-[hsl(var(--card))] card-float p-4">
           <div className="space-y-1">
             <Label className="text-xs text-[hsl(var(--muted-foreground))]">De</Label>
-            <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-36 h-8 text-xs" />
+            <DateTimePicker value={from} onChange={v => setFrom(v)} placeholder="Data inicial" className="w-44 h-8 text-xs" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs text-[hsl(var(--muted-foreground))]">Até</Label>
-            <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-36 h-8 text-xs" />
+            <DateTimePicker value={to} onChange={v => setTo(v)} placeholder="Data final" className="w-44 h-8 text-xs" />
           </div>
           <Button size="sm" onClick={load} disabled={loading}>{loading ? "Buscando…" : "Buscar"}</Button>
           <div className="ml-auto flex items-center gap-2">
