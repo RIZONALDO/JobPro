@@ -30,42 +30,47 @@ export default function TasksHub() {
       className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 -mb-8 flex flex-col"
       style={{ height: "calc(100dvh - 56px)", overflow: "hidden" }}
     >
-      {/* Tab bar */}
-      <div className="shrink-0 border-b px-4 md:px-6 flex items-end">
+      {/* ── Tab bar ────────────────────────────────────────────────── */}
+      <div className="shrink-0 border-b bg-[hsl(var(--card))] flex items-stretch px-0 md:px-6">
         {TABS.map(({ key, label, Icon }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
             className={[
-              "flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
+              // Mobile: equal-width, centered, tall touch target
+              // Desktop: natural width, left-aligned, standard height
+              "flex-1 md:flex-none",
+              "flex items-center justify-center md:justify-start gap-2",
+              "py-3.5 md:py-2.5 px-2 md:px-3",
+              "text-sm font-medium border-b-2 -mb-px transition-colors",
               tab === key
                 ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]"
                 : "border-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--border))]",
             ].join(" ")}
           >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
+            <Icon className="h-4 w-4 md:h-3.5 md:w-3.5 shrink-0" />
+            <span className="text-sm">{label}</span>
           </button>
         ))}
       </div>
 
-      {/* Lista */}
+      {/* ── Lista ──────────────────────────────────────────────────── */}
       {tab === "lista" && (
         <div className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="p-4 md:p-6 pb-12">
+          <div className="p-4 md:p-6 pb-10">
             {isEditor ? <EditorTaskList /> : <TasksOverview />}
           </div>
         </div>
       )}
 
-      {/* Board */}
+      {/* ── Board ──────────────────────────────────────────────────── */}
       {tab === "board" && (
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6">
           <MyTasks />
         </div>
       )}
 
-      {/* Timeline — apenas coordenadores */}
+      {/* ── Timeline — apenas coordenadores ────────────────────────── */}
       {tab === "timeline" && !isEditor && (
         <div className="flex-1 min-h-0 overflow-hidden">
           <TimelinePage />
