@@ -4,7 +4,7 @@ import {
   CalendarDays, Menu, Bell, Search, ChevronRight, X, UserCircle,
   CalendarRange, BarChart3, Zap, AtSign, ClipboardList,
   CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2,
-  Paintbrush2, Sun, Moon, ALargeSmall,
+  Palette, Sun, Moon, ALargeSmall,
 } from "lucide-react";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { BreadcrumbBar } from "./BreadcrumbBar";
@@ -473,7 +473,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
                 )}
               >
-                <Paintbrush2 className="h-4 w-4" />
+                <Palette className="h-4 w-4" />
               </button>
 
               <AnimatePresence>
@@ -482,7 +482,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   className="absolute right-0 top-full mt-1.5 w-60 rounded-xl border bg-[hsl(var(--card))] shadow-xl z-50 overflow-hidden">
                   {/* Header */}
                   <div className="flex items-center gap-2 px-4 py-3 border-b bg-[hsl(var(--muted))]/30">
-                    <Paintbrush2 className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
+                    <Palette className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
                     <span className="text-sm font-semibold">Personalização</span>
                   </div>
 
