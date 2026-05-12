@@ -59,6 +59,21 @@ export function fmtDaysLeft(date: string | null | undefined): { text: string; cl
   return { text: `faltam ${fmt(diff)}`, cls: "text-[hsl(var(--muted-foreground))]" };
 }
 
+/** Returns { date: "12/05", time: "14:30" | null } for compact two-line display */
+export function fmtDateParts(date: string | null | undefined): { date: string; time: string | null } | null {
+  if (!date) return null;
+  const dt = new Date(date);
+  const d = String(dt.getDate()).padStart(2, "0");
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  const h = dt.getHours();
+  const min = dt.getMinutes();
+  const hasTime = date.includes("T") && (h !== 0 || min !== 0);
+  return {
+    date: `${d}/${m}`,
+    time: hasTime ? `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}` : null,
+  };
+}
+
 export function fmtDateHuman(date: string | null | undefined): string | null {
   if (!date) return null;
   const hasTime = date.includes("T");

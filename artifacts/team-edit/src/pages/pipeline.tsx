@@ -4,7 +4,7 @@ import { apiFetch } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { usePageTitle } from "@/lib/use-page-title";
-import { fmtDate } from "@/lib/utils";
+import { fmtDateParts } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Tag, AlertTriangle } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
@@ -140,13 +140,19 @@ export default function Pipeline() {
                           <Badge variant="outline" className={`text-[9px] px-1 py-0 leading-4 shrink-0 ${PRIORITY_CLS[t.priority] ?? ""}`}>
                             {PRIORITY_LABEL[t.priority] ?? t.priority}
                           </Badge>
-                          {t.dueDate && (
-                            <span className={`flex items-center gap-0.5 text-[9px] shrink-0 ${isOverdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
-                              {isOverdue && <AlertTriangle className="h-2 w-2" />}
-                              <Calendar className="h-2 w-2 shrink-0" />
-                              <span className="truncate max-w-[60px]">{fmtDate(t.dueDate)}</span>
-                            </span>
-                          )}
+                          {t.dueDate && (() => {
+                            const parts = fmtDateParts(t.dueDate);
+                            return parts ? (
+                              <span className={`flex items-start gap-0.5 text-[9px] shrink-0 ${isOverdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
+                                {isOverdue && <AlertTriangle className="h-2 w-2 mt-px" />}
+                                <Calendar className="h-2 w-2 shrink-0 mt-px" />
+                                <span className="flex flex-col leading-tight">
+                                  <span>{parts.date}</span>
+                                  {parts.time && <span>{parts.time}</span>}
+                                </span>
+                              </span>
+                            ) : null;
+                          })()}
                           {t.assignee && (
                             <div className="ml-auto flex items-center gap-1 min-w-0 shrink-0">
                               <AvatarDisplay name={t.assignee.name} avatarUrl={t.assignee.avatarUrl} size={18} />
