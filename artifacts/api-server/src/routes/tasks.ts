@@ -487,21 +487,33 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const role = req.session.userRole!;
 
+  const fromParam = String(req.query.from ?? "");
+  const toParam   = String(req.query.to   ?? "");
   const weekParam = String(req.query.week ?? "");
-  let weekStart: Date;
-  if (weekParam) {
-    weekStart = new Date(weekParam + "T00:00:00");
-  } else {
-    weekStart = new Date();
-    const day = weekStart.getDay();
-    weekStart.setDate(weekStart.getDate() - (day === 0 ? 6 : day - 1));
-    weekStart.setHours(0, 0, 0, 0);
-  }
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 6);
 
-  const weekStartStr = weekStart.toISOString().split("T")[0];
-  const weekEndStr   = weekEnd.toISOString().split("T")[0];
+  let startDate: Date;
+  let endDate:   Date;
+
+  if (fromParam && toParam) {
+    startDate = new Date(fromParam + "T00:00:00");
+    endDate   = new Date(toParam   + "T00:00:00");
+  } else {
+    let weekStart: Date;
+    if (weekParam) {
+      weekStart = new Date(weekParam + "T00:00:00");
+    } else {
+      weekStart = new Date();
+      const day = weekStart.getDay();
+      weekStart.setDate(weekStart.getDate() - (day === 0 ? 6 : day - 1));
+      weekStart.setHours(0, 0, 0, 0);
+    }
+    startDate = weekStart;
+    endDate   = new Date(weekStart);
+    endDate.setDate(endDate.getDate() + 6);
+  }
+
+  const weekStartStr = startDate.toISOString().split("T")[0];
+  const weekEndStr   = endDate.toISOString().split("T")[0];
 
   const roleFilter = role === "editor"
     ? eq(tasksTable.assignedToId, userId)

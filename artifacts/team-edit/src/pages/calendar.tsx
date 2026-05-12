@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -22,8 +22,12 @@ interface CalendarTask {
   assigneeName: string | null;
 }
 
-const DAYS_PT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
-const MONTHS_PT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+type View = "week" | "month";
+
+const DAYS_PT   = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+const MONTHS_PT = ["janeiro", "fevereiro", "março", "abril", "maio", "junho",
+                   "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const MONTHS_SHORT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
 function getMonday(d: Date): Date {
   const date = new Date(d);
@@ -36,7 +40,14 @@ function addDays(d: Date, n: number): Date {
   const date = new Date(d); date.setDate(date.getDate() + n); return date;
 }
 function fmt(d: Date): string { return d.toISOString().slice(0, 10); }
-function fmtDay(d: Date): string { return `${d.getDate()} ${MONTHS_PT[d.getMonth()]}`; }
+function fmtDay(d: Date): string { return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`; }
+
+function getMonthGridStart(d: Date): Date {
+  const first = new Date(d.getFullYear(), d.getMonth(), 1);
+  const day = first.getDay();
+  first.setDate(first.getDate() - (day === 0 ? 6 : day - 1));
+  return first;
+}
 
 export default function Calendar() {
   usePageTitle("Calendário");
@@ -44,21 +55,37 @@ export default function Calendar() {
   const { toast } = useToast();
   const isCoord = user?.role !== "editor";
 
+  const [view,      setView]      = useState<View>("week");
   const [weekStart, setWeekStart] = useState<Date>(() => getMonday(new Date()));
+  const [monthDate, setMonthDate] = useState<Date>(() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; });
   const [tasks,     setTasks]     = useState<CalendarTask[]>([]);
   const [loading,   setLoading]   = useState(true);
 
-  const [dialogOpen,    setDialogOpen]    = useState(false);
-  const [editTaskId,    setEditTaskId]    = useState<number | null>(null);
+  const [dialogOpen,     setDialogOpen]     = useState(false);
+  const [editTaskId,     setEditTaskId]     = useState<number | null>(null);
   const [initialDueDate, setInitialDueDate] = useState("");
+
+  // For month view: 6 rows × 7 cols grid starting Monday on/before 1st
+  const monthGridStart = useMemo(() => getMonthGridStart(monthDate), [monthDate]);
+  const monthGridCells = useMemo(() =>
+    Array.from({ length: 42 }, (_, i) => addDays(monthGridStart, i)),
+    [monthGridStart]
+  );
 
   const loadCalendar = useCallback(() => {
     setLoading(true);
-    apiFetch<CalendarTask[]>(`/api/calendar?week=${fmt(weekStart)}`)
+    let url: string;
+    if (view === "week") {
+      url = `/api/calendar?week=${fmt(weekStart)}`;
+    } else {
+      const gridEnd = addDays(monthGridStart, 41);
+      url = `/api/calendar?from=${fmt(monthGridStart)}&to=${fmt(gridEnd)}`;
+    }
+    apiFetch<CalendarTask[]>(url)
       .then(setTasks)
       .catch(() => toast({ title: "Erro ao carregar calendário", variant: "destructive" }))
       .finally(() => setLoading(false));
-  }, [weekStart]);
+  }, [view, weekStart, monthGridStart, toast]);
 
   useEffect(() => { loadCalendar(); }, [loadCalendar]);
 
@@ -73,20 +100,28 @@ export default function Calendar() {
     setDialogOpen(true);
   };
 
-  const weekDays  = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const today     = toLocalDate(new Date());
-  const weekEnd   = addDays(weekStart, 6);
+  const today    = toLocalDate(new Date());
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const weekEnd  = addDays(weekStart, 6);
   const weekLabel = weekStart.getMonth() === weekEnd.getMonth()
-    ? `${weekStart.getDate()}–${weekEnd.getDate()} ${MONTHS_PT[weekStart.getMonth()]} ${weekStart.getFullYear()}`
+    ? `${weekStart.getDate()}–${weekEnd.getDate()} ${MONTHS_SHORT[weekStart.getMonth()]} ${weekStart.getFullYear()}`
     : `${fmtDay(weekStart)} – ${fmtDay(weekEnd)} ${weekEnd.getFullYear()}`;
+  const monthLabel = `${MONTHS_PT[monthDate.getMonth()]} ${monthDate.getFullYear()}`;
 
   const tasksByDay = (day: Date) =>
     tasks.filter(t => t.dueDate && toLocalDate(new Date(t.dueDate)) === toLocalDate(day));
 
+  const goToToday = () => {
+    const now = new Date();
+    setWeekStart(getMonday(now));
+    const m = new Date(now); m.setDate(1); m.setHours(0,0,0,0);
+    setMonthDate(m);
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-[hsl(var(--primary))]/10 flex items-center justify-center shrink-0">
             <CalendarDays className="h-5 w-5 text-[hsl(var(--primary))]" />
@@ -98,83 +133,169 @@ export default function Calendar() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setWeekStart(d => addDays(d, -7))}>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* View toggle */}
+          <div className="flex rounded-lg border overflow-hidden text-xs font-medium">
+            <button
+              className={`px-3 py-1.5 transition-colors ${view === "week" ? "bg-[hsl(var(--primary))] text-white" : "bg-[hsl(var(--card))] hover:bg-[hsl(var(--muted))]/50 text-[hsl(var(--foreground))]"}`}
+              onClick={() => setView("week")}
+            >Semana</button>
+            <button
+              className={`px-3 py-1.5 transition-colors ${view === "month" ? "bg-[hsl(var(--primary))] text-white" : "bg-[hsl(var(--card))] hover:bg-[hsl(var(--muted))]/50 text-[hsl(var(--foreground))]"}`}
+              onClick={() => setView("month")}
+            >Mês</button>
+          </div>
+
+          {/* Navigation */}
+          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => {
+            if (view === "week") setWeekStart(d => addDays(d, -7));
+            else setMonthDate(d => { const n = new Date(d); n.setMonth(n.getMonth() - 1); return n; });
+          }}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="text-sm font-medium min-w-[160px] text-center">{weekLabel}</span>
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setWeekStart(d => addDays(d, 7))}>
+          <span className="text-sm font-medium min-w-[160px] text-center">
+            {view === "week" ? weekLabel : monthLabel}
+          </span>
+          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => {
+            if (view === "week") setWeekStart(d => addDays(d, 7));
+            else setMonthDate(d => { const n = new Date(d); n.setMonth(n.getMonth() + 1); return n; });
+          }}>
             <ChevronRight className="h-4 w-4" />
           </Button>
-          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setWeekStart(getMonday(new Date()))}>
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={goToToday}>
             Hoje
           </Button>
         </div>
       </div>
 
-      {/* Grid */}
-      <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
-        {/* Day headers */}
-        <div className="grid grid-cols-7 border-b">
-          {weekDays.map((day, i) => {
-            const isToday = fmt(day) === today;
-            return (
-              <div key={i} className={`px-2 py-3 text-center border-r last:border-r-0 ${isToday ? "bg-[hsl(var(--primary))]/5" : "bg-[hsl(var(--muted))]/30"}`}>
-                <p className="text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wide">{DAYS_PT[i]}</p>
-                <p className={`text-base font-bold mt-0.5 leading-none ${isToday ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--foreground))]"}`}>{day.getDate()}</p>
-                {isToday && <div className="h-1 w-1 rounded-full bg-[hsl(var(--primary))] mx-auto mt-1" />}
-              </div>
-            );
-          })}
+      {/* ── WEEK VIEW ── */}
+      {view === "week" && (
+        <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
+          <div className="grid grid-cols-7 border-b">
+            {weekDays.map((day, i) => {
+              const isToday = fmt(day) === today;
+              return (
+                <div key={i} className={`px-2 py-3 text-center border-r last:border-r-0 ${isToday ? "bg-[hsl(var(--primary))]/5" : "bg-[hsl(var(--muted))]/30"}`}>
+                  <p className="text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wide">{DAYS_PT[i]}</p>
+                  <p className={`text-base font-bold mt-0.5 leading-none ${isToday ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--foreground))]"}`}>{day.getDate()}</p>
+                  {isToday && <div className="h-1 w-1 rounded-full bg-[hsl(var(--primary))] mx-auto mt-1" />}
+                </div>
+              );
+            })}
+          </div>
+          <div className="grid grid-cols-7 min-h-[400px]">
+            {weekDays.map((day, i) => {
+              const isToday  = fmt(day) === today;
+              const dayTasks = tasksByDay(day);
+              return (
+                <div key={i} className={`group border-r last:border-r-0 p-2 space-y-1.5 align-top ${isToday ? "bg-[hsl(var(--primary))]/5" : ""}`}>
+                  {loading ? (
+                    <div className="h-8 rounded bg-[hsl(var(--muted))]/50 animate-pulse" />
+                  ) : (
+                    <>
+                      {dayTasks.map(t => (
+                        <TaskChip key={t.id} t={t} isCoord={isCoord} onClick={() => isCoord && openEdit(t)} />
+                      ))}
+                      {isCoord && (
+                        <button type="button" onClick={() => openCreate(fmt(day))} title="Nova tarefa"
+                          className="w-full rounded-lg border border-dashed border-[hsl(var(--border))] px-2 py-4 flex items-center justify-center text-[hsl(var(--muted-foreground))]/40 hover:border-[hsl(var(--primary))]/50 hover:text-[hsl(var(--primary))]/70 hover:bg-[hsl(var(--primary))]/5 transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
+      )}
 
-        {/* Task rows */}
-        <div className="grid grid-cols-7 min-h-[400px]">
-          {weekDays.map((day, i) => {
-            const isToday  = fmt(day) === today;
-            const dayTasks = tasksByDay(day);
-            return (
-              <div key={i} className={`group border-r last:border-r-0 p-2 space-y-1.5 align-top ${isToday ? "bg-[hsl(var(--primary))]/5" : ""}`}>
-                {loading ? (
-                  <div className="h-8 rounded bg-[hsl(var(--muted))]/50 animate-pulse" />
-                ) : (
-                  <>
-                    {dayTasks.map(t => (
-                      <div key={t.id}
-                        onClick={() => isCoord && openEdit(t)}
-                        className={`rounded-lg border bg-[hsl(var(--card))] dark:bg-[hsl(217,33%,14%)] px-2 py-1.5 border-l-2 shadow-sm dark:shadow-[0_1px_6px_rgba(0,0,0,0.5)] dark:border-white/10 ${isCoord ? "cursor-pointer hover:shadow-md hover:border-[hsl(var(--primary))]/40 transition-all" : ""}`}
-                        style={{ borderLeftColor: t.color }}
+      {/* ── MONTH VIEW ── */}
+      {view === "month" && (
+        <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
+          {/* Day-of-week header */}
+          <div className="grid grid-cols-7 border-b bg-[hsl(var(--muted))]/30">
+            {DAYS_PT.map(d => (
+              <div key={d} className="px-2 py-2 text-center border-r last:border-r-0">
+                <p className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">{d}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* 6 rows */}
+          <div className="grid grid-cols-7" style={{ gridTemplateRows: "repeat(6, minmax(100px, 1fr))" }}>
+            {monthGridCells.map((day, i) => {
+              const isToday     = fmt(day) === today;
+              const isThisMonth = day.getMonth() === monthDate.getMonth();
+              const dayTasks    = tasksByDay(day);
+              return (
+                <div
+                  key={i}
+                  className={`group border-r border-b last-of-type:border-b-0 p-1.5 flex flex-col gap-1
+                    ${(i % 7) === 6 ? "border-r-0" : ""}
+                    ${isToday ? "bg-[hsl(var(--primary))]/5" : !isThisMonth ? "bg-[hsl(var(--muted))]/20" : ""}
+                  `}
+                >
+                  {/* Day number */}
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full
+                      ${isToday
+                        ? "bg-[hsl(var(--primary))] text-white"
+                        : isThisMonth
+                          ? "text-[hsl(var(--foreground))]"
+                          : "text-[hsl(var(--muted-foreground))]/40"
+                      }`}>
+                      {day.getDate()}
+                    </span>
+                    {isCoord && isThisMonth && (
+                      <button
+                        type="button"
+                        onClick={() => openCreate(fmt(day))}
+                        title="Nova tarefa"
+                        className="h-5 w-5 rounded flex items-center justify-center text-[hsl(var(--muted-foreground))]/30 hover:text-[hsl(var(--primary))]/70 hover:bg-[hsl(var(--primary))]/10 transition-colors opacity-0 group-hover:opacity-100"
                       >
-                        <p className="text-xs font-medium leading-tight line-clamp-2">{t.title}</p>
-                        {t.client && (
-                          <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 truncate">{t.client}</p>
-                        )}
-                        <div className="flex items-center justify-between mt-1 gap-1 flex-wrap">
-                          <Badge className={`text-xs px-1 py-0 leading-4 ${STATUS_CLASS[t.status] ?? ""}`}>
-                            {STATUS_LABEL[t.status] ?? t.status}
-                          </Badge>
-                          {isCoord && t.assigneeName && (
-                            <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">
-                              {t.assigneeName.split(" ")[0]}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {isCoord && (
-                      <button type="button" onClick={() => openCreate(fmt(day))} title="Nova tarefa"
-                        className="w-full rounded-lg border border-dashed border-[hsl(var(--border))] px-2 py-4 flex items-center justify-center text-[hsl(var(--muted-foreground))]/40 hover:border-[hsl(var(--primary))]/50 hover:text-[hsl(var(--primary))]/70 hover:bg-[hsl(var(--primary))]/5 transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
+                        <Plus className="h-3 w-3" />
                       </button>
                     )}
-                  </>
-                )}
-              </div>
-            );
-          })}
+                  </div>
+
+                  {/* Tasks */}
+                  {loading ? (
+                    dayTasks.length === 0 && i < 7 && <div className="h-4 rounded bg-[hsl(var(--muted))]/50 animate-pulse" />
+                  ) : (
+                    <div className="flex flex-col gap-0.5 overflow-hidden">
+                      {dayTasks.slice(0, 3).map(t => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => isCoord && openEdit(t)}
+                          className={`text-left w-full rounded px-1.5 py-0.5 text-xs leading-tight truncate border-l-2 ${isCoord ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+                          style={{
+                            borderLeftColor: t.color,
+                            backgroundColor: t.color + "18",
+                            color: "hsl(var(--foreground))",
+                          }}
+                          title={t.title}
+                        >
+                          {t.title}
+                        </button>
+                      ))}
+                      {dayTasks.length > 3 && (
+                        <span className="text-xs text-[hsl(var(--muted-foreground))] pl-1">
+                          +{dayTasks.length - 3} mais
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {isCoord && (
         <TaskFormModal
@@ -185,6 +306,31 @@ export default function Calendar() {
           initialDueDate={initialDueDate}
         />
       )}
+    </div>
+  );
+}
+
+function TaskChip({ t, isCoord, onClick }: { t: CalendarTask; isCoord: boolean; onClick: () => void }) {
+  return (
+    <div
+      onClick={onClick}
+      className={`rounded-lg border bg-[hsl(var(--card))] dark:bg-[hsl(217,33%,14%)] px-2 py-1.5 border-l-2 shadow-sm dark:shadow-[0_1px_6px_rgba(0,0,0,0.5)] dark:border-white/10 ${isCoord ? "cursor-pointer hover:shadow-md hover:border-[hsl(var(--primary))]/40 transition-all" : ""}`}
+      style={{ borderLeftColor: t.color }}
+    >
+      <p className="text-xs font-medium leading-tight line-clamp-2">{t.title}</p>
+      {t.client && (
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 truncate">{t.client}</p>
+      )}
+      <div className="flex items-center justify-between mt-1 gap-1 flex-wrap">
+        <Badge className={`text-xs px-1 py-0 leading-4 ${STATUS_CLASS[t.status] ?? ""}`}>
+          {STATUS_LABEL[t.status] ?? t.status}
+        </Badge>
+        {isCoord && t.assigneeName && (
+          <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">
+            {t.assigneeName.split(" ")[0]}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
