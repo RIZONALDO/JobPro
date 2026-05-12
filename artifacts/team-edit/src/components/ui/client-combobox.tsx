@@ -86,7 +86,7 @@ export function ClientCombobox({ value, onChange, placeholder = "Buscar ou criar
       </div>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md max-h-56 overflow-y-auto">
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-[hsl(var(--card))] shadow-md max-h-56 overflow-y-auto">
           {filtered.length === 0 && !showCreate && (
             <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum cliente encontrado.</p>
           )}
