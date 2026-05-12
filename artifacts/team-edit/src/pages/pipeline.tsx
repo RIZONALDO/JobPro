@@ -117,30 +117,30 @@ export default function Pipeline() {
                         {/* Code + revision */}
                         <div className="flex items-center justify-between gap-1">
                           {t.taskCode && (
-                            <span className="text-[11px] font-bold font-mono" style={{ color: t.color }}>{t.taskCode}</span>
+                            <span className="text-[10px] font-bold font-mono" style={{ color: t.color }}>{t.taskCode}</span>
                           )}
                           {t.revisionCount > 0 && (
-                            <span className="text-[10px] font-bold text-orange-500 shrink-0">Alt.{t.revisionCount}</span>
+                            <span className="text-[9px] font-bold text-orange-500 shrink-0">Alt.{t.revisionCount}</span>
                           )}
                         </div>
 
                         {/* Title */}
-                        <p className="text-xs font-semibold leading-snug line-clamp-2">{t.title}</p>
+                        <p className="text-[11px] font-medium leading-snug line-clamp-2">{t.title}</p>
 
                         {/* Client */}
                         {t.client && (
-                          <p className="text-[10px] text-[hsl(var(--muted-foreground))] flex items-center gap-1 truncate">
+                          <p className="text-[9px] text-[hsl(var(--muted-foreground))] flex items-center gap-0.5 truncate">
                             <Tag className="h-2 w-2 shrink-0" />{t.client}
                           </p>
                         )}
 
                         {/* Priority + due date + assignee */}
-                        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                          <Badge variant="outline" className={`text-[10px] px-1 py-0 leading-4 ${PRIORITY_CLS[t.priority] ?? ""}`}>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <Badge variant="outline" className={`text-[9px] px-1 py-0 leading-4 ${PRIORITY_CLS[t.priority] ?? ""}`}>
                             {PRIORITY_LABEL[t.priority] ?? t.priority}
                           </Badge>
                           {t.dueDate && (
-                            <span className={`flex items-center gap-0.5 text-[10px] ${isOverdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
+                            <span className={`flex items-center gap-0.5 text-[9px] ${isOverdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
                               {isOverdue && <AlertTriangle className="h-2 w-2" />}
                               <Calendar className="h-2 w-2" />
                               {fmtDate(t.dueDate)}
@@ -148,8 +148,8 @@ export default function Pipeline() {
                           )}
                           {t.assignee && (
                             <div className="ml-auto flex items-center gap-1">
-                              <AvatarDisplay name={t.assignee.name} avatarUrl={t.assignee.avatarUrl} size={20} />
-                              <span className="text-[10px] font-medium truncate max-w-[60px]">{t.assignee.name.split(" ")[0]}</span>
+                              <AvatarDisplay name={t.assignee.name} avatarUrl={t.assignee.avatarUrl} size={18} />
+                              <span className="text-[9px] font-medium truncate max-w-[52px]">{t.assignee.name.split(" ")[0]}</span>
                             </div>
                           )}
                         </div>
