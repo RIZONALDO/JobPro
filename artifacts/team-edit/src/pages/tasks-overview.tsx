@@ -16,9 +16,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
-  ClipboardList, MoreVertical, FolderOpen, AlertTriangle,
-  CheckCircle2, Clock, ArrowUpRight, X, PauseCircle, XCircle,
+  ClipboardList, MoreVertical, FolderOpen,
+  ArrowUpRight, X, PauseCircle, XCircle,
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
+  SlidersHorizontal,
 } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
@@ -120,6 +121,9 @@ export default function TasksOverview() {
   const [sendingRevision, setSendingRevision] = useState(false);
   const [confirmTask, setConfirmTask] = useState<{ id: number; title: string; action: "cancel" | "pause" } | null>(null);
   const [sendingConfirm, setSendingConfirm] = useState(false);
+
+  // Mobile filter panel toggle
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   // Create / Edit modal
   const [formOpen,    setFormOpen]    = useState(false);
@@ -272,15 +276,81 @@ export default function TasksOverview() {
     <div className="space-y-6">
 
       {/* ── Filters ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 flex-wrap">
+
+      {/* Mobile filter bar (< sm) */}
+      <div className="sm:hidden space-y-2">
+        <div className="flex gap-2">
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar tarefa…"
+            className="h-9 flex-1 text-sm min-w-0"
+          />
+          <Button
+            variant="outline" size="sm"
+            className={`h-9 shrink-0 gap-1.5 relative ${mobileFiltersOpen || (filterStatus !== "all" || filterEditor !== "all" || filterCoord !== "all") ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]" : ""}`}
+            onClick={() => setMobileFiltersOpen(v => !v)}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            {(filterStatus !== "all" || filterEditor !== "all" || filterCoord !== "all") && (
+              <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-[hsl(var(--primary))] text-white text-[10px] font-bold flex items-center justify-center">
+                {[filterStatus !== "all", filterEditor !== "all", filterCoord !== "all"].filter(Boolean).length}
+              </span>
+            )}
+          </Button>
+          {canCreate && (
+            <Button size="sm" className="h-9 w-9 shrink-0 p-0" onClick={() => { setEditTaskId(null); setFormOpen(true); }}>
+              <Plus className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+
+        {mobileFiltersOpen && (
+          <div className="rounded-xl border bg-[hsl(var(--muted))]/20 p-3 space-y-2">
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="h-9 text-sm w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={filterEditor} onValueChange={setFilterEditor}>
+              <SelectTrigger className="h-9 text-sm w-full"><SelectValue placeholder="Todos os editores" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os editores</SelectItem>
+                {editors.map(e => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={filterCoord} onValueChange={setFilterCoord}>
+              <SelectTrigger className="h-9 text-sm w-full"><SelectValue placeholder="Todos os coordenadores" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os coordenadores</SelectItem>
+                {coordinators.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {hasFilter && (
+              <Button variant="outline" size="sm" className="h-8 text-xs w-full gap-1.5" onClick={clearFilters}>
+                <X className="h-3 w-3" />Limpar filtros
+              </Button>
+            )}
+          </div>
+        )}
+
+        <p className="text-xs text-[hsl(var(--muted-foreground))] px-0.5">
+          {filtered.length} tarefa{filtered.length !== 1 ? "s" : ""}
+          {hasFilter ? " encontrada" + (filtered.length !== 1 ? "s" : "") : ""}
+        </p>
+      </div>
+
+      {/* Desktop filter bar (sm+) */}
+      <div className="hidden sm:flex items-center gap-2 flex-wrap">
         <Input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Buscar tarefa…"
-          className="h-9 w-full sm:w-52 text-sm"
+          className="h-9 w-52 text-sm"
         />
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="h-9 w-full sm:w-44 text-sm"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-9 w-44 text-sm"><SelectValue /></SelectTrigger>
           <SelectContent>
             {STATUS_OPTIONS.map(o => (
               <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
@@ -288,7 +358,7 @@ export default function TasksOverview() {
           </SelectContent>
         </Select>
         <Select value={filterEditor} onValueChange={setFilterEditor}>
-          <SelectTrigger className="h-9 w-full sm:w-44 text-sm">
+          <SelectTrigger className="h-9 w-44 text-sm">
             <SelectValue placeholder="Todos os editores" />
           </SelectTrigger>
           <SelectContent>
@@ -299,7 +369,7 @@ export default function TasksOverview() {
           </SelectContent>
         </Select>
         <Select value={filterCoord} onValueChange={setFilterCoord}>
-          <SelectTrigger className="h-9 w-full sm:w-48 text-sm">
+          <SelectTrigger className="h-9 w-48 text-sm">
             <SelectValue placeholder="Todos os coordenadores" />
           </SelectTrigger>
           <SelectContent>
@@ -316,11 +386,11 @@ export default function TasksOverview() {
           </Button>
         )}
         {canCreate && (
-          <Button size="sm" className="h-9 gap-1.5 sm:ml-auto w-full sm:w-auto" onClick={() => { setEditTaskId(null); setFormOpen(true); }}>
+          <Button size="sm" className="h-9 gap-1.5 ml-auto" onClick={() => { setEditTaskId(null); setFormOpen(true); }}>
             <Plus className="h-3.5 w-3.5" />Nova tarefa
           </Button>
         )}
-        <span className={`text-xs text-[hsl(var(--muted-foreground))] ${!canCreate ? "sm:ml-auto" : ""}`}>
+        <span className={`text-xs text-[hsl(var(--muted-foreground))] ${!canCreate ? "ml-auto" : ""}`}>
           {filtered.length} tarefa{filtered.length !== 1 ? "s" : ""}
         </span>
       </div>
@@ -467,72 +537,84 @@ export default function TasksOverview() {
                 >
 
                   {/* ── Mobile card layout (< md) ──────────────────────── */}
-                  <div className="md:hidden flex items-start gap-3 py-3 w-full min-w-0">
-                    <div className="flex-1 min-w-0 space-y-1.5">
-                      {/* code + title */}
-                      <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="md:hidden flex items-start py-3 w-full min-w-0" style={{ gap: "10px" }}>
+
+                    {/* Left: all task info */}
+                    <div className="flex-1 min-w-0" style={{ minWidth: 0 }}>
+
+                      {/* Row 1: code + title (truncates) */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
                         {t.taskCode && (
-                          <span className="text-xs font-bold font-mono shrink-0" style={{ color: t.color }}>
+                          <span style={{ color: t.color, fontSize: "11px", fontWeight: 700, fontFamily: "monospace", whiteSpace: "nowrap", flexShrink: 0 }}>
                             {t.taskCode}
                           </span>
                         )}
-                        <span className="text-sm font-medium truncate leading-tight">{t.title}</span>
+                        <span style={{ fontSize: "13px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
+                          {t.title}
+                        </span>
                         {t.revisionCount > 0 && (
-                          <span className="text-xs font-bold text-orange-500 shrink-0">Alt.{t.revisionCount}</span>
+                          <span style={{ fontSize: "11px", fontWeight: 700, color: "#f97316", whiteSpace: "nowrap", flexShrink: 0 }}>
+                            Alt.{t.revisionCount}
+                          </span>
                         )}
                       </div>
-                      {/* client */}
+
+                      {/* Row 2: client (if any) */}
                       {t.client && (
-                        <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.client}</p>
+                        <p style={{ fontSize: "11px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "3px" }}>
+                          {t.client}
+                        </p>
                       )}
-                      {/* badges + due date */}
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <Badge className={`text-xs px-1.5 py-0 ${STATUS_CLASS[t.status] ?? ""}`}>
+
+                      {/* Row 3: status + priority + due date */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "6px", flexWrap: "wrap" }}>
+                        <Badge className={`text-xs px-1.5 py-0 h-5 ${STATUS_CLASS[t.status] ?? ""}`}>
                           {STATUS_LABEL[t.status] ?? t.status}
                         </Badge>
-                        <Badge variant="outline" className={`text-xs px-1.5 py-0 ${PRIORITY_CLASS[t.priority] ?? ""}`}>
+                        <Badge variant="outline" className={`text-xs px-1.5 py-0 h-5 ${PRIORITY_CLASS[t.priority] ?? ""}`}>
                           {PRIORITY_LABEL[t.priority] ?? t.priority}
                         </Badge>
                         {t.dueDate && (
-                          <span className={`text-xs ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
+                          <span style={{ fontSize: "11px", color: overdue ? "#ef4444" : "hsl(var(--muted-foreground))", fontWeight: overdue ? 600 : 400 }}>
                             {fmtDateHuman(t.dueDate)}
                           </span>
                         )}
                       </div>
-                      {/* editors */}
+
+                      {/* Row 4: editors */}
                       {t.editors && t.editors.length > 0 && (
-                        <div className="flex items-center gap-1.5">
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "5px" }}>
                           <StackedAvatars people={t.editors} size={18} max={3} />
-                          <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">
+                          <span style={{ fontSize: "11px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {t.editors.map(e => e.name.split(" ")[0]).join(", ")}
                           </span>
                         </div>
                       )}
                     </div>
 
-                    {/* mobile action strip */}
-                    <div className="flex flex-col items-end gap-1 shrink-0 pt-0.5" onClick={e => e.stopPropagation()}>
+                    {/* Right: action buttons */}
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px", flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                       {t.status === "rascunho" && canActNow && (
                         <Button size="sm"
-                          className={`h-7 w-7 p-0 ${t.editors?.length > 0 ? "bg-zinc-700 hover:bg-zinc-800" : "bg-zinc-300 cursor-not-allowed"}`}
+                          className={`h-8 w-8 p-0 ${t.editors?.length > 0 ? "bg-zinc-700 hover:bg-zinc-800" : "bg-zinc-300 cursor-not-allowed"}`}
                           disabled={!t.editors || t.editors.length === 0}
                           title={!t.editors || t.editors.length === 0 ? "Atribua um editor antes de publicar" : "Publicar"}
                           onClick={e => { e.stopPropagation(); apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(load); }}>
-                          <Send className="h-3 w-3" />
+                          <Send className="h-3.5 w-3.5" />
                         </Button>
                       )}
                       {t.status === "review" && canActNow && (
-                        <div className="flex gap-1">
-                          <Button size="sm" className="h-7 text-xs px-2 bg-green-600 hover:bg-green-700"
+                        <div style={{ display: "flex", gap: "4px" }}>
+                          <Button size="sm" className="h-8 text-xs px-2.5 bg-green-600 hover:bg-green-700"
                             onClick={e => { e.stopPropagation(); approve(t); }}>✓</Button>
                           <Button size="sm" variant="outline"
-                            className="h-7 text-xs px-2 text-orange-600 border-orange-300 hover:bg-orange-50"
+                            className="h-8 text-xs px-2.5 text-orange-600 border-orange-300 hover:bg-orange-50"
                             onClick={e => { e.stopPropagation(); setRevisionTask(t); setRevisionComment(""); }}>↩</Button>
                         </div>
                       )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>

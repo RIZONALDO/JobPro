@@ -42,10 +42,10 @@ const PRIORITY_CLS: Record<string, string> = {
   high:   "bg-red-100 text-red-700 border-red-200",
 };
 
-const transitions: Record<string, { next: string; label: string }> = {
-  pending:     { next: "in_progress", label: "Iniciar edição" },
-  in_progress: { next: "review",      label: "Enviar para aprovação" },
-  in_revision: { next: "review",      label: "Enviar para aprovação" },
+const transitions: Record<string, { next: string; label: string; shortLabel: string }> = {
+  pending:     { next: "in_progress", label: "Iniciar edição",         shortLabel: "Iniciar"  },
+  in_progress: { next: "review",      label: "Enviar para aprovação",  shortLabel: "Enviar"   },
+  in_revision: { next: "review",      label: "Enviar para aprovação",  shortLabel: "Enviar"   },
 };
 
 function isOverdue(dueDate: string | null) {
@@ -135,8 +135,8 @@ export default function EditorTaskList() {
         <div key={i} className="flex items-center gap-4 px-4 py-3 border-b last:border-0">
           <div className="h-5 w-20 rounded bg-[hsl(var(--muted))]/60" />
           <div className="h-4 flex-1 rounded bg-[hsl(var(--muted))]/40" />
-          <div className="h-4 w-24 rounded bg-[hsl(var(--muted))]/40" />
-          <div className="h-4 w-16 rounded bg-[hsl(var(--muted))]/40" />
+          <div className="h-4 w-24 rounded bg-[hsl(var(--muted))]/40 hidden md:block" />
+          <div className="h-8 w-28 rounded bg-[hsl(var(--muted))]/40" />
         </div>
       ))}
     </div>
@@ -146,7 +146,7 @@ export default function EditorTaskList() {
     <div className="space-y-4">
 
       {/* Search */}
-      <div className="flex items-center gap-2 rounded-lg border bg-[hsl(var(--muted))]/40 px-3 h-9 max-w-sm">
+      <div className="flex items-center gap-2 rounded-lg border bg-[hsl(var(--muted))]/40 px-3 h-9">
         <Search className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] shrink-0" />
         <Input
           value={search}
@@ -159,14 +159,14 @@ export default function EditorTaskList() {
       {/* Table */}
       <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
 
-        {/* Header */}
-        <div className="flex items-center gap-4 px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
+        {/* Header — desktop only */}
+        <div className="hidden md:flex items-center gap-3 px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
           <div className="w-28 shrink-0">Status</div>
           <div className="flex-1 min-w-0">Tarefa</div>
-          <div className="w-24 shrink-0 hidden md:block">Prioridade</div>
-          <div className="w-28 shrink-0 hidden lg:block">Prazo</div>
-          <div className="w-24 shrink-0 hidden lg:block">Coordenador</div>
-          <div className="w-36 shrink-0">Ação</div>
+          <div className="w-20 shrink-0 hidden lg:block">Prioridade</div>
+          <div className="w-24 shrink-0 hidden lg:block">Prazo</div>
+          <div className="w-20 shrink-0 hidden xl:block">Coord.</div>
+          <div className="w-32 shrink-0">Ação</div>
           <div className="w-8 shrink-0" />
         </div>
 
@@ -182,29 +182,131 @@ export default function EditorTaskList() {
           const trans   = transitions[t.status];
           const canReturn = ["pending", "in_progress", "in_revision"].includes(t.status);
           const canPause  = !["completed", "cancelled", "paused"].includes(t.status);
-
           const isHighlighted = highlighted === t.id;
+
+          const dropdownItems = (
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => openTask(t.id)}>
+                <Info className="h-3.5 w-3.5 mr-2" />Ver informações
+              </DropdownMenuItem>
+              {canReturn && (
+                <DropdownMenuItem onClick={() => setReturnTarget(t)}>
+                  <Undo2 className="h-3.5 w-3.5 mr-2" />Devolver
+                </DropdownMenuItem>
+              )}
+              {canPause && (
+                <>
+                  <DropdownMenuSeparator />
+                  {t.status !== "paused" && (
+                    <DropdownMenuItem
+                      onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "pause" })}
+                      className="text-purple-700 focus:text-purple-700"
+                    >
+                      <PauseCircle className="h-3.5 w-3.5 mr-2" />Pausar
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem
+                    onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "cancel" })}
+                    className="text-red-600 focus:text-red-600"
+                  >
+                    <XCircle className="h-3.5 w-3.5 mr-2" />Cancelar
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          );
+
           return (
             <motion.div
               key={t.id}
               ref={isHighlighted ? highlightRef : null}
               variants={staggerRow}
-              className="flex items-center gap-4 px-4 py-3 border-b last:border-0 hover:bg-[hsl(var(--muted))]/20 transition-all"
+              className="flex items-stretch border-b last:border-0 hover:bg-[hsl(var(--muted))]/20 transition-all cursor-pointer"
               style={{
                 borderLeft: `3px solid ${accent}`,
                 backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.08)" : undefined,
                 boxShadow: isHighlighted ? "inset 0 0 0 1px hsl(var(--primary) / 0.25)" : undefined,
               }}
+              onClick={() => openTask(t.id)}
             >
+
+              {/* ── Mobile card (< md) ─────────────────────────────── */}
+              <div className="md:hidden flex items-start py-3 px-4 w-full min-w-0" style={{ gap: "10px" }}>
+
+                {/* Left: all info */}
+                <div className="flex-1 min-w-0" style={{ minWidth: 0 }}>
+
+                  {/* code + title */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                    {t.taskCode && (
+                      <span style={{ color: t.color, fontSize: "11px", fontWeight: 700, fontFamily: "monospace", whiteSpace: "nowrap", flexShrink: 0 }}>
+                        {t.taskCode}
+                      </span>
+                    )}
+                    <span style={{ fontSize: "13px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
+                      {t.title}
+                    </span>
+                    {t.revisionCount > 0 && (
+                      <span style={{ fontSize: "11px", color: "#f97316", fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>
+                        {t.revisionCount} alt.
+                      </span>
+                    )}
+                  </div>
+
+                  {/* client */}
+                  {t.client && (
+                    <p style={{ fontSize: "11px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "2px" }}>
+                      {t.client}
+                    </p>
+                  )}
+
+                  {/* status + priority + due date */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "6px", flexWrap: "wrap" }}>
+                    <Badge className={`text-xs px-1.5 py-0 h-5 ${STATUS_CLASS[t.status] ?? ""}`}>
+                      {STATUS_LABEL[t.status] ?? t.status}
+                    </Badge>
+                    <Badge variant="outline" className={`text-xs px-1.5 py-0 h-5 ${PRIORITY_CLS[t.priority] ?? ""}`}>
+                      {PRIORITY_LABEL[t.priority] ?? t.priority}
+                    </Badge>
+                    {t.dueDate && (
+                      <span style={{ fontSize: "11px", color: overdue ? "#ef4444" : "hsl(var(--muted-foreground))", fontWeight: overdue ? 600 : 400, display: "flex", alignItems: "center", gap: "3px" }}>
+                        {overdue && <AlertCircle style={{ width: 10, height: 10 }} />}
+                        {fmtDateHuman(t.dueDate)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right: action + dropdown */}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px", flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                  {trans && (
+                    <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap"
+                      onClick={e => { e.stopPropagation(); updateStatus(t, trans.next); }}>
+                      {trans.shortLabel}
+                    </Button>
+                  )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    {dropdownItems}
+                  </DropdownMenu>
+                </div>
+              </div>
+
+              {/* ── Desktop table (md+) ────────────────────────────── */}
+
               {/* Status */}
-              <div className="w-28 shrink-0">
+              <div className="hidden md:flex w-28 shrink-0 items-center px-4">
                 <Badge className={`${STATUS_CLASS[t.status] ?? ""} text-xs px-1.5 font-medium`}>
                   {STATUS_LABEL[t.status] ?? t.status}
                 </Badge>
               </div>
 
               {/* Title + client + revision */}
-              <div className="flex-1 min-w-0">
+              <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-3 pr-3">
                 <div className="flex items-baseline gap-1.5 min-w-0">
                   {t.taskCode && (
                     <span className="text-sm font-bold font-mono shrink-0" style={{ color: t.color }}>{t.taskCode}</span>
@@ -224,14 +326,14 @@ export default function EditorTaskList() {
               </div>
 
               {/* Priority */}
-              <div className="w-24 shrink-0 hidden md:block">
+              <div className="hidden lg:flex w-20 shrink-0 items-center">
                 <span className={`text-xs font-semibold px-1.5 py-0.5 rounded border ${PRIORITY_CLS[t.priority] ?? ""}`}>
                   {PRIORITY_LABEL[t.priority] ?? t.priority}
                 </span>
               </div>
 
               {/* Due date */}
-              <div className="w-28 shrink-0 hidden lg:flex items-center gap-1">
+              <div className="hidden lg:flex w-24 shrink-0 items-center gap-1">
                 {t.dueDate ? (
                   <span className={`flex items-center gap-1 text-xs ${overdue ? "text-red-600 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
                     {overdue && <AlertCircle className="h-3 w-3 shrink-0" />}
@@ -244,14 +346,10 @@ export default function EditorTaskList() {
               </div>
 
               {/* Coordinator */}
-              <div className="w-24 shrink-0 hidden lg:flex items-center gap-1.5">
+              <div className="hidden xl:flex w-20 shrink-0 items-center gap-1.5">
                 {t.createdBy ? (
                   <>
-                    <AvatarDisplay
-                      name={t.createdBy.name}
-                      avatarUrl={t.createdBy.avatarUrl}
-                      size={28}
-                    />
+                    <AvatarDisplay name={t.createdBy.name} avatarUrl={t.createdBy.avatarUrl} size={24} />
                     <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.createdBy.name.split(" ")[0]}</span>
                   </>
                 ) : (
@@ -260,14 +358,10 @@ export default function EditorTaskList() {
               </div>
 
               {/* Primary action */}
-              <div className="w-36 shrink-0">
+              <div className="hidden md:flex w-32 shrink-0 items-center" onClick={e => e.stopPropagation()}>
                 {trans ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs px-2.5 w-full"
-                    onClick={() => updateStatus(t, trans.next)}
-                  >
+                  <Button size="sm" variant="outline" className="h-7 text-xs px-2 w-full"
+                    onClick={() => updateStatus(t, trans.next)}>
                     {trans.label}
                   </Button>
                 ) : (
@@ -276,44 +370,17 @@ export default function EditorTaskList() {
               </div>
 
               {/* Dropdown */}
-              <div className="w-8 shrink-0 flex justify-end">
+              <div className="hidden md:flex w-10 shrink-0 items-center justify-center" onClick={e => e.stopPropagation()}>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-7 w-7">
                       <MoreVertical className="h-3.5 w-3.5" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => openTask(t.id)}>
-                      <Info className="h-3.5 w-3.5 mr-2" />Ver informações
-                    </DropdownMenuItem>
-                    {canReturn && (
-                      <DropdownMenuItem onClick={() => setReturnTarget(t)}>
-                        <Undo2 className="h-3.5 w-3.5 mr-2" />Devolver
-                      </DropdownMenuItem>
-                    )}
-                    {canPause && (
-                      <>
-                        <DropdownMenuSeparator />
-                        {t.status !== "paused" && (
-                          <DropdownMenuItem
-                            onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "pause" })}
-                            className="text-purple-700 focus:text-purple-700"
-                          >
-                            <PauseCircle className="h-3.5 w-3.5 mr-2" />Pausar
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem
-                          onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "cancel" })}
-                          className="text-red-600 focus:text-red-600"
-                        >
-                          <XCircle className="h-3.5 w-3.5 mr-2" />Cancelar
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                  </DropdownMenuContent>
+                  {dropdownItems}
                 </DropdownMenu>
               </div>
+
             </motion.div>
           );
         })}
