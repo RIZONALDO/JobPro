@@ -673,6 +673,12 @@ export default function Dashboard() {
   const openTasks      = tasks.filter(t => t.status !== "completed");
   const isEditor       = user?.role === "editor";
 
+  const actionCount = isEditor
+    ? tasks.filter(t => t.status === "pending" || t.status === "in_revision").length
+    : byStatus("review");
+
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+
   const editorOverdue: OverdueItem[] = tasks
     .filter(t => {
       if (["completed", "cancelled", "paused"].includes(t.status) || !t.dueDate) return false;
@@ -686,12 +692,6 @@ export default function Dashboard() {
     client: t.client, color: t.color,
     assigneeName: t.assigneeName, assigneeAvatarUrl: t.assignee?.avatarUrl ?? null,
   }));
-
-  const actionCount = isEditor
-    ? tasks.filter(t => t.status === "pending" || t.status === "in_revision").length
-    : byStatus("review");
-
-  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const inWeek = new Date(todayStart); inWeek.setDate(inWeek.getDate() + 7);
   const overdueCount = tasks.filter(t => {
     if (t.status === "completed" || !t.dueDate) return false;
