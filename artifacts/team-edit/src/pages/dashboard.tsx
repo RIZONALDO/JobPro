@@ -607,35 +607,62 @@ function TaskDeadlineCard({ data, onOpenJob }: {
           )}
         </div>
 
-        {/* Urgent task list */}
-        {data && data.urgent.length > 0 && (
+        {/* Right panel — urgent list OR positive health panel */}
+        {data && data.total > 0 && (
           <>
             <div className="w-px self-stretch bg-[hsl(var(--border))] shrink-0" />
-            <div className="shrink-0 w-[132px] flex flex-col gap-0.5 overflow-hidden pt-0.5">
-              <p className="text-[8px] uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-1">Mais urgentes</p>
-              {data.urgent.slice(0, 4).map(t => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => onOpenTask(t.id)}
-                  className="text-left flex items-start gap-1.5 group hover:bg-[hsl(var(--muted))]/40 rounded px-1 py-0.5 -mx-1 transition-colors min-w-0"
-                >
-                  <span
-                    className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
-                    style={{ backgroundColor: BUCKET_COLOR[t.bucket] ?? "#94a3b8" }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    {t.taskCode && <span className="text-[9px] font-mono text-[hsl(var(--muted-foreground))]/50 block">{t.taskCode}</span>}
-                    <p className="text-xs font-medium truncate leading-tight group-hover:text-[hsl(var(--primary))] transition-colors">
-                      {t.title}
-                    </p>
-                    <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
-                      {t.assigneeName ? t.assigneeName.split(" ")[0] : (t.client ?? "")}
-                    </p>
+
+            {hasUrgent ? (
+              /* Urgent task list */
+              <div className="shrink-0 w-[132px] flex flex-col gap-0.5 overflow-hidden pt-0.5">
+                <p className="text-[8px] uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-1">Mais urgentes</p>
+                {data.urgent.slice(0, 4).map(t => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => onOpenTask(t.id)}
+                    className="text-left flex items-start gap-1.5 group hover:bg-[hsl(var(--muted))]/40 rounded px-1 py-0.5 -mx-1 transition-colors min-w-0"
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
+                      style={{ backgroundColor: BUCKET_COLOR[t.bucket] ?? "#94a3b8" }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      {t.taskCode && <span className="text-[9px] font-mono text-[hsl(var(--muted-foreground))]/50 block">{t.taskCode}</span>}
+                      <p className="text-xs font-medium truncate leading-tight group-hover:text-[hsl(var(--primary))] transition-colors">
+                        {t.title}
+                      </p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
+                        {t.assigneeName ? t.assigneeName.split(" ")[0] : (t.client ?? "")}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              /* Positive health panel */
+              <div className="shrink-0 w-[132px] flex flex-col justify-center gap-3 pt-0.5">
+                <div className="flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-full bg-green-500/12 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
                   </div>
-                </button>
-              ))}
-            </div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold text-green-600 leading-tight">Tudo em dia</p>
+                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-tight">{data.total} com prazo</p>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  {data.buckets.filter(b => b.count > 0).map(b => (
+                    <div key={b.key} className="flex items-center gap-1.5 min-w-0">
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: b.color }} />
+                      <span className="text-[10px] text-[hsl(var(--muted-foreground))] flex-1 truncate">{b.label}</span>
+                      <span className="text-[10px] font-bold tabular-nums" style={{ color: b.color }}>{b.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
