@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, BarChart2, AlertTriangle } from "lucide-react";
+import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, BarChart2, AlertTriangle, CheckCircle2, CalendarClock } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { StatusBars } from "@/components/charts/StatusBars";
 import { WaffleChart } from "@/components/charts/WaffleChart";
@@ -412,9 +412,19 @@ interface OverdueItem {
   assigneeAvatarUrl?: string | null;
 }
 
+interface OverdueEmptyStats {
+  active: number;
+  completedPct: number;
+  nextDueIn: number | null;
+}
+
 const OVERDUE_SHOW = 5;
 
-function OverdueCard({ items, onOpenTask }: { items: OverdueItem[]; onOpenTask: (id: number) => void }) {
+function OverdueCard({ items, onOpenTask, emptyStats }: {
+  items: OverdueItem[];
+  onOpenTask: (id: number) => void;
+  emptyStats?: OverdueEmptyStats;
+}) {
   const count   = items.length;
   const visible = items.slice(0, OVERDUE_SHOW);
   const extra   = count - OVERDUE_SHOW;
@@ -435,11 +445,53 @@ function OverdueCard({ items, onOpenTask }: { items: OverdueItem[]; onOpenTask: 
       </div>
 
       {count === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-1.5 text-center px-4">
-          <div className="h-7 w-7 rounded-full bg-green-500/10 flex items-center justify-center">
-            <AlertTriangle className="h-3.5 w-3.5 text-green-500" />
+        <div className="flex-1 flex flex-col justify-center gap-3 px-4 py-3">
+          {/* Status row */}
+          <div className="flex items-center gap-2.5">
+            <div className="h-9 w-9 rounded-full bg-green-500/12 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="h-5 w-5 text-green-500" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-green-600 leading-tight">Sem atrasos</p>
+              <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-tight mt-0.5">
+                {emptyStats ? `${emptyStats.active} tarefa${emptyStats.active !== 1 ? "s" : ""} ativa${emptyStats.active !== 1 ? "s" : ""}` : "Tudo dentro do prazo"}
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-green-600 font-medium">Tudo dentro do prazo</p>
+
+          {/* Progress bar */}
+          {emptyStats && emptyStats.active > 0 && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Concluídas</span>
+                <span className="text-[10px] font-semibold text-green-600">{emptyStats.completedPct}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-[hsl(var(--muted))]">
+                <div
+                  className="h-1.5 rounded-full bg-green-500 transition-all duration-500"
+                  style={{ width: `${emptyStats.completedPct}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Next due */}
+          {emptyStats?.nextDueIn !== null && emptyStats?.nextDueIn !== undefined && (
+            <div className="flex items-center gap-1.5">
+              <CalendarClock className="h-3 w-3 text-[hsl(var(--muted-foreground))]/60 shrink-0" />
+              <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                {emptyStats.nextDueIn <= 0
+                  ? "Entrega hoje"
+                  : emptyStats.nextDueIn === 1
+                    ? "Próxima entrega amanhã"
+                    : `Próxima entrega em ${emptyStats.nextDueIn} dias`}
+              </span>
+            </div>
+          )}
+
+          {emptyStats?.active === 0 && (
+            <p className="text-[10px] text-[hsl(var(--muted-foreground))]">Nenhuma tarefa ativa no momento.</p>
+          )}
         </div>
       ) : (
         <>
@@ -692,6 +744,24 @@ export default function Dashboard() {
     client: t.client, color: t.color,
     assigneeName: t.assigneeName, assigneeAvatarUrl: t.assignee?.avatarUrl ?? null,
   }));
+
+  // Empty-state stats for OverdueCard
+  const editorActive       = openTasks.filter(t => !["cancelled","paused"].includes(t.status)).length;
+  const editorCompleted    = tasks.filter(t => t.status === "completed").length;
+  const editorCompletedPct = tasks.length > 0 ? Math.round(editorCompleted / tasks.length * 100) : 0;
+  const editorNextDue      = tasks
+    .filter(t => !["completed","cancelled","paused"].includes(t.status) && t.dueDate)
+    .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())[0]?.dueDate ?? null;
+  const editorNextDueIn    = editorNextDue
+    ? Math.ceil((new Date(editorNextDue.includes("T") ? editorNextDue : editorNextDue + "T00:00:00").getTime() - Date.now()) / 86400000)
+    : null;
+
+  const coordActive        = allTasks.filter(t => !["completed","cancelled"].includes(t.status)).length;
+  const coordCompleted     = allTasks.filter(t => t.status === "completed").length;
+  const coordCompletedPct  = allTasks.length > 0 ? Math.round(coordCompleted / allTasks.length * 100) : 0;
+
+  const editorEmptyStats: OverdueEmptyStats = { active: editorActive, completedPct: editorCompletedPct, nextDueIn: editorNextDueIn };
+  const coordEmptyStats: OverdueEmptyStats  = { active: coordActive,  completedPct: coordCompletedPct,  nextDueIn: null };
   const inWeek = new Date(todayStart); inWeek.setDate(inWeek.getDate() + 7);
   const overdueCount = tasks.filter(t => {
     if (t.status === "completed" || !t.dueDate) return false;
@@ -755,6 +825,7 @@ export default function Dashboard() {
         <OverdueCard
           items={isEditor ? editorOverdue : coordOverdue}
           onOpenTask={openTask}
+          emptyStats={isEditor ? editorEmptyStats : coordEmptyStats}
         />
 
         {/* Card 3+4 — urgency deadline chart (all tasks, col-span-2) */}
