@@ -37,6 +37,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   const editMode = !!editTaskId;
 
   const [form, setForm]               = useState(EMPTY_FORM);
+  const [taskStatus, setTaskStatus]   = useState<string>("");
   const [saving, setSaving]           = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [editors, setEditors]         = useState<Editor[]>([]);
@@ -59,8 +60,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
       setForm(EMPTY_FORM);
       setSelectedEditorIds([]);
       setLoadingEdit(true);
-      apiFetch<{ title: string; description: string | null; dueDate: string | null; priority: string; complexity: string; assignedToId: number | null; folderUrl: string | null; client: string | null; color: string; editors?: { id: number }[] }>(`/api/tasks/${editTaskId}`)
+      apiFetch<{ title: string; description: string | null; dueDate: string | null; priority: string; complexity: string; assignedToId: number | null; folderUrl: string | null; client: string | null; color: string; status: string; editors?: { id: number }[] }>(`/api/tasks/${editTaskId}`)
         .then(t => {
+          setTaskStatus(t.status ?? "");
           setForm({
             title:        t.title ?? "",
             description:  t.description ?? "",
@@ -103,9 +105,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
     setSelectedEditorIds(prev => prev.filter(x => x !== id));
   };
 
-  const save = async () => {
+  const save = async (publishStatus?: "rascunho" | "pending") => {
     if (!form.title.trim()) { toast({ title: "Título obrigatório", variant: "destructive" }); return; }
-    const payload = {
+    const payload: Record<string, unknown> = {
       title:        form.title,
       description:  form.description || null,
       dueDate:      form.dueDateTime || null,
@@ -117,14 +119,16 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
       client:       form.client || null,
       color:        form.color || "#6366f1",
     };
+    if (!editMode && publishStatus) payload.status = publishStatus;
+    if (editMode && publishStatus === "pending") payload.status = "pending";
     setSaving(true);
     try {
       if (editMode && editTaskId) {
         await apiPut(`/api/tasks/${editTaskId}`, payload);
-        toast({ title: "Tarefa atualizada" });
+        toast({ title: publishStatus === "pending" ? "Tarefa publicada" : "Tarefa atualizada" });
       } else {
         await apiPost("/api/tasks", payload);
-        toast({ title: "Tarefa criada" });
+        toast({ title: publishStatus === "rascunho" ? "Rascunho salvo" : "Tarefa publicada" });
       }
       onOpenChange(false);
       onSaved();
@@ -341,9 +345,27 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={save} disabled={saving || loadingEdit}>
-            {saving ? "Salvando…" : "Salvar"}
-          </Button>
+          {editMode ? (
+            <>
+              {taskStatus === "rascunho" && (
+                <Button variant="outline" onClick={() => save(undefined)} disabled={saving || loadingEdit}>
+                  {saving ? "Salvando…" : "Salvar rascunho"}
+                </Button>
+              )}
+              <Button onClick={() => save(taskStatus === "rascunho" ? "pending" : undefined)} disabled={saving || loadingEdit}>
+                {saving ? "Salvando…" : taskStatus === "rascunho" ? "Publicar" : "Salvar"}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => save("rascunho")} disabled={saving}>
+                {saving ? "Salvando…" : "Salvar rascunho"}
+              </Button>
+              <Button onClick={() => save("pending")} disabled={saving}>
+                {saving ? "Salvando…" : "Publicar"}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

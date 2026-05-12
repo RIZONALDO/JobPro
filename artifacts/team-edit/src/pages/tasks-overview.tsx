@@ -18,7 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import {
   ClipboardList, MoreVertical, FolderOpen, AlertTriangle,
   CheckCircle2, Clock, ArrowUpRight, X, PauseCircle, XCircle,
-  Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown,
+  Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
 } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
@@ -61,6 +61,7 @@ const PRIORITY_CLASS: Record<string, string> = {
 
 const STATUS_OPTIONS = [
   { value: "all",         label: "Todos os status" },
+  { value: "rascunho",    label: "Rascunho" },
   { value: "pending",     label: "Pendente" },
   { value: "in_progress", label: "Em andamento" },
   { value: "review",      label: "Em revisão" },
@@ -190,7 +191,7 @@ export default function TasksOverview() {
 
   // ── Client-side sort ──────────────────────────────────────────────────────
 
-  const STATUS_ORDER_SORT = ["pending","in_progress","in_revision","review","paused","cancelled","completed"];
+  const STATUS_ORDER_SORT = ["rascunho","pending","in_progress","in_revision","review","paused","cancelled","completed"];
   const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
   const sorted = useMemo(() => {
@@ -406,9 +407,10 @@ export default function TasksOverview() {
                   key={t.id}
                   ref={isHighlighted ? highlightRef : null}
                   className="flex items-stretch px-4 hover:bg-[hsl(var(--muted))]/20 transition-all min-h-[54px] cursor-pointer"
-                  onClick={() => t.status === 'pending' && canActNow ? (setEditTaskId(t.id), setFormOpen(true)) : openTask(t.id)}
+                  onClick={() => (t.status === 'pending' || t.status === 'rascunho') && canActNow ? (setEditTaskId(t.id), setFormOpen(true)) : openTask(t.id)}
                   style={{
-                    borderLeft: `3px solid ${t.projectColor ?? "#6366f1"}`,
+                    borderLeft: `3px ${t.status === "rascunho" ? "dashed" : "solid"} ${t.status === "rascunho" ? "#a1a1aa" : (t.projectColor ?? "#6366f1")}`,
+                    opacity: t.status === "rascunho" ? 0.75 : 1,
                     backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.08)" : undefined,
                     boxShadow: isHighlighted ? "inset 0 0 0 1px hsl(var(--primary) / 0.25)" : undefined,
                   }}
@@ -491,6 +493,12 @@ export default function TasksOverview() {
                         <FolderOpen className="h-3.5 w-3.5" />
                       </a>
                     )}
+                    {t.status === "rascunho" && canActNow && (
+                      <Button size="sm" className="h-7 text-xs px-2.5 bg-zinc-700 hover:bg-zinc-800"
+                        onClick={e => { e.stopPropagation(); apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(load); }}>
+                        <Send className="h-3 w-3 mr-1" />Publicar
+                      </Button>
+                    )}
                     {t.status === "review" && canActNow && (
                       <>
                         <Button size="sm" className="h-7 text-xs px-2.5 bg-green-600 hover:bg-green-700"
@@ -511,18 +519,25 @@ export default function TasksOverview() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openTask(t.id)}>
-                          <ArrowUpRight className="h-3.5 w-3.5" />Ver detalhes
-                        </DropdownMenuItem>
-                        {t.status === "pending" && canActNow && (
+                        {t.status !== "rascunho" && (
+                          <DropdownMenuItem onClick={() => openTask(t.id)}>
+                            <ArrowUpRight className="h-3.5 w-3.5" />Ver detalhes
+                          </DropdownMenuItem>
+                        )}
+                        {(t.status === "pending" || t.status === "rascunho") && canActNow && (
                           <>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => { setEditTaskId(t.id); setFormOpen(true); }}>
                               <Pencil className="h-3.5 w-3.5" />Editar tarefa
                             </DropdownMenuItem>
+                            {t.status === "rascunho" && (
+                              <DropdownMenuItem onClick={() => apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(load)}
+                                className="text-zinc-700 focus:text-zinc-700 font-medium">
+                                <Send className="h-3.5 w-3.5" />Publicar
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem
-                              onClick={() => setDeleteTarget({ id: t.id, title: t.title })}
-                              className="">
+                              onClick={() => setDeleteTarget({ id: t.id, title: t.title })}>
                               <Trash2 className="h-3.5 w-3.5" />Excluir tarefa
                             </DropdownMenuItem>
                           </>

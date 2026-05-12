@@ -1,4 +1,5 @@
 export const STATUS_LABEL: Record<string, string> = {
+  rascunho:    "Rascunho",
   pending:     "Pendente",
   in_progress: "Em edição",
   in_revision: "Em alteração",
@@ -9,6 +10,7 @@ export const STATUS_LABEL: Record<string, string> = {
 };
 
 export const STATUS_CLASS: Record<string, string> = {
+  rascunho:    "bg-zinc-100 text-zinc-500 border border-zinc-300 border-dashed",
   pending:     "bg-slate-100 text-slate-600 border border-slate-300",
   in_progress: "bg-blue-100 text-blue-700 border border-blue-300",
   in_revision: "bg-orange-100 text-orange-700 border border-orange-300",

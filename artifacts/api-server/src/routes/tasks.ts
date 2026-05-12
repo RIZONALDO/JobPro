@@ -20,10 +20,11 @@ const dueDateKey = (d: Date | string | null | undefined): string => {
 
 // ── Create task ──────────────────────────────────────────────────────────────
 router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
-  const { title, description, dueDate, priority, complexity, assignedToId, editorIds, folderUrl, client, color } = req.body ?? {};
+  const { title, description, dueDate, priority, complexity, assignedToId, editorIds, folderUrl, client, color, status } = req.body ?? {};
   if (!title) { res.status(400).json({ error: "Título obrigatório" }); return; }
 
   const parsedAssignee = assignedToId ? parseInt(String(assignedToId), 10) : null;
+  const initialStatus = status === "rascunho" ? "rascunho" : "pending";
 
   const seqResult = await db.execute<{ nextval: string }>(sql`SELECT nextval('te_task_number_seq') AS nextval`);
   const taskNumber = Number((seqResult.rows ?? seqResult)[0].nextval);
@@ -39,6 +40,7 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
     dueDate: dueDate ? new Date(String(dueDate)) : null,
     priority: priority ?? "medium",
     complexity: complexity ?? "medium",
+    status: initialStatus,
     assignedToId: parsedAssignee,
     folderUrl: folderUrl ? String(folderUrl) : null,
     createdById: req.session.userId,
@@ -51,18 +53,20 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
     editorIds.map(Number).filter(n => !isNaN(n) && n > 0).forEach(n => allEditorIds.add(n));
   }
 
-  // Insert into junction table and notify each editor
+  // Insert into junction table — notify only if published
   for (const editorId of allEditorIds) {
     await db.insert(taskEditorsTable).values({
       taskId: task.id,
       userId: editorId,
       assignedById: req.session.userId,
     }).onConflictDoNothing();
-    await notify(editorId, "task_assigned",
-      "Nova tarefa atribuída",
-      `A tarefa "${task.title}" foi atribuída a você`,
-      { taskId: task.id }
-    );
+    if (initialStatus !== "rascunho") {
+      await notify(editorId, "task_assigned",
+        "Nova tarefa atribuída",
+        `A tarefa "${task.title}" foi atribuída a você`,
+        { taskId: task.id }
+      );
+    }
   }
 
   broadcastTaskChange();
@@ -229,8 +233,8 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           res.status(400).json({ error: "Não é possível alterar uma tarefa já finalizada ou cancelada" }); return;
         }
         update.status = s;
-      } else if (s === "pending" && task.status === "paused") {
-        // Retomar tarefa pausada
+      } else if (s === "pending" && (task.status === "paused" || task.status === "rascunho")) {
+        // Retomar pausada ou publicar rascunho
         update.status = "pending";
       } else {
         // Fluxo normal de aprovação/revisão
@@ -302,6 +306,17 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         `A tarefa "${task.title}" foi retomada pelo coordenador`,
         { taskId: id }
       );
+    }
+    if (newStatus === "pending" && task.status === "rascunho") {
+      // Notify all assigned editors when draft is published
+      const editorRows = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
+      for (const { userId: editorId } of editorRows) {
+        await notify(editorId, "task_assigned",
+          "Nova tarefa atribuída",
+          `A tarefa "${task.title}" foi publicada e atribuída a você`,
+          { taskId: id }
+        );
+      }
     }
     if (newStatus === "completed" && task.assignedToId) {
       await notify(task.assignedToId, "task_approved",
@@ -428,9 +443,9 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
 
   let tasks: (typeof tasksTable.$inferSelect)[];
   if (role === "editor") {
-    // Include tasks where user is primary assignee OR in the editors junction table
+    // Include tasks where user is primary assignee OR in the editors junction table — exclude drafts
     const [primary, secondary] = await Promise.all([
-      db.select().from(tasksTable).where(eq(tasksTable.assignedToId, userId)),
+      db.select().from(tasksTable).where(and(eq(tasksTable.assignedToId, userId), ne(tasksTable.status, "rascunho"))),
       db.select({ taskId: taskEditorsTable.taskId }).from(taskEditorsTable)
         .where(eq(taskEditorsTable.userId, userId)),
     ]);
@@ -438,7 +453,7 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
     const primaryIds = primary.map(t => t.id);
     const missingIds = secondaryIds.filter(id => !primaryIds.includes(id));
     const extra = missingIds.length > 0
-      ? await db.select().from(tasksTable).where(inArray(tasksTable.id, missingIds))
+      ? await db.select().from(tasksTable).where(and(inArray(tasksTable.id, missingIds), ne(tasksTable.status, "rascunho")))
       : [];
     tasks = [...primary, ...extra].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   } else {
@@ -755,7 +770,7 @@ router.get("/pipeline", requireAuth, async (_req, res): Promise<void> => {
       taskNumber: tasksTable.taskNumber, taskYear: tasksTable.taskYear,
     })
     .from(tasksTable)
-    .where(ne(tasksTable.status, "completed"))
+    .where(and(ne(tasksTable.status, "completed"), ne(tasksTable.status, "rascunho")))
     .orderBy(desc(tasksTable.createdAt));
 
   const personIds = [...new Set([
