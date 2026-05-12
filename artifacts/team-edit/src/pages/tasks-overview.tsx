@@ -232,12 +232,6 @@ export default function TasksOverview() {
   // ── Summary stats ─────────────────────────────────────────────────────────
 
   const now = new Date();
-  const stats = {
-    total:      filtered.length,
-    inProgress: filtered.filter(t => t.status === "in_progress").length,
-    review:     filtered.filter(t => t.status === "review").length,
-    overdue:    filtered.filter(t => t.dueDate && new Date(t.dueDate) < now && t.status !== "completed").length,
-  };
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -283,10 +277,10 @@ export default function TasksOverview() {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Buscar tarefa…"
-          className="h-9 w-52 text-sm"
+          className="h-9 w-full sm:w-52 text-sm"
         />
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="h-9 w-44 text-sm"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-9 w-full sm:w-44 text-sm"><SelectValue /></SelectTrigger>
           <SelectContent>
             {STATUS_OPTIONS.map(o => (
               <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
@@ -294,7 +288,7 @@ export default function TasksOverview() {
           </SelectContent>
         </Select>
         <Select value={filterEditor} onValueChange={setFilterEditor}>
-          <SelectTrigger className="h-9 w-44 text-sm">
+          <SelectTrigger className="h-9 w-full sm:w-44 text-sm">
             <SelectValue placeholder="Todos os editores" />
           </SelectTrigger>
           <SelectContent>
@@ -305,7 +299,7 @@ export default function TasksOverview() {
           </SelectContent>
         </Select>
         <Select value={filterCoord} onValueChange={setFilterCoord}>
-          <SelectTrigger className="h-9 w-48 text-sm">
+          <SelectTrigger className="h-9 w-full sm:w-48 text-sm">
             <SelectValue placeholder="Todos os coordenadores" />
           </SelectTrigger>
           <SelectContent>
@@ -321,12 +315,12 @@ export default function TasksOverview() {
             <X className="h-3 w-3" />Limpar
           </Button>
         )}
-        {!canCreate ? null : (
-          <Button size="sm" className="h-9 gap-1.5 ml-auto" onClick={() => { setEditTaskId(null); setFormOpen(true); }}>
+        {canCreate && (
+          <Button size="sm" className="h-9 gap-1.5 sm:ml-auto w-full sm:w-auto" onClick={() => { setEditTaskId(null); setFormOpen(true); }}>
             <Plus className="h-3.5 w-3.5" />Nova tarefa
           </Button>
         )}
-        <span className={!canCreate ? "ml-auto" : ""} style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))" }}>
+        <span className={`text-xs text-[hsl(var(--muted-foreground))] ${!canCreate ? "sm:ml-auto" : ""}`}>
           {filtered.length} tarefa{filtered.length !== 1 ? "s" : ""}
         </span>
       </div>
@@ -334,7 +328,7 @@ export default function TasksOverview() {
       {/* ── Table ────────────────────────────────────────────────────────── */}
       <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
 
-        {/* Column headers */}
+        {/* Column headers — desktop only (md+) */}
         {(() => {
           const SortIcon = ({ col }: { col: string }) => {
             if (sortKey !== col) return <ChevronsUpDown className="h-3 w-3 opacity-30" />;
@@ -342,23 +336,23 @@ export default function TasksOverview() {
               ? <ChevronUp className="h-3 w-3 text-[hsl(var(--primary))]" />
               : <ChevronDown className="h-3 w-3 text-[hsl(var(--primary))]" />;
           };
-          const Th = ({ col, label, cls }: { col: string; label: string; cls: string }) => (
+          const Th = ({ col, label }: { col: string; label: string }) => (
             <button
               onClick={() => toggleSort(col)}
-              className={`${cls} flex items-center gap-1 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--foreground))] transition-colors select-none ${sortKey === col ? "text-[hsl(var(--primary))]/80" : ""}`}
+              className={`flex items-center gap-1 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--foreground))] transition-colors select-none ${sortKey === col ? "text-[hsl(var(--primary))]/80" : ""}`}
             >
               {label}<SortIcon col={col} />
             </button>
           );
           return (
-            <div className="flex items-center px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b">
-              <div className="flex-1 pr-4"><Th col="taskCode" label="Tarefa" cls="" /></div>
-              <div className="w-36 shrink-0"><Th col="status" label="Status" cls="" /></div>
-              <div className="w-24 shrink-0"><Th col="priority" label="Prioridade" cls="" /></div>
-              <div className="w-36 shrink-0"><Th col="assignee" label="Editor" cls="" /></div>
-              <div className="w-28 shrink-0"><Th col="dueDate" label="Prazo" cls="" /></div>
-              <div className="w-32 shrink-0"><Th col="coordinator" label="Coordenador" cls="" /></div>
-              <div className="w-52 shrink-0" />
+            <div className="hidden md:flex items-center px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b">
+              <div className="flex-1 pr-3"><Th col="taskCode" label="Tarefa" /></div>
+              <div className="w-32 shrink-0"><Th col="status" label="Status" /></div>
+              <div className="w-20 shrink-0 hidden lg:block"><Th col="priority" label="Prior." /></div>
+              <div className="w-32 shrink-0"><Th col="assignee" label="Editor" /></div>
+              <div className="w-24 shrink-0 hidden lg:block"><Th col="dueDate" label="Prazo" /></div>
+              <div className="w-24 shrink-0 hidden xl:block"><Th col="coordinator" label="Coord." /></div>
+              <div className="w-10 shrink-0" />
             </div>
           );
         })()}
@@ -367,15 +361,18 @@ export default function TasksOverview() {
         {loading ? (
           <div className="divide-y divide-[hsl(var(--muted))]">
             {[1,2,3,4,5].map(i => (
-              <div key={i} className="flex items-center px-4 py-3 gap-4">
+              <div key={i} className="flex items-center px-4 py-3 gap-3">
                 <div className="flex-1 space-y-1.5">
                   <div className="h-4 w-48 rounded bg-[hsl(var(--muted))]/60 animate-pulse" />
-                  <div className="h-3 w-32 rounded bg-[hsl(var(--muted))]/40 animate-pulse" />
+                  <div className="h-3 w-24 rounded bg-[hsl(var(--muted))]/40 animate-pulse" />
                 </div>
-                {[36, 24, 36, 28, 32].map((w, j) => (
-                  <div key={j} className={`h-6 w-${w} rounded bg-[hsl(var(--muted))]/40 animate-pulse shrink-0`} />
-                ))}
-                <div className="w-52 shrink-0" />
+                <div className="hidden md:flex items-center gap-3">
+                  <div className="h-6 w-20 rounded bg-[hsl(var(--muted))]/40 animate-pulse" />
+                  <div className="h-6 w-16 rounded bg-[hsl(var(--muted))]/40 animate-pulse hidden lg:block" />
+                  <div className="h-6 w-20 rounded bg-[hsl(var(--muted))]/40 animate-pulse" />
+                  <div className="h-6 w-16 rounded bg-[hsl(var(--muted))]/40 animate-pulse hidden lg:block" />
+                </div>
+                <div className="h-7 w-7 rounded bg-[hsl(var(--muted))]/40 animate-pulse shrink-0" />
               </div>
             ))}
           </div>
@@ -400,95 +397,223 @@ export default function TasksOverview() {
             {sorted.map(t => {
               const overdue   = isOverdue(t);
               const canActNow = canAct(t);
-
               const isHighlighted = highlighted === t.id;
+
+              // Shared dropdown — rendered in both mobile and desktop slots
+              const DropdownItems = () => (
+                <DropdownMenuContent align="end">
+                  {t.status !== "rascunho" && (
+                    <DropdownMenuItem onClick={() => openTask(t.id)}>
+                      <ArrowUpRight className="h-3.5 w-3.5" />Ver detalhes
+                    </DropdownMenuItem>
+                  )}
+                  {(t.status === "pending" || t.status === "rascunho") && canActNow && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => { setEditTaskId(t.id); setFormOpen(true); }}>
+                        <Pencil className="h-3.5 w-3.5" />Editar tarefa
+                      </DropdownMenuItem>
+                      {t.status === "rascunho" && (
+                        <DropdownMenuItem
+                          onClick={() => apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(load)}
+                          className="text-zinc-700 focus:text-zinc-700 font-medium">
+                          <Send className="h-3.5 w-3.5" />Publicar
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={() => setDeleteTarget({ id: t.id, title: t.title })}>
+                        <Trash2 className="h-3.5 w-3.5" />Excluir tarefa
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {!["completed","cancelled"].includes(t.status) && canActNow && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "reassign" })}>
+                        <RefreshCw className="h-3.5 w-3.5" />Reatribuir tarefa
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "add" })}>
+                        <UserPlus className="h-3.5 w-3.5" />Adicionar editor
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {!["completed","cancelled"].includes(t.status) && (
+                    <>
+                      <DropdownMenuSeparator />
+                      {t.status !== "paused" && (
+                        <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "pause" })}>
+                          <PauseCircle className="h-3.5 w-3.5" />Pausar tarefa
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "cancel" })}>
+                        <XCircle className="h-3.5 w-3.5" />Cancelar tarefa
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              );
+
               return (
                 <div
                   key={t.id}
                   ref={isHighlighted ? highlightRef : null}
-                  className="flex items-stretch px-4 hover:bg-[hsl(var(--muted))]/20 transition-all min-h-[54px] cursor-pointer"
+                  className="flex items-stretch px-4 hover:bg-[hsl(var(--muted))]/20 transition-all cursor-pointer"
                   onClick={() => (t.status === 'pending' || t.status === 'rascunho') && canActNow ? (setEditTaskId(t.id), setFormOpen(true)) : openTask(t.id)}
                   style={{
-                    borderLeft: `3px ${t.status === "rascunho" ? "dashed" : "solid"} ${t.status === "rascunho" ? "#a1a1aa" : (t.projectColor ?? "#6366f1")}`,
+                    borderLeft: `3px ${t.status === "rascunho" ? "dashed" : "solid"} ${t.status === "rascunho" ? "#a1a1aa" : (t.color ?? "#6366f1")}`,
                     opacity: t.status === "rascunho" ? 0.75 : 1,
                     backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.08)" : undefined,
                     boxShadow: isHighlighted ? "inset 0 0 0 1px hsl(var(--primary) / 0.25)" : undefined,
                   }}
                 >
+
+                  {/* ── Mobile card layout (< md) ──────────────────────── */}
+                  <div className="md:hidden flex items-start gap-3 py-3 w-full min-w-0">
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      {/* code + title */}
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {t.taskCode && (
+                          <span className="text-xs font-bold font-mono shrink-0" style={{ color: t.color }}>
+                            {t.taskCode}
+                          </span>
+                        )}
+                        <span className="text-sm font-medium truncate leading-tight">{t.title}</span>
+                        {t.revisionCount > 0 && (
+                          <span className="text-xs font-bold text-orange-500 shrink-0">Alt.{t.revisionCount}</span>
+                        )}
+                      </div>
+                      {/* client */}
+                      {t.client && (
+                        <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.client}</p>
+                      )}
+                      {/* badges + due date */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Badge className={`text-xs px-1.5 py-0 ${STATUS_CLASS[t.status] ?? ""}`}>
+                          {STATUS_LABEL[t.status] ?? t.status}
+                        </Badge>
+                        <Badge variant="outline" className={`text-xs px-1.5 py-0 ${PRIORITY_CLASS[t.priority] ?? ""}`}>
+                          {PRIORITY_LABEL[t.priority] ?? t.priority}
+                        </Badge>
+                        {t.dueDate && (
+                          <span className={`text-xs ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
+                            {fmtDateHuman(t.dueDate)}
+                          </span>
+                        )}
+                      </div>
+                      {/* editors */}
+                      {t.editors && t.editors.length > 0 && (
+                        <div className="flex items-center gap-1.5">
+                          <StackedAvatars people={t.editors} size={18} max={3} />
+                          <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">
+                            {t.editors.map(e => e.name.split(" ")[0]).join(", ")}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* mobile action strip */}
+                    <div className="flex flex-col items-end gap-1 shrink-0 pt-0.5" onClick={e => e.stopPropagation()}>
+                      {t.status === "rascunho" && canActNow && (
+                        <Button size="sm"
+                          className={`h-7 w-7 p-0 ${t.editors?.length > 0 ? "bg-zinc-700 hover:bg-zinc-800" : "bg-zinc-300 cursor-not-allowed"}`}
+                          disabled={!t.editors || t.editors.length === 0}
+                          title={!t.editors || t.editors.length === 0 ? "Atribua um editor antes de publicar" : "Publicar"}
+                          onClick={e => { e.stopPropagation(); apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(load); }}>
+                          <Send className="h-3 w-3" />
+                        </Button>
+                      )}
+                      {t.status === "review" && canActNow && (
+                        <div className="flex gap-1">
+                          <Button size="sm" className="h-7 text-xs px-2 bg-green-600 hover:bg-green-700"
+                            onClick={e => { e.stopPropagation(); approve(t); }}>✓</Button>
+                          <Button size="sm" variant="outline"
+                            className="h-7 text-xs px-2 text-orange-600 border-orange-300 hover:bg-orange-50"
+                            onClick={e => { e.stopPropagation(); setRevisionTask(t); setRevisionComment(""); }}>↩</Button>
+                        </div>
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownItems />
+                      </DropdownMenu>
+                    </div>
+                  </div>
+
+                  {/* ── Desktop table columns (md+) ────────────────────── */}
+
                   {/* Tarefa */}
-                  <div className="flex-1 min-w-0 flex flex-col justify-center py-2.5 pr-4">
+                  <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-2.5 pr-3">
                     <div className="flex items-center gap-1.5 min-w-0">
                       {t.taskCode && (
-                        <span className="text-sm font-bold font-mono shrink-0" style={{ color: t.color }}>{t.taskCode}</span>
+                        <span className="text-sm font-bold font-mono shrink-0" style={{ color: t.color }}>
+                          {t.taskCode}
+                        </span>
                       )}
                       <span className="text-sm font-medium truncate">{t.title}</span>
                       {t.revisionCount > 0 && (
                         <span className="text-xs font-bold text-orange-500 shrink-0">Alt.{t.revisionCount}</span>
                       )}
                     </div>
-                    {(t.projectName || t.jobName) && (
-                      <p className="text-xs text-[hsl(var(--muted-foreground))] truncate mt-0.5">
-                        {t.projectName}{t.jobName ? ` · ${t.jobName}` : ""}
-                      </p>
-                    )}
-                    {t.description && (
-                      <p className="text-xs text-[hsl(var(--muted-foreground))]/60 truncate mt-0.5">{t.description}</p>
+                    {t.client && (
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] truncate mt-0.5">{t.client}</p>
                     )}
                   </div>
 
                   {/* Status */}
-                  <div className="w-36 shrink-0 flex items-center">
+                  <div className="hidden md:flex w-32 shrink-0 items-center">
                     <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
                   </div>
 
-                  {/* Prioridade */}
-                  <div className="w-24 shrink-0 flex items-center">
+                  {/* Prioridade — only on lg+ */}
+                  <div className="hidden lg:flex w-20 shrink-0 items-center">
                     <Badge variant="outline" className={`text-xs px-1.5 ${PRIORITY_CLASS[t.priority] ?? ""}`}>
                       {PRIORITY_LABEL[t.priority] ?? t.priority}
                     </Badge>
                   </div>
 
                   {/* Editor */}
-                  <div className="w-36 shrink-0 flex items-center gap-2">
+                  <div className="hidden md:flex w-32 shrink-0 items-center gap-2">
                     {t.editors && t.editors.length > 0 ? (
                       <>
-                        <StackedAvatars people={t.editors} size={28} max={3} />
+                        <StackedAvatars people={t.editors} size={26} max={3} />
                         {t.editors.length === 1 && (
                           <span className="text-xs font-medium truncate">{t.editors[0].name.split(" ")[0]}</span>
                         )}
                       </>
                     ) : (
-                      <span className="text-xs text-[hsl(var(--muted-foreground))]/40 italic">não atribuído</span>
+                      <span className="text-xs text-[hsl(var(--muted-foreground))]/40 italic">—</span>
                     )}
                   </div>
 
-                  {/* Prazo */}
-                  <div className="w-28 shrink-0 flex flex-col justify-center gap-0.5">
+                  {/* Prazo — only on lg+ */}
+                  <div className="hidden lg:flex w-24 shrink-0 flex-col justify-center gap-0.5">
                     {t.dueDate ? (
                       <>
-                        <span className={`text-xs ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
+                        <span className={`text-xs leading-tight ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
                           {fmtDateHuman(t.dueDate)}
                         </span>
-                        <span className="text-xs text-[hsl(var(--muted-foreground))]/50">{fmtDate(t.dueDate)}</span>
+                        <span className="text-xs text-[hsl(var(--muted-foreground))]/50 leading-tight">{fmtDate(t.dueDate)}</span>
                       </>
                     ) : (
                       <span className="text-xs text-[hsl(var(--muted-foreground))]/40">—</span>
                     )}
                   </div>
 
-                  {/* Coordenador */}
-                  <div className="w-32 shrink-0 flex items-center">
+                  {/* Coordenador — only on xl+ */}
+                  <div className="hidden xl:flex w-24 shrink-0 items-center">
                     <span className={`text-xs truncate ${t.isOwn ? "text-[hsl(var(--primary))] font-medium" : "text-[hsl(var(--muted-foreground))]"}`}>
-                      {t.isOwn ? "Você" : (t.coordinator?.name ?? "—")}
+                      {t.isOwn ? "Você" : (t.coordinator?.name?.split(" ")[0] ?? "—")}
                     </span>
                   </div>
 
-                  {/* Ações */}
-                  <div className="w-52 shrink-0 flex items-center justify-end gap-1 py-2" onClick={e => e.stopPropagation()}>
+                  {/* Ações — desktop */}
+                  <div className="hidden md:flex shrink-0 items-center justify-end gap-1 py-2" onClick={e => e.stopPropagation()}>
                     {t.folderUrl && (
-                      <a href={t.folderUrl} target="_blank" rel="noreferrer" title="Abrir pasta no servidor"
+                      <a href={t.folderUrl} target="_blank" rel="noreferrer" title="Abrir pasta"
                         className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--primary))]">
                         <FolderOpen className="h-3.5 w-3.5" />
                       </a>
@@ -521,59 +646,10 @@ export default function TasksOverview() {
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {t.status !== "rascunho" && (
-                          <DropdownMenuItem onClick={() => openTask(t.id)}>
-                            <ArrowUpRight className="h-3.5 w-3.5" />Ver detalhes
-                          </DropdownMenuItem>
-                        )}
-                        {(t.status === "pending" || t.status === "rascunho") && canActNow && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => { setEditTaskId(t.id); setFormOpen(true); }}>
-                              <Pencil className="h-3.5 w-3.5" />Editar tarefa
-                            </DropdownMenuItem>
-                            {t.status === "rascunho" && (
-                              <DropdownMenuItem onClick={() => apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(load)}
-                                className="text-zinc-700 focus:text-zinc-700 font-medium">
-                                <Send className="h-3.5 w-3.5" />Publicar
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              onClick={() => setDeleteTarget({ id: t.id, title: t.title })}>
-                              <Trash2 className="h-3.5 w-3.5" />Excluir tarefa
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                        {!["completed","cancelled"].includes(t.status) && canActNow && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "reassign" })}>
-                              <RefreshCw className="h-3.5 w-3.5" />Reatribuir tarefa
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "add" })}>
-                              <UserPlus className="h-3.5 w-3.5" />Adicionar editor
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                        {!["completed","cancelled"].includes(t.status) && (
-                          <>
-                            <DropdownMenuSeparator />
-                            {t.status !== "paused" && (
-                              <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "pause" })}
-                                className="">
-                                <PauseCircle className="h-3.5 w-3.5" />Pausar tarefa
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "cancel" })}
-                              className="">
-                              <XCircle className="h-3.5 w-3.5" />Cancelar tarefa
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
+                      <DropdownItems />
                     </DropdownMenu>
                   </div>
+
                 </div>
               );
             })}
@@ -638,7 +714,6 @@ export default function TasksOverview() {
         </DialogContent>
       </Dialog>
 
-      {/* Task form modal */}
       {reassignTarget && (
         <ReassignEditorModal
           open={!!reassignTarget}
