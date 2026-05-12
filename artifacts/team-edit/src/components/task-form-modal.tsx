@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
+import { ClientCombobox } from "@/components/ui/client-combobox";
 import { FolderOpen, ExternalLink, AlertTriangle, X, UserPlus } from "lucide-react";
 
 interface Editor { id: number; name: string; login: string; role: string; avatarUrl?: string | null; }
@@ -155,7 +156,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
             <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
               <div className="space-y-1.5">
                 <Label>Cliente</Label>
-                <Input value={form.client} onChange={e => f({ client: e.target.value })} placeholder="Nome do cliente…" />
+                <ClientCombobox value={form.client} onChange={v => f({ client: v })} />
               </div>
               <div className="space-y-1.5">
                 <Label>Cor</Label>

@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, Briefcase, List, LayoutGrid, Pencil, Trash2, MoreVertical, PauseCircle, PlayCircle, CheckCircle2, Archive, FolderOpen } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ClientCombobox } from "@/components/ui/client-combobox";
 import { PROJ_STATUS_CLASS, PROJ_STATUS_LABEL, PROJ_STATUS_OPTIONS } from "@/lib/project-status";
 import { ApiError } from "@/lib/api";
 import { ActiveWorkGuardDialog, type GuardLevel } from "@/components/ActiveWorkGuardDialog";
@@ -438,7 +439,7 @@ export default function ProjectsList() {
             </div>
             <div className="space-y-1.5">
               <Label>Cliente</Label>
-              <Input value={form.client} onChange={e => setForm(f => ({ ...f, client: e.target.value }))} placeholder="Nome do cliente" />
+              <ClientCombobox value={form.client} onChange={v => setForm(f => ({ ...f, client: v }))} />
             </div>
             <div className="space-y-1.5">
               <Label>Briefing</Label>

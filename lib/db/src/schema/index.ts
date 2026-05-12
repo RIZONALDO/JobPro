@@ -11,3 +11,4 @@ export * from "./chat_messages";
 export * from "./user_presence";
 export * from "./direct_messages";
 export * from "./task_editors";
+export * from "./clients";
