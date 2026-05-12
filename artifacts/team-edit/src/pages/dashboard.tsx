@@ -391,53 +391,111 @@ function DeadlineCard({ label, sub, subCls, pill, days, color }: {
 }
 
 /* ── Coordinator Overdue Card ───────────────────────────────────── */
+function daysLate(dueDate: string): string {
+  const diff = Math.floor((Date.now() - new Date(dueDate + "T00:00:00").getTime()) / 86400000);
+  if (diff <= 0) return "hoje";
+  if (diff === 1) return "1 dia";
+  if (diff < 7)  return `${diff} dias`;
+  if (diff < 14) return "1 semana";
+  return `${Math.floor(diff / 7)} sem.`;
+}
+
+const OVERDUE_SHOW = 5;
+
 function CoordOverdueCard({ atRisk, onOpenTask }: { atRisk: AtRiskTask[]; onOpenTask: (id: number) => void }) {
-  const count = atRisk.length;
+  const count   = atRisk.length;
+  const visible = atRisk.slice(0, OVERDUE_SHOW);
+  const extra   = count - OVERDUE_SHOW;
+
   return (
-    <div className="rounded-2xl border bg-[hsl(var(--card))] card-float px-4 pt-4 pb-3 flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
-      <div className="flex items-center justify-between gap-2 shrink-0">
+    <div className="rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
         <div className="flex items-center gap-1.5">
           <AlertTriangle className={`h-3.5 w-3.5 shrink-0 ${count > 0 ? "text-red-500" : "text-green-500"}`} />
-          <p className="text-xs font-semibold text-[hsl(var(--foreground))]/80">Atrasadas</p>
+          <span className="text-xs font-semibold">Atrasadas</span>
         </div>
         {count > 0
-          ? <span className="text-xs font-semibold px-2 py-0.5 rounded-full leading-none shrink-0 bg-red-500/10 text-red-600">{count} tarefa{count !== 1 ? "s" : ""}</span>
-          : <span className="text-xs font-semibold px-2 py-0.5 rounded-full leading-none shrink-0 bg-green-500/10 text-green-600">Em dia</span>
+          ? <span className="text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-full bg-red-500/10 text-red-600 leading-none">{count}</span>
+          : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 leading-none">Em dia</span>
         }
       </div>
 
       {count === 0 ? (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-xs text-green-600">Nenhuma tarefa atrasada.</p>
+        <div className="flex-1 flex flex-col items-center justify-center gap-1.5 text-center px-4">
+          <div className="h-7 w-7 rounded-full bg-green-500/10 flex items-center justify-center">
+            <AlertTriangle className="h-3.5 w-3.5 text-green-500" />
+          </div>
+          <p className="text-xs text-green-600 font-medium">Tudo dentro do prazo</p>
         </div>
       ) : (
-        <div className="flex-1 min-h-0 overflow-y-auto mt-2 flex flex-col gap-1.5 pr-0.5">
-          {atRisk.map(t => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => onOpenTask(t.id)}
-              className="text-left flex items-start gap-2 rounded-lg border border-l-2 px-2 py-1.5 hover:bg-[hsl(var(--muted))]/40 transition-colors min-w-0 group shrink-0"
-              style={{ borderLeftColor: t.color ?? "#ef4444", borderColor: "hsl(var(--border))", borderLeftWidth: 3 }}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1 min-w-0">
-                  {t.taskCode && <span className="text-[9px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">{t.taskCode}</span>}
-                  <p className="text-xs font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
-                </div>
-                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                  {t.assigneeName && (
-                    <span className="text-xs text-[hsl(var(--muted-foreground))]">{t.assigneeName.split(" ")[0]}</span>
-                  )}
-                  {t.client && (
-                    <span className="text-xs text-[hsl(var(--muted-foreground))]/60 truncate">· {t.client}</span>
-                  )}
-                </div>
-              </div>
-              <span className="text-xs font-semibold text-red-500 shrink-0 mt-0.5">{fmtDateHuman(t.dueDate)}</span>
-            </button>
-          ))}
-        </div>
+        <>
+          {/* Task rows */}
+          <div className="flex-1 min-h-0 overflow-hidden divide-y divide-[hsl(var(--border))]/60">
+            {visible.map(t => {
+              const accent = t.color ?? "#ef4444";
+              const late   = daysLate(t.dueDate);
+              const initials = t.assigneeName
+                ? t.assigneeName.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase()
+                : "?";
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onOpenTask(t.id)}
+                  className="w-full text-left flex items-center gap-2.5 px-3 py-1.5 hover:bg-red-500/[0.04] transition-colors group min-w-0"
+                  style={{ borderLeft: `2.5px solid ${accent}` }}
+                >
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-1 min-w-0">
+                      {t.taskCode && (
+                        <span className="text-[9px] font-mono text-[hsl(var(--muted-foreground))]/45 shrink-0">{t.taskCode}</span>
+                      )}
+                      <p className="text-[11px] font-semibold truncate leading-snug group-hover:text-red-600 transition-colors">
+                        {t.title}
+                      </p>
+                    </div>
+                    {(t.assigneeName || t.client) && (
+                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 truncate leading-none mt-0.5">
+                        {t.assigneeName ? t.assigneeName.split(" ")[0] : ""}
+                        {t.assigneeName && t.client ? " · " : ""}
+                        {t.client ?? ""}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Assignee avatar + days late */}
+                  <div className="shrink-0 flex items-center gap-1.5">
+                    {t.assigneeName && (
+                      <AvatarDisplay
+                        name={t.assigneeName}
+                        avatarUrl={t.assignee?.avatarUrl ?? null}
+                        style={{ width: 18, height: 18, fontSize: 7, flexShrink: 0 }}
+                      />
+                    )}
+                    <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded-full leading-none tabular-nums whitespace-nowrap">
+                      {late}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Overflow footer */}
+          {extra > 0 && (
+            <div className="shrink-0 flex items-center justify-between gap-2 px-3.5 py-1.5 border-t bg-red-500/[0.03]">
+              <span className="text-[10px] text-red-500/80 font-medium">
+                +{extra} tarefa{extra !== 1 ? "s" : ""} atrasada{extra !== 1 ? "s" : ""}
+              </span>
+              <Link href="/tasks?tab=lista" className="text-[10px] text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 font-medium">
+                Ver todas <ArrowRight className="h-2.5 w-2.5" />
+              </Link>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
