@@ -20,9 +20,9 @@ router.get("/users", requireAuth, async (req, res): Promise<void> => {
     createdAt: usersTable.createdAt,
   }).from(usersTable).orderBy(usersTable.name);
 
-  // Coordinators only see editors
+  // Coordinators see editors + other coordinators/supervisors, but not admin
   if (role === "coordinator") {
-    res.json(users.filter(u => u.role === "editor"));
+    res.json(users.filter(u => u.role !== "admin"));
     return;
   }
   res.json(users);

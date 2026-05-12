@@ -196,7 +196,7 @@ export default function Team() {
   };
 
   const maxScore = Math.max(...workload.map(e => e.score), 1);
-  const others = users.filter(u => u.role !== "editor");
+  const others = users.filter(u => u.role !== "editor" && (isAdmin || u.role !== "admin"));
 
   return (
     <div className="space-y-6">
@@ -342,8 +342,8 @@ export default function Team() {
             </div>
           )}
 
-          {/* ── Coordenação (admin vê coordenadores + admins) ─────── */}
-          {isAdmin && others.length > 0 && (
+          {/* ── Coordenação ─────────────────────────────────────── */}
+          {isCoordinator && others.length > 0 && (
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
                 Coordenação — {others.length}
