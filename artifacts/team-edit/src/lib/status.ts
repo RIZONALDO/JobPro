@@ -3,19 +3,28 @@ export const STATUS_LABEL: Record<string, string> = {
   pending:     "Pendente",
   in_progress: "Em edição",
   in_revision: "Em alteração",
-  review:      "Aguardando aprovação",
+  review:      "Aguard. aprovação",
   completed:   "Aprovada",
   paused:      "Pausada",
   cancelled:   "Cancelada",
 };
 
+// Three visual tiers based on urgency / coordinator action required:
+//   Tier 1 – ACTIVE  (solid fill, high contrast): tasks needing attention NOW
+//   Tier 2 – PASSIVE (soft fill, muted):          tasks waiting or settled
+//   Tier 3 – DRAFT   (dashed border only):        not yet published
 export const STATUS_CLASS: Record<string, string> = {
-  rascunho:    "bg-zinc-100 text-zinc-500 border border-zinc-300 border-dashed",
-  pending:     "bg-slate-100 text-slate-600 border border-slate-300",
-  in_progress: "bg-blue-100 text-blue-700 border border-blue-300",
-  in_revision: "bg-orange-100 text-orange-700 border border-orange-300",
-  review:      "bg-amber-100 text-amber-700 border border-amber-300",
-  completed:   "bg-green-100 text-green-700 border border-green-300",
-  paused:      "bg-purple-100 text-purple-700 border border-purple-300",
-  cancelled:   "bg-red-100 text-red-600 border border-red-300",
+  // Tier 3 — draft, not real yet
+  rascunho:    "bg-zinc-100 text-zinc-400 border border-dashed border-zinc-300",
+
+  // Tier 2 — passive / settled
+  pending:     "bg-slate-100 text-slate-500 border-transparent",
+  completed:   "bg-emerald-100 text-emerald-700 border-transparent",
+  paused:      "bg-violet-100 text-violet-600 border-transparent",
+  cancelled:   "bg-red-50 text-red-400 border-transparent",
+
+  // Tier 1 — active, demand attention (solid fills)
+  in_progress: "bg-blue-600 text-white border-transparent",
+  in_revision: "bg-orange-500 text-white border-transparent",
+  review:      "bg-amber-500 text-white border-transparent",
 };

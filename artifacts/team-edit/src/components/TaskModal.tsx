@@ -10,6 +10,7 @@ import {
   Clock, FolderOpen, RotateCcw, Calendar, Tag,
   Hash, Layers, Copy, ChevronRight,
 } from "lucide-react";
+import { PriorityBadge } from "@/components/ui/priority-badge";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
@@ -35,14 +36,7 @@ interface TaskDetail {
   updatedAt: string;
 }
 
-const PRIORITY_LABEL: Record<string, string>  = { low: "Baixa", medium: "Média", high: "Alta" };
 const COMPLEXITY_LABEL: Record<string, string> = { low: "Simples", medium: "Moderada", high: "Complexa" };
-
-const PRIORITY_DOT: Record<string, string> = {
-  low:    "bg-green-500",
-  medium: "bg-amber-500",
-  high:   "bg-red-500",
-};
 
 const COMPLEXITY_CLS: Record<string, string> = {
   low:    "text-slate-500",
@@ -132,8 +126,7 @@ export function TaskModal({ taskId, onClose }: Props) {
                   <div>
                     <SideLabel>Prioridade</SideLabel>
                     <div className="flex items-center gap-1.5">
-                      <span className={`h-2 w-2 rounded-full shrink-0 ${PRIORITY_DOT[task.priority] ?? "bg-muted"}`} />
-                      <span className="text-sm font-semibold">{PRIORITY_LABEL[task.priority] ?? task.priority}</span>
+                      <PriorityBadge priority={task.priority} />
                     </div>
                   </div>
 

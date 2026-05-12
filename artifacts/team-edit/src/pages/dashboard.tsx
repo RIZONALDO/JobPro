@@ -14,6 +14,7 @@ import { useSize } from "@/hooks/use-size";
 import { Link, useLocation } from "wouter";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { usePageTitle } from "@/lib/use-page-title";
+import { PriorityBadge } from "@/components/ui/priority-badge";
 
 interface Task {
   id: number;
@@ -83,8 +84,6 @@ interface DeadlineOverview {
   total: number;
   urgentCount: number;
 }
-
-const PRIORITY_COLOR: Record<string, string> = { low: "text-green-600", medium: "text-amber-600", high: "text-red-600" };
 
 function scoreColor(score: number): string {
   if (score === 0)  return "#94a3b8";
@@ -325,8 +324,6 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
     </div>
   );
 }
-
-const PRIORITY_LABEL: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta" };
 
 const STATUS_BAR: Record<string, string> = {
   pending:     "bg-slate-300",
@@ -898,7 +895,7 @@ export default function Dashboard() {
                     })()}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className={`text-xs font-medium ${PRIORITY_COLOR[t.priority] ?? ""}`}>{PRIORITY_LABEL[t.priority] ?? t.priority}</span>
+                    <PriorityBadge priority={t.priority} />
                     <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
@@ -1056,7 +1053,7 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className={`text-xs font-medium ${PRIORITY_COLOR[t.priority] ?? ""}`}>{PRIORITY_LABEL[t.priority] ?? t.priority}</span>
+                    <PriorityBadge priority={t.priority} />
                     <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>

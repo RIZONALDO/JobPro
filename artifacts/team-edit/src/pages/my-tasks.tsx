@@ -15,6 +15,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { StackedAvatars } from "@/components/ui/avatar-display";
 import { usePageTitle } from "@/lib/use-page-title";
 import { useTaskModal } from "@/contexts/TaskModalContext";
+import { PriorityBadge } from "@/components/ui/priority-badge";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
@@ -38,8 +39,6 @@ interface Task {
   client?: string | null;
   color?: string;
 }
-
-const PRIORITY_LABEL: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta" };
 
 const KANBAN_COLS = [
   { key: "pending",     label: "Pendente",     color: "#94a3b8" },
@@ -252,13 +251,7 @@ export default function MyTasks() {
           borderTop: "1px solid hsl(var(--border))",
           flexShrink: 0, overflow: "hidden",
         }}>
-          <span style={{
-            fontSize: 9, fontWeight: 700, padding: "1px 4px", borderRadius: 99, flexShrink: 0,
-            background: t.priority === "high" ? "#fee2e2" : t.priority === "medium" ? "#fef9c3" : "#dcfce7",
-            color:      t.priority === "high" ? "#dc2626" : t.priority === "medium" ? "#ca8a04" : "#16a34a",
-          }}>
-            {PRIORITY_LABEL[t.priority] ?? t.priority}
-          </span>
+          <PriorityBadge priority={t.priority} />
           {t.revisionCount > 0 && (
             <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 9, color: "#ea580c", flexShrink: 0 }}>
               <MessageSquare className="h-2 w-2" />{t.revisionCount}

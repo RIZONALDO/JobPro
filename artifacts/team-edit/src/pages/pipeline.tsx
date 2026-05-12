@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar, Tag, AlertTriangle } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
+import { PriorityBadge } from "@/components/ui/priority-badge";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
 
@@ -34,13 +35,6 @@ const COLUMNS: { key: string; label: string; desc: string; accent: string }[] = 
   { key: "review",      label: "Aprovação",     desc: "Aguardando aprovação",  accent: "#f59e0b" },
   { key: "in_revision", label: "Em alteração",  desc: "Pedido de alteração",   accent: "#f97316" },
 ];
-
-const PRIORITY_CLS: Record<string, string> = {
-  low: "bg-green-100 text-green-700 border-green-200",
-  medium: "bg-amber-100 text-amber-700 border-amber-200",
-  high: "bg-red-100 text-red-700 border-red-200",
-};
-const PRIORITY_LABEL: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta" };
 
 export default function Pipeline() {
   usePageTitle("Pipeline");
@@ -137,9 +131,7 @@ export default function Pipeline() {
 
                         {/* Priority + due date + assignee — single row, no wrap */}
                         <div className="flex items-center gap-1 min-w-0 overflow-hidden">
-                          <Badge variant="outline" className={`text-[9px] px-1 py-0 leading-4 shrink-0 ${PRIORITY_CLS[t.priority] ?? ""}`}>
-                            {PRIORITY_LABEL[t.priority] ?? t.priority}
-                          </Badge>
+                          <PriorityBadge priority={t.priority} showLabel={false} />
                           {t.dueDate && (() => {
                             const parts = fmtDateParts(t.dueDate);
                             return parts ? (

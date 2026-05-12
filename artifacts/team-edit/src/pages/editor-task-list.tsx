@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { PriorityBadge } from "@/components/ui/priority-badge";
 
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
 interface Task {
@@ -35,12 +36,6 @@ interface Task {
   revisions: Revision[];
 }
 
-const PRIORITY_LABEL: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta" };
-const PRIORITY_CLS: Record<string, string> = {
-  low:    "bg-green-100 text-green-700 border-green-200",
-  medium: "bg-amber-100 text-amber-700 border-amber-200",
-  high:   "bg-red-100 text-red-700 border-red-200",
-};
 
 const transitions: Record<string, { next: string; label: string; shortLabel: string }> = {
   pending:     { next: "in_progress", label: "Iniciar edição",         shortLabel: "Iniciar"  },
@@ -265,9 +260,7 @@ export default function EditorTaskList() {
                     <Badge className={`text-xs px-1.5 py-0 h-5 ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
-                    <Badge variant="outline" className={`text-xs px-1.5 py-0 h-5 ${PRIORITY_CLS[t.priority] ?? ""}`}>
-                      {PRIORITY_LABEL[t.priority] ?? t.priority}
-                    </Badge>
+                    <PriorityBadge priority={t.priority} />
                     {t.dueDate && (
                       <span style={{ fontSize: "11px", color: overdue ? "#ef4444" : "hsl(var(--muted-foreground))", fontWeight: overdue ? 600 : 400, display: "flex", alignItems: "center", gap: "3px" }}>
                         {overdue && <AlertCircle style={{ width: 10, height: 10 }} />}
@@ -327,9 +320,7 @@ export default function EditorTaskList() {
 
               {/* Priority */}
               <div className="hidden lg:flex w-20 shrink-0 items-center">
-                <span className={`text-xs font-semibold px-1.5 py-0.5 rounded border ${PRIORITY_CLS[t.priority] ?? ""}`}>
-                  {PRIORITY_LABEL[t.priority] ?? t.priority}
-                </span>
+                <PriorityBadge priority={t.priority} />
               </div>
 
               {/* Due date */}

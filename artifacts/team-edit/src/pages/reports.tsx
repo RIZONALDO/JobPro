@@ -10,6 +10,7 @@ import { Search, Printer, X } from "lucide-react";
 import { usePageTitle } from "@/lib/use-page-title";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { format, parseISO } from "date-fns";
+import { PriorityBadge } from "@/components/ui/priority-badge";
 import { ptBR } from "date-fns/locale";
 
 interface Person { id: number; name: string; avatarUrl: string | null }
@@ -23,11 +24,7 @@ interface ReportTask {
 }
 
 const STATUS_ORDER = ["pending", "in_progress", "in_revision", "review", "completed"];
-const PRIORITY_LABEL: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta" };
 const COMPLEXITY_LABEL: Record<string, string> = { low: "Simples", medium: "Moderada", high: "Complexa" };
-const PRIORITY_CLS: Record<string, string> = {
-  low: "text-green-600", medium: "text-amber-600", high: "text-red-600",
-};
 const COORD_ROLES = ["admin", "supervisor", "coordinator"];
 
 function fmtShort(iso: string) {
@@ -273,9 +270,7 @@ export default function Reports() {
                         </Badge>
                       </td>
                       <td className="px-4 py-2.5">
-                        <span className={`text-xs font-medium ${PRIORITY_CLS[t.priority] ?? ""}`}>
-                          {PRIORITY_LABEL[t.priority] ?? t.priority}
-                        </span>
+                        <PriorityBadge priority={t.priority} />
                       </td>
                       <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">
                         {COMPLEXITY_LABEL[t.complexity] ?? t.complexity}

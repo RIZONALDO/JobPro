@@ -67,9 +67,6 @@ function workloadLevel(score: number): "ok" | "moderate" | "high" | "critical" {
 }
 
 
-const PRIORITY_LABEL: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta" };
-const PRIORITY_COLOR: Record<string, string> = { low: "text-green-600", medium: "text-yellow-600", high: "text-red-600" };
-
 const EDITOR_TRANSITIONS: Record<string, string> = {
   pending:     "in_progress",
   in_progress: "review",

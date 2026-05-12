@@ -22,6 +22,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { PriorityBadge } from "@/components/ui/priority-badge";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { TaskFormModal } from "@/components/task-form-modal";
 import { ReassignEditorModal } from "@/components/reassign-editor-modal";
@@ -53,12 +54,6 @@ interface OverviewTask {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PRIORITY_LABEL: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta" };
-const PRIORITY_CLASS: Record<string, string> = {
-  low:    "bg-green-100 text-green-700 border-green-200",
-  medium: "bg-amber-100 text-amber-700 border-amber-200",
-  high:   "bg-red-100 text-red-700 border-red-200",
-};
 
 const STATUS_OPTIONS = [
   { value: "all",         label: "Todos os status" },
@@ -571,9 +566,7 @@ export default function TasksOverview() {
                         <Badge className={`text-xs px-1.5 py-0 h-5 ${STATUS_CLASS[t.status] ?? ""}`}>
                           {STATUS_LABEL[t.status] ?? t.status}
                         </Badge>
-                        <Badge variant="outline" className={`text-xs px-1.5 py-0 h-5 ${PRIORITY_CLASS[t.priority] ?? ""}`}>
-                          {PRIORITY_LABEL[t.priority] ?? t.priority}
-                        </Badge>
+                        <PriorityBadge priority={t.priority} />
                         {t.dueDate && (
                           <span style={{ fontSize: "11px", color: overdue ? "#ef4444" : "hsl(var(--muted-foreground))", fontWeight: overdue ? 600 : 400 }}>
                             {fmtDateHuman(t.dueDate)}
@@ -652,9 +645,7 @@ export default function TasksOverview() {
 
                   {/* Prioridade — only on lg+ */}
                   <div className="hidden lg:flex w-20 shrink-0 items-center">
-                    <Badge variant="outline" className={`text-xs px-1.5 ${PRIORITY_CLASS[t.priority] ?? ""}`}>
-                      {PRIORITY_LABEL[t.priority] ?? t.priority}
-                    </Badge>
+                    <PriorityBadge priority={t.priority} />
                   </div>
 
                   {/* Editor */}

@@ -16,6 +16,7 @@ import { Plus, Pencil, Trash2, Users, ChevronDown, ChevronRight } from "lucide-r
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { usePageTitle } from "@/lib/use-page-title";
+import { PriorityBadge } from "@/components/ui/priority-badge";
 
 interface AppUser {
   id: number;
@@ -58,11 +59,6 @@ const STATUS_BAR: Record<string, string> = {
   review:      "bg-amber-400",
   completed:   "bg-green-500",
 };
-
-const PRIORITY_COLOR: Record<string, string> = {
-  low: "text-green-600", medium: "text-amber-600", high: "text-red-600",
-};
-const PRIORITY_LABEL: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta" };
 
 function scoreColor(score: number): string {
   if (score === 0)  return "#94a3b8";
@@ -329,9 +325,7 @@ export default function Team() {
                                       {h !== n && <span className="text-xs text-[hsl(var(--muted-foreground))]/50">{n}</span>}
                                     </span>;
                                   })()}
-                                  <span className={`text-xs font-medium ${PRIORITY_COLOR[task.priority] ?? ""}`}>
-                                    {PRIORITY_LABEL[task.priority] ?? task.priority}
-                                  </span>
+                                  <PriorityBadge priority={task.priority} />
                                   <Badge className={`text-xs px-1.5 ${STATUS_CLASS[task.status] ?? ""}`}>
                                     {STATUS_LABEL[task.status] ?? task.status}
                                   </Badge>
