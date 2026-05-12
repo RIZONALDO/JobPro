@@ -3,7 +3,7 @@ import { staggerContainer, staggerFade, staggerItem } from "@/lib/motion";
 import React, { useEffect, useState, useCallback } from "react";
 import { useRealtime } from "@/hooks/use-realtime";
 import { apiFetch, apiPut, apiPost } from "@/lib/api";
-import { fmtDate, fmtDateHuman, fmtShort } from "@/lib/utils";
+import { fmtDate, fmtDateHuman, fmtShort, fmtDateParts } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -164,12 +164,12 @@ export default function MyTasks() {
         }}>
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
             {t.taskCode && (
-              <span style={{ fontSize: 14, fontFamily: "ui-monospace, monospace", fontWeight: 700, color: t.color, lineHeight: 1 }}>
+              <span style={{ fontSize: 10, fontFamily: "ui-monospace, monospace", fontWeight: 700, color: t.color, lineHeight: 1 }}>
                 {t.taskCode}
               </span>
             )}
             <p style={{
-              fontSize: 13, fontWeight: 600, lineHeight: 1.3, margin: 0,
+              fontSize: 11, fontWeight: 600, lineHeight: 1.3, margin: 0,
               color: "hsl(var(--foreground))",
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             }}>
@@ -235,20 +235,20 @@ export default function MyTasks() {
         {/* Corpo — cliente */}
         <div style={{
           flex: 1, minHeight: 0,
-          padding: "6px 10px",
+          padding: "4px 10px",
           display: "flex", alignItems: "center",
           overflow: "hidden",
         }}>
           {(t as any).client ? (
             <p style={{
-              fontSize: 13, color: "hsl(var(--muted-foreground))",
+              fontSize: 10, color: "hsl(var(--muted-foreground))",
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
               margin: 0,
             }}>
               {(t as any).client}
             </p>
           ) : (
-            <p style={{ fontSize: 13, color: "hsl(var(--muted-foreground))", opacity: 0.35, margin: 0, fontStyle: "italic" }}>
+            <p style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", opacity: 0.35, margin: 0, fontStyle: "italic" }}>
               Sem cliente
             </p>
           )}
@@ -256,40 +256,46 @@ export default function MyTasks() {
 
         {/* Rodapé — prioridade · revisões · data · avatar */}
         <div style={{
-          display: "flex", alignItems: "center", gap: 5,
-          padding: "5px 10px",
+          display: "flex", alignItems: "center", gap: 4,
+          padding: "4px 8px",
           borderTop: "1px solid hsl(var(--border))",
-          flexShrink: 0,
+          flexShrink: 0, overflow: "hidden",
         }}>
           <span style={{
-            fontSize: 13, fontWeight: 700, padding: "1px 5px", borderRadius: 99, flexShrink: 0,
+            fontSize: 9, fontWeight: 700, padding: "1px 4px", borderRadius: 99, flexShrink: 0,
             background: t.priority === "high" ? "#fee2e2" : t.priority === "medium" ? "#fef9c3" : "#dcfce7",
             color:      t.priority === "high" ? "#dc2626" : t.priority === "medium" ? "#ca8a04" : "#16a34a",
           }}>
             {PRIORITY_LABEL[t.priority] ?? t.priority}
           </span>
           {t.revisionCount > 0 && (
-            <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 13, color: "#ea580c", flexShrink: 0 }}>
-              <MessageSquare className="h-2.5 w-2.5" />{t.revisionCount}
+            <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 9, color: "#ea580c", flexShrink: 0 }}>
+              <MessageSquare className="h-2 w-2" />{t.revisionCount}
             </span>
           )}
           <div style={{ flex: 1 }} />
-          {t.dueDate && (
-            <span style={{
-              display: "flex", alignItems: "center", gap: 2, flexShrink: 0,
-              fontSize: 13, fontWeight: overdue ? 600 : 400,
-              color: overdue ? "#dc2626" : "hsl(var(--muted-foreground))",
-            }}>
-              {overdue && <AlertCircle className="h-2.5 w-2.5" />}
-              <Calendar className="h-2.5 w-2.5" />
-              {fmtDateHuman(t.dueDate)}
-            </span>
-          )}
+          {t.dueDate && (() => {
+            const parts = fmtDateParts(t.dueDate);
+            return parts ? (
+              <span style={{
+                display: "flex", alignItems: "center", gap: 2, flexShrink: 0,
+                color: overdue ? "#dc2626" : "hsl(var(--muted-foreground))",
+                fontWeight: overdue ? 600 : 400,
+              }}>
+                {overdue && <AlertCircle style={{ width: 8, height: 8, flexShrink: 0 }} />}
+                <Calendar style={{ width: 8, height: 8, flexShrink: 0, marginTop: 1 }} />
+                <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2, fontSize: 9 }}>
+                  <span>{parts.date}</span>
+                  {parts.time && <span>{parts.time}</span>}
+                </span>
+              </span>
+            ) : null;
+          })()}
           {person && (
             <AvatarDisplay
               name={person.name}
               avatarUrl={person.avatarUrl}
-              size={28}
+              size={20}
               title={person.name}
             />
           )}
