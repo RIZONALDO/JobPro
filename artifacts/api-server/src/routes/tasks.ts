@@ -243,8 +243,13 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
       } else if (s === "pending" && (task.status === "paused" || task.status === "rascunho")) {
         // Retomar pausada ou publicar rascunho
         if (task.status === "rascunho") {
-          const editors = await db.select({ id: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
-          if (editors.length === 0 && !task.assignedToId) {
+          const existingEditors = await db.select({ id: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
+          const { editorIds: newEditorIds } = req.body ?? {};
+          const incomingEditorIds = Array.isArray(newEditorIds)
+            ? (newEditorIds as unknown[]).map(Number).filter(n => !isNaN(n) && n > 0)
+            : [];
+          const hasEditors = existingEditors.length > 0 || task.assignedToId || update.assignedToId || incomingEditorIds.length > 0;
+          if (!hasEditors) {
             res.status(400).json({ error: "Atribua ao menos um editor para publicar a tarefa" }); return;
           }
         }
