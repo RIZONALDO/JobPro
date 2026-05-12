@@ -21,7 +21,7 @@ import {
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown,
 } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
-import { AvatarDisplay } from "@/components/ui/avatar-display";
+import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { TaskFormModal } from "@/components/task-form-modal";
 import { ReassignEditorModal } from "@/components/reassign-editor-modal";
 import { RefreshCw, UserPlus } from "lucide-react";
@@ -429,15 +429,13 @@ export default function TasksOverview() {
                   </div>
 
                   {/* Editor */}
-                  <div className="w-36 shrink-0 flex items-center gap-1.5">
-                    {t.assignee ? (
+                  <div className="w-36 shrink-0 flex items-center gap-2">
+                    {t.editors && t.editors.length > 0 ? (
                       <>
-                        <AvatarDisplay
-                          name={t.assignee.name}
-                          avatarUrl={t.assignee.avatarUrl}
-                          style={{ width: 20, height: 20, fontSize: 7, flexShrink: 0 }}
-                        />
-                        <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.assignee.name}</span>
+                        <StackedAvatars people={t.editors} size={28} max={3} />
+                        {t.editors.length === 1 && (
+                          <span className="text-xs font-medium truncate">{t.editors[0].name.split(" ")[0]}</span>
+                        )}
                       </>
                     ) : (
                       <span className="text-xs text-[hsl(var(--muted-foreground))]/40 italic">não atribuído</span>

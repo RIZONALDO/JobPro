@@ -292,8 +292,7 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
                 <AvatarDisplay
                   name={editor.name}
                   avatarUrl={editor.avatarUrl}
-                  className="h-7 w-7 text-xs"
-                  style={{ backgroundColor: color + "22", color, border: `1.5px solid ${color}` }}
+                  size={32}
                 />
                 <span className="text-xs font-medium w-16 shrink-0 truncate">{firstName}</span>
                 <div className="flex-1 flex items-center">
@@ -510,7 +509,7 @@ function OverdueCard({ items, onOpenTask, emptyStats }: {
                       <AvatarDisplay
                         name={t.assigneeName}
                         avatarUrl={t.assigneeAvatarUrl ?? null}
-                        style={{ width: 18, height: 18, fontSize: 7, flexShrink: 0 }}
+                        size={26}
                       />
                     )}
                     <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded-full leading-none tabular-nums whitespace-nowrap">

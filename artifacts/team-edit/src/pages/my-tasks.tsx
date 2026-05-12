@@ -289,11 +289,7 @@ export default function MyTasks() {
             <AvatarDisplay
               name={person.name}
               avatarUrl={person.avatarUrl}
-              style={{
-                width: 20, height: 20, fontSize: 7, flexShrink: 0,
-                background: `${col.color}25`, color: col.color,
-                border: `1.5px solid ${col.color}40`,
-              }}
+              size={28}
               title={person.name}
             />
           )}

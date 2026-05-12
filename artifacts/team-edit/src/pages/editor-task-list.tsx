@@ -230,7 +230,7 @@ export default function EditorTaskList() {
                     <AvatarDisplay
                       name={t.createdBy.name}
                       avatarUrl={t.createdBy.avatarUrl}
-                      style={{ width: 20, height: 20, fontSize: 7, flexShrink: 0 }}
+                      size={28}
                     />
                     <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.createdBy.name.split(" ")[0]}</span>
                   </>

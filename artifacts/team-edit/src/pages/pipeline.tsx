@@ -8,6 +8,7 @@ import { fmtDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Tag, AlertTriangle } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { AvatarDisplay } from "@/components/ui/avatar-display";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
 
@@ -148,14 +149,8 @@ export default function Pipeline() {
                         {/* Assignee */}
                         {t.assignee && (
                           <div className="flex items-center gap-1.5">
-                            {t.assignee.avatarUrl ? (
-                              <img src={t.assignee.avatarUrl} alt={t.assignee.name} className="h-5 w-5 rounded-full object-cover shrink-0" />
-                            ) : (
-                              <div className="h-5 w-5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] flex items-center justify-center text-xs font-bold shrink-0">
-                                {t.assignee.name[0]}
-                              </div>
-                            )}
-                            <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.assignee.name}</span>
+                            <AvatarDisplay name={t.assignee.name} avatarUrl={t.assignee.avatarUrl} size={26} />
+                            <span className="text-xs font-medium truncate">{t.assignee.name.split(" ")[0]}</span>
                           </div>
                         )}
                       </div>

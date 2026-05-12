@@ -186,7 +186,7 @@ export function TaskModal({ taskId, onClose }: Props) {
                         <AvatarDisplay
                           name={task.createdBy.name}
                           avatarUrl={task.createdBy.avatarUrl ?? null}
-                          style={{ width: 30, height: 30, fontSize: 10, flexShrink: 0 }}
+                          size={32}
                         />
                         <div className="min-w-0">
                           <p className="text-[9px] text-[hsl(var(--muted-foreground))] leading-none mb-0.5">Coordenador</p>
@@ -199,7 +199,7 @@ export function TaskModal({ taskId, onClose }: Props) {
                         <AvatarDisplay
                           name={task.assignedTo.name}
                           avatarUrl={task.assignedTo.avatarUrl ?? null}
-                          style={{ width: 30, height: 30, fontSize: 10, flexShrink: 0 }}
+                          size={32}
                         />
                         <div className="min-w-0">
                           <p className="text-[9px] text-[hsl(var(--muted-foreground))] leading-none mb-0.5">Editor</p>
