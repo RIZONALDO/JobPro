@@ -189,7 +189,11 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   const update: Record<string, unknown> = {};
 
   if (role === "editor") {
-    if (task.assignedToId !== userId) { res.status(403).json({ error: "Sem permissão" }); return; }
+    const [editorEntry] = await db.select({ taskId: taskEditorsTable.taskId })
+      .from(taskEditorsTable)
+      .where(and(eq(taskEditorsTable.taskId, id), eq(taskEditorsTable.userId, userId)));
+    const isAssigned = task.assignedToId === userId || !!editorEntry;
+    if (!isAssigned) { res.status(403).json({ error: "Sem permissão" }); return; }
     if (status) {
       const s = String(status);
       const editorTransitions: Record<string, string[]> = {
