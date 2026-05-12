@@ -110,8 +110,16 @@ export function TaskModal({ taskId, onClose }: Props) {
                 className="w-52 shrink-0 flex flex-col border-r overflow-y-auto"
                 style={{ backgroundColor: task.color + "0a" }}
               >
-                {/* Status */}
+                {/* Task ID + status */}
                 <div className="px-4 pt-4 pb-3 border-b border-[hsl(var(--border))]/60">
+                  {task.taskCode && (
+                    <div className="flex items-center gap-1 mb-2">
+                      <Hash className="h-3 w-3 text-[hsl(var(--muted-foreground))]/40" />
+                      <span className="font-mono text-[10px] text-[hsl(var(--muted-foreground))]/50 tracking-wider">
+                        {task.taskCode}
+                      </span>
+                    </div>
+                  )}
                   <Badge className={`${STATUS_CLASS[task.status] ?? ""} text-xs px-2.5 py-0.5 w-fit`}>
                     {STATUS_LABEL[task.status] ?? task.status}
                   </Badge>
@@ -219,14 +227,6 @@ export function TaskModal({ taskId, onClose }: Props) {
 
                 {/* Title + client */}
                 <div className="px-6 pt-5 pb-4 border-b">
-                  {task.taskCode && (
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <Hash className="h-5 w-5 shrink-0" style={{ color: task.color }} />
-                      <span className="text-[22px] font-bold font-mono leading-tight" style={{ color: task.color }}>
-                        {task.taskCode}
-                      </span>
-                    </div>
-                  )}
                   <h2 className="text-[22px] font-bold leading-tight tracking-tight mb-1.5">
                     {task.title}
                   </h2>
