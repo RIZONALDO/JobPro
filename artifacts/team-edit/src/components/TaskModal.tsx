@@ -3,7 +3,7 @@ import { apiFetch } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { AvatarDisplay } from "@/components/ui/avatar-display";
+import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { fmtDate, fmtDateHuman } from "@/lib/utils";
 import {
@@ -29,6 +29,7 @@ interface TaskDetail {
   revisionCount: number;
   createdBy: Person | null;
   assignedTo: Person | null;
+  editors: Person[];
   revisions: Revision[];
   createdAt: string;
   updatedAt: string;
@@ -178,7 +179,7 @@ export function TaskModal({ taskId, onClose }: Props) {
                 </div>
 
                 {/* Team */}
-                {(task.createdBy || task.assignedTo) && (
+                {(task.createdBy || task.editors?.length > 0) && (
                   <div className="px-4 py-3 border-b border-[hsl(var(--border))]/60 space-y-3">
                     <SideLabel>Equipe</SideLabel>
                     {task.createdBy && (
@@ -194,16 +195,16 @@ export function TaskModal({ taskId, onClose }: Props) {
                         </div>
                       </div>
                     )}
-                    {task.assignedTo && (
-                      <div className="flex items-center gap-2.5">
-                        <AvatarDisplay
-                          name={task.assignedTo.name}
-                          avatarUrl={task.assignedTo.avatarUrl ?? null}
-                          size={32}
-                        />
+                    {task.editors?.length > 0 && (
+                      <div className="flex items-start gap-2.5">
+                        <StackedAvatars people={task.editors} size={32} max={4} />
                         <div className="min-w-0">
-                          <p className="text-[9px] text-[hsl(var(--muted-foreground))] leading-none mb-0.5">Editor</p>
-                          <p className="text-xs font-semibold truncate">{task.assignedTo.name}</p>
+                          <p className="text-[9px] text-[hsl(var(--muted-foreground))] leading-none mb-0.5">
+                            {task.editors.length === 1 ? "Editor" : "Editores"}
+                          </p>
+                          <p className="text-xs font-semibold leading-snug">
+                            {task.editors.map(e => e.name.split(" ")[0]).join(", ")}
+                          </p>
                         </div>
                       </div>
                     )}
