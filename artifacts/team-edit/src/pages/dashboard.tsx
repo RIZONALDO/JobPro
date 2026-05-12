@@ -390,7 +390,7 @@ function DeadlineCard({ label, sub, subCls, pill, days, color }: {
   );
 }
 
-/* ── Coordinator Overdue Card ───────────────────────────────────── */
+/* ── Overdue Card (shared between coordinator and editor) ───────── */
 function daysLate(dueDate: string): string {
   const parsed = new Date(dueDate.includes("T") ? dueDate : dueDate + "T00:00:00");
   const diff = Math.floor((Date.now() - parsed.getTime()) / 86400000);
@@ -401,11 +401,22 @@ function daysLate(dueDate: string): string {
   return `${Math.floor(diff / 7)} sem.`;
 }
 
+interface OverdueItem {
+  id: number;
+  taskCode?: string;
+  title: string;
+  dueDate: string;
+  client?: string | null;
+  color?: string | null;
+  assigneeName?: string | null;
+  assigneeAvatarUrl?: string | null;
+}
+
 const OVERDUE_SHOW = 5;
 
-function CoordOverdueCard({ atRisk, onOpenTask }: { atRisk: AtRiskTask[]; onOpenTask: (id: number) => void }) {
-  const count   = atRisk.length;
-  const visible = atRisk.slice(0, OVERDUE_SHOW);
+function OverdueCard({ items, onOpenTask }: { items: OverdueItem[]; onOpenTask: (id: number) => void }) {
+  const count   = items.length;
+  const visible = items.slice(0, OVERDUE_SHOW);
   const extra   = count - OVERDUE_SHOW;
 
   return (
@@ -436,10 +447,7 @@ function CoordOverdueCard({ atRisk, onOpenTask }: { atRisk: AtRiskTask[]; onOpen
           <div className="flex-1 min-h-0 overflow-hidden divide-y divide-[hsl(var(--border))]/60">
             {visible.map(t => {
               const accent = t.color ?? "#ef4444";
-              const late   = daysLate(t.dueDate);
-              const initials = t.assigneeName
-                ? t.assigneeName.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase()
-                : "?";
+              const sub = [t.assigneeName?.split(" ")[0], t.client].filter(Boolean).join(" · ");
               return (
                 <button
                   key={t.id}
@@ -448,7 +456,6 @@ function CoordOverdueCard({ atRisk, onOpenTask }: { atRisk: AtRiskTask[]; onOpen
                   className="w-full text-left flex items-center gap-2.5 px-3 py-1.5 hover:bg-red-500/[0.04] transition-colors group min-w-0"
                   style={{ borderLeft: `2.5px solid ${accent}` }}
                 >
-                  {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-1 min-w-0">
                       {t.taskCode && (
@@ -458,26 +465,21 @@ function CoordOverdueCard({ atRisk, onOpenTask }: { atRisk: AtRiskTask[]; onOpen
                         {t.title}
                       </p>
                     </div>
-                    {(t.assigneeName || t.client) && (
-                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 truncate leading-none mt-0.5">
-                        {t.assigneeName ? t.assigneeName.split(" ")[0] : ""}
-                        {t.assigneeName && t.client ? " · " : ""}
-                        {t.client ?? ""}
-                      </p>
+                    {sub && (
+                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 truncate leading-none mt-0.5">{sub}</p>
                     )}
                   </div>
 
-                  {/* Assignee avatar + days late */}
                   <div className="shrink-0 flex items-center gap-1.5">
                     {t.assigneeName && (
                       <AvatarDisplay
                         name={t.assigneeName}
-                        avatarUrl={t.assignee?.avatarUrl ?? null}
+                        avatarUrl={t.assigneeAvatarUrl ?? null}
                         style={{ width: 18, height: 18, fontSize: 7, flexShrink: 0 }}
                       />
                     )}
                     <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded-full leading-none tabular-nums whitespace-nowrap">
-                      {late}
+                      {daysLate(t.dueDate)}
                     </span>
                   </div>
                 </button>
@@ -485,7 +487,6 @@ function CoordOverdueCard({ atRisk, onOpenTask }: { atRisk: AtRiskTask[]; onOpen
             })}
           </div>
 
-          {/* Overflow footer */}
           {extra > 0 && (
             <div className="shrink-0 flex items-center justify-between gap-2 px-3.5 py-1.5 border-t bg-red-500/[0.03]">
               <span className="text-[10px] text-red-500/80 font-medium">
@@ -672,6 +673,20 @@ export default function Dashboard() {
   const openTasks      = tasks.filter(t => t.status !== "completed");
   const isEditor       = user?.role === "editor";
 
+  const editorOverdue: OverdueItem[] = tasks
+    .filter(t => {
+      if (["completed", "cancelled", "paused"].includes(t.status) || !t.dueDate) return false;
+      const dt = new Date(t.dueDate.includes("T") ? t.dueDate : t.dueDate + "T00:00:00");
+      return dt < todayStart;
+    })
+    .map(t => ({ id: t.id, taskCode: t.taskCode, title: t.title, dueDate: t.dueDate!, client: t.client, color: t.color }));
+
+  const coordOverdue: OverdueItem[] = atRisk.map(t => ({
+    id: t.id, taskCode: t.taskCode, title: t.title, dueDate: t.dueDate,
+    client: t.client, color: t.color,
+    assigneeName: t.assigneeName, assigneeAvatarUrl: t.assignee?.avatarUrl ?? null,
+  }));
+
   const actionCount = isEditor
     ? tasks.filter(t => t.status === "pending" || t.status === "in_revision").length
     : byStatus("review");
@@ -736,19 +751,11 @@ export default function Dashboard() {
           rows={actionRows}
         />
 
-        {/* Card 2 — overdue tasks (coord: task list; editor: deadline bars) */}
-        {isEditor ? (
-          <DeadlineCard
-            label={deadlineLabel}
-            sub={deadlineSub}
-            subCls={deadlineSubCls}
-            pill={deadlinePill}
-            days={duePerDay}
-            color={deadlineBarColor}
-          />
-        ) : (
-          <CoordOverdueCard atRisk={atRisk} onOpenTask={openTask} />
-        )}
+        {/* Card 2 — overdue tasks list for both roles */}
+        <OverdueCard
+          items={isEditor ? editorOverdue : coordOverdue}
+          onOpenTask={openTask}
+        />
 
         {/* Card 3+4 — urgency deadline chart (all tasks, col-span-2) */}
         <TaskDeadlineCard data={deadlineData} onOpenTask={openTask} />
