@@ -91,6 +91,8 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     .where(and(...conditions))
     .orderBy(desc(tasksTable.createdAt));
 
+  const taskIds = rows.map(r => r.id);
+
   const personIds = [...new Set([
     ...rows.map(r => r.assignedToId),
     ...rows.map(r => r.createdById),
@@ -103,6 +105,26 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
         .where(inArray(usersTable.id, personIds))
     : [];
   const personMap = new Map(persons.map(p => [p.id, p]));
+
+  // Fetch all editors for these tasks in one query
+  const editorRows = taskIds.length
+    ? await db
+        .select({
+          taskId: taskEditorsTable.taskId,
+          userId: usersTable.id,
+          name: usersTable.name,
+          avatarUrl: usersTable.avatarUrl,
+        })
+        .from(taskEditorsTable)
+        .innerJoin(usersTable, eq(taskEditorsTable.userId, usersTable.id))
+        .where(inArray(taskEditorsTable.taskId, taskIds))
+    : [];
+
+  const editorsMap = new Map<number, { id: number; name: string; avatarUrl: string | null }[]>();
+  for (const e of editorRows) {
+    if (!editorsMap.has(e.taskId)) editorsMap.set(e.taskId, []);
+    editorsMap.get(e.taskId)!.push({ id: e.userId, name: e.name, avatarUrl: e.avatarUrl });
+  }
 
   const userId = req.session.userId!;
   res.json(rows.map(r => ({
@@ -119,6 +141,7 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     client: r.client,
     color: r.color,
     assignee: r.assignedToId ? (personMap.get(r.assignedToId) ?? null) : null,
+    editors: editorsMap.get(r.id) ?? [],
     coordinator: r.createdById ? (personMap.get(r.createdById) ?? null) : null,
     isOwn: r.createdById === userId,
   })));
