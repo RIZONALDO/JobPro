@@ -578,71 +578,90 @@ function TaskDeadlineCard({ data, onOpenJob }: {
         )}
       </div>
 
-      <div className="flex-1 min-h-0 flex items-stretch gap-2 mt-1">
-        {/* Bar chart — urgency buckets */}
-        <div ref={ref} className="flex-1 min-w-0 min-h-0">
-          {!data ? (
-            <p className="text-xs text-[hsl(var(--muted-foreground))] text-center pt-8">Carregando…</p>
-          ) : data.total === 0 ? (
-            <p className="text-xs text-[hsl(var(--muted-foreground))] text-center pt-8">Nenhuma tarefa com prazo definido.</p>
-          ) : (
-            <StatusBars data={barData} width={w} height={h} />
-          )}
+      {/* ── Empty state ── */}
+      {data && data.total === 0 && (
+        <div className="flex-1 min-h-0 flex items-center gap-4 px-1 pt-1">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-3xl font-bold tabular-nums leading-none text-[hsl(var(--muted-foreground))]/30">0</span>
+              <span className="text-xs text-[hsl(var(--muted-foreground))]/60">prazos definidos</span>
+            </div>
+            <p className="text-[11px] text-[hsl(var(--muted-foreground))]/60 mt-2 leading-snug">
+              Defina prazos nas tarefas<br />para ver a distribuição aqui.
+            </p>
+          </div>
+          {/* Ghost bars */}
+          <div className="shrink-0 flex items-end gap-1.5 h-16 pr-2 opacity-[0.07]">
+            {[40, 70, 25, 90, 55].map((pct, i) => (
+              <div key={i} className="w-5 rounded-t-sm bg-[hsl(var(--foreground))]" style={{ height: `${pct}%` }} />
+            ))}
+          </div>
         </div>
+      )}
 
-        {/* Right panel — urgent list OR positive health panel */}
-        {data && data.total > 0 && (
-          <>
-            <div className="w-px self-stretch bg-[hsl(var(--border))] shrink-0" />
-
-            {hasUrgent ? (
-              /* Urgent task list */
-              <div className="shrink-0 w-[132px] flex flex-col gap-0.5 overflow-hidden pt-0.5">
-                <p className="text-[8px] uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-1">Mais urgentes</p>
-                {data.urgent.slice(0, 4).map(t => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => onOpenTask(t.id)}
-                    className="text-left flex items-start gap-1.5 group hover:bg-[hsl(var(--muted))]/40 rounded px-1 py-0.5 -mx-1 transition-colors min-w-0"
-                  >
-                    <span
-                      className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
-                      style={{ backgroundColor: BUCKET_COLOR[t.bucket] ?? "#94a3b8" }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      {t.taskCode && <span className="text-[9px] font-mono text-[hsl(var(--muted-foreground))]/50 block">{t.taskCode}</span>}
-                      <p className="text-xs font-medium truncate leading-tight group-hover:text-[hsl(var(--primary))] transition-colors">
-                        {t.title}
-                      </p>
-                      <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
-                        {t.assigneeName ? t.assigneeName.split(" ")[0] : (t.client ?? "")}
-                      </p>
-                    </div>
-                  </button>
-                ))}
+      {/* ── Has data ── */}
+      {(!data || data.total > 0) && (
+        <div className="flex-1 min-h-0 flex items-stretch gap-2 mt-1">
+          {/* Bar chart */}
+          <div ref={ref} className="flex-1 min-w-0 min-h-0">
+            {!data ? (
+              <div className="h-full flex items-center justify-center">
+                <span className="text-xs text-[hsl(var(--muted-foreground))]">Carregando…</span>
               </div>
             ) : (
-              /* Positive state panel */
-              <div className="shrink-0 w-[120px] flex flex-col justify-center gap-3">
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                  <p className="text-[11px] font-semibold text-green-600">Tudo no prazo</p>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  {data.buckets.filter(b => b.count > 0).map(b => (
-                    <div key={b.key} className="flex items-center gap-1.5 min-w-0">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: b.color }} />
-                      <span className="text-[10px] text-[hsl(var(--muted-foreground))] flex-1 truncate">{b.label}</span>
-                      <span className="text-[10px] font-bold tabular-nums shrink-0" style={{ color: b.color }}>{b.count}</span>
-                    </div>
+              <StatusBars data={barData} width={w} height={h} />
+            )}
+          </div>
+
+          {/* Right panel */}
+          {data && (
+            <>
+              <div className="w-px self-stretch bg-[hsl(var(--border))] shrink-0" />
+              {hasUrgent ? (
+                /* Urgent task list */
+                <div className="shrink-0 w-[132px] flex flex-col gap-0.5 overflow-hidden pt-0.5">
+                  <p className="text-[8px] uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-1">Mais urgentes</p>
+                  {data.urgent.slice(0, 4).map(t => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => onOpenTask(t.id)}
+                      className="text-left flex items-start gap-1.5 group hover:bg-[hsl(var(--muted))]/40 rounded px-1 py-0.5 -mx-1 transition-colors min-w-0"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
+                        style={{ backgroundColor: BUCKET_COLOR[t.bucket] ?? "#94a3b8" }} />
+                      <div className="flex-1 min-w-0">
+                        {t.taskCode && <span className="text-[9px] font-mono text-[hsl(var(--muted-foreground))]/50 block">{t.taskCode}</span>}
+                        <p className="text-xs font-medium truncate leading-tight group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
+                          {t.assigneeName ? t.assigneeName.split(" ")[0] : (t.client ?? "")}
+                        </p>
+                      </div>
+                    </button>
                   ))}
                 </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+              ) : (
+                /* All on time */
+                <div className="shrink-0 w-[120px] flex flex-col justify-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                    <p className="text-[11px] font-semibold text-green-600">Tudo no prazo</p>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    {data.buckets.filter(b => b.count > 0).map(b => (
+                      <div key={b.key} className="flex items-center gap-1.5 min-w-0">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: b.color }} />
+                        <span className="text-[10px] text-[hsl(var(--muted-foreground))] flex-1 truncate">{b.label}</span>
+                        <span className="text-[10px] font-bold tabular-nums shrink-0" style={{ color: b.color }}>{b.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
