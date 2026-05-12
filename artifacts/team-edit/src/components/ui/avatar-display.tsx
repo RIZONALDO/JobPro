@@ -9,6 +9,7 @@ interface AvatarDisplayProps {
   style?: React.CSSProperties;
   title?: string;
   size?: number;
+  fallbackColor?: string;
 }
 
 function initials(name: string) {
@@ -22,9 +23,10 @@ function nameToColor(name: string): string {
   return `hsl(${hue}, 60%, 42%)`;
 }
 
-export function AvatarDisplay({ name, avatarUrl, className, style, title, size = 28 }: AvatarDisplayProps) {
+export function AvatarDisplay({ name, avatarUrl, className, style, title, size = 28, fallbackColor }: AvatarDisplayProps) {
   const sz = { width: size, height: size, fontSize: Math.max(9, Math.round(size * 0.35)) };
   const merged = { ...sz, ...style };
+  const bgColor = fallbackColor ?? nameToColor(name);
 
   if (avatarUrl) {
     return (
@@ -40,7 +42,7 @@ export function AvatarDisplay({ name, avatarUrl, className, style, title, size =
   return (
     <div
       className={cn("rounded-full flex items-center justify-center font-bold shrink-0 ring-2 ring-[hsl(var(--background))] select-none", className)}
-      style={{ ...merged, backgroundColor: nameToColor(name), color: "#fff" }}
+      style={{ ...merged, backgroundColor: bgColor, color: "#fff" }}
       title={title ?? name}
     >
       {initials(name)}

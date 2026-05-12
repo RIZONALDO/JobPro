@@ -293,6 +293,7 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
                   name={editor.name}
                   avatarUrl={editor.avatarUrl}
                   size={32}
+                  fallbackColor={color}
                 />
                 <span className="text-xs font-medium w-16 shrink-0 truncate">{firstName}</span>
                 <div className="flex-1 flex items-center">
