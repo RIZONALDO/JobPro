@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
@@ -42,7 +42,7 @@ function Router() {
     <TaskModalProvider>
     <Shell>
       <Switch>
-        <Route path="/" component={Dashboard} />
+        <Route path="/">{user.role === "admin" ? <Redirect to="/team" /> : <Dashboard />}</Route>
         
         <Route path="/my-tasks" component={MyTasks} />
         <Route path="/calendar" component={CalendarPage} />

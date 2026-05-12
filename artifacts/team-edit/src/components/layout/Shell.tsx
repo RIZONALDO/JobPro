@@ -63,17 +63,18 @@ type NavChild = { href: string; label: string; icon: React.ComponentType<{ class
 type NavItem  = NavChild & { children?: NavChild[] };
 
 
-const COORD_ROLES = ["admin", "supervisor", "coordinator"];
-const ALL_ROLES   = ["admin", "supervisor", "coordinator", "editor"];
+const COORD_ROLES  = ["admin", "supervisor", "coordinator"];
+const NON_ADMIN    = ["supervisor", "coordinator", "editor"];
+const COORD_ACTIVE = ["supervisor", "coordinator"];
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/",         label: "Dashboard",      icon: LayoutDashboard, roles: ALL_ROLES   },
-  { href: "/tasks",    label: "Tarefas",         icon: ClipboardList,   roles: ALL_ROLES   },
-  { href: "/calendar", label: "Meu Calendário",  icon: CalendarDays,    roles: ALL_ROLES   },
-  { href: "/feed",     label: "Feed",             icon: Zap,             roles: ALL_ROLES   },
-  { href: "/reports",  label: "Relatórios",       icon: BarChart3,       roles: COORD_ROLES },
-  { href: "/team",     label: "Membros",          icon: Users,           roles: COORD_ROLES },
-  { href: "/settings", label: "Configurações",    icon: Settings,        roles: ["admin"]   },
+  { href: "/",         label: "Dashboard",      icon: LayoutDashboard, roles: NON_ADMIN    },
+  { href: "/tasks",    label: "Tarefas",         icon: ClipboardList,   roles: NON_ADMIN    },
+  { href: "/calendar", label: "Meu Calendário",  icon: CalendarDays,    roles: NON_ADMIN    },
+  { href: "/feed",     label: "Feed",             icon: Zap,             roles: NON_ADMIN    },
+  { href: "/reports",  label: "Relatórios",       icon: BarChart3,       roles: COORD_ACTIVE },
+  { href: "/team",     label: "Membros",          icon: Users,           roles: COORD_ROLES  },
+  { href: "/settings", label: "Configurações",    icon: Settings,        roles: ["admin"]    },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
