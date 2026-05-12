@@ -61,7 +61,7 @@ html.scale-lg { font-size: 19px; }
 body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-family: 'Sora', 'Noto Sans', system-ui, sans-serif;
+  font-family: 'Roboto', 'Noto Sans', system-ui, sans-serif;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
