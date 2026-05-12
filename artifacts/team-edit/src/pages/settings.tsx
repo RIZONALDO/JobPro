@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { ImagePlus, X, TriangleAlert } from "lucide-react";
+import { ImagePlus, X, TriangleAlert, Settings as SettingsIcon } from "lucide-react";
 import { usePageTitle } from "@/lib/use-page-title";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -116,14 +116,20 @@ export default function SettingsPage() {
   );
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h1 className="text-[28px] font-bold tracking-tight">Configurações</h1>
-        <p className="text-[hsl(var(--muted-foreground))] mt-1">Personalize a identidade visual do sistema</p>
+    <div className="space-y-6 max-w-3xl">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-xl bg-[hsl(var(--primary))]/10 flex items-center justify-center shrink-0">
+          <SettingsIcon className="h-5 w-5 text-[hsl(var(--primary))]" />
+        </div>
+        <div>
+          <h1 className="text-[28px] font-semibold tracking-tight">Configurações</h1>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">Identidade visual e preferências do sistema</p>
+        </div>
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-sm">Identidade</CardTitle><CardDescription>Nome e visual exibidos em todo o sistema.</CardDescription></CardHeader>
+        <CardHeader><CardTitle className="text-sm">Identidade</CardTitle><CardDescription>Nome e visual exibidos em todo o sistema</CardDescription></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -158,7 +164,14 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Button onClick={save} disabled={saving}>{saving ? "Salvando..." : "Salvar configurações"}</Button>
+      <Card>
+        <CardContent className="pt-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">Revise as informações antes de salvar.</p>
+            <Button onClick={save} disabled={saving}>{saving ? "Salvando..." : "Salvar configurações"}</Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Zona de Perigo */}
       <Card className="border-red-200 dark:border-red-900">

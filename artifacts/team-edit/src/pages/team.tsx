@@ -342,11 +342,11 @@ export default function Team() {
             </div>
           )}
 
-          {/* ── Outros membros (admin vê coordenadores + admins) ─────── */}
+          {/* ── Coordenação (admin vê coordenadores + admins) ─────── */}
           {isAdmin && others.length > 0 && (
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
-                Outros membros — {others.length}
+                Coordenação — {others.length}
               </p>
               <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden divide-y">
                 {others.map(u => (
