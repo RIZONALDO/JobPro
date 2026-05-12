@@ -118,9 +118,12 @@ export function TaskModal({ taskId, onClose }: Props) {
     <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         {loading || !task ? (
-          <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">
-            {loading ? "Carregando..." : "Tarefa não encontrada"}
-          </div>
+          <>
+            <DialogTitle className="sr-only">Carregando tarefa</DialogTitle>
+            <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">
+              {loading ? "Carregando..." : "Tarefa não encontrada"}
+            </div>
+          </>
         ) : (
           <>
             <DialogHeader>
