@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { staggerContainer, staggerRow } from "@/lib/motion";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { apiFetch, apiPut, apiPost } from "@/lib/api";
 import { fmtDate, fmtDateHuman } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -63,6 +63,20 @@ export default function EditorTaskList() {
   const [tasks,   setTasks]   = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [search,  setSearch]  = useState("");
+
+  const highlightId = (() => { const v = new URLSearchParams(window.location.search).get("highlight"); return v ? parseInt(v, 10) : null; })();
+  const [highlighted, setHighlighted] = useState<number | null>(highlightId);
+  const highlightRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!highlighted) return;
+    const timer = setTimeout(() => setHighlighted(null), 3000);
+    return () => clearTimeout(timer);
+  }, [highlighted]);
+  useEffect(() => {
+    if (highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [loading]);
 
   const [returnTarget,  setReturnTarget]  = useState<Task | null>(null);
   const [returning,     setReturning]     = useState(false);
@@ -169,12 +183,18 @@ export default function EditorTaskList() {
           const canReturn = ["pending", "in_progress", "in_revision"].includes(t.status);
           const canPause  = !["completed", "cancelled", "paused"].includes(t.status);
 
+          const isHighlighted = highlighted === t.id;
           return (
             <motion.div
               key={t.id}
+              ref={isHighlighted ? highlightRef : null}
               variants={staggerRow}
-              className="flex items-center gap-4 px-4 py-3 border-b last:border-0 hover:bg-[hsl(var(--muted))]/20 transition-colors"
-              style={{ borderLeft: `3px solid ${accent}` }}
+              className="flex items-center gap-4 px-4 py-3 border-b last:border-0 hover:bg-[hsl(var(--muted))]/20 transition-all"
+              style={{
+                borderLeft: `3px solid ${accent}`,
+                backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.08)" : undefined,
+                boxShadow: isHighlighted ? "inset 0 0 0 1px hsl(var(--primary) / 0.25)" : undefined,
+              }}
             >
               {/* Status */}
               <div className="w-28 shrink-0">

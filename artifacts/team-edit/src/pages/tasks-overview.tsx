@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { staggerContainer, staggerRow } from "@/lib/motion";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { apiFetch, apiPut, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -83,6 +83,20 @@ export default function TasksOverview() {
   const [loading,      setLoading]      = useState(true);
   const [editors,      setEditors]      = useState<(Person & { role: string })[]>([]);
   const [coordinators, setCoordinators] = useState<(Person & { role: string })[]>([]);
+
+  const highlightId = (() => { const v = new URLSearchParams(window.location.search).get("highlight"); return v ? parseInt(v, 10) : null; })();
+  const [highlighted, setHighlighted] = useState<number | null>(highlightId);
+  const highlightRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!highlighted) return;
+    const timer = setTimeout(() => setHighlighted(null), 3000);
+    return () => clearTimeout(timer);
+  }, [highlighted]);
+  useEffect(() => {
+    if (highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [loading]);
 
   // Filters
   const [search,       setSearch]       = useState("");
@@ -386,12 +400,18 @@ export default function TasksOverview() {
               const overdue   = isOverdue(t);
               const canActNow = canAct(t);
 
+              const isHighlighted = highlighted === t.id;
               return (
                 <div
                   key={t.id}
-                  className="flex items-stretch px-4 hover:bg-[hsl(var(--muted))]/20 transition-colors min-h-[54px] cursor-pointer"
+                  ref={isHighlighted ? highlightRef : null}
+                  className="flex items-stretch px-4 hover:bg-[hsl(var(--muted))]/20 transition-all min-h-[54px] cursor-pointer"
                   onClick={() => t.status === 'pending' && canActNow ? (setEditTaskId(t.id), setFormOpen(true)) : openTask(t.id)}
-                  style={{ borderLeft: `3px solid ${t.projectColor ?? "#6366f1"}` }}
+                  style={{
+                    borderLeft: `3px solid ${t.projectColor ?? "#6366f1"}`,
+                    backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.08)" : undefined,
+                    boxShadow: isHighlighted ? "inset 0 0 0 1px hsl(var(--primary) / 0.25)" : undefined,
+                  }}
                 >
                   {/* Tarefa */}
                   <div className="flex-1 min-w-0 flex flex-col justify-center py-2.5 pr-4">

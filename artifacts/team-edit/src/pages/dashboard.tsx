@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react";
 import { useRealtime } from "@/hooks/use-realtime";
 import { fmtDate, fmtDateHuman, fmtShort } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { useTaskModal } from "@/contexts/TaskModalContext";
 import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, BarChart2, AlertTriangle, CheckCircle2, CalendarClock } from "lucide-react";
@@ -718,8 +717,8 @@ function WaffleCard({ tasks }: { tasks: Task[] }) {
 export default function Dashboard() {
   usePageTitle("Dashboard");
   const { user } = useAuth();
-  const { openTask } = useTaskModal();
   const [, navigate] = useLocation();
+  const goToTask = (id: number) => navigate(`/tasks?tab=lista&highlight=${id}`);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [workload, setWorkload] = useState<EditorWorkload[]>([]);
@@ -847,19 +846,19 @@ export default function Dashboard() {
         {/* Card 2 — overdue tasks list for both roles */}
         <OverdueCard
           items={isEditor ? editorOverdue : coordOverdue}
-          onOpenTask={openTask}
+          onOpenTask={goToTask}
           emptyStats={isEditor ? editorEmptyStats : coordEmptyStats}
         />
 
         {/* Card 3+4 — urgency deadline chart (all tasks, col-span-2) */}
-        <TaskDeadlineCard data={deadlineData} onOpenTask={openTask} />
+        <TaskDeadlineCard data={deadlineData} onOpenTask={goToTask} />
       </div>
 
       {/* ── COORDINATOR LAYOUT ──────────────────────────────────── */}
       {!isEditor && (
         <div className="grid gap-5 md:grid-cols-3">
 
-          <ProductionCard allTasks={allTasks} onOpenTask={openTask} />
+          <ProductionCard allTasks={allTasks} onOpenTask={goToTask} />
 
           {/* Workload — coluna direita */}
           <WorkloadCard workload={workload} />
@@ -882,7 +881,7 @@ export default function Dashboard() {
               {openTasks.length === 0 ? (
                 <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma tarefa em aberto.</p>
               ) : openTasks.map(t => (
-                <div key={t.id} role="button" onClick={() => navigate("/tasks?tab=lista")}
+                <div key={t.id} role="button" onClick={() => goToTask(t.id)}
                   className="flex items-center gap-3 px-5 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
                   <div className={`w-0.5 h-8 rounded-full shrink-0 ${STATUS_BAR[t.status] ?? "bg-slate-300"}`} />
                   <div className="flex-1 min-w-0">
@@ -919,7 +918,7 @@ export default function Dashboard() {
               {activity.length === 0 ? (
                 <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-8 font-sans">Nenhuma atividade ainda.</p>
               ) : activity.map((e, idx) => (
-                <div key={e.id} role="button" onClick={() => openTask(e.taskId)}
+                <div key={e.id} role="button" onClick={() => goToTask(e.taskId)}
                   className="flex items-center gap-4 px-5 py-2 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
                   <span className="text-xs text-[hsl(var(--muted-foreground))]/40 w-5 shrink-0 text-right select-none">{String(idx + 1).padStart(2, "0")}</span>
                   <span className="text-xs text-[hsl(var(--muted-foreground))]/60 shrink-0 w-24">
@@ -1037,8 +1036,8 @@ export default function Dashboard() {
               {openTasks.length === 0 ? (
                 <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma tarefa em aberto.</p>
               ) : openTasks.map(t => (
-                <Link key={t.id} href="/tasks?tab=lista"
-                  className="flex items-center gap-3 px-5 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group">
+                <div key={t.id} role="button" onClick={() => goToTask(t.id)}
+                  className="flex items-center gap-3 px-5 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
                   <div className={`w-0.5 h-8 rounded-full shrink-0 ${STATUS_BAR[t.status] ?? "bg-slate-300"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
@@ -1062,7 +1061,7 @@ export default function Dashboard() {
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
           </div>
