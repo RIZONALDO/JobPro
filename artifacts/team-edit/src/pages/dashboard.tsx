@@ -392,7 +392,8 @@ function DeadlineCard({ label, sub, subCls, pill, days, color }: {
 
 /* ── Coordinator Overdue Card ───────────────────────────────────── */
 function daysLate(dueDate: string): string {
-  const diff = Math.floor((Date.now() - new Date(dueDate + "T00:00:00").getTime()) / 86400000);
+  const parsed = new Date(dueDate.includes("T") ? dueDate : dueDate + "T00:00:00");
+  const diff = Math.floor((Date.now() - parsed.getTime()) / 86400000);
   if (diff <= 0) return "hoje";
   if (diff === 1) return "1 dia";
   if (diff < 7)  return `${diff} dias`;
