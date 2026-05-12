@@ -74,6 +74,59 @@ export function fmtDateParts(date: string | null | undefined): { date: string; t
   };
 }
 
+/**
+ * For tasks whose lifecycle is closed (completed / cancelled), returns display
+ * data for the due-date column instead of the raw dueDate.
+ *
+ * Returns null for active / paused tasks (caller renders dueDate normally).
+ */
+export function fmtClosedCycle(
+  status: string,
+  dueDate: string | null,
+  updatedAt: string,
+): { line1: string; line2: string | null; cls: string } | null {
+  if (status !== "completed" && status !== "cancelled") return null;
+
+  // Humanise the closure date (updatedAt)
+  const closed   = new Date(updatedAt);
+  const closedDay = new Date(closed.getFullYear(), closed.getMonth(), closed.getDate());
+  const today     = new Date(); today.setHours(0, 0, 0, 0);
+  const diffClose = Math.round((closedDay.getTime() - today.getTime()) / 86_400_000);
+
+  const fmtDay = (d: Date) => {
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    return `${dd}/${mm}`;
+  };
+
+  const closedLabel =
+    diffClose === 0  ? "hoje" :
+    diffClose === -1 ? "ontem" :
+    fmtDay(closed);
+
+  if (status === "cancelled") {
+    return { line1: `Cancelada ${closedLabel}`, line2: null, cls: "text-[hsl(var(--muted-foreground))]/60" };
+  }
+
+  // status === "completed"
+  const line1 = `Entregue ${closedLabel}`;
+
+  if (!dueDate) {
+    return { line1, line2: null, cls: "text-emerald-600" };
+  }
+
+  const dueDay  = new Date(dueDate.includes("T") ? dueDate : dueDate + "T00:00");
+  const lateDays = Math.round((closedDay.getTime() - dueDay.getTime()) / 86_400_000);
+
+  if (lateDays <= 0) {
+    return { line1, line2: "No prazo ✓", cls: "text-emerald-600" };
+  }
+
+  const d = lateDays;
+  const plural = d === 1 ? "dia" : "dias";
+  return { line1, line2: `${d} ${plural} de atraso`, cls: "text-amber-600" };
+}
+
 export function fmtDateHuman(date: string | null | undefined): string | null {
   if (!date) return null;
   const hasTime = date.includes("T");

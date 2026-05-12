@@ -27,7 +27,7 @@ import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { TaskFormModal } from "@/components/task-form-modal";
 import { ReassignEditorModal } from "@/components/reassign-editor-modal";
 import { RefreshCw, UserPlus } from "lucide-react";
-import { fmtDate, fmtDateHuman } from "@/lib/utils";
+import { fmtDate, fmtDateHuman, fmtClosedCycle } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,6 +50,7 @@ interface OverviewTask {
   editors: Person[];
   coordinator: Person | null;
   isOwn: boolean;
+  updatedAt: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -567,11 +568,19 @@ export default function TasksOverview() {
                           {STATUS_LABEL[t.status] ?? t.status}
                         </Badge>
                         <PriorityBadge priority={t.priority} />
-                        {t.dueDate && (
-                          <span style={{ fontSize: "11px", color: overdue ? "#ef4444" : "hsl(var(--muted-foreground))", fontWeight: overdue ? 600 : 400 }}>
-                            {fmtDateHuman(t.dueDate)}
-                          </span>
-                        )}
+                        {(() => {
+                          const closed = fmtClosedCycle(t.status, t.dueDate, t.updatedAt);
+                          if (closed) return (
+                            <span style={{ fontSize: "11px", fontWeight: 600 }} className={closed.cls}>
+                              {closed.line1}{closed.line2 ? ` · ${closed.line2}` : ""}
+                            </span>
+                          );
+                          return t.dueDate ? (
+                            <span style={{ fontSize: "11px", color: overdue ? "#ef4444" : "hsl(var(--muted-foreground))", fontWeight: overdue ? 600 : 400 }}>
+                              {fmtDateHuman(t.dueDate)}
+                            </span>
+                          ) : null;
+                        })()}
                       </div>
 
                       {/* Row 4: editors */}
@@ -663,17 +672,26 @@ export default function TasksOverview() {
                   </div>
 
                   {/* Prazo — only on lg+ */}
-                  <div className="hidden lg:flex w-24 shrink-0 flex-col justify-center gap-0.5">
-                    {t.dueDate ? (
-                      <>
-                        <span className={`text-xs leading-tight ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
-                          {fmtDateHuman(t.dueDate)}
-                        </span>
-                        <span className="text-xs text-[hsl(var(--muted-foreground))]/50 leading-tight">{fmtDate(t.dueDate)}</span>
-                      </>
-                    ) : (
-                      <span className="text-xs text-[hsl(var(--muted-foreground))]/40">—</span>
-                    )}
+                  <div className="hidden lg:flex w-28 shrink-0 flex-col justify-center gap-0.5">
+                    {(() => {
+                      const closed = fmtClosedCycle(t.status, t.dueDate, t.updatedAt);
+                      if (closed) return (
+                        <>
+                          <span className={`text-xs font-semibold leading-tight ${closed.cls}`}>{closed.line1}</span>
+                          {closed.line2 && <span className={`text-[10px] leading-tight ${closed.cls} opacity-80`}>{closed.line2}</span>}
+                        </>
+                      );
+                      return t.dueDate ? (
+                        <>
+                          <span className={`text-xs leading-tight ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
+                            {fmtDateHuman(t.dueDate)}
+                          </span>
+                          <span className="text-xs text-[hsl(var(--muted-foreground))]/50 leading-tight">{fmtDate(t.dueDate)}</span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-[hsl(var(--muted-foreground))]/40">—</span>
+                      );
+                    })()}
                   </div>
 
                   {/* Coordenador — only on xl+ */}

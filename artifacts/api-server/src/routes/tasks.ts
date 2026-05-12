@@ -155,6 +155,7 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     editors: editorsMap.get(r.id) ?? [],
     coordinator: r.createdById ? (personMap.get(r.createdById) ?? null) : null,
     isOwn: r.createdById === userId,
+    updatedAt: r.updatedAt,
   })));
 });
 
