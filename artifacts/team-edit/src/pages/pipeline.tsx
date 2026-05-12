@@ -111,48 +111,48 @@ export default function Pipeline() {
                       <div
                         key={t.id}
                         onClick={() => openTask(t.id)}
-                        className="rounded-xl border bg-[hsl(var(--card))] card-float p-3.5 flex flex-col gap-2.5 hover:shadow-md transition-shadow cursor-pointer"
-                        style={{ borderTop: `3px solid ${t.color}` }}
+                        className="rounded-lg border bg-[hsl(var(--card))] card-float px-2.5 py-2 flex flex-col gap-1.5 hover:shadow-md transition-shadow cursor-pointer"
+                        style={{ borderLeft: `3px solid ${t.color}` }}
                       >
-                        {/* Title + revision badge */}
-                        <div className="flex items-start gap-2">
-                          <div className="flex-1 min-w-0">
-                            {t.taskCode && (
-                              <span className="text-sm font-bold font-mono block mb-0.5" style={{ color: t.color }}>{t.taskCode}</span>
-                            )}
-                            <p className="text-sm font-semibold leading-snug">{t.title}</p>
-                            {t.client && (
-                              <p className="text-xs text-[hsl(var(--muted-foreground))] flex items-center gap-1 mt-0.5 truncate">
-                                <Tag className="h-2.5 w-2.5 shrink-0" />{t.client}
-                              </p>
-                            )}
-                          </div>
+                        {/* Code + revision */}
+                        <div className="flex items-center justify-between gap-1">
+                          {t.taskCode && (
+                            <span className="text-[11px] font-bold font-mono" style={{ color: t.color }}>{t.taskCode}</span>
+                          )}
                           {t.revisionCount > 0 && (
-                            <span className="text-xs font-bold text-orange-500 shrink-0">Alt.{t.revisionCount}</span>
+                            <span className="text-[10px] font-bold text-orange-500 shrink-0">Alt.{t.revisionCount}</span>
                           )}
                         </div>
 
-                        {/* Priority + due date */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Badge variant="outline" className={`text-xs px-1 py-0 ${PRIORITY_CLS[t.priority] ?? ""}`}>
+                        {/* Title */}
+                        <p className="text-xs font-semibold leading-snug line-clamp-2">{t.title}</p>
+
+                        {/* Client */}
+                        {t.client && (
+                          <p className="text-[10px] text-[hsl(var(--muted-foreground))] flex items-center gap-1 truncate">
+                            <Tag className="h-2 w-2 shrink-0" />{t.client}
+                          </p>
+                        )}
+
+                        {/* Priority + due date + assignee */}
+                        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                          <Badge variant="outline" className={`text-[10px] px-1 py-0 leading-4 ${PRIORITY_CLS[t.priority] ?? ""}`}>
                             {PRIORITY_LABEL[t.priority] ?? t.priority}
                           </Badge>
                           {t.dueDate && (
-                            <span className={`flex items-center gap-1 text-xs ${isOverdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
-                              {isOverdue && <AlertTriangle className="h-2.5 w-2.5" />}
-                              <Calendar className="h-2.5 w-2.5" />
+                            <span className={`flex items-center gap-0.5 text-[10px] ${isOverdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
+                              {isOverdue && <AlertTriangle className="h-2 w-2" />}
+                              <Calendar className="h-2 w-2" />
                               {fmtDate(t.dueDate)}
                             </span>
                           )}
+                          {t.assignee && (
+                            <div className="ml-auto flex items-center gap-1">
+                              <AvatarDisplay name={t.assignee.name} avatarUrl={t.assignee.avatarUrl} size={20} />
+                              <span className="text-[10px] font-medium truncate max-w-[60px]">{t.assignee.name.split(" ")[0]}</span>
+                            </div>
+                          )}
                         </div>
-
-                        {/* Assignee */}
-                        {t.assignee && (
-                          <div className="flex items-center gap-1.5">
-                            <AvatarDisplay name={t.assignee.name} avatarUrl={t.assignee.avatarUrl} size={26} />
-                            <span className="text-xs font-medium truncate">{t.assignee.name.split(" ")[0]}</span>
-                          </div>
-                        )}
                       </div>
                     );
                   })}
