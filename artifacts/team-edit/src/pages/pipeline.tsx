@@ -112,7 +112,7 @@ export default function Pipeline() {
                         key={t.id}
                         onClick={() => openTask(t.id)}
                         className="rounded-lg border bg-[hsl(var(--card))] card-float px-2.5 py-2 flex flex-col gap-1.5 hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
-                        style={{ borderLeft: `3px solid ${t.color}` }}
+                        style={{ borderLeft: `3px solid ${t.color}`, minHeight: 72, maxHeight: 112 }}
                       >
                         {/* Code + revision */}
                         <div className="flex items-center justify-between gap-1 min-w-0">
@@ -125,7 +125,7 @@ export default function Pipeline() {
                         </div>
 
                         {/* Title */}
-                        <p className="text-[11px] font-medium leading-snug line-clamp-2 break-words">{t.title}</p>
+                        <p className="text-[11px] font-medium leading-snug line-clamp-2 overflow-hidden">{t.title}</p>
 
                         {/* Client */}
                         {t.client && (
