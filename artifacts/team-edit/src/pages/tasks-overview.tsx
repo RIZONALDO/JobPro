@@ -79,8 +79,6 @@ export default function TasksOverview() {
 
   const [tasks,        setTasks]        = useState<OverviewTask[]>([]);
   const [loading,      setLoading]      = useState(true);
-  const [editors,      setEditors]      = useState<(Person & { role: string })[]>([]);
-  const [coordinators, setCoordinators] = useState<(Person & { role: string })[]>([]);
 
   const highlightId = (() => { const v = new URLSearchParams(window.location.search).get("highlight"); return v ? parseInt(v, 10) : null; })();
   const [highlighted, setHighlighted] = useState<number | null>(highlightId);
@@ -167,14 +165,22 @@ export default function TasksOverview() {
 
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    apiFetch<(Person & { role: string })[]>("/api/users").then(users => {
-      setEditors(users.filter(u => u.role === "editor"));
-      setCoordinators(users.filter(u => ["coordinator", "supervisor", "admin"].includes(u.role)));
-    }).catch(() => {});
-  }, []);
-
   useRealtime({ onTasksChanged: load });
+
+  const editors = useMemo(() => {
+    const map = new Map<number, Person>();
+    tasks.forEach(t => {
+      t.editors.forEach(e => map.set(e.id, e));
+      if (t.assignee) map.set(t.assignee.id, t.assignee);
+    });
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [tasks]);
+
+  const coordinators = useMemo(() => {
+    const map = new Map<number, Person>();
+    tasks.forEach(t => { if (t.coordinator) map.set(t.coordinator.id, t.coordinator); });
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [tasks]);
 
   // ── Client-side filters ───────────────────────────────────────────────────
 

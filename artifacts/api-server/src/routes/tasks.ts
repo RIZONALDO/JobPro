@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, tasksTable, usersTable, taskRevisionsTable, taskEventsTable, taskEditorsTable } from "@workspace/db";
-import { eq, ne, desc, asc, and, gte, lte, isNotNull, lt, inArray, sql } from "drizzle-orm";
+import { eq, ne, desc, asc, and, or, gte, lte, isNotNull, lt, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireCoordinator } from "../lib/auth.js";
 import { notify } from "../lib/notify.js";
 import { broadcastTaskChange } from "../lib/broadcast.js";
@@ -589,8 +589,13 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
   const weekStartStr = startDate.toISOString().split("T")[0];
   const weekEndStr   = endDate.toISOString().split("T")[0];
 
+  const editorJunctionSubq = db
+    .select({ taskId: taskEditorsTable.taskId })
+    .from(taskEditorsTable)
+    .where(eq(taskEditorsTable.userId, userId));
+
   const roleFilter = role === "editor"
-    ? eq(tasksTable.assignedToId, userId)
+    ? or(eq(tasksTable.assignedToId, userId), inArray(tasksTable.id, editorJunctionSubq))
     : eq(tasksTable.createdById, userId);
 
   const rows = await db
