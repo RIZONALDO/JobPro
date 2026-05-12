@@ -445,52 +445,35 @@ function OverdueCard({ items, onOpenTask, emptyStats }: {
       </div>
 
       {count === 0 ? (
-        <div className="flex-1 flex flex-col justify-center gap-3 px-4 py-3">
-          {/* Status row */}
-          <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-full bg-green-500/12 flex items-center justify-center shrink-0">
-              <CheckCircle2 className="h-5 w-5 text-green-500" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-green-600 leading-tight">Sem atrasos</p>
-              <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-tight mt-0.5">
-                {emptyStats ? `${emptyStats.active} tarefa${emptyStats.active !== 1 ? "s" : ""} ativa${emptyStats.active !== 1 ? "s" : ""}` : "Tudo dentro do prazo"}
-              </p>
-            </div>
+        <div className="flex flex-col flex-1 min-h-0 px-4 pt-3 pb-3">
+          {/* Big zero — mirrors ActionCard */}
+          <div className="flex items-baseline gap-1.5 shrink-0">
+            <span className="text-3xl font-bold tabular-nums leading-none text-green-500">0</span>
+            <span className="text-xs text-[hsl(var(--muted-foreground))]">atrasadas</span>
           </div>
+          <p className="text-[11px] font-semibold text-green-600 mt-0.5 shrink-0">Tudo dentro do prazo</p>
 
-          {/* Progress bar */}
           {emptyStats && emptyStats.active > 0 && (
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Concluídas</span>
-                <span className="text-[10px] font-semibold text-green-600">{emptyStats.completedPct}%</span>
+            <div className="flex-1 min-h-0 flex flex-col justify-end gap-1.5">
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="text-[hsl(var(--muted-foreground))]">{emptyStats.active} ativas</span>
+                <span className="font-semibold text-green-600">{emptyStats.completedPct}% concluídas</span>
               </div>
-              <div className="h-1.5 rounded-full bg-[hsl(var(--muted))]">
-                <div
-                  className="h-1.5 rounded-full bg-green-500 transition-all duration-500"
-                  style={{ width: `${emptyStats.completedPct}%` }}
-                />
+              <div className="h-1.5 w-full rounded-full bg-[hsl(var(--muted))]">
+                <div className="h-1.5 rounded-full bg-green-500 transition-all duration-500"
+                  style={{ width: `${emptyStats.completedPct}%` }} />
               </div>
+              {emptyStats.nextDueIn !== null && (
+                <div className="flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5">
+                  <CalendarClock className="h-3 w-3 shrink-0" />
+                  <span>
+                    {emptyStats.nextDueIn <= 0 ? "Entrega hoje"
+                      : emptyStats.nextDueIn === 1 ? "Próxima entrega amanhã"
+                      : `Próxima entrega em ${emptyStats.nextDueIn} dias`}
+                  </span>
+                </div>
+              )}
             </div>
-          )}
-
-          {/* Next due */}
-          {emptyStats?.nextDueIn !== null && emptyStats?.nextDueIn !== undefined && (
-            <div className="flex items-center gap-1.5">
-              <CalendarClock className="h-3 w-3 text-[hsl(var(--muted-foreground))]/60 shrink-0" />
-              <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
-                {emptyStats.nextDueIn <= 0
-                  ? "Entrega hoje"
-                  : emptyStats.nextDueIn === 1
-                    ? "Próxima entrega amanhã"
-                    : `Próxima entrega em ${emptyStats.nextDueIn} dias`}
-              </span>
-            </div>
-          )}
-
-          {emptyStats?.active === 0 && (
-            <p className="text-[10px] text-[hsl(var(--muted-foreground))]">Nenhuma tarefa ativa no momento.</p>
           )}
         </div>
       ) : (
@@ -640,24 +623,18 @@ function TaskDeadlineCard({ data, onOpenJob }: {
                 ))}
               </div>
             ) : (
-              /* Positive health panel */
-              <div className="shrink-0 w-[132px] flex flex-col justify-center gap-3 pt-0.5">
-                <div className="flex items-center gap-2">
-                  <div className="h-7 w-7 rounded-full bg-green-500/12 flex items-center justify-center shrink-0">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-bold text-green-600 leading-tight">Tudo em dia</p>
-                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-tight">{data.total} com prazo</p>
-                  </div>
+              /* Positive state panel */
+              <div className="shrink-0 w-[120px] flex flex-col justify-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                  <p className="text-[11px] font-semibold text-green-600">Tudo no prazo</p>
                 </div>
-
-                <div className="space-y-1.5">
+                <div className="flex flex-col gap-1.5">
                   {data.buckets.filter(b => b.count > 0).map(b => (
                     <div key={b.key} className="flex items-center gap-1.5 min-w-0">
-                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: b.color }} />
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: b.color }} />
                       <span className="text-[10px] text-[hsl(var(--muted-foreground))] flex-1 truncate">{b.label}</span>
-                      <span className="text-[10px] font-bold tabular-nums" style={{ color: b.color }}>{b.count}</span>
+                      <span className="text-[10px] font-bold tabular-nums shrink-0" style={{ color: b.color }}>{b.count}</span>
                     </div>
                   ))}
                 </div>
