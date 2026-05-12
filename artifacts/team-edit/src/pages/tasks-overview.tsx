@@ -540,7 +540,7 @@ export default function TasksOverview() {
                       {/* Row 1: code + title (truncates) */}
                       <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
                         {t.taskCode && (
-                          <span style={{ color: t.color, fontSize: "11px", fontWeight: 700, fontFamily: "monospace", whiteSpace: "nowrap", flexShrink: 0 }}>
+                          <span style={{ color: "hsl(var(--muted-foreground))", fontSize: "11px", fontWeight: 700, fontFamily: "monospace", whiteSpace: "nowrap", flexShrink: 0 }}>
                             {t.taskCode}
                           </span>
                         )}
@@ -622,7 +622,7 @@ export default function TasksOverview() {
                   <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-2.5 pr-3">
                     <div className="flex items-center gap-1.5 min-w-0">
                       {t.taskCode && (
-                        <span className="text-sm font-bold font-mono shrink-0" style={{ color: t.color }}>
+                        <span className="text-sm font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">
                           {t.taskCode}
                         </span>
                       )}

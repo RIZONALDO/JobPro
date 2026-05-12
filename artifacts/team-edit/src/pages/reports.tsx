@@ -248,7 +248,7 @@ export default function Reports() {
                 <tbody className="divide-y">
                   {filtered.map((t, idx) => (
                     <tr key={t.id} className="hover:bg-[hsl(var(--muted))]/10 transition-colors">
-                      <td className="px-4 py-2.5 text-sm font-bold font-mono" style={{ color: t.color ?? "#6366f1" }}>{t.taskCode ?? String(idx + 1).padStart(3, "0")}</td>
+                      <td className="px-4 py-2.5 text-sm font-bold font-mono text-[hsl(var(--muted-foreground))]">{t.taskCode ?? String(idx + 1).padStart(3, "0")}</td>
                       <td className="px-4 py-2.5 max-w-[200px]">
                         <div className="flex items-center gap-2">
                           <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color ?? "#6366f1" }} />

@@ -307,7 +307,7 @@ function GanttGrid({ tasks, zoom, onOpen }: {
                 <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 5, minWidth: 0 }}>
                     {t.taskCode && (
-                      <span style={{ fontSize: 14, fontFamily: "ui-monospace, monospace", fontWeight: 700, color: t.color, flexShrink: 0 }}>
+                      <span style={{ fontSize: 14, fontFamily: "ui-monospace, monospace", fontWeight: 700, color: "hsl(var(--muted-foreground))", flexShrink: 0 }}>
                         {t.taskCode}
                       </span>
                     )}

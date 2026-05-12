@@ -490,7 +490,7 @@ function OverdueCard({ items, onOpenTask, emptyStats }: {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-1 min-w-0">
                       {t.taskCode && (
-                        <span className="text-sm font-bold font-mono shrink-0" style={{ color: t.color ?? "hsl(var(--primary))" }}>{t.taskCode}</span>
+                        <span className="text-sm font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">{t.taskCode}</span>
                       )}
                       <p className="text-[11px] font-semibold truncate leading-snug group-hover:text-red-600 transition-colors">
                         {t.title}
@@ -627,7 +627,7 @@ function TaskDeadlineCard({ data, onOpenJob }: {
                       <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
                         style={{ backgroundColor: BUCKET_COLOR[t.bucket] ?? "#94a3b8" }} />
                       <div className="flex-1 min-w-0">
-                        {t.taskCode && <span className="text-sm font-bold font-mono block" style={{ color: t.color }}>{t.taskCode}</span>}
+                        {t.taskCode && <span className="text-sm font-bold font-mono block text-[hsl(var(--muted-foreground))]">{t.taskCode}</span>}
                         <p className="text-xs font-medium truncate leading-tight group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
                         <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
                           {t.assigneeName ? t.assigneeName.split(" ")[0] : (t.client ?? "")}
@@ -883,7 +883,7 @@ export default function Dashboard() {
                   <div className={`w-0.5 h-8 rounded-full shrink-0 ${STATUS_BAR[t.status] ?? "bg-slate-300"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      {t.taskCode ? <span className="text-sm font-bold font-mono shrink-0" style={{ color: t.color ?? "hsl(var(--primary))" }}>{t.taskCode}</span> : null}
+                      {t.taskCode ? <span className="text-sm font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">{t.taskCode}</span> : null}
                       <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
                     </div>
                     {t.dueDate && (() => {
@@ -992,7 +992,7 @@ export default function Dashboard() {
                   style={{ borderLeft: `4px solid ${t.color ?? "#6366f1"}88` }}>
                   <div className="flex-1 min-w-0 pl-1">
                     <div className="flex items-center gap-1.5">
-                      {t.taskCode ? <span className="text-sm font-bold font-mono shrink-0" style={{ color: t.color ?? "hsl(var(--primary))" }}>{t.taskCode}</span> : null}
+                      {t.taskCode ? <span className="text-sm font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">{t.taskCode}</span> : null}
                       <p className="text-sm font-medium truncate">{t.title}</p>
                     </div>
                     <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
@@ -1038,7 +1038,7 @@ export default function Dashboard() {
                   <div className={`w-0.5 h-8 rounded-full shrink-0 ${STATUS_BAR[t.status] ?? "bg-slate-300"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      {t.taskCode ? <span className="text-sm font-bold font-mono shrink-0" style={{ color: t.color ?? "hsl(var(--primary))" }}>{t.taskCode}</span> : null}
+                      {t.taskCode ? <span className="text-sm font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">{t.taskCode}</span> : null}
                       <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
                     </div>
                     <div className="flex items-center gap-1.5">
