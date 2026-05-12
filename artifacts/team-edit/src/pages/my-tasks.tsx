@@ -1,22 +1,22 @@
 import { motion } from "framer-motion";
-import { staggerContainer, staggerFade, staggerItem } from "@/lib/motion";
-import React, { useEffect, useState, useCallback } from "react";
+import { staggerContainer, staggerFade } from "@/lib/motion";
+import { useEffect, useState, useCallback } from "react";
 import { useRealtime } from "@/hooks/use-realtime";
 import { apiFetch, apiPut, apiPost } from "@/lib/api";
-import { fmtDate, fmtDateHuman, fmtShort, fmtDateParts } from "@/lib/utils";
+import { fmtDateParts } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { ListTodo, MessageSquare, Calendar, AlertCircle, Undo2, MoreVertical, FolderOpen, Info, Copy, ExternalLink, ChevronRight, PauseCircle, XCircle } from "lucide-react";
+import { MessageSquare, Calendar, AlertCircle, Undo2, MoreVertical, Info, PauseCircle, XCircle } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { AvatarDisplay } from "@/components/ui/avatar-display";
-import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { StackedAvatars } from "@/components/ui/avatar-display";
 import { usePageTitle } from "@/lib/use-page-title";
+import { useTaskModal } from "@/contexts/TaskModalContext";
 
+interface Person { id: number; name: string; avatarUrl?: string | null; }
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
 interface Task {
   id: number;
@@ -33,20 +33,13 @@ interface Task {
   createdBy: { id: number; name: string; avatarUrl?: string | null } | null;
   assignedToId: number | null;
   assignedTo?: { id: number; name: string; avatarUrl?: string | null } | null;
+  editors: Person[];
   number?: number;
   client?: string | null;
   color?: string;
 }
 
-const PRIORITY_COLOR: Record<string, string> = { low: "text-green-600", medium: "text-yellow-600", high: "text-red-600" };
 const PRIORITY_LABEL: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta" };
-const COMPLEXITY_LABEL: Record<string, string> = { low: "Simples", medium: "Moderada", high: "Complexa" };
-
-const transitions: Record<string, { next: string; label: string }> = {
-  pending:     { next: "in_progress", label: "Iniciar edição" },
-  in_progress: { next: "review",      label: "Enviar para aprovação" },
-  in_revision: { next: "review",      label: "Enviar para aprovação" },
-};
 
 const KANBAN_COLS = [
   { key: "pending",     label: "Pendente",     color: "#94a3b8" },
@@ -75,8 +68,6 @@ export default function MyTasks() {
   const [revisionSubmitting, setRevisionSubmitting] = useState(false);
   const [returnTarget, setReturnTarget] = useState<Task | null>(null);
   const [returning, setReturning] = useState(false);
-  const [infoTarget, setInfoTarget] = useState<Task | null>(null);
-
   const load = useCallback(() => {
     apiFetch<Task[]>("/api/my-tasks")
       .then(setTasks)
@@ -130,15 +121,15 @@ export default function MyTasks() {
   };
 
   const isEditor = user?.role === "editor";
+  const { openTask } = useTaskModal();
 
   /* ── Kanban Card ─────────────────────────────────────────────── */
   const KanbanCard = ({ t, col }: { t: Task; col: typeof KANBAN_COLS[0] }) => {
     const overdue = isOverdue(t.dueDate) && !["completed","cancelled","paused"].includes(t.status);
-    const person  = isEditor ? t.createdBy : (t.assignedTo ?? null);
 
     return (
       <div
-        onClick={() => setInfoTarget(t)}
+        onClick={() => openTask(t.id)}
         style={{
           border: "1px solid hsl(var(--border))",
           borderRadius: 8,
@@ -185,7 +176,7 @@ export default function MyTasks() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setInfoTarget(t)}>
+                  <DropdownMenuItem onClick={() => openTask(t.id)}>
                     <Info className="h-3.5 w-3.5 mr-2" />Ver informações
                   </DropdownMenuItem>
                   {["pending","in_progress","in_revision"].includes(t.status) && (
@@ -217,12 +208,12 @@ export default function MyTasks() {
                     </>
                   )}
                   {t.status !== "paused" && (
-                    <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "pause" })}
+                    <DropdownMenuItem onClick={e => { e.stopPropagation(); updateStatus(t, "paused"); }}
                       className="text-purple-700 focus:text-purple-700">
                       <PauseCircle className="h-3.5 w-3.5 mr-2" />Pausar
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "cancel" })}
+                  <DropdownMenuItem onClick={e => { e.stopPropagation(); updateStatus(t, "cancelled"); }}
                     className="text-red-600 focus:text-red-600">
                     <XCircle className="h-3.5 w-3.5 mr-2" />Cancelar
                   </DropdownMenuItem>
@@ -291,13 +282,8 @@ export default function MyTasks() {
               </span>
             ) : null;
           })()}
-          {person && (
-            <AvatarDisplay
-              name={person.name}
-              avatarUrl={person.avatarUrl}
-              size={20}
-              title={person.name}
-            />
+          {t.editors.length > 0 && (
+            <StackedAvatars people={t.editors} size={18} max={3} />
           )}
         </div>
       </div>
@@ -377,127 +363,6 @@ export default function MyTasks() {
           );
         })}
       </motion.div>
-
-            {/* ── Task info modal ───────────────────────────────────── */}
-      <Dialog open={!!infoTarget} onOpenChange={v => { if (!v) setInfoTarget(null); }}>
-        <DialogContent
-          className="max-w-xl"
-          onInteractOutside={e => e.preventDefault()}
-          onEscapeKeyDown={e => e.preventDefault()}
-        >
-          <DialogTitle className="sr-only">{infoTarget?.title ?? "Informações da tarefa"}</DialogTitle>
-          {infoTarget && (() => {
-            const overdue = isOverdue(infoTarget.dueDate) && infoTarget.status !== "completed";
-            const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
-              <div className="flex items-baseline gap-3">
-                <span className="text-xs uppercase tracking-widest text-muted-foreground/60 w-24 shrink-0 pt-px">{label}</span>
-                <span className="flex-1 min-w-0">{children}</span>
-              </div>
-            );
-            return (
-              <div className="space-y-4 pt-1 text-sm">
-
-                {/* Contexto */}
-                <div className="flex items-start gap-8">
-                  <div className="min-w-0">
-                    <p className="text-xs uppercase tracking-widest text-muted-foreground/60">Projeto</p>
-                    <p className="text-sm font-semibold truncate">{infoTarget.client ?? "—"}</p>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs uppercase tracking-widest text-muted-foreground/60">Job</p>
-                    <p className="text-sm font-semibold truncate">{infoTarget.jobName ?? "—"}</p>
-                  </div>
-                </div>
-
-                <hr className="border-dashed border-muted-foreground/20" />
-
-                {/* Tarefa */}
-                <div className="space-y-2">
-                  <Row label="Tarefa">
-                    <span className="font-semibold leading-snug">{infoTarget.title}</span>
-                  </Row>
-                  <Row label="Status">
-                    <Badge className={`${STATUS_CLASS[infoTarget.status] ?? ""} text-xs px-1.5`}>
-                      {STATUS_LABEL[infoTarget.status] ?? infoTarget.status}
-                    </Badge>
-                    {infoTarget.revisionCount > 0 && (
-                      <span className="text-xs text-orange-500 font-medium ml-2">{infoTarget.revisionCount} alt.</span>
-                    )}
-                  </Row>
-                  {(infoTarget.projectNumber && infoTarget.jobNumber && infoTarget.number) && (
-                    <Row label="Código">
-                      <span className="font-mono text-xs text-muted-foreground">
-                        #{infoTarget.number}
-                      </span>
-                    </Row>
-                  )}
-                </div>
-
-                <hr className="border-dashed border-muted-foreground/20" />
-
-                {/* Destaques */}
-                <div className="space-y-2">
-                  <Row label="Prioridade">
-                    <span className={`font-bold ${PRIORITY_COLOR[infoTarget.priority] ?? ""}`}>
-                      {PRIORITY_LABEL[infoTarget.priority] ?? infoTarget.priority}
-                    </span>
-                  </Row>
-                  <Row label="Complexidade">
-                    <span className="font-semibold">{COMPLEXITY_LABEL[infoTarget.complexity] ?? infoTarget.complexity}</span>
-                  </Row>
-                  {infoTarget.dueDate && (
-                    <Row label="Entrega">
-                      <span className={`font-bold tabular-nums ${overdue ? "text-red-600" : ""}`}>
-                        {fmtDate(infoTarget.dueDate)}
-                      </span>
-                      {fmtDateHuman(infoTarget.dueDate) !== fmtDate(infoTarget.dueDate) && (
-                        <span className={`text-xs ml-2 ${overdue ? "text-red-400" : "text-muted-foreground"}`}>
-                          {fmtDateHuman(infoTarget.dueDate)}
-                        </span>
-                      )}
-                      {overdue && (
-                        <span className="text-xs ml-2 text-red-400">· atrasada</span>
-                      )}
-                    </Row>
-                  )}
-                </div>
-
-                {/* Descrição */}
-                {infoTarget.description && (
-                  <>
-                    <hr className="border-dashed border-muted-foreground/20" />
-                    <div className="space-y-1.5">
-                      <p className="text-xs uppercase tracking-widest text-muted-foreground/60">Descrição</p>
-                      <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap">{infoTarget.description}</p>
-                    </div>
-                  </>
-                )}
-
-                {/* Pasta */}
-                {infoTarget.folderUrl && (
-                  <>
-                    <hr className="border-dashed border-muted-foreground/20" />
-                    <div className="flex items-center gap-2">
-                      <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <span className="flex-1 text-xs font-mono text-muted-foreground truncate">{infoTarget.folderUrl}</span>
-                      <button type="button" title="Copiar"
-                        onClick={() => { navigator.clipboard.writeText(infoTarget!.folderUrl!); toast({ title: "URL copiada!" }); }}
-                        className="shrink-0 text-muted-foreground hover:text-foreground p-1 rounded transition-colors">
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                      <a href={infoTarget.folderUrl} target="_blank" rel="noreferrer" title="Abrir"
-                        className="shrink-0 text-muted-foreground hover:text-primary p-1 rounded transition-colors">
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    </div>
-                  </>
-                )}
-
-              </div>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
 
       {/* ── Revision dialog ───────────────────────────────────── */}
       <Dialog open={!!revisionTarget} onOpenChange={v => { if (!v && !revisionSubmitting) { setRevisionTarget(null); setRevisionComment(""); } }}>

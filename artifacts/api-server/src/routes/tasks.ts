@@ -445,6 +445,18 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
   const taskNumMap = new Map<number, number>();
   [...tasks].sort((a, b) => a.id - b.id).forEach((t, i) => taskNumMap.set(t.id, i + 1));
 
+  const taskIds = tasks.map(t => t.id);
+  const editorRows = taskIds.length
+    ? await db.select({ taskId: taskEditorsTable.taskId, userId: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+        .from(taskEditorsTable).innerJoin(usersTable, eq(taskEditorsTable.userId, usersTable.id))
+        .where(inArray(taskEditorsTable.taskId, taskIds))
+    : [];
+  const editorsMap = new Map<number, { id: number; name: string; avatarUrl: string | null }[]>();
+  for (const e of editorRows) {
+    if (!editorsMap.has(e.taskId)) editorsMap.set(e.taskId, []);
+    editorsMap.get(e.taskId)!.push({ id: e.userId, name: e.name, avatarUrl: e.avatarUrl });
+  }
+
   const tasksWithDetails = await Promise.all(tasks.map(async (t) => {
     const [createdBy] = t.createdById
       ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, t.createdById))
@@ -463,6 +475,7 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
       taskCode: fmtCode(t.taskNumber, t.taskYear),
       createdBy: createdBy ?? null,
       assignedTo: assignedTo ?? null,
+      editors: editorsMap.get(t.id) ?? [],
       revisions,
       number: taskNumMap.get(t.id) ?? 0,
     };
