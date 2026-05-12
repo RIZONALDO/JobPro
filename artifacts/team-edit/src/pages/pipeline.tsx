@@ -111,45 +111,46 @@ export default function Pipeline() {
                       <div
                         key={t.id}
                         onClick={() => openTask(t.id)}
-                        className="rounded-lg border bg-[hsl(var(--card))] card-float px-2.5 py-2 flex flex-col gap-1.5 hover:shadow-md transition-shadow cursor-pointer"
+                        className="rounded-lg border bg-[hsl(var(--card))] card-float px-2.5 py-2 flex flex-col gap-1.5 hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
                         style={{ borderLeft: `3px solid ${t.color}` }}
                       >
                         {/* Code + revision */}
-                        <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center justify-between gap-1 min-w-0">
                           {t.taskCode && (
-                            <span className="text-[10px] font-bold font-mono" style={{ color: t.color }}>{t.taskCode}</span>
+                            <span className="text-[10px] font-bold font-mono shrink-0" style={{ color: t.color }}>{t.taskCode}</span>
                           )}
                           {t.revisionCount > 0 && (
-                            <span className="text-[9px] font-bold text-orange-500 shrink-0">Alt.{t.revisionCount}</span>
+                            <span className="text-[9px] font-bold text-orange-500 shrink-0 ml-auto">Alt.{t.revisionCount}</span>
                           )}
                         </div>
 
                         {/* Title */}
-                        <p className="text-[11px] font-medium leading-snug line-clamp-2">{t.title}</p>
+                        <p className="text-[11px] font-medium leading-snug line-clamp-2 break-words">{t.title}</p>
 
                         {/* Client */}
                         {t.client && (
-                          <p className="text-[9px] text-[hsl(var(--muted-foreground))] flex items-center gap-0.5 truncate">
-                            <Tag className="h-2 w-2 shrink-0" />{t.client}
+                          <p className="text-[9px] text-[hsl(var(--muted-foreground))] flex items-center gap-0.5 overflow-hidden">
+                            <Tag className="h-2 w-2 shrink-0" />
+                            <span className="truncate">{t.client}</span>
                           </p>
                         )}
 
-                        {/* Priority + due date + assignee */}
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <Badge variant="outline" className={`text-[9px] px-1 py-0 leading-4 ${PRIORITY_CLS[t.priority] ?? ""}`}>
+                        {/* Priority + due date + assignee — single row, no wrap */}
+                        <div className="flex items-center gap-1 min-w-0 overflow-hidden">
+                          <Badge variant="outline" className={`text-[9px] px-1 py-0 leading-4 shrink-0 ${PRIORITY_CLS[t.priority] ?? ""}`}>
                             {PRIORITY_LABEL[t.priority] ?? t.priority}
                           </Badge>
                           {t.dueDate && (
-                            <span className={`flex items-center gap-0.5 text-[9px] ${isOverdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
+                            <span className={`flex items-center gap-0.5 text-[9px] shrink-0 ${isOverdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
                               {isOverdue && <AlertTriangle className="h-2 w-2" />}
-                              <Calendar className="h-2 w-2" />
-                              {fmtDate(t.dueDate)}
+                              <Calendar className="h-2 w-2 shrink-0" />
+                              <span className="truncate max-w-[60px]">{fmtDate(t.dueDate)}</span>
                             </span>
                           )}
                           {t.assignee && (
-                            <div className="ml-auto flex items-center gap-1">
+                            <div className="ml-auto flex items-center gap-1 min-w-0 shrink-0">
                               <AvatarDisplay name={t.assignee.name} avatarUrl={t.assignee.avatarUrl} size={18} />
-                              <span className="text-[9px] font-medium truncate max-w-[52px]">{t.assignee.name.split(" ")[0]}</span>
+                              <span className="text-[9px] font-medium truncate max-w-[44px]">{t.assignee.name.split(" ")[0]}</span>
                             </div>
                           )}
                         </div>
