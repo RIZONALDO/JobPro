@@ -692,7 +692,7 @@ export default function TasksOverview() {
                           <span className={`text-xs leading-tight ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
                             {fmtDateHuman(t.dueDate)}
                           </span>
-                          <span className="text-xs text-[hsl(var(--muted-foreground))]/50 leading-tight">{fmtDate(t.dueDate)}</span>
+                          <span className="text-[9px] text-[hsl(var(--muted-foreground))]/40 leading-tight">{fmtDate(t.dueDate)}</span>
                         </>
                       ) : (
                         <span className="text-xs text-[hsl(var(--muted-foreground))]/40">—</span>
