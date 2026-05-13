@@ -322,7 +322,7 @@ export default function Team() {
                                     const h = fmtDateHuman(task.dueDate); const n = fmtDate(task.dueDate);
                                     return <span className="flex flex-col items-end gap-0">
                                       <span className="text-xs text-[hsl(var(--muted-foreground))]">{h}</span>
-                                      {h !== n && <span className="text-[10px] text-[hsl(var(--muted-foreground))]/50">{n}</span>}
+                                      {h !== n && <span className="text-[9px] text-[hsl(var(--muted-foreground))]/40">{n}</span>}
                                     </span>;
                                   })()}
                                   <PriorityBadge priority={task.priority} />
