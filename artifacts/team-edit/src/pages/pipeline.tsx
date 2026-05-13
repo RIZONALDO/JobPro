@@ -79,8 +79,9 @@ export default function Pipeline() {
   const [tasks, setTasks] = useState<PipelineTask[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const isEditor = user?.role === "editor";
   // Filters
-  const defaultCoord = user ? String(user.id) : "all";
+  const defaultCoord = (!isEditor && user) ? String(user.id) : "all";
   const [search,    setSearch]    = useState("");
   const [fPriority, setFPriority] = useState("all");
   const [fClient,   setFClient]   = useState("all");
@@ -153,24 +154,26 @@ export default function Pipeline() {
         </div>
         <FilterSelect label="Prioridade" value={fPriority} onChange={setFPriority} options={PRIORITY_OPTS} />
         <FilterSelect label="Cliente"    value={fClient}   onChange={setFClient}   options={clientOpts} />
-        <FilterSelect label="Editor"     value={fEditor}   onChange={setFEditor}   options={editorOpts} />
-        <div className="relative flex items-center">
-          <select
-            value={fCoord}
-            onChange={e => setFCoord(e.target.value)}
-            className="h-8 pl-3 pr-7 text-xs rounded-md border border-[hsl(var(--border))]
-              bg-[hsl(var(--background))] text-[hsl(var(--foreground))]
-              appearance-none cursor-pointer focus:outline-none
-              focus:ring-1 focus:ring-[hsl(var(--primary)/0.4)]
-              hover:border-[hsl(var(--primary)/0.5)] transition-colors"
-            style={{ minWidth: 110 }}
-          >
-            <option value="all">Geral</option>
-            {user && <option value={String(user.id)}>Minhas</option>}
-            {coordOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-2 h-3 w-3 text-[hsl(var(--muted-foreground))]" />
-        </div>
+        {!isEditor && <FilterSelect label="Editor" value={fEditor} onChange={setFEditor} options={editorOpts} />}
+        {!isEditor && (
+          <div className="relative flex items-center">
+            <select
+              value={fCoord}
+              onChange={e => setFCoord(e.target.value)}
+              className="h-8 pl-3 pr-7 text-xs rounded-md border border-[hsl(var(--border))]
+                bg-[hsl(var(--background))] text-[hsl(var(--foreground))]
+                appearance-none cursor-pointer focus:outline-none
+                focus:ring-1 focus:ring-[hsl(var(--primary)/0.4)]
+                hover:border-[hsl(var(--primary)/0.5)] transition-colors"
+              style={{ minWidth: 110 }}
+            >
+              <option value="all">Geral</option>
+              {user && <option value={String(user.id)}>Minhas</option>}
+              {coordOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 h-3 w-3 text-[hsl(var(--muted-foreground))]" />
+          </div>
+        )}
         {hasFilters && (
           <button onClick={clearAll} className="flex items-center gap-1 h-8 px-2.5 text-xs rounded-md border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary)/0.5)] transition-colors">
             <X className="h-3 w-3" /> Limpar

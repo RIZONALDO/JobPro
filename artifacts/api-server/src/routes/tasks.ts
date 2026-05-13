@@ -794,7 +794,24 @@ router.get("/deadline-overview", requireAuth, async (req, res): Promise<void> =>
 });
 
 // ── Pipeline (all active tasks kanban) ───────────────────────────────────────
-router.get("/pipeline", requireAuth, async (_req, res): Promise<void> => {
+router.get("/pipeline", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.session.userId!;
+  const role = req.session.userRole!;
+  const isEditor = role === "editor";
+
+  const baseWhere = and(ne(tasksTable.status, "rascunho"));
+
+  let taskIds: number[] | null = null;
+  if (isEditor) {
+    const [primary, secondary] = await Promise.all([
+      db.select({ id: tasksTable.id }).from(tasksTable)
+        .where(and(eq(tasksTable.assignedToId, userId), ne(tasksTable.status, "rascunho"))),
+      db.select({ taskId: taskEditorsTable.taskId }).from(taskEditorsTable)
+        .where(eq(taskEditorsTable.userId, userId)),
+    ]);
+    taskIds = [...new Set([...primary.map(t => t.id), ...secondary.map(r => r.taskId)])];
+  }
+
   const tasks = await db
     .select({
       id: tasksTable.id, title: tasksTable.title, status: tasksTable.status,
@@ -805,7 +822,12 @@ router.get("/pipeline", requireAuth, async (_req, res): Promise<void> => {
       taskNumber: tasksTable.taskNumber, taskYear: tasksTable.taskYear,
     })
     .from(tasksTable)
-    .where(and(ne(tasksTable.status, "completed"), ne(tasksTable.status, "rascunho")))
+    .where(isEditor && taskIds !== null && taskIds.length > 0
+      ? and(baseWhere, inArray(tasksTable.id, taskIds))
+      : isEditor
+        ? and(baseWhere, eq(tasksTable.id, -1))
+        : baseWhere
+    )
     .orderBy(desc(tasksTable.createdAt));
 
   const personIds = [...new Set([
