@@ -105,11 +105,12 @@ export default function Calendar() {
   const [initialDueDate, setInitialDueDate] = useState("");
 
   // Filters
+  const defaultCoord = isCoord && user ? String(user.id) : "all";
   const [fPriority, setFPriority] = useState("all");
   const [fStatus,   setFStatus]   = useState("all");
   const [fClient,   setFClient]   = useState("all");
   const [fEditor,   setFEditor]   = useState("all");
-  const [fCoord,    setFCoord]    = useState("all");
+  const [fCoord,    setFCoord]    = useState(defaultCoord);
 
   const monthGridStart = useMemo(() => getMonthGridStart(monthDate), [monthDate]);
   const monthGridCells = useMemo(() =>
@@ -160,8 +161,8 @@ export default function Calendar() {
     return true;
   }), [tasks, fPriority, fStatus, fClient, fEditor, fCoord]);
 
-  const hasFilters = fPriority !== "all" || fStatus !== "all" || fClient !== "all" || fEditor !== "all" || fCoord !== "all";
-  const clearAll = () => { setFPriority("all"); setFStatus("all"); setFClient("all"); setFEditor("all"); setFCoord("all"); };
+  const hasFilters = fPriority !== "all" || fStatus !== "all" || fClient !== "all" || fEditor !== "all" || fCoord !== defaultCoord;
+  const clearAll = () => { setFPriority("all"); setFStatus("all"); setFClient("all"); setFEditor("all"); setFCoord(defaultCoord); };
 
   const today    = toLocalDate(new Date());
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
@@ -203,7 +204,27 @@ export default function Calendar() {
           <FilterSelect label="Prioridade"   value={fPriority} onChange={setFPriority} options={PRIORITY_OPTS} />
           <FilterSelect label="Cliente"      value={fClient}   onChange={setFClient}   options={clientOpts}   />
           {isCoord && <FilterSelect label="Editor"      value={fEditor}   onChange={setFEditor}   options={editorOpts}   />}
-          {isCoord && <FilterSelect label="Coordenador" value={fCoord}    onChange={setFCoord}    options={coordOpts}    />}
+          {isCoord && (
+            <div className="relative flex items-center">
+              <select
+                value={fCoord}
+                onChange={e => setFCoord(e.target.value)}
+                className="h-8 pl-3 pr-7 text-xs rounded-md border border-[hsl(var(--border))]
+                  bg-[hsl(var(--background))] text-[hsl(var(--foreground))]
+                  appearance-none cursor-pointer focus:outline-none
+                  focus:ring-1 focus:ring-[hsl(var(--primary)/0.4)]
+                  hover:border-[hsl(var(--primary)/0.5)] transition-colors"
+                style={{ minWidth: 120 }}
+              >
+                <option value="all">Geral</option>
+                {user && <option value={String(user.id)}>Minhas</option>}
+                {coordOpts.filter(o => o.value !== String(user?.id)).map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2 h-3 w-3 text-[hsl(var(--muted-foreground))]" />
+            </div>
+          )}
 
           {hasFilters && (
             <button onClick={clearAll} className="flex items-center gap-1 h-8 px-2.5 text-xs rounded-md border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary)/0.5)] transition-colors">
