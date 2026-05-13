@@ -19,7 +19,7 @@ import {
   ClipboardList, MoreVertical, FolderOpen,
   ArrowUpRight, X, PauseCircle, XCircle,
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
-  SlidersHorizontal,
+  SlidersHorizontal, Check, Undo2,
 } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
@@ -424,7 +424,7 @@ export default function TasksOverview() {
               <div className="w-32 shrink-0"><Th col="assignee" label="Editor" /></div>
               <div className="w-24 shrink-0 hidden lg:block"><Th col="dueDate" label="Prazo" /></div>
               <div className="w-24 shrink-0 hidden xl:block"><Th col="coordinator" label="Coord." /></div>
-              <div className="w-10 shrink-0" />
+              <div className="w-32 shrink-0" />
             </div>
           );
         })()}
@@ -713,8 +713,8 @@ export default function TasksOverview() {
                     </span>
                   </div>
 
-                  {/* Ações — desktop */}
-                  <div className="hidden md:flex shrink-0 items-center justify-end gap-1 py-2" onClick={e => e.stopPropagation()}>
+                  {/* Ações — desktop (largura fixa w-32 para não desalinhar) */}
+                  <div className="hidden md:flex w-32 shrink-0 items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
                     {t.folderUrl && (
                       <a href={t.folderUrl} target="_blank" rel="noreferrer" title="Abrir pasta"
                         className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--primary))]">
@@ -722,24 +722,24 @@ export default function TasksOverview() {
                       </a>
                     )}
                     {t.status === "rascunho" && canActNow && (
-                      <Button size="sm"
-                        className={`h-7 text-xs px-2.5 ${t.editors?.length > 0 ? "bg-zinc-700 hover:bg-zinc-800" : "bg-zinc-300 cursor-not-allowed"}`}
+                      <Button size="icon"
+                        className={`h-7 w-7 ${t.editors?.length > 0 ? "bg-zinc-700 hover:bg-zinc-800" : "bg-zinc-300 cursor-not-allowed"}`}
                         disabled={!t.editors || t.editors.length === 0}
-                        title={!t.editors || t.editors.length === 0 ? "Atribua um editor antes de publicar" : undefined}
+                        title={!t.editors || t.editors.length === 0 ? "Atribua um editor antes de publicar" : "Publicar"}
                         onClick={e => { e.stopPropagation(); apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(load); }}>
-                        <Send className="h-3 w-3 mr-1" />Publicar
+                        <Send className="h-3.5 w-3.5" />
                       </Button>
                     )}
                     {t.status === "review" && canActNow && (
                       <>
-                        <Button size="sm" className="h-7 text-xs px-2.5 bg-green-600 hover:bg-green-700"
-                          onClick={() => approve(t)}>
-                          ✓ Aprovar
+                        <Button size="icon" className="h-7 w-7 bg-green-600 hover:bg-green-700" title="Aprovar"
+                          onClick={e => { e.stopPropagation(); approve(t); }}>
+                          <Check className="h-3.5 w-3.5" />
                         </Button>
-                        <Button size="sm" variant="outline"
-                          className="h-7 text-xs px-2.5 text-orange-600 border-orange-300 hover:bg-orange-50"
-                          onClick={() => { setRevisionTask(t); setRevisionComment(""); }}>
-                          ↩ Alterar
+                        <Button size="icon" variant="outline"
+                          className="h-7 w-7 text-orange-600 border-orange-300 hover:bg-orange-50" title="Solicitar alteração"
+                          onClick={e => { e.stopPropagation(); setRevisionTask(t); setRevisionComment(""); }}>
+                          <Undo2 className="h-3.5 w-3.5" />
                         </Button>
                       </>
                     )}
