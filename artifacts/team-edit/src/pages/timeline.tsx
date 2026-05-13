@@ -129,7 +129,7 @@ function Avatar({ p, size = 22 }: { p: Person | null; size?: number }) {
 
 // ── Month stripe ──────────────────────────────────────────────────────────────
 
-function MonthStripe({ days, px }: { days: Date[]; px: number }) {
+function MonthStripe({ days, px, fill }: { days: Date[]; px: number; fill?: boolean }) {
   const stripes: { label: string; count: number }[] = [];
   for (const d of days) {
     const label = `${MON_PT[d.getMonth()]} ${d.getFullYear()}`;
@@ -139,10 +139,10 @@ function MonthStripe({ days, px }: { days: Date[]; px: number }) {
       stripes.push({ label, count: 1 });
   }
   return (
-    <div style={{ display: "flex" }}>
+    <div style={{ display: "flex", width: "100%" }}>
       {stripes.map((s,i) => (
         <div key={i} style={{
-          width: s.count * px,
+          ...(fill ? { flex: s.count } : { width: s.count * px }),
           padding: "3px 10px",
           fontSize: 13, fontWeight: 700,
           color: "hsl(var(--muted-foreground))",
@@ -166,6 +166,7 @@ function GanttGrid({ tasks, zoom, onOpen }: {
   onOpen: (id: number) => void;
 }) {
   const { days: DAYS, pxPerDay: PX } = ZOOM_CONFIG[zoom];
+  const fill   = zoom === "week";
   const today  = today0();
   const wStart = windowStart(zoom);
   const totalW = DAYS * PX;
@@ -190,8 +191,8 @@ function GanttGrid({ tasks, zoom, onOpen }: {
     );
 
   return (
-    <div style={{ overflowX: "auto", overflowY: "visible" }}>
-      <div style={{ minWidth: LEFT_W + totalW }}>
+    <div style={fill ? { width: "100%" } : { overflowX: "auto", overflowY: "visible" }}>
+      <div style={fill ? { width: "100%" } : { minWidth: LEFT_W + totalW }}>
 
         {/* ── Header ──────────────────────────────────────────────────── */}
         <div style={{
@@ -211,16 +212,16 @@ function GanttGrid({ tasks, zoom, onOpen }: {
               Tarefa
             </div>
             <div style={{ borderBottom: "1px solid hsl(var(--border))" }}>
-              <MonthStripe days={days} px={PX} />
+              <MonthStripe days={days} px={PX} fill={fill} />
             </div>
           </div>
 
           {/* Day row */}
-          <div style={{ display: "grid", gridTemplateColumns: `${LEFT_W}px ${totalW}px` }}>
+          <div style={{ display: "grid", gridTemplateColumns: `${LEFT_W}px ${fill ? "1fr" : `${totalW}px`}` }}>
             <div style={{ borderRight: "1px solid hsl(var(--border))", height: 36 }} />
             <div style={{
               display: "grid",
-              gridTemplateColumns: `repeat(${DAYS}, ${PX}px)`,
+              gridTemplateColumns: fill ? `repeat(${DAYS}, 1fr)` : `repeat(${DAYS}, ${PX}px)`,
               height: 36,
             }}>
               {days.map((d, i) => {
@@ -283,7 +284,7 @@ function GanttGrid({ tasks, zoom, onOpen }: {
               onClick={() => onOpen(t.id)}
               style={{
                 display: "grid",
-                gridTemplateColumns: `${LEFT_W}px ${totalW}px`,
+                gridTemplateColumns: `${LEFT_W}px ${fill ? "1fr" : `${totalW}px`}`,
                 borderBottom: "1px solid hsl(var(--border))",
                 height: ROW_H,
                 cursor: "pointer",
@@ -349,7 +350,7 @@ function GanttGrid({ tasks, zoom, onOpen }: {
               <div style={{
                 position: "relative",
                 display: "grid",
-                gridTemplateColumns: `repeat(${DAYS}, ${PX}px)`,
+                gridTemplateColumns: fill ? `repeat(${DAYS}, 1fr)` : `repeat(${DAYS}, ${PX}px)`,
               }}>
                 {days.map((d, di) => (
                   <div key={di} style={{
@@ -363,10 +364,10 @@ function GanttGrid({ tasks, zoom, onOpen }: {
                 {barVisible && (
                   <div style={{
                     position: "absolute",
-                    left: cStart * PX + 4,
+                    left: fill ? `calc(${cStart / DAYS * 100}% + 4px)` : cStart * PX + 4,
                     top: 10,
                     height: ROW_H - 20,
-                    width: barSpan * PX - 8,
+                    width: fill ? `calc(${barSpan / DAYS * 100}% - 8px)` : barSpan * PX - 8,
                     borderRadius: 6,
                     background: `color-mix(in oklab, ${barColor} 18%, transparent)`,
                     border: `1.5px solid color-mix(in oklab, ${barColor} 42%, transparent)`,
@@ -391,7 +392,7 @@ function GanttGrid({ tasks, zoom, onOpen }: {
                 {todayIdx >= 0 && todayIdx < DAYS && (
                   <div style={{
                     position: "absolute",
-                    left: todayIdx * PX + PX / 2 - 1,
+                    left: fill ? `${(todayIdx + 0.5) / DAYS * 100}%` : todayIdx * PX + PX / 2 - 1,
                     top: 0, bottom: 0, width: 2,
                     background: "hsl(var(--primary)/0.4)",
                     pointerEvents: "none", zIndex: 1,
