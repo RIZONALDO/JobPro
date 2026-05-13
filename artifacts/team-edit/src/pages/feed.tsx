@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { AvatarDisplay } from "@/components/ui/avatar-display";
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -66,16 +67,6 @@ function timeAgo(dateStr: string) {
   return `${Math.floor(h / 24)}d`;
 }
 
-function Avatar({ name, url, size = "sm" }: { name: string | null; url: string | null; size?: "xs" | "sm" | "md" | "lg" }) {
-  const sizeClass = { xs: "h-6 w-6 text-xs", sm: "h-8 w-8 text-xs", md: "h-10 w-10 text-sm", lg: "h-11 w-11 text-sm" }[size];
-  const initials = (name ?? "?").split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
-  if (url) return <img src={url} alt={name ?? ""} className={cn(sizeClass, "rounded-full object-cover shrink-0")} />;
-  return (
-    <div className={cn(sizeClass, "rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] flex items-center justify-center font-bold shrink-0")}>
-      {initials}
-    </div>
-  );
-}
 
 function parseMentions(text: string, users: MentionUser[]): number[] {
   const ids: number[] = [];
@@ -175,7 +166,7 @@ function MentionTextarea({
               className={cn("flex items-center gap-2 w-full px-3 py-2 text-xs text-left transition-colors",
                 i === selIdx ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "hover:bg-[hsl(var(--muted))]"
               )}>
-              <Avatar name={u.name} url={u.avatarUrl} size="xs" />
+              <AvatarDisplay name={u.name ?? "?"} avatarUrl={u.avatarUrl} size={24} />
               <span className="font-medium truncate">@{u.name}</span>
             </button>
           ))}
@@ -355,7 +346,7 @@ function FeedCard({ item, myUserId, myRole, users, onReact, updatedReactions, on
 
       {/* Header */}
       <div className="flex gap-3 px-5 pt-4 pb-3">
-        <Avatar name={item.actor?.name ?? null} url={item.actor?.avatarUrl ?? null} size="md" />
+        <AvatarDisplay name={item.actor?.name ?? "?"} avatarUrl={item.actor?.avatarUrl ?? null} size={40} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 justify-between">
             <div className="flex items-center gap-1.5">
@@ -460,7 +451,7 @@ function FeedCard({ item, myUserId, myRole, users, onReact, updatedReactions, on
 
           {/* Comment input — Instagram style */}
           <div className="flex gap-3 px-5 py-3 border-t items-start">
-            <Avatar name={user?.name ?? null} url={user?.avatarUrl ?? null} size="sm" />
+            <AvatarDisplay name={user?.name ?? "?"} avatarUrl={user?.avatarUrl ?? null} size={32} />
             <div className="flex-1 flex items-end gap-2 bg-[hsl(var(--muted))]/40 rounded-2xl px-3 py-2">
               <MentionTextarea
                 value={commentText}
@@ -555,10 +546,7 @@ export default function FeedPage() {
         <div className="flex gap-3 p-4">
           {/* Avatar */}
           <div className="shrink-0 pt-0.5">
-            {user?.avatarUrl
-              ? <img src={user.avatarUrl} alt={user.name} className="h-10 w-10 rounded-full object-cover" />
-              : <div className="h-10 w-10 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] flex items-center justify-center font-bold text-sm">{myInitials}</div>
-            }
+            <AvatarDisplay name={user?.name ?? "?"} avatarUrl={user?.avatarUrl ?? null} size={40} />
           </div>
 
           {/* Compose area */}
