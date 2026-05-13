@@ -186,7 +186,7 @@ export default function Pipeline() {
         {COLUMNS.map(col => {
           const colTasks = filteredTasks.filter(t => t.status === col.key);
           return (
-            <div key={col.key} className="flex flex-col gap-3 shrink-0" style={{ width: 210 }}>
+            <div key={col.key} className="flex flex-col gap-3 shrink-0" style={{ width: 240 }}>
               {/* Header */}
               <div className="flex items-center gap-2 px-1">
                 <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: col.accent }} />
@@ -213,7 +213,7 @@ export default function Pipeline() {
                         key={t.id}
                         onClick={() => openTask(t.id)}
                         className="rounded-lg border bg-[hsl(var(--card))] card-float px-2.5 py-2 flex flex-col gap-1.5 hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
-                        style={{ borderLeft: `3px solid ${col.accent}`, minHeight: 72, maxHeight: 112 }}
+                        style={{ borderLeft: `3px solid ${col.accent}`, minHeight: 72 }}
                       >
                         {/* Code + revision */}
                         <div className="flex items-center justify-between gap-1 min-w-0">
