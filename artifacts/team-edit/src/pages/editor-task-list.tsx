@@ -340,7 +340,7 @@ export default function EditorTaskList() {
               </div>
 
               {/* Due date */}
-              <div className="hidden lg:flex w-28 shrink-0 items-center pl-3">
+              <div className="hidden lg:flex w-28 shrink-0 items-center pl-6">
                 <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} />
               </div>
 
