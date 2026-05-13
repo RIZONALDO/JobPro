@@ -21,14 +21,15 @@ export function useRealtime(options: RealtimeOptions) {
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const handle = () => {
-      // Debounce: agrupa rafagas de eventos em um único reload
+      // Debounce com jitter: evita que todos os clientes recarreguem simultaneamente
       if (timer) clearTimeout(timer);
+      const delay = 200 + Math.random() * 500; // 200-700ms por cliente
       timer = setTimeout(() => {
         onTasksRef.current?.();
         onJobsRef.current?.();
         onProjectsRef.current?.();
         timer = null;
-      }, 400);
+      }, delay);
     };
 
     socket.on("tasks:changed", handle);
