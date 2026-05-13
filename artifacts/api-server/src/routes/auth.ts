@@ -71,7 +71,12 @@ router.put("/auth/profile", requireAuth, async (req, res): Promise<void> => {
   if (name?.trim())          update.name      = String(name).trim();
   if (email  !== undefined)  update.email     = email  ? String(email).trim()  : null;
   if (phone  !== undefined)  update.phone     = phone  ? String(phone).trim()  : null;
-  if (avatarUrl !== undefined) update.avatarUrl = avatarUrl || null;
+  if (avatarUrl !== undefined) {
+    if (typeof avatarUrl === "string" && avatarUrl.startsWith("data:")) {
+      res.status(400).json({ error: "Use o botão de câmera para atualizar o avatar" }); return;
+    }
+    update.avatarUrl = avatarUrl || null;
+  }
 
   if (newPassword) {
     if (newPassword.length < 6) { res.status(400).json({ error: "Nova senha muito curta (mínimo 6 caracteres)" }); return; }
