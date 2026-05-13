@@ -27,6 +27,10 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(sessionMiddleware);
 app.use("/api", router);
 
+// Serve uploaded files (avatars, etc.) — survives deploys
+const uploadsDir = path.resolve(__dirname, "../../../uploads");
+app.use("/uploads", express.static(uploadsDir, { maxAge: "7d" }));
+
 if (process.env.NODE_ENV === "production") {
   const frontendDir = path.resolve(__dirname, "../../team-edit/dist/public");
   app.use(express.static(frontendDir));
