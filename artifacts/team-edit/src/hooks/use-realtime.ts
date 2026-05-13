@@ -18,12 +18,23 @@ export function useRealtime(options: RealtimeOptions) {
 
   useEffect(() => {
     const socket = getSocket();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
     const handle = () => {
-      onTasksRef.current?.();
-      onJobsRef.current?.();
-      onProjectsRef.current?.();
+      // Debounce: agrupa rafagas de eventos em um único reload
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        onTasksRef.current?.();
+        onJobsRef.current?.();
+        onProjectsRef.current?.();
+        timer = null;
+      }, 400);
     };
+
     socket.on("tasks:changed", handle);
-    return () => { socket.off("tasks:changed", handle); };
+    return () => {
+      socket.off("tasks:changed", handle);
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 }
