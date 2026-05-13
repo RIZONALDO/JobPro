@@ -161,7 +161,7 @@ export default function EditorTaskList() {
           <div className="w-28 shrink-0">Status</div>
           <div className="flex-1 min-w-0">Tarefa</div>
           <div className="w-20 shrink-0 hidden lg:block">Prioridade</div>
-          <div className="w-24 shrink-0 hidden lg:block">Prazo</div>
+          <div className="w-28 shrink-0 hidden lg:block">Prazo</div>
           <div className="w-20 shrink-0 hidden xl:block">Coord.</div>
           <div className="w-32 shrink-0">Ação</div>
           <div className="w-8 shrink-0" />
@@ -234,25 +234,25 @@ export default function EditorTaskList() {
                 <div className="flex-1 min-w-0" style={{ minWidth: 0 }}>
 
                   {/* code + title */}
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: "5px", minWidth: 0 }}>
                     {t.taskCode && (
-                      <span style={{ color: "hsl(var(--muted-foreground))", fontSize: "11px", fontWeight: 700, fontFamily: "monospace", whiteSpace: "nowrap", flexShrink: 0 }}>
+                      <span style={{ color: "hsl(var(--muted-foreground))", fontSize: "10px", fontWeight: 600, fontFamily: "monospace", whiteSpace: "nowrap", flexShrink: 0, opacity: 0.55, letterSpacing: "-0.02em" }}>
                         {t.taskCode}
                       </span>
                     )}
-                    <span style={{ fontSize: "13px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: "13px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
                       {t.title}
                     </span>
                     {t.revisionCount > 0 && (
-                      <span style={{ fontSize: "11px", color: "#f97316", fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>
-                        {t.revisionCount} alt.
+                      <span style={{ fontSize: "11px", color: "#f97316", fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
+                        ↩{t.revisionCount}
                       </span>
                     )}
                   </div>
 
                   {/* client */}
                   {t.client && (
-                    <p style={{ fontSize: "11px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "2px" }}>
+                    <p style={{ fontSize: "11px", color: "hsl(var(--muted-foreground))", opacity: 0.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "2px" }}>
                       {t.client}
                     </p>
                   )}
@@ -305,7 +305,7 @@ export default function EditorTaskList() {
 
               {/* Status */}
               <div className="hidden md:flex w-28 shrink-0 items-center px-4">
-                <Badge className={`${STATUS_CLASS[t.status] ?? ""} text-xs px-1.5 font-medium`}>
+                <Badge className={`${STATUS_CLASS[t.status] ?? ""} text-[11px] px-2 py-0.5 font-medium`}>
                   {STATUS_LABEL[t.status] ?? t.status}
                 </Badge>
               </div>
@@ -314,20 +314,16 @@ export default function EditorTaskList() {
               <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-3 pr-3">
                 <div className="flex items-baseline gap-1.5 min-w-0">
                   {t.taskCode && (
-                    <span className="text-sm font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">{t.taskCode}</span>
+                    <span className="text-[11px] font-semibold font-mono shrink-0 text-[hsl(var(--muted-foreground))]/55 tracking-tight">{t.taskCode}</span>
                   )}
-                  <p className="text-sm font-medium truncate leading-snug">{t.title}</p>
-                </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  {t.client && (
-                    <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.client}</span>
-                  )}
+                  <p className="text-sm font-semibold truncate leading-snug">{t.title}</p>
                   {t.revisionCount > 0 && (
-                    <span className="flex items-center gap-1 text-xs text-orange-500 shrink-0">
-                      <MessageSquare className="h-2.5 w-2.5" />{t.revisionCount} alt.
-                    </span>
+                    <span className="text-[11px] font-semibold text-orange-500 shrink-0">↩{t.revisionCount}</span>
                   )}
                 </div>
+                {t.client && (
+                  <span className="text-[11px] text-[hsl(var(--muted-foreground))]/60 truncate mt-0.5">{t.client}</span>
+                )}
               </div>
 
               {/* Priority */}
@@ -344,11 +340,11 @@ export default function EditorTaskList() {
               <div className="hidden xl:flex w-20 shrink-0 items-center gap-1.5">
                 {t.createdBy ? (
                   <>
-                    <AvatarDisplay name={t.createdBy.name} avatarUrl={t.createdBy.avatarUrl} size={24} />
-                    <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.createdBy.name.split(" ")[0]}</span>
+                    <AvatarDisplay name={t.createdBy.name} avatarUrl={t.createdBy.avatarUrl} size={22} />
+                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 truncate">{t.createdBy.name.split(" ")[0]}</span>
                   </>
                 ) : (
-                  <span className="text-xs text-[hsl(var(--muted-foreground))]/40">—</span>
+                  <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30">—</span>
                 )}
               </div>
 
@@ -360,12 +356,12 @@ export default function EditorTaskList() {
                     {trans.label}
                   </Button>
                 ) : (
-                  <span className="text-xs text-[hsl(var(--muted-foreground))]/40 pl-1">—</span>
+                  <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30 pl-1">—</span>
                 )}
               </div>
 
               {/* Dropdown */}
-              <div className="hidden md:flex w-10 shrink-0 items-center justify-center" onClick={e => e.stopPropagation()}>
+              <div className="hidden md:flex w-8 shrink-0 items-center justify-center" onClick={e => e.stopPropagation()}>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-7 w-7">

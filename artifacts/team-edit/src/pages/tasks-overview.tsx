@@ -423,7 +423,7 @@ export default function TasksOverview() {
               <div className="w-32 shrink-0"><Th col="status" label="Status" /></div>
               <div className="w-20 shrink-0 hidden lg:block"><Th col="priority" label="Prior." /></div>
               <div className="w-32 shrink-0"><Th col="assignee" label="Editor" /></div>
-              <div className="w-24 shrink-0 hidden lg:block"><Th col="dueDate" label="Prazo" /></div>
+              <div className="w-28 shrink-0 hidden lg:block"><Th col="dueDate" label="Prazo" /></div>
               <div className="w-24 shrink-0 hidden xl:block"><Th col="coordinator" label="Coord." /></div>
               <div className="w-32 shrink-0" />
             </div>
@@ -546,25 +546,25 @@ export default function TasksOverview() {
                     <div className="flex-1 min-w-0" style={{ minWidth: 0 }}>
 
                       {/* Row 1: code + title (truncates) */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: "5px", minWidth: 0 }}>
                         {t.taskCode && (
-                          <span style={{ color: "hsl(var(--muted-foreground))", fontSize: "11px", fontWeight: 700, fontFamily: "monospace", whiteSpace: "nowrap", flexShrink: 0 }}>
+                          <span style={{ color: "hsl(var(--muted-foreground))", fontSize: "10px", fontWeight: 600, fontFamily: "monospace", whiteSpace: "nowrap", flexShrink: 0, opacity: 0.55, letterSpacing: "-0.02em" }}>
                             {t.taskCode}
                           </span>
                         )}
-                        <span style={{ fontSize: "13px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
+                        <span style={{ fontSize: "13px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
                           {t.title}
                         </span>
                         {t.revisionCount > 0 && (
-                          <span style={{ fontSize: "11px", fontWeight: 700, color: "#f97316", whiteSpace: "nowrap", flexShrink: 0 }}>
-                            Alt.{t.revisionCount}
+                          <span style={{ fontSize: "11px", fontWeight: 600, color: "#f97316", whiteSpace: "nowrap", flexShrink: 0 }}>
+                            ↩{t.revisionCount}
                           </span>
                         )}
                       </div>
 
                       {/* Row 2: client (if any) */}
                       {t.client && (
-                        <p style={{ fontSize: "11px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "3px" }}>
+                        <p style={{ fontSize: "11px", color: "hsl(var(--muted-foreground))", opacity: 0.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "2px" }}>
                           {t.client}
                         </p>
                       )}
@@ -637,26 +637,26 @@ export default function TasksOverview() {
                   {/* ── Desktop table columns (md+) ────────────────────── */}
 
                   {/* Tarefa */}
-                  <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-2.5 pr-3">
-                    <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-3 pr-3">
+                    <div className="flex items-baseline gap-1.5 min-w-0">
                       {t.taskCode && (
-                        <span className="text-sm font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">
+                        <span className="text-[11px] font-semibold font-mono shrink-0 text-[hsl(var(--muted-foreground))]/55 tracking-tight">
                           {t.taskCode}
                         </span>
                       )}
-                      <span className="text-sm font-medium truncate">{t.title}</span>
+                      <span className="text-sm font-semibold truncate">{t.title}</span>
                       {t.revisionCount > 0 && (
-                        <span className="text-xs font-bold text-orange-500 shrink-0">Alt.{t.revisionCount}</span>
+                        <span className="text-[11px] font-semibold text-orange-500 shrink-0">↩{t.revisionCount}</span>
                       )}
                     </div>
                     {t.client && (
-                      <p className="text-xs text-[hsl(var(--muted-foreground))] truncate mt-0.5">{t.client}</p>
+                      <p className="text-[11px] text-[hsl(var(--muted-foreground))]/60 truncate mt-0.5">{t.client}</p>
                     )}
                   </div>
 
                   {/* Status */}
                   <div className="hidden md:flex w-32 shrink-0 items-center">
-                    <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
+                    <Badge className={`text-[11px] px-2 py-0.5 font-medium ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
                   </div>
@@ -670,13 +670,13 @@ export default function TasksOverview() {
                   <div className="hidden md:flex w-32 shrink-0 items-center gap-2">
                     {t.editors && t.editors.length > 0 ? (
                       <>
-                        <StackedAvatars people={t.editors} size={26} max={3} />
+                        <StackedAvatars people={t.editors} size={24} max={3} />
                         {t.editors.length === 1 && (
-                          <span className="text-xs font-medium truncate">{t.editors[0].name.split(" ")[0]}</span>
+                          <span className="text-[11px] font-medium truncate">{t.editors[0].name.split(" ")[0]}</span>
                         )}
                       </>
                     ) : (
-                      <span className="text-xs text-[hsl(var(--muted-foreground))]/40 italic">—</span>
+                      <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30">—</span>
                     )}
                   </div>
 
@@ -686,10 +686,17 @@ export default function TasksOverview() {
                   </div>
 
                   {/* Coordenador — only on xl+ */}
-                  <div className="hidden xl:flex w-24 shrink-0 items-center">
-                    <span className={`text-xs truncate ${t.isOwn ? "text-[hsl(var(--primary))] font-medium" : "text-[hsl(var(--muted-foreground))]"}`}>
-                      {t.isOwn ? "Você" : (t.coordinator?.name?.split(" ")[0] ?? "—")}
-                    </span>
+                  <div className="hidden xl:flex w-24 shrink-0 items-center gap-1.5">
+                    {t.isOwn ? (
+                      <span className="text-[11px] text-[hsl(var(--primary))] font-semibold truncate">Você</span>
+                    ) : t.coordinator ? (
+                      <>
+                        <AvatarDisplay name={t.coordinator.name} avatarUrl={t.coordinator.avatarUrl} size={22} />
+                        <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 truncate">{t.coordinator.name.split(" ")[0]}</span>
+                      </>
+                    ) : (
+                      <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30">—</span>
+                    )}
                   </div>
 
                   {/* Ações — desktop (largura fixa w-32 para não desalinhar) */}
