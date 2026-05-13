@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiPut } from "@/lib/api";
-import { uploadAvatar } from "@/lib/compress-image";
+import { compressAvatar } from "@/lib/compress-image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,11 +47,10 @@ export default function Profile() {
     if (!file) return;
     setUploadingAvatar(true);
     try {
-      const url = await uploadAvatar(file);
-      setAvatar(url);
-      await refresh();
+      const dataUrl = await compressAvatar(file);
+      setAvatar(dataUrl);
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro ao enviar avatar", variant: "destructive" });
+      toast({ title: err instanceof Error ? err.message : "Erro ao processar imagem", variant: "destructive" });
     } finally {
       setUploadingAvatar(false);
     }
@@ -64,9 +63,10 @@ export default function Profile() {
     setSaving(true);
     try {
       await apiPut("/api/auth/profile", {
-        name:  name.trim() || undefined,
-        email: email || null,
-        phone: phone || null,
+        name:      name.trim() || undefined,
+        email:     email || null,
+        phone:     phone || null,
+        avatarUrl: avatar || null,
         ...(newPwd ? { currentPassword: curPwd, newPassword: newPwd } : {}),
       });
       await refresh();

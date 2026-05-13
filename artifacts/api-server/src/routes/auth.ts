@@ -72,8 +72,8 @@ router.put("/auth/profile", requireAuth, async (req, res): Promise<void> => {
   if (email  !== undefined)  update.email     = email  ? String(email).trim()  : null;
   if (phone  !== undefined)  update.phone     = phone  ? String(phone).trim()  : null;
   if (avatarUrl !== undefined) {
-    if (typeof avatarUrl === "string" && avatarUrl.startsWith("data:")) {
-      res.status(400).json({ error: "Use o botão de câmera para atualizar o avatar" }); return;
+    if (typeof avatarUrl === "string" && avatarUrl.length > 200_000) {
+      res.status(400).json({ error: "Imagem muito grande — use o botão de câmera para comprimir" }); return;
     }
     update.avatarUrl = avatarUrl || null;
   }

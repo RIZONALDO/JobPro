@@ -7,7 +7,6 @@ import notificationsRouter from "./notifications.js";
 import feedRouter from "./feed.js";
 import dmRouter from "./dm.js";
 import clientsRouter from "./clients.js";
-import uploadRouter from "./upload.js";
 
 const router = Router();
 router.use(authRouter);
@@ -18,6 +17,5 @@ router.use(notificationsRouter);
 router.use(feedRouter);
 router.use(dmRouter);
 router.use(clientsRouter);
-router.use(uploadRouter);
 
 export default router;
