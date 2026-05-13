@@ -28,7 +28,8 @@ app.use(sessionMiddleware);
 app.use("/api", router);
 
 // Serve uploaded files (avatars, etc.) — survives deploys
-const uploadsDir = path.resolve(__dirname, "../../../uploads");
+// Use process.cwd() so this works regardless of __dirname nesting in the build
+const uploadsDir = path.join(process.cwd(), "uploads");
 app.use("/uploads", express.static(uploadsDir, { maxAge: "7d" }));
 
 if (process.env.NODE_ENV === "production") {
