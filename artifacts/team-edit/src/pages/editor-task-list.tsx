@@ -2,7 +2,8 @@ import { motion } from "framer-motion";
 import { staggerContainer, staggerRow } from "@/lib/motion";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { apiFetch, apiPut, apiPost } from "@/lib/api";
-import { fmtDate, fmtDateHuman, fmtClosedCycle } from "@/lib/utils";
+import { fmtClosedCycle, fmtPrazoWeek } from "@/lib/utils";
+import { PrazoCell } from "@/components/prazo-cell";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useTaskModal } from "@/contexts/TaskModalContext";
@@ -13,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
-  AlertCircle, Calendar, MessageSquare, MoreVertical,
+  AlertCircle, MessageSquare, MoreVertical,
   Info, Undo2, PauseCircle, XCircle, Search,
 } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
@@ -269,12 +270,14 @@ export default function EditorTaskList() {
                           {closed.line1}{closed.line2 ? ` · ${closed.line2}` : ""}
                         </span>
                       );
-                      return t.dueDate ? (
+                      if (!t.dueDate) return null;
+                      const { label } = fmtPrazoWeek(t.dueDate);
+                      return (
                         <span style={{ fontSize: "11px", color: overdue ? "#ef4444" : "hsl(var(--muted-foreground))", fontWeight: overdue ? 600 : 400, display: "flex", alignItems: "center", gap: "3px" }}>
                           {overdue && <AlertCircle style={{ width: 10, height: 10 }} />}
-                          {fmtDateHuman(t.dueDate)}
+                          {label}
                         </span>
-                      ) : null;
+                      );
                     })()}
                   </div>
                 </div>
@@ -333,36 +336,8 @@ export default function EditorTaskList() {
               </div>
 
               {/* Due date */}
-              <div className="hidden lg:flex w-28 shrink-0 flex-col justify-center gap-0.5">
-                {(() => {
-                  const closed = fmtClosedCycle(t.status, t.dueDate, t.updatedAt);
-                  if (closed) return (
-                    <>
-                      <span className={`text-xs font-semibold leading-tight ${closed.cls}`}>{closed.line1}</span>
-                      {closed.line2 && <span className={`text-[10px] leading-tight ${closed.cls} opacity-80`}>{closed.line2}</span>}
-                    </>
-                  );
-                  return t.dueDate ? (() => {
-                    const human = fmtDateHuman(t.dueDate);
-                    const full  = fmtDate(t.dueDate);
-                    const hasTwoParts = human !== full;
-                    const color = overdue ? "text-red-600" : "text-[hsl(var(--muted-foreground))]";
-                    return (
-                      <>
-                        {hasTwoParts && (
-                          <span className={`flex items-center gap-1 text-xs ${overdue ? "font-semibold" : ""} ${color}`}>
-                            {overdue && <AlertCircle className="h-3 w-3 shrink-0" />}
-                            <Calendar className="h-3 w-3 shrink-0" />
-                            {human}
-                          </span>
-                        )}
-                        <span style={{ fontSize: "9px", opacity: hasTwoParts ? 0.5 : 0.8 }} className={`${overdue && !hasTwoParts ? "text-red-600 font-semibold" : "text-[hsl(var(--muted-foreground))]"} leading-tight`}>{full}</span>
-                      </>
-                    );
-                  })() : (
-                    <span className="text-xs text-[hsl(var(--muted-foreground))]/40">—</span>
-                  );
-                })()}
+              <div className="hidden lg:flex w-28 shrink-0 items-center">
+                <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} />
               </div>
 
               {/* Coordinator */}

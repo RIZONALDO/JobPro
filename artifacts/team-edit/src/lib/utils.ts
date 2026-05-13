@@ -151,3 +151,48 @@ export function fmtDateHuman(date: string | null | undefined): string | null {
   }
   return fmtDate(date);
 }
+
+/**
+ * Week-scoped humanization for the Prazo column.
+ * Returns label + sublabel (time period) for dates within the current week (Mon–Sun).
+ * Beyond the week returns the full formatted date with isHuman=false.
+ */
+export function fmtPrazoWeek(date: string | null | undefined): {
+  label: string;
+  sublabel: string | null;
+  isHuman: boolean;
+} {
+  if (!date) return { label: "—", sublabel: null, isHuman: false };
+
+  const hasTime = date.includes("T");
+  const dt = hasTime
+    ? new Date(date)
+    : (() => { const [y, m, d] = date.split("-").map(Number); return new Date(y, m - 1, d); })();
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dtDay = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+  const diff  = Math.round((dtDay.getTime() - today.getTime()) / 86_400_000);
+
+  // How many days until end of this week (Sunday)
+  const todayDow       = today.getDay(); // 0=Sun
+  const daysUntilSunday = todayDow === 0 ? 0 : 7 - todayDow;
+
+  const h = hasTime ? dt.getHours() : -1;
+  const period: string | null =
+    h >= 5  && h < 12 ? "pela manhã"
+    : h >= 12 && h < 18 ? "à tarde"
+    : h >= 18           ? "à noite"
+    : null;
+
+  if (diff === 0) return { label: "Hoje",  sublabel: period, isHuman: true };
+  if (diff === 1) return { label: "Amanhã", sublabel: period, isHuman: true };
+
+  if (diff > 1 && diff <= daysUntilSunday) {
+    const names  = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+    const dow    = dt.getDay();
+    const prefix = dow === 0 || dow === 6 ? "Neste" : "Nesta";
+    return { label: `${prefix} ${names[dow]}`, sublabel: period, isHuman: true };
+  }
+
+  return { label: fmtDate(date) ?? "—", sublabel: null, isHuman: false };
+}
