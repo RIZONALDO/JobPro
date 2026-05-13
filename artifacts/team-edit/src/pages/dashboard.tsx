@@ -290,7 +290,7 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
                 <AvatarDisplay
                   name={editor.name}
                   avatarUrl={editor.avatarUrl}
-                  size={32}
+                  size={36}
                   fallbackColor={color}
                 />
                 <span className="text-xs font-medium w-16 shrink-0 truncate">{firstName}</span>
@@ -506,7 +506,7 @@ function OverdueCard({ items, onOpenTask, emptyStats }: {
                       <AvatarDisplay
                         name={t.assigneeName}
                         avatarUrl={t.assigneeAvatarUrl ?? null}
-                        size={26}
+                        size={30}
                       />
                     )}
                     <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded-full leading-none tabular-nums whitespace-nowrap">

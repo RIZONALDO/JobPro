@@ -348,7 +348,7 @@ export default function EditorTaskList() {
               <div className="hidden xl:flex w-20 shrink-0 items-center gap-1.5">
                 {t.createdBy ? (
                   <>
-                    <AvatarDisplay name={t.createdBy.name} avatarUrl={t.createdBy.avatarUrl} size={22} />
+                    <AvatarDisplay name={t.createdBy.name} avatarUrl={t.createdBy.avatarUrl} size={30} />
                     <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 truncate">{t.createdBy.name.split(" ")[0]}</span>
                   </>
                 ) : (

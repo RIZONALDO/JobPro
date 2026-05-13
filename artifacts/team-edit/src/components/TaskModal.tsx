@@ -205,7 +205,7 @@ export function TaskModal({ taskId, onClose }: Props) {
                         <AvatarDisplay
                           name={task.createdBy.name}
                           avatarUrl={task.createdBy.avatarUrl ?? null}
-                          size={32}
+                          size={36}
                         />
                         <div className="min-w-0">
                           <p className="text-[9px] text-[hsl(var(--muted-foreground))] leading-none mb-0.5">Coordenador</p>
@@ -215,7 +215,7 @@ export function TaskModal({ taskId, onClose }: Props) {
                     )}
                     {task.editors?.length > 0 && (
                       <div className="flex items-start gap-2.5">
-                        <StackedAvatars people={task.editors} size={32} max={4} />
+                        <StackedAvatars people={task.editors} size={36} max={4} />
                         <div className="min-w-0">
                           <p className="text-[9px] text-[hsl(var(--muted-foreground))] leading-none mb-0.5">
                             {task.editors.length === 1 ? "Editor" : "Editores"}

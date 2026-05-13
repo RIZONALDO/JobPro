@@ -276,7 +276,7 @@ export default function MyTasks() {
             ) : null;
           })()}
           {t.editors.length > 0 && (
-            <StackedAvatars people={t.editors} size={18} max={3} />
+            <StackedAvatars people={t.editors} size={30} max={3} />
           )}
         </div>
       </div>

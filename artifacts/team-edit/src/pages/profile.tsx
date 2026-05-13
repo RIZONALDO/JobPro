@@ -99,9 +99,9 @@ export default function Profile() {
           <div className="flex items-center gap-5">
             <div className="relative shrink-0">
               {avatar ? (
-                <img src={avatar} alt={name} className="h-20 w-20 rounded-full object-cover border-2 border-[hsl(var(--primary))]" />
+                <img src={avatar} alt={name} className="h-20 w-20 rounded-full object-cover border border-[hsl(var(--primary))]" />
               ) : (
-                <div className="h-20 w-20 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] flex items-center justify-center text-xl font-bold border-2 border-[hsl(var(--primary))]">
+                <div className="h-20 w-20 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] flex items-center justify-center text-xl font-bold border border-[hsl(var(--primary))]">
                   {initials}
                 </div>
               )}

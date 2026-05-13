@@ -147,7 +147,7 @@ export default function Pipeline() {
                           })()}
                           {t.assignee && (
                             <div className="ml-auto flex items-center gap-1 min-w-0 shrink-0">
-                              <AvatarDisplay name={t.assignee.name} avatarUrl={t.assignee.avatarUrl} size={18} />
+                              <AvatarDisplay name={t.assignee.name} avatarUrl={t.assignee.avatarUrl} size={30} />
                               <span className="text-[9px] font-medium truncate max-w-[44px]">{t.assignee.name.split(" ")[0]}</span>
                             </div>
                           )}

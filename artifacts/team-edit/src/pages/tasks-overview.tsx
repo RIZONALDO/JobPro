@@ -606,7 +606,7 @@ export default function TasksOverview() {
                       {/* Row 4: editors */}
                       {t.editors && t.editors.length > 0 && (
                         <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "5px" }}>
-                          <StackedAvatars people={t.editors} size={18} max={3} />
+                          <StackedAvatars people={t.editors} size={30} max={3} />
                           <span style={{ fontSize: "11px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {t.editors.map(e => e.name.split(" ")[0]).join(", ")}
                           </span>
@@ -681,7 +681,7 @@ export default function TasksOverview() {
                   <div className="hidden md:flex w-32 shrink-0 items-center gap-2">
                     {t.editors && t.editors.length > 0 ? (
                       <>
-                        <StackedAvatars people={t.editors} size={24} max={3} />
+                        <StackedAvatars people={t.editors} size={28} max={3} />
                         {t.editors.length === 1 && (
                           <span className="text-[11px] font-medium truncate">{t.editors[0].name.split(" ")[0]}</span>
                         )}
@@ -702,7 +702,7 @@ export default function TasksOverview() {
                       <span className="text-[11px] text-[hsl(var(--primary))] font-semibold truncate">Você</span>
                     ) : t.coordinator ? (
                       <>
-                        <AvatarDisplay name={t.coordinator.name} avatarUrl={t.coordinator.avatarUrl} size={22} />
+                        <AvatarDisplay name={t.coordinator.name} avatarUrl={t.coordinator.avatarUrl} size={30} />
                         <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 truncate">{t.coordinator.name.split(" ")[0]}</span>
                       </>
                     ) : (
