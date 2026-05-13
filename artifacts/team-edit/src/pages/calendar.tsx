@@ -194,22 +194,7 @@ export default function Calendar() {
       <div className="shrink-0 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm px-4 py-3">
         <div className="flex items-center gap-2.5 flex-wrap">
 
-          {/* Navigation */}
-          <button onClick={prev} className={navBtn}><ChevronLeft className="h-4 w-4" /></button>
-          <span className="text-sm font-medium min-w-[160px] text-center">
-            {view === "week" ? weekLabel : monthLabel}
-          </span>
-          <button onClick={next} className={navBtn}><ChevronRight className="h-4 w-4" /></button>
-          <button
-            onClick={goToToday}
-            className="flex items-center gap-1 h-8 px-2.5 text-xs rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary)/0.5)] transition-colors"
-          >
-            Hoje
-          </button>
-
-          <div className="w-px h-5 bg-[hsl(var(--border))] mx-1 shrink-0" />
-
-          {/* Search */}
+          {/* ── Filtros (esquerda) ── */}
           <div className="relative flex items-center">
             <Search className="absolute left-2.5 h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] pointer-events-none" />
             <Input
@@ -225,9 +210,9 @@ export default function Calendar() {
             )}
           </div>
 
-          <FilterSelect label="Status"    value={fStatus}   onChange={setFStatus}   options={STATUS_OPTS}   />
+          <FilterSelect label="Status"     value={fStatus}   onChange={setFStatus}   options={STATUS_OPTS}   />
           <FilterSelect label="Prioridade" value={fPriority} onChange={setFPriority} options={PRIORITY_OPTS} />
-          <FilterSelect label="Cliente"   value={fClient}   onChange={setFClient}   options={clientOpts}   />
+          <FilterSelect label="Cliente"    value={fClient}   onChange={setFClient}   options={clientOpts}   />
           {isCoord && <FilterSelect label="Editor" value={fEditor} onChange={setFEditor} options={editorOpts} />}
 
           {hasFilters && (
@@ -236,12 +221,26 @@ export default function Calendar() {
             </button>
           )}
 
-          <div className="flex-1" />
-
-          {/* Count */}
           <span className="text-xs text-[hsl(var(--muted-foreground))] shrink-0">
             {filteredTasks.length} tarefa{filteredTasks.length !== 1 ? "s" : ""}
           </span>
+
+          {/* ── Separador ── */}
+          <div className="flex-1" />
+          <div className="w-px h-5 bg-[hsl(var(--border))] shrink-0" />
+
+          {/* ── Controles de navegação (direita) ── */}
+          <button onClick={prev} className={navBtn}><ChevronLeft className="h-4 w-4" /></button>
+          <span className="text-sm font-medium min-w-[160px] text-center">
+            {view === "week" ? weekLabel : monthLabel}
+          </span>
+          <button onClick={next} className={navBtn}><ChevronRight className="h-4 w-4" /></button>
+          <button
+            onClick={goToToday}
+            className="flex items-center gap-1 h-8 px-2.5 text-xs rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary)/0.5)] transition-colors"
+          >
+            Hoje
+          </button>
 
           {/* View toggle */}
           <div className="flex items-center rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-0.5 shrink-0">
