@@ -56,10 +56,13 @@ interface PipelineTask {
 }
 
 const COLUMNS: { key: string; label: string; desc: string; accent: string }[] = [
-  { key: "pending",     label: "Pendente",      desc: "Aguardando início",     accent: "#94a3b8" },
-  { key: "in_progress", label: "Em andamento",  desc: "Editor trabalhando",    accent: "#3b82f6" },
-  { key: "review",      label: "Aprovação",     desc: "Aguardando aprovação",  accent: "#f59e0b" },
-  { key: "in_revision", label: "Em alteração",  desc: "Pedido de alteração",   accent: "#f97316" },
+  { key: "pending",     label: "Pendente",      desc: "Aguardando início",        accent: "#94a3b8" },
+  { key: "in_progress", label: "Em andamento",  desc: "Editor trabalhando",       accent: "#3b82f6" },
+  { key: "review",      label: "Aprovação",     desc: "Aguardando aprovação",     accent: "#f59e0b" },
+  { key: "in_revision", label: "Em alteração",  desc: "Pedido de alteração",      accent: "#f97316" },
+  { key: "completed",   label: "Aprovadas",     desc: "Tarefa concluída",         accent: "#22c55e" },
+  { key: "paused",      label: "Pausadas",      desc: "Temporariamente pausada",  accent: "#a855f7" },
+  { key: "cancelled",   label: "Canceladas",    desc: "Tarefa cancelada",         accent: "#ef4444" },
 ];
 
 const PRIORITY_OPTS = [
@@ -77,11 +80,12 @@ export default function Pipeline() {
   const [loading, setLoading] = useState(true);
 
   // Filters
+  const defaultCoord = user ? String(user.id) : "all";
   const [search,    setSearch]    = useState("");
   const [fPriority, setFPriority] = useState("all");
   const [fClient,   setFClient]   = useState("all");
   const [fEditor,   setFEditor]   = useState("all");
-  const [fCoord,    setFCoord]    = useState("all");
+  const [fCoord,    setFCoord]    = useState(defaultCoord);
 
   const load = useCallback(() => {
     apiFetch<PipelineTask[]>("/api/pipeline")
@@ -109,8 +113,8 @@ export default function Pipeline() {
     return Array.from(seen.entries()).map(([v, l]) => ({ value: v, label: l }));
   }, [tasks, user]);
 
-  const hasFilters = search || fPriority !== "all" || fClient !== "all" || fEditor !== "all" || fCoord !== "all";
-  const clearAll = () => { setSearch(""); setFPriority("all"); setFClient("all"); setFEditor("all"); setFCoord("all"); };
+  const hasFilters = search || fPriority !== "all" || fClient !== "all" || fEditor !== "all" || fCoord !== defaultCoord;
+  const clearAll = () => { setSearch(""); setFPriority("all"); setFClient("all"); setFEditor("all"); setFCoord(defaultCoord); };
 
   const filteredTasks = useMemo(() => tasks.filter(t => {
     if (fPriority !== "all" && t.priority !== fPriority) return false;
@@ -161,8 +165,8 @@ export default function Pipeline() {
               hover:border-[hsl(var(--primary)/0.5)] transition-colors"
             style={{ minWidth: 110 }}
           >
-            <option value="all">Coord.: Geral</option>
-            {user && <option value={String(user.id)}>Coord.: Minhas</option>}
+            <option value="all">Geral</option>
+            {user && <option value={String(user.id)}>Minhas</option>}
             {coordOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           <ChevronDown className="pointer-events-none absolute right-2 h-3 w-3 text-[hsl(var(--muted-foreground))]" />
@@ -178,11 +182,11 @@ export default function Pipeline() {
       </div>
 
       {/* Kanban */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+      <div className="flex gap-4 overflow-x-auto pb-2 items-start">
         {COLUMNS.map(col => {
           const colTasks = filteredTasks.filter(t => t.status === col.key);
           return (
-            <div key={col.key} className="flex flex-col gap-3">
+            <div key={col.key} className="flex flex-col gap-3 shrink-0" style={{ width: 210 }}>
               {/* Header */}
               <div className="flex items-center gap-2 px-1">
                 <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: col.accent }} />
@@ -209,7 +213,7 @@ export default function Pipeline() {
                         key={t.id}
                         onClick={() => openTask(t.id)}
                         className="rounded-lg border bg-[hsl(var(--card))] card-float px-2.5 py-2 flex flex-col gap-1.5 hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
-                        style={{ borderLeft: `3px solid ${t.color}`, minHeight: 72, maxHeight: 112 }}
+                        style={{ borderLeft: `3px solid ${col.accent}`, minHeight: 72, maxHeight: 112 }}
                       >
                         {/* Code + revision */}
                         <div className="flex items-center justify-between gap-1 min-w-0">
