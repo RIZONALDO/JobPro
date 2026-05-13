@@ -17,7 +17,7 @@ export function PrazoCell({ dueDate, status, updatedAt, overdue, className }: Pr
     <div className={cn("flex flex-col gap-0.5", className)}>
       <span className={`text-xs font-semibold leading-tight ${closed.cls}`}>{closed.line1}</span>
       {closed.line2 && (
-        <span className={`leading-tight ${closed.cls} opacity-80`} style={{ fontSize: "9px" }}>{closed.line2}</span>
+        <span className={`leading-tight ${closed.cls} opacity-70`} style={{ fontSize: "9px" }}>{closed.line2}</span>
       )}
     </div>
   );
@@ -27,18 +27,29 @@ export function PrazoCell({ dueDate, status, updatedAt, overdue, className }: Pr
   );
 
   const { label, isHuman } = fmtPrazoWeek(dueDate);
-  const days   = fmtDaysLeft(dueDate);
-  const color  = overdue ? "text-red-500" : "text-[hsl(var(--muted-foreground))]";
-  const weight = overdue ? "font-semibold" : "font-normal";
+  const days = fmtDaysLeft(dueDate);
+
+  // Diff just for line-2 color logic — red only for overdue, one amber accent for today
+  const dt    = new Date(dueDate.includes("T") ? dueDate : dueDate + "T00:00");
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diff  = Math.round((new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime() - today.getTime()) / 86_400_000);
+  const daysCls = diff < 0
+    ? "text-red-400"
+    : diff === 0
+    ? "text-amber-600"
+    : "text-[hsl(var(--muted-foreground))]/55";
+
+  const lineColor  = overdue ? "text-red-500" : "text-[hsl(var(--muted-foreground))]";
+  const lineWeight = overdue ? "font-semibold" : "font-normal";
 
   const DaysLine = () => days ? (
-    <span className={`leading-tight ${days.cls}`} style={{ fontSize: "9px" }}>{days.text}</span>
+    <span className={`leading-tight ${daysCls}`} style={{ fontSize: "9px" }}>{days.text}</span>
   ) : null;
 
   if (!isHuman) {
     return (
       <div className={cn("flex flex-col gap-0.5", className)}>
-        <span className={`text-xs ${weight} leading-tight ${color}`}>{label}</span>
+        <span className={`text-xs ${lineWeight} leading-tight ${lineColor}`}>{label}</span>
         <DaysLine />
       </div>
     );
@@ -51,7 +62,7 @@ export function PrazoCell({ dueDate, status, updatedAt, overdue, className }: Pr
         onClick={() => setRevealed(false)}
         title="Clique para voltar"
       >
-        <span className={`text-xs ${weight} leading-tight ${color}`}>{fmtDate(dueDate)}</span>
+        <span className={`text-xs ${lineWeight} leading-tight ${lineColor}`}>{fmtDate(dueDate)}</span>
         <DaysLine />
       </div>
     );
@@ -63,7 +74,7 @@ export function PrazoCell({ dueDate, status, updatedAt, overdue, className }: Pr
       onClick={() => setRevealed(true)}
       title={fmtDate(dueDate) ?? undefined}
     >
-      <span className={`text-xs ${weight} leading-tight ${color}`}>{label}</span>
+      <span className={`text-xs ${lineWeight} leading-tight ${lineColor}`}>{label}</span>
       <DaysLine />
     </div>
   );

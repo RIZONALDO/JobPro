@@ -244,7 +244,7 @@ export default function EditorTaskList() {
                       {t.title}
                     </span>
                     {t.revisionCount > 0 && (
-                      <span style={{ fontSize: "11px", color: "#f97316", fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
+                      <span style={{ fontSize: "11px", color: "hsl(var(--muted-foreground))", opacity: 0.5, whiteSpace: "nowrap", flexShrink: 0 }}>
                         ↩{t.revisionCount}
                       </span>
                     )}
@@ -318,7 +318,7 @@ export default function EditorTaskList() {
                   )}
                   <p className="text-sm font-semibold truncate leading-snug">{t.title}</p>
                   {t.revisionCount > 0 && (
-                    <span className="text-[11px] font-semibold text-orange-500 shrink-0">↩{t.revisionCount}</span>
+                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]/50 shrink-0">↩{t.revisionCount}</span>
                   )}
                 </div>
                 {t.client && (
