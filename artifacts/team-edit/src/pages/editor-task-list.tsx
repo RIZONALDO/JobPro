@@ -162,9 +162,9 @@ export default function EditorTaskList() {
       <div className="rounded-xl border bg-[hsl(var(--card))] card-float flex flex-col md:max-h-[calc(100vh-160px)] overflow-hidden">
 
         {/* Header — desktop fixo */}
-        <div className="hidden md:flex shrink-0 items-center gap-3 px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
-          <div className="w-36 shrink-0">Status</div>
-          <div className="flex-1 min-w-0">Tarefa</div>
+        <div className="hidden md:flex shrink-0 items-center py-2.5 pl-[3px] bg-[hsl(var(--muted))]/30 border-b text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
+          <div className="w-36 shrink-0 px-2">Status</div>
+          <div className="flex-1 min-w-0 pr-3">Tarefa</div>
           <div className="w-20 shrink-0 hidden lg:block">Prioridade</div>
           <div className="w-28 shrink-0 hidden lg:block">Prazo</div>
           <div className="w-20 shrink-0 hidden xl:block">Coord.</div>
