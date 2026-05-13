@@ -70,7 +70,6 @@ const COORD_ACTIVE = ["supervisor", "coordinator"];
 const NAV_ITEMS: NavItem[] = [
   { href: "/",         label: "Dashboard",      icon: LayoutDashboard, roles: NON_ADMIN    },
   { href: "/tasks",    label: "Tarefas",         icon: ClipboardList,   roles: NON_ADMIN    },
-  { href: "/calendar", label: "Meu Calendário",  icon: CalendarDays,    roles: NON_ADMIN    },
   { href: "/feed",     label: "Feed",             icon: Zap,             roles: NON_ADMIN    },
   { href: "/reports",  label: "Relatórios",       icon: BarChart3,       roles: COORD_ACTIVE },
   { href: "/team",     label: "Membros",          icon: Users,           roles: COORD_ROLES  },

@@ -3,7 +3,8 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, CalendarDays, Calendar as CalIcon, Plus } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ChevronLeft, ChevronRight, CalendarDays, Calendar as CalIcon, Plus, Search, X, ChevronDown } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { toLocalDate } from "@/lib/utils";
 import { TaskFormModal } from "@/components/task-form-modal";
@@ -26,6 +27,46 @@ const DAYS_PT    = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const MONTHS_PT  = ["janeiro", "fevereiro", "março", "abril", "maio", "junho",
                     "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 const MONTHS_SHORT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+const PRIORITY_OPTS = [
+  { value: "high",   label: "Alta"  },
+  { value: "medium", label: "Média" },
+  { value: "low",    label: "Baixa" },
+];
+
+const STATUS_OPTS = [
+  { value: "pending",     label: "Pendente"     },
+  { value: "in_progress", label: "Em andamento" },
+  { value: "review",      label: "Aprovação"    },
+  { value: "in_revision", label: "Em alteração" },
+  { value: "completed",   label: "Aprovadas"    },
+  { value: "paused",      label: "Pausadas"     },
+  { value: "cancelled",   label: "Canceladas"   },
+];
+
+function FilterSelect({ label, value, onChange, options }: {
+  label: string; value: string; onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div className="relative flex items-center">
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="h-8 pl-3 pr-7 text-xs rounded-md border border-[hsl(var(--border))]
+          bg-[hsl(var(--background))] text-[hsl(var(--foreground))]
+          appearance-none cursor-pointer focus:outline-none
+          focus:ring-1 focus:ring-[hsl(var(--primary)/0.4)]
+          hover:border-[hsl(var(--primary)/0.5)] transition-colors"
+        style={{ minWidth: 120 }}
+      >
+        <option value="all">{label}: Todos</option>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-2 h-3 w-3 text-[hsl(var(--muted-foreground))]" />
+    </div>
+  );
+}
 
 function getMonday(d: Date): Date {
   const date = new Date(d);
@@ -62,6 +103,13 @@ export default function Calendar() {
   const [editTaskId,     setEditTaskId]     = useState<number | null>(null);
   const [initialDueDate, setInitialDueDate] = useState("");
 
+  // Filters
+  const [search,    setSearch]    = useState("");
+  const [fPriority, setFPriority] = useState("all");
+  const [fStatus,   setFStatus]   = useState("all");
+  const [fClient,   setFClient]   = useState("all");
+  const [fEditor,   setFEditor]   = useState("all");
+
   const monthGridStart = useMemo(() => getMonthGridStart(monthDate), [monthDate]);
   const monthGridCells = useMemo(() =>
     Array.from({ length: 42 }, (_, i) => addDays(monthGridStart, i)),
@@ -84,6 +132,33 @@ export default function Calendar() {
   const openCreate = (dateStr: string) => { setEditTaskId(null); setInitialDueDate(dateStr); setDialogOpen(true); };
   const openEdit   = (t: CalendarTask)  => { setEditTaskId(t.id); setInitialDueDate(""); setDialogOpen(true); };
 
+  // Filter options derived from loaded tasks
+  const clientOpts = useMemo(() =>
+    Array.from(new Set(tasks.map(t => t.client).filter(Boolean) as string[])).sort()
+      .map(c => ({ value: c, label: c })), [tasks]);
+
+  const editorOpts = useMemo(() => {
+    const seen = new Map<string, string>();
+    tasks.forEach(t => { if (t.assignedToId && t.assigneeName) seen.set(String(t.assignedToId), t.assigneeName); });
+    return Array.from(seen.entries()).map(([v, l]) => ({ value: v, label: l }));
+  }, [tasks]);
+
+  // Filtered tasks for display
+  const filteredTasks = useMemo(() => tasks.filter(t => {
+    if (fPriority !== "all" && t.priority !== fPriority) return false;
+    if (fStatus   !== "all" && t.status   !== fStatus)   return false;
+    if (fClient   !== "all" && t.client   !== fClient)   return false;
+    if (fEditor   !== "all" && String(t.assignedToId ?? "") !== fEditor) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!t.title.toLowerCase().includes(q) && !(t.client ?? "").toLowerCase().includes(q)) return false;
+    }
+    return true;
+  }), [tasks, fPriority, fStatus, fClient, fEditor, search]);
+
+  const hasFilters = search || fPriority !== "all" || fStatus !== "all" || fClient !== "all" || fEditor !== "all";
+  const clearAll = () => { setSearch(""); setFPriority("all"); setFStatus("all"); setFClient("all"); setFEditor("all"); };
+
   const today    = toLocalDate(new Date());
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const weekEnd  = addDays(weekStart, 6);
@@ -93,7 +168,7 @@ export default function Calendar() {
   const monthLabel = `${MONTHS_PT[monthDate.getMonth()]} ${monthDate.getFullYear()}`;
 
   const tasksByDay = (day: Date) =>
-    tasks.filter(t => t.dueDate && toLocalDate(new Date(t.dueDate)) === toLocalDate(day));
+    filteredTasks.filter(t => t.dueDate && toLocalDate(new Date(t.dueDate)) === toLocalDate(day));
 
   const prev = () => {
     if (view === "week") setWeekStart(d => addDays(d, -7));
@@ -118,6 +193,7 @@ export default function Calendar() {
       {/* ── Toolbar card ─────────────────────────────────────────────────── */}
       <div className="shrink-0 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm px-4 py-3">
         <div className="flex items-center gap-2.5 flex-wrap">
+
           {/* Navigation */}
           <button onClick={prev} className={navBtn}><ChevronLeft className="h-4 w-4" /></button>
           <span className="text-sm font-medium min-w-[160px] text-center">
@@ -131,13 +207,46 @@ export default function Calendar() {
             Hoje
           </button>
 
+          <div className="w-px h-5 bg-[hsl(var(--border))] mx-1 shrink-0" />
+
+          {/* Search */}
+          <div className="relative flex items-center">
+            <Search className="absolute left-2.5 h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] pointer-events-none" />
+            <Input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar…"
+              className="h-8 pl-8 pr-7 text-xs w-36 bg-[hsl(var(--background))]"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute right-2 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]">
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+
+          <FilterSelect label="Status"    value={fStatus}   onChange={setFStatus}   options={STATUS_OPTS}   />
+          <FilterSelect label="Prioridade" value={fPriority} onChange={setFPriority} options={PRIORITY_OPTS} />
+          <FilterSelect label="Cliente"   value={fClient}   onChange={setFClient}   options={clientOpts}   />
+          {isCoord && <FilterSelect label="Editor" value={fEditor} onChange={setFEditor} options={editorOpts} />}
+
+          {hasFilters && (
+            <button onClick={clearAll} className="flex items-center gap-1 h-8 px-2.5 text-xs rounded-md border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary)/0.5)] transition-colors">
+              <X className="h-3 w-3" /> Limpar
+            </button>
+          )}
+
           <div className="flex-1" />
 
-          {/* View toggle — mesmo estilo do Timeline */}
+          {/* Count */}
+          <span className="text-xs text-[hsl(var(--muted-foreground))] shrink-0">
+            {filteredTasks.length} tarefa{filteredTasks.length !== 1 ? "s" : ""}
+          </span>
+
+          {/* View toggle */}
           <div className="flex items-center rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-0.5 shrink-0">
             {(["week", "month"] as View[]).map(v => {
               const Icon = v === "week" ? CalendarDays : CalIcon;
-              const label = v === "week" ? "Semana" : "Mês";
               return (
                 <button
                   key={v}
@@ -149,7 +258,7 @@ export default function Calendar() {
                   }`}
                 >
                   <Icon className="h-3.5 w-3.5" />
-                  {label}
+                  {v === "week" ? "Semana" : "Mês"}
                 </button>
               );
             })}
@@ -163,7 +272,6 @@ export default function Calendar() {
         {/* ── WEEK VIEW ── */}
         {view === "week" && (
           <>
-            {/* Day headers */}
             <div className="grid grid-cols-7 border-b shrink-0">
               {weekDays.map((day, i) => {
                 const isToday = fmt(day) === today;
@@ -176,7 +284,6 @@ export default function Calendar() {
                 );
               })}
             </div>
-            {/* Day columns */}
             <div className="flex-1 overflow-y-auto">
               <div className="grid grid-cols-7 min-h-full">
                 {weekDays.map((day, i) => {
@@ -211,7 +318,6 @@ export default function Calendar() {
         {/* ── MONTH VIEW ── */}
         {view === "month" && (
           <div className="flex flex-col flex-1 min-h-0">
-            {/* Day-of-week header */}
             <div className="grid grid-cols-7 border-b shrink-0 bg-[hsl(var(--muted))]/30">
               {DAYS_PT.map(d => (
                 <div key={d} className="px-2 py-2 text-center border-r last:border-r-0">
@@ -219,7 +325,6 @@ export default function Calendar() {
                 </div>
               ))}
             </div>
-            {/* 6 rows */}
             <div className="flex-1 grid grid-cols-7" style={{ gridTemplateRows: "repeat(6, 1fr)" }}>
               {monthGridCells.map((day, i) => {
                 const isToday     = fmt(day) === today;
@@ -245,10 +350,7 @@ export default function Calendar() {
                         {day.getDate()}
                       </span>
                       {isCoord && isThisMonth && (
-                        <button
-                          type="button"
-                          onClick={() => openCreate(fmt(day))}
-                          title="Nova tarefa"
+                        <button type="button" onClick={() => openCreate(fmt(day))} title="Nova tarefa"
                           className="h-5 w-5 rounded flex items-center justify-center text-[hsl(var(--muted-foreground))]/30 hover:text-[hsl(var(--primary))]/70 hover:bg-[hsl(var(--primary))]/10 transition-colors opacity-0 group-hover:opacity-100"
                         >
                           <Plus className="h-3 w-3" />
