@@ -687,16 +687,20 @@ export default function TasksOverview() {
                           {closed.line2 && <span className={`text-[10px] leading-tight ${closed.cls} opacity-80`}>{closed.line2}</span>}
                         </>
                       );
-                      return t.dueDate ? (
-                        <>
-                          <span className={`text-xs leading-tight ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
-                            {fmtDateHuman(t.dueDate)}
-                          </span>
-                          {fmtDateHuman(t.dueDate) !== fmtDate(t.dueDate) && (
-                            <span style={{ fontSize: "9px", opacity: 0.5 }} className="text-[hsl(var(--muted-foreground))] leading-tight">{fmtDate(t.dueDate)}</span>
-                          )}
-                        </>
-                      ) : (
+                      return t.dueDate ? (() => {
+                        const human = fmtDateHuman(t.dueDate);
+                        const full  = fmtDate(t.dueDate);
+                        const hasTwoParts = human !== full;
+                        const color = overdue ? "text-red-500" : "text-[hsl(var(--muted-foreground))]";
+                        return (
+                          <>
+                            {hasTwoParts && (
+                              <span className={`text-xs leading-tight font-${overdue ? "semibold" : "normal"} ${color}`}>{human}</span>
+                            )}
+                            <span style={{ fontSize: "9px", opacity: hasTwoParts ? 0.5 : 0.8 }} className={`${overdue && !hasTwoParts ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]"} leading-tight`}>{full}</span>
+                          </>
+                        );
+                      })() : (
                         <span className="text-xs text-[hsl(var(--muted-foreground))]/40">—</span>
                       );
                     })()}

@@ -342,13 +342,24 @@ export default function EditorTaskList() {
                       {closed.line2 && <span className={`text-[10px] leading-tight ${closed.cls} opacity-80`}>{closed.line2}</span>}
                     </>
                   );
-                  return t.dueDate ? (
-                    <span className={`flex items-center gap-1 text-xs ${overdue ? "text-red-600 font-semibold" : "text-[hsl(var(--muted-foreground))]"}`}>
-                      {overdue && <AlertCircle className="h-3 w-3 shrink-0" />}
-                      <Calendar className="h-3 w-3 shrink-0" />
-                      {fmtDateHuman(t.dueDate)}
-                    </span>
-                  ) : (
+                  return t.dueDate ? (() => {
+                    const human = fmtDateHuman(t.dueDate);
+                    const full  = fmtDate(t.dueDate);
+                    const hasTwoParts = human !== full;
+                    const color = overdue ? "text-red-600" : "text-[hsl(var(--muted-foreground))]";
+                    return (
+                      <>
+                        {hasTwoParts && (
+                          <span className={`flex items-center gap-1 text-xs ${overdue ? "font-semibold" : ""} ${color}`}>
+                            {overdue && <AlertCircle className="h-3 w-3 shrink-0" />}
+                            <Calendar className="h-3 w-3 shrink-0" />
+                            {human}
+                          </span>
+                        )}
+                        <span style={{ fontSize: "9px", opacity: hasTwoParts ? 0.5 : 0.8 }} className={`${overdue && !hasTwoParts ? "text-red-600 font-semibold" : "text-[hsl(var(--muted-foreground))]"} leading-tight`}>{full}</span>
+                      </>
+                    );
+                  })() : (
                     <span className="text-xs text-[hsl(var(--muted-foreground))]/40">—</span>
                   );
                 })()}
