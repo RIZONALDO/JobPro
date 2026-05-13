@@ -237,7 +237,7 @@ export default function Pipeline() {
                         )}
 
                         {/* Priority + due date + assignee — single row, no wrap */}
-                        <div className="flex items-center gap-1 min-w-0 overflow-hidden">
+                        <div className="flex items-center gap-1 min-w-0">
                           <PriorityBadge priority={t.priority} showLabel={false} />
                           {t.dueDate && (() => {
                             const parts = fmtDateParts(t.dueDate);
