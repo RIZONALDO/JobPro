@@ -4,7 +4,7 @@ import {
   feedItemsTable, feedReactionsTable, feedCommentsTable,
   chatMessagesTable, userPresenceTable, usersTable,
 } from "@workspace/db";
-import { eq, desc, asc, and, gt, inArray } from "drizzle-orm"; // gt used in presence query
+import { eq, desc, asc, and, gt, inArray, sql } from "drizzle-orm"; // gt used in presence query
 import { requireAuth } from "../lib/auth.js";
 import {
   broadcastFeedReaction, broadcastFeedComment, broadcastFeedCommentDeleted,
@@ -292,17 +292,29 @@ router.post("/chat/messages", requireAuth, async (req, res): Promise<void> => {
   if (!content?.trim()) { res.status(400).json({ error: "Mensagem obrigatória" }); return; }
 
   const userId = req.session.userId!;
-  const [msg] = await db
-    .insert(chatMessagesTable)
-    .values({ userId, content: String(content).trim() })
-    .returning();
+  const contentTrimmed = String(content).trim();
 
-  const [user] = await db
-    .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
-    .from(usersTable)
-    .where(eq(usersTable.id, userId));
+  const result = await db.execute<{
+    id: number; userId: number; content: string; createdAt: Date;
+    userName: string | null; userAvatar: string | null;
+  }>(sql`
+    WITH inserted AS (
+      INSERT INTO te_chat_messages (user_id, content)
+      VALUES (${userId}, ${contentTrimmed})
+      RETURNING id, user_id, content, created_at
+    )
+    SELECT
+      i.id::int,
+      i.user_id::int        AS "userId",
+      i.content,
+      i.created_at          AS "createdAt",
+      u.name                AS "userName",
+      u.avatar_url          AS "userAvatar"
+    FROM inserted i
+    JOIN te_users u ON u.id = i.user_id
+  `);
 
-  const enriched = { ...msg, userName: user?.name ?? null, userAvatar: user?.avatarUrl ?? null };
+  const enriched = result.rows[0];
   broadcastChatMessage(enriched);
   await notifyMentions(mentions, userId, "no chat");
   res.status(201).json(enriched);

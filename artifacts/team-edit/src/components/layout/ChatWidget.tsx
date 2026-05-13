@@ -228,7 +228,12 @@ export function ChatWidget() {
   useEffect(() => {
     const socket = getSocket();
     const onChatMessage = (msg: ChatMessage) => {
-      setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
+      setMessages(prev => {
+        if (prev.some(m => m.id === msg.id)) return prev;
+        // Remove optimistic placeholders (negative id) when the real message arrives from the same user
+        const base = msg.userId === user?.id ? prev.filter(m => m.id > 0) : prev;
+        return [...base, msg];
+      });
       if (!chatOpenRef.current || activeViewRef.current !== "general") {
         setGeneralUnread(prev => prev + 1);
         if (user && msg.content.toLowerCase().includes(`@${(user.name ?? "").toLowerCase()}`)) setHasMention(true);
@@ -265,10 +270,27 @@ export function ChatWidget() {
   }, [user]);
 
   const sendMsg = async () => {
-    if (!msgText.trim()) return;
-    setSending(true);
-    try { await apiPost("/api/chat/messages", { content: msgText }); setMsgText(""); }
-    catch {} finally { setSending(false); }
+    if (!msgText.trim() || !user) return;
+    const text = msgText.trim();
+    const optimisticId = -Date.now();
+    setMessages(prev => [...prev, {
+      id: optimisticId,
+      userId: user.id,
+      content: text,
+      createdAt: new Date().toISOString(),
+      userName: user.name ?? null,
+      userAvatar: user.avatarUrl ?? null,
+    }]);
+    setMsgText("");
+    try {
+      await apiPost("/api/chat/messages", { content: text });
+      // Socket handler already replaced the optimistic msg with the real one;
+      // ensure cleanup in case socket is delayed
+      setMessages(prev => prev.filter(m => m.id !== optimisticId));
+    } catch {
+      setMessages(prev => prev.filter(m => m.id !== optimisticId));
+      setMsgText(text);
+    }
   };
 
   const sendDm = async () => {
@@ -514,7 +536,7 @@ export function ChatWidget() {
                   <div className="shrink-0 p-3 border-t" style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
                     <div className="flex gap-2 items-end rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: "hsl(var(--muted))" }}>
                       <ChatTextarea value={msgText} onChange={setMsgText} onSend={sendMsg} users={allUsers} placeholder="Mensagem..." />
-                      <Button size="sm" onClick={sendMsg} disabled={sending || !msgText.trim()} className="h-8 w-8 p-0 shrink-0 rounded-xl">
+                      <Button size="sm" onClick={sendMsg} disabled={!msgText.trim()} className="h-8 w-8 p-0 shrink-0 rounded-xl">
                         <Send className="h-3.5 w-3.5" />
                       </Button>
                     </div>
