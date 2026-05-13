@@ -154,10 +154,10 @@ export default function EditorTaskList() {
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
+      <div className="rounded-xl border bg-[hsl(var(--card))] card-float flex flex-col md:max-h-[calc(100vh-160px)] overflow-hidden">
 
-        {/* Header — desktop only */}
-        <div className="hidden md:flex items-center gap-3 px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
+        {/* Header — desktop fixo */}
+        <div className="hidden md:flex shrink-0 items-center gap-3 px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
           <div className="w-28 shrink-0">Status</div>
           <div className="flex-1 min-w-0">Tarefa</div>
           <div className="w-20 shrink-0 hidden lg:block">Prioridade</div>
@@ -166,6 +166,9 @@ export default function EditorTaskList() {
           <div className="w-32 shrink-0">Ação</div>
           <div className="w-8 shrink-0" />
         </div>
+
+        {/* Body scrollável */}
+        <div className="flex-1 overflow-y-auto overscroll-contain">
 
         {filtered.length === 0 ? (
           <div className="py-16 text-center">
@@ -375,6 +378,7 @@ export default function EditorTaskList() {
             </motion.div>
           );
         })}
+        </div>{/* fim body scrollável */}
       </div>
 
       {/* Devolver dialog */}

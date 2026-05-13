@@ -58,13 +58,16 @@ interface OverviewTask {
 
 
 const STATUS_OPTIONS = [
-  { value: "all",         label: "Todos os status" },
+  { value: "active",      label: "Ativas" },
+  { value: "all",         label: "Todas" },
   { value: "rascunho",    label: "Rascunho" },
   { value: "pending",     label: "Pendente" },
   { value: "in_progress", label: "Em andamento" },
   { value: "review",      label: "Em revisão" },
   { value: "in_revision", label: "Em alteração" },
+  { value: "paused",      label: "Pausada" },
   { value: "completed",   label: "Concluída" },
+  { value: "cancelled",   label: "Cancelada" },
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -97,7 +100,7 @@ export default function TasksOverview() {
 
   // Filters
   const [search,       setSearch]       = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("active");
   const [filterEditor, setFilterEditor] = useState("all");
   const [filterCoord,  setFilterCoord]  = useState("all");
 
@@ -158,11 +161,12 @@ export default function TasksOverview() {
 
   const load = useCallback(() => {
     setLoading(true);
-    apiFetch<OverviewTask[]>("/api/tasks/overview")
+    const qs = filterStatus !== "active" ? `?status=${filterStatus}` : "";
+    apiFetch<OverviewTask[]>(`/api/tasks/overview${qs}`)
       .then(setTasks)
       .catch(() => toast({ title: "Erro ao carregar tarefas", variant: "destructive" }))
       .finally(() => setLoading(false));
-  }, []);
+  }, [filterStatus, toast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -185,16 +189,20 @@ export default function TasksOverview() {
 
   // ── Client-side filters ───────────────────────────────────────────────────
 
+  // status is server-side; editor/coord/search are client-side
   const filtered = tasks.filter(t => {
-    if (filterStatus !== "all" && t.status !== filterStatus) return false;
-    if (filterEditor !== "all" && String(t.assignee?.id ?? "") !== filterEditor) return false;
+    if (filterEditor !== "all" && String(t.assignee?.id ?? "") !== filterEditor &&
+        !t.editors.some(e => String(e.id) === filterEditor)) return false;
     if (filterCoord  !== "all" && String(t.coordinator?.id ?? "") !== filterCoord) return false;
-    if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!t.title.toLowerCase().includes(q) && !(t.client ?? "").toLowerCase().includes(q)) return false;
+    }
     return true;
   });
 
-  const hasFilter = search || filterStatus !== "all" || filterEditor !== "all" || filterCoord !== "all";
-  const clearFilters = () => { setSearch(""); setFilterStatus("all"); setFilterEditor("all"); setFilterCoord("all"); };
+  const hasFilter = search || filterStatus !== "active" || filterEditor !== "all" || filterCoord !== "all";
+  const clearFilters = () => { setSearch(""); setFilterStatus("active"); setFilterEditor("all"); setFilterCoord("all"); };
 
   // ── Client-side sort ──────────────────────────────────────────────────────
 
@@ -297,7 +305,7 @@ export default function TasksOverview() {
             <SlidersHorizontal className="h-3.5 w-3.5" />
             {(filterStatus !== "all" || filterEditor !== "all" || filterCoord !== "all") && (
               <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-[hsl(var(--primary))] text-white text-[10px] font-bold flex items-center justify-center">
-                {[filterStatus !== "all", filterEditor !== "all", filterCoord !== "all"].filter(Boolean).length}
+                {[filterStatus !== "active", filterEditor !== "all", filterCoord !== "all"].filter(Boolean).length}
               </span>
             )}
           </Button>
@@ -399,9 +407,9 @@ export default function TasksOverview() {
       </div>
 
       {/* ── Table ────────────────────────────────────────────────────────── */}
-      <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
+      <div className="rounded-xl border bg-[hsl(var(--card))] card-float flex flex-col md:max-h-[calc(100vh-200px)] overflow-hidden">
 
-        {/* Column headers — desktop only (md+) */}
+        {/* Column headers — desktop fixed, não scrollam */}
         {(() => {
           const SortIcon = ({ col }: { col: string }) => {
             if (sortKey !== col) return <ChevronsUpDown className="h-3 w-3 opacity-30" />;
@@ -418,7 +426,7 @@ export default function TasksOverview() {
             </button>
           );
           return (
-            <div className="hidden md:flex items-center px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b">
+            <div className="hidden md:flex shrink-0 items-center px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b">
               <div className="flex-1 pr-3"><Th col="taskCode" label="Tarefa" /></div>
               <div className="w-32 shrink-0"><Th col="status" label="Status" /></div>
               <div className="w-20 shrink-0 hidden lg:block"><Th col="priority" label="Prior." /></div>
@@ -429,6 +437,9 @@ export default function TasksOverview() {
             </div>
           );
         })()}
+
+        {/* Body scrollável */}
+        <div className="flex-1 overflow-y-auto overscroll-contain">
 
         {/* Loading skeleton */}
         {loading ? (
@@ -744,6 +755,8 @@ export default function TasksOverview() {
             })}
           </div>
         )}
+
+        </div>{/* fim body scrollável */}
       </div>
 
       {/* ── Cancel / Pause confirm dialog ─────────────────────────────────── */}

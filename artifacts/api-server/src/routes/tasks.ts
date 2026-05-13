@@ -92,7 +92,16 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
   if (coordIds.length === 0) { res.json([]); return; }
 
   const conditions: any[] = [inArray(tasksTable.createdById, coordIds)];
-  if (status && status !== "all") conditions.push(eq(tasksTable.status, String(status)));
+  if (status === "active") {
+    conditions.push(ne(tasksTable.status, "completed"));
+    conditions.push(ne(tasksTable.status, "cancelled"));
+  } else if (status && status !== "all") {
+    conditions.push(eq(tasksTable.status, String(status)));
+  } else if (!status) {
+    // default: active only
+    conditions.push(ne(tasksTable.status, "completed"));
+    conditions.push(ne(tasksTable.status, "cancelled"));
+  }
   if (assignedToId) conditions.push(eq(tasksTable.assignedToId, parseInt(String(assignedToId), 10)));
   if (createdById) conditions.push(eq(tasksTable.createdById, parseInt(String(createdById), 10)));
 
