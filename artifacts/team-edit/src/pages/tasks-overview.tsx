@@ -290,7 +290,7 @@ export default function TasksOverview() {
       {/* ── Filters ──────────────────────────────────────────────────────── */}
 
       {/* Mobile filter bar (< sm) */}
-      <div className="sm:hidden space-y-2">
+      <div className="sm:hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm p-3 space-y-2">
         <div className="flex gap-2">
           <Input
             value={search}
@@ -355,7 +355,7 @@ export default function TasksOverview() {
       </div>
 
       {/* Desktop filter bar (sm+) */}
-      <div className="hidden sm:flex items-center gap-2 flex-wrap">
+      <div className="hidden sm:flex items-center gap-2 flex-wrap rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm px-4 py-3">
         <Input
           value={search}
           onChange={e => setSearch(e.target.value)}

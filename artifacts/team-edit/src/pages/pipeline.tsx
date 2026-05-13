@@ -134,9 +134,9 @@ export default function Pipeline() {
   const total = filteredTasks.length;
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Filter toolbar */}
-      <div className="shrink-0 flex items-center gap-2 flex-wrap px-4 md:px-6 py-3 border-b bg-[hsl(var(--card))]">
+    <div className="flex flex-col h-full overflow-hidden p-4 gap-4 bg-[hsl(var(--background))]">
+      {/* Filter card */}
+      <div className="shrink-0 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm px-4 py-3 flex items-center gap-2 flex-wrap">
         <div className="relative flex items-center">
           <Search className="absolute left-2.5 h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] pointer-events-none" />
           <Input
@@ -181,9 +181,9 @@ export default function Pipeline() {
         </span>
       </div>
 
-      {/* Kanban */}
-      <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto px-4 md:px-6 py-4">
-      <div className="flex gap-4 items-start h-full">
+      {/* Kanban card */}
+      <div className="flex-1 min-h-0 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm overflow-x-auto overflow-y-auto">
+      <div className="flex gap-4 items-start h-full p-4">
         {COLUMNS.map(col => {
           const colTasks = filteredTasks.filter(t => t.status === col.key);
           return (
