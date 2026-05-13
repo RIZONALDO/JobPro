@@ -820,7 +820,7 @@ export default function TasksOverview() {
         <ReassignEditorModal
           open={!!reassignTarget}
           onOpenChange={v => { if (!v) setReassignTarget(null); }}
-          onSaved={() => { setReassignTarget(null); load(); }}
+          onSaved={() => { setReassignTarget(null); load(true); }}
           taskId={reassignTarget.taskId}
           taskTitle={reassignTarget.taskTitle}
           currentAssignedTo={reassignTarget.assignedTo}
@@ -831,7 +831,7 @@ export default function TasksOverview() {
       <TaskFormModal
         open={formOpen}
         onOpenChange={setFormOpen}
-        onSaved={load}
+        onSaved={() => load(true)}
         editTaskId={editTaskId}
       />
 
