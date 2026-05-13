@@ -140,7 +140,7 @@ export default function TasksOverview() {
       await apiPut(`/api/tasks/${taskId}`, { status: action === "cancel" ? "cancelled" : "paused" });
       toast({ title: action === "cancel" ? "Tarefa cancelada" : "Tarefa pausada" });
       setConfirmTask(null);
-      load();
+      load(true);
     } catch (e: unknown) {
       toast({ title: e instanceof Error ? e.message : "Erro", variant: "destructive" });
     } finally { setSendingConfirm(false); }
@@ -153,24 +153,24 @@ export default function TasksOverview() {
       await apiDelete(`/api/tasks/${deleteTarget.id}`);
       toast({ title: "Tarefa excluída" });
       setDeleteTarget(null);
-      load();
+      load(true);
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Erro ao excluir", variant: "destructive" });
     } finally { setDeleting(false); }
   };
 
-  const load = useCallback(() => {
-    setLoading(true);
+  const load = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
     const qs = filterStatus !== "active" ? `?status=${filterStatus}` : "";
     apiFetch<OverviewTask[]>(`/api/tasks/overview${qs}`)
       .then(setTasks)
       .catch(() => toast({ title: "Erro ao carregar tarefas", variant: "destructive" }))
-      .finally(() => setLoading(false));
+      .finally(() => { if (!silent) setLoading(false); });
   }, [filterStatus, toast]);
 
   useEffect(() => { load(); }, [load]);
 
-  useRealtime({ onTasksChanged: load });
+  useRealtime({ onTasksChanged: () => load(true) });
 
   const editors = useMemo(() => {
     const map = new Map<number, Person>();
@@ -257,7 +257,7 @@ export default function TasksOverview() {
     try {
       await apiPut(`/api/tasks/${t.id}`, { status: "completed" });
       toast({ title: "Tarefa aprovada" });
-      load();
+      load(true);
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Erro ao aprovar", variant: "destructive" });
     }
@@ -273,7 +273,7 @@ export default function TasksOverview() {
       await apiPut(`/api/tasks/${revisionTask.id}`, { status: "in_progress", revisionComment: revisionComment.trim() });
       toast({ title: "Alteração solicitada" });
       setRevisionTask(null);
-      load();
+      load(true);
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Erro", variant: "destructive" });
     } finally {

@@ -91,10 +91,15 @@ export default function EditorTaskList() {
   useRealtime({ onTasksChanged: load });
 
   const updateStatus = async (task: Task, status: string) => {
+    // Optimistic: update status locally before waiting for server
+    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status } : t));
     try {
       await apiPut(`/api/tasks/${task.id}`, { status });
       load();
-    } catch { toast({ title: "Erro ao atualizar status", variant: "destructive" }); }
+    } catch {
+      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: task.status } : t));
+      toast({ title: "Erro ao atualizar status", variant: "destructive" });
+    }
   };
 
   const confirmReturn = async () => {
