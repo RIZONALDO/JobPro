@@ -335,8 +335,8 @@ export default function TasksOverview() {
             <Select value={filterCoord} onValueChange={setFilterCoord}>
               <SelectTrigger className="h-9 text-sm w-full"><SelectValue placeholder="Todos" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                {user && <SelectItem value={String(user.id)}>Eu</SelectItem>}
+                <SelectItem value="all">Geral</SelectItem>
+                {user && <SelectItem value={String(user.id)}>Minhas</SelectItem>}
                 {coordinators.filter(c => c.id !== user?.id).map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
