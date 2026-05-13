@@ -605,7 +605,7 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
 
   const roleFilter = role === "editor"
     ? or(eq(tasksTable.assignedToId, userId), inArray(tasksTable.id, editorJunctionSubq))
-    : eq(tasksTable.createdById, userId);
+    : ne(tasksTable.status, "rascunho");
 
   const rows = await db
     .select({
@@ -617,6 +617,7 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
       color: tasksTable.color,
       client: tasksTable.client,
       assignedToId: tasksTable.assignedToId,
+      createdById: tasksTable.createdById,
     })
     .from(tasksTable)
     .where(and(
@@ -627,15 +628,24 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
     ))
     .orderBy(asc(tasksTable.dueDate));
 
-  const assigneeIds = [...new Set(rows.map(r => r.assignedToId).filter(Boolean))] as number[];
-  const assigneeMap: Record<number, string> = {};
-  if (assigneeIds.length > 0) {
-    const assignees = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable)
-      .where(inArray(usersTable.id, assigneeIds));
-    assignees.forEach(a => { assigneeMap[a.id] = a.name; });
+  const personIds = [...new Set([
+    ...rows.map(r => r.assignedToId),
+    ...rows.map(r => r.createdById),
+  ].filter(Boolean))] as number[];
+
+  const personMap: Record<number, string> = {};
+  if (personIds.length > 0) {
+    const persons = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable)
+      .where(inArray(usersTable.id, personIds));
+    persons.forEach(p => { personMap[p.id] = p.name; });
   }
 
-  res.json(rows.map(r => ({ ...r, assigneeName: r.assignedToId ? assigneeMap[r.assignedToId] ?? null : null })));
+  res.json(rows.map(r => ({
+    ...r,
+    assigneeName:    r.assignedToId ? personMap[r.assignedToId] ?? null : null,
+    coordinatorId:   r.createdById ?? null,
+    coordinatorName: r.createdById ? personMap[r.createdById] ?? null : null,
+  })));
 });
 
 // ── Workload ──────────────────────────────────────────────────────────────────

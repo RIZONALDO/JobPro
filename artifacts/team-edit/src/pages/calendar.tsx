@@ -3,8 +3,7 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { ChevronLeft, ChevronRight, CalendarDays, Calendar as CalIcon, Plus, Search, X, ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, CalendarDays, Calendar as CalIcon, Plus, X, ChevronDown } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { toLocalDate } from "@/lib/utils";
 import { TaskFormModal } from "@/components/task-form-modal";
@@ -19,6 +18,8 @@ interface CalendarTask {
   client: string | null;
   assignedToId: number | null;
   assigneeName: string | null;
+  coordinatorId: number | null;
+  coordinatorName: string | null;
 }
 
 type View = "week" | "month";
@@ -104,11 +105,11 @@ export default function Calendar() {
   const [initialDueDate, setInitialDueDate] = useState("");
 
   // Filters
-  const [search,    setSearch]    = useState("");
   const [fPriority, setFPriority] = useState("all");
   const [fStatus,   setFStatus]   = useState("all");
   const [fClient,   setFClient]   = useState("all");
   const [fEditor,   setFEditor]   = useState("all");
+  const [fCoord,    setFCoord]    = useState("all");
 
   const monthGridStart = useMemo(() => getMonthGridStart(monthDate), [monthDate]);
   const monthGridCells = useMemo(() =>
@@ -143,21 +144,24 @@ export default function Calendar() {
     return Array.from(seen.entries()).map(([v, l]) => ({ value: v, label: l }));
   }, [tasks]);
 
+  const coordOpts = useMemo(() => {
+    const seen = new Map<string, string>();
+    tasks.forEach(t => { if (t.coordinatorId && t.coordinatorName) seen.set(String(t.coordinatorId), t.coordinatorName); });
+    return Array.from(seen.entries()).map(([v, l]) => ({ value: v, label: l }));
+  }, [tasks]);
+
   // Filtered tasks for display
   const filteredTasks = useMemo(() => tasks.filter(t => {
-    if (fPriority !== "all" && t.priority !== fPriority) return false;
-    if (fStatus   !== "all" && t.status   !== fStatus)   return false;
-    if (fClient   !== "all" && t.client   !== fClient)   return false;
-    if (fEditor   !== "all" && String(t.assignedToId ?? "") !== fEditor) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      if (!t.title.toLowerCase().includes(q) && !(t.client ?? "").toLowerCase().includes(q)) return false;
-    }
+    if (fPriority !== "all" && t.priority   !== fPriority) return false;
+    if (fStatus   !== "all" && t.status     !== fStatus)   return false;
+    if (fClient   !== "all" && t.client     !== fClient)   return false;
+    if (fEditor   !== "all" && String(t.assignedToId  ?? "") !== fEditor) return false;
+    if (fCoord    !== "all" && String(t.coordinatorId ?? "") !== fCoord)  return false;
     return true;
-  }), [tasks, fPriority, fStatus, fClient, fEditor, search]);
+  }), [tasks, fPriority, fStatus, fClient, fEditor, fCoord]);
 
-  const hasFilters = search || fPriority !== "all" || fStatus !== "all" || fClient !== "all" || fEditor !== "all";
-  const clearAll = () => { setSearch(""); setFPriority("all"); setFStatus("all"); setFClient("all"); setFEditor("all"); };
+  const hasFilters = fPriority !== "all" || fStatus !== "all" || fClient !== "all" || fEditor !== "all" || fCoord !== "all";
+  const clearAll = () => { setFPriority("all"); setFStatus("all"); setFClient("all"); setFEditor("all"); setFCoord("all"); };
 
   const today    = toLocalDate(new Date());
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
@@ -195,25 +199,11 @@ export default function Calendar() {
         <div className="flex items-center gap-2.5 flex-wrap">
 
           {/* ── Filtros (esquerda) ── */}
-          <div className="relative flex items-center">
-            <Search className="absolute left-2.5 h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] pointer-events-none" />
-            <Input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar…"
-              className="h-8 pl-8 pr-7 text-xs w-36 bg-[hsl(var(--background))]"
-            />
-            {search && (
-              <button onClick={() => setSearch("")} className="absolute right-2 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]">
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-
-          <FilterSelect label="Status"     value={fStatus}   onChange={setFStatus}   options={STATUS_OPTS}   />
-          <FilterSelect label="Prioridade" value={fPriority} onChange={setFPriority} options={PRIORITY_OPTS} />
-          <FilterSelect label="Cliente"    value={fClient}   onChange={setFClient}   options={clientOpts}   />
-          {isCoord && <FilterSelect label="Editor" value={fEditor} onChange={setFEditor} options={editorOpts} />}
+          <FilterSelect label="Status"       value={fStatus}   onChange={setFStatus}   options={STATUS_OPTS}   />
+          <FilterSelect label="Prioridade"   value={fPriority} onChange={setFPriority} options={PRIORITY_OPTS} />
+          <FilterSelect label="Cliente"      value={fClient}   onChange={setFClient}   options={clientOpts}   />
+          {isCoord && <FilterSelect label="Editor"      value={fEditor}   onChange={setFEditor}   options={editorOpts}   />}
+          {isCoord && <FilterSelect label="Coordenador" value={fCoord}    onChange={setFCoord}    options={coordOpts}    />}
 
           {hasFilters && (
             <button onClick={clearAll} className="flex items-center gap-1 h-8 px-2.5 text-xs rounded-md border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary)/0.5)] transition-colors">
