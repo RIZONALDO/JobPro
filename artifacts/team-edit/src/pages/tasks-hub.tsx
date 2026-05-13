@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import TasksOverview   from "@/pages/tasks-overview";
 import EditorTaskList  from "@/pages/editor-task-list";
 import MyTasks         from "@/pages/my-tasks";
+import Pipeline        from "@/pages/pipeline";
 import TimelinePage    from "@/pages/timeline";
 
 type Tab = "lista" | "board" | "timeline";
@@ -66,7 +67,7 @@ export default function TasksHub() {
       {/* ── Board ──────────────────────────────────────────────────── */}
       {tab === "board" && (
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6">
-          <MyTasks />
+          {isEditor ? <MyTasks /> : <Pipeline />}
         </div>
       )}
 
