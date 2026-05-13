@@ -254,7 +254,7 @@ export default function Team() {
                           <AvatarDisplay
                             name={editor.name}
                             avatarUrl={editor.avatarUrl}
-                            className="h-8 w-8 text-xs"
+                            className="h-8 w-8 text-xs ring-0"
                             style={{ backgroundColor: color + "22", color, border: `1.5px solid ${color}` }}
                           />
 
@@ -354,7 +354,6 @@ export default function Team() {
                     <AvatarDisplay
                       name={u.name}
                       avatarUrl={u.avatarUrl}
-                      className="h-8 w-8 text-sm bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
