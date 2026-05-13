@@ -177,17 +177,6 @@ export default function Pipeline() {
         </span>
       </div>
 
-      {/* Summary */}
-      <div className="flex items-center gap-6 text-xs text-[hsl(var(--muted-foreground))]">
-        {COLUMNS.map(col => {
-          const n = filteredTasks.filter(t => t.status === col.key).length;
-          return n > 0 ? <span key={col.key} className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: col.accent }} />
-            {n} {col.label}
-          </span> : null;
-        })}
-      </div>
-
       {/* Kanban */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
         {COLUMNS.map(col => {
