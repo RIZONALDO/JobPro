@@ -1,15 +1,41 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRealtime } from "@/hooks/use-realtime";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { usePageTitle } from "@/lib/use-page-title";
 import { fmtDateParts } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Tag, AlertTriangle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Calendar, Tag, AlertTriangle, Search, X, ChevronDown } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { PriorityBadge } from "@/components/ui/priority-badge";
+
+function FilterSelect({ label, value, onChange, options }: {
+  label: string; value: string; onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div className="relative flex items-center">
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="h-8 pl-3 pr-7 text-xs rounded-md border border-[hsl(var(--border))]
+          bg-[hsl(var(--background))] text-[hsl(var(--foreground))]
+          appearance-none cursor-pointer focus:outline-none
+          focus:ring-1 focus:ring-[hsl(var(--primary)/0.4)]
+          hover:border-[hsl(var(--primary)/0.5)] transition-colors"
+        style={{ minWidth: 110 }}
+      >
+        <option value="all">{label}: Todos</option>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-2 h-3 w-3 text-[hsl(var(--muted-foreground))]" />
+    </div>
+  );
+}
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
 
@@ -36,12 +62,26 @@ const COLUMNS: { key: string; label: string; desc: string; accent: string }[] = 
   { key: "in_revision", label: "Em alteração",  desc: "Pedido de alteração",   accent: "#f97316" },
 ];
 
+const PRIORITY_OPTS = [
+  { value: "high",   label: "Alta" },
+  { value: "medium", label: "Média" },
+  { value: "low",    label: "Baixa" },
+];
+
 export default function Pipeline() {
   usePageTitle("Pipeline");
+  const { user } = useAuth();
   const { toast } = useToast();
   const { openTask } = useTaskModal();
   const [tasks, setTasks] = useState<PipelineTask[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Filters
+  const [search,    setSearch]    = useState("");
+  const [fPriority, setFPriority] = useState("all");
+  const [fClient,   setFClient]   = useState("all");
+  const [fEditor,   setFEditor]   = useState("all");
+  const [fCoord,    setFCoord]    = useState("all");
 
   const load = useCallback(() => {
     apiFetch<PipelineTask[]>("/api/pipeline")
@@ -53,31 +93,105 @@ export default function Pipeline() {
   useEffect(() => { load(); }, [load]);
   useRealtime({ onTasksChanged: load });
 
+  const clientOpts = useMemo(() =>
+    Array.from(new Set(tasks.map(t => t.client).filter(Boolean) as string[])).sort().map(c => ({ value: c, label: c })),
+    [tasks]);
+
+  const editorOpts = useMemo(() => {
+    const seen = new Map<string, string>();
+    tasks.forEach(t => { if (t.assignee) seen.set(String(t.assignee.id), t.assignee.name); });
+    return Array.from(seen.entries()).map(([v, l]) => ({ value: v, label: l }));
+  }, [tasks]);
+
+  const coordOpts = useMemo(() => {
+    const seen = new Map<string, string>();
+    tasks.forEach(t => { if (t.coordinator && t.coordinator.id !== user?.id) seen.set(String(t.coordinator.id), t.coordinator.name); });
+    return Array.from(seen.entries()).map(([v, l]) => ({ value: v, label: l }));
+  }, [tasks, user]);
+
+  const hasFilters = search || fPriority !== "all" || fClient !== "all" || fEditor !== "all" || fCoord !== "all";
+  const clearAll = () => { setSearch(""); setFPriority("all"); setFClient("all"); setFEditor("all"); setFCoord("all"); };
+
+  const filteredTasks = useMemo(() => tasks.filter(t => {
+    if (fPriority !== "all" && t.priority !== fPriority) return false;
+    if (fClient   !== "all" && t.client   !== fClient)   return false;
+    if (fEditor   !== "all" && String(t.assignee?.id ?? "") !== fEditor) return false;
+    if (fCoord    !== "all" && String(t.coordinator?.id ?? "") !== fCoord) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!t.title.toLowerCase().includes(q) && !(t.client ?? "").toLowerCase().includes(q)) return false;
+    }
+    return true;
+  }), [tasks, fPriority, fClient, fEditor, fCoord, search]);
+
   if (loading) return <div className="text-[hsl(var(--muted-foreground))] text-sm">Carregando...</div>;
 
   const today = new Date().toISOString().split("T")[0];
-  const total = tasks.length;
+  const total = filteredTasks.length;
 
   return (
     <div className="space-y-4">
+      {/* Filter toolbar */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex items-center">
+          <Search className="absolute left-2.5 h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] pointer-events-none" />
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar…"
+            className="h-8 pl-8 pr-7 text-xs w-40"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]">
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+        <FilterSelect label="Prioridade" value={fPriority} onChange={setFPriority} options={PRIORITY_OPTS} />
+        <FilterSelect label="Cliente"    value={fClient}   onChange={setFClient}   options={clientOpts} />
+        <FilterSelect label="Editor"     value={fEditor}   onChange={setFEditor}   options={editorOpts} />
+        <div className="relative flex items-center">
+          <select
+            value={fCoord}
+            onChange={e => setFCoord(e.target.value)}
+            className="h-8 pl-3 pr-7 text-xs rounded-md border border-[hsl(var(--border))]
+              bg-[hsl(var(--background))] text-[hsl(var(--foreground))]
+              appearance-none cursor-pointer focus:outline-none
+              focus:ring-1 focus:ring-[hsl(var(--primary)/0.4)]
+              hover:border-[hsl(var(--primary)/0.5)] transition-colors"
+            style={{ minWidth: 110 }}
+          >
+            <option value="all">Coord.: Geral</option>
+            {user && <option value={String(user.id)}>Coord.: Minhas</option>}
+            {coordOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2 h-3 w-3 text-[hsl(var(--muted-foreground))]" />
+        </div>
+        {hasFilters && (
+          <button onClick={clearAll} className="flex items-center gap-1 h-8 px-2.5 text-xs rounded-md border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary)/0.5)] transition-colors">
+            <X className="h-3 w-3" /> Limpar
+          </button>
+        )}
+        <span className="ml-auto text-xs text-[hsl(var(--muted-foreground))]">
+          {total} {total === 1 ? "tarefa" : "tarefas"}
+        </span>
+      </div>
+
       {/* Summary */}
       <div className="flex items-center gap-6 text-xs text-[hsl(var(--muted-foreground))]">
-        <span>{total} {total === 1 ? "tarefa ativa" : "tarefas ativas"}</span>
         {COLUMNS.map(col => {
-          const n = tasks.filter(t => t.status === col.key).length;
-          return n > 0 ? (
-            <span key={col.key} className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: col.accent }} />
-              {n} {col.label}
-            </span>
-          ) : null;
+          const n = filteredTasks.filter(t => t.status === col.key).length;
+          return n > 0 ? <span key={col.key} className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: col.accent }} />
+            {n} {col.label}
+          </span> : null;
         })}
       </div>
 
       {/* Kanban */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
         {COLUMNS.map(col => {
-          const colTasks = tasks.filter(t => t.status === col.key);
+          const colTasks = filteredTasks.filter(t => t.status === col.key);
           return (
             <div key={col.key} className="flex flex-col gap-3">
               {/* Header */}
