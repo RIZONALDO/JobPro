@@ -19,7 +19,7 @@ import {
   ClipboardList, MoreVertical, FolderOpen,
   ArrowUpRight, X, PauseCircle, XCircle,
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
-  SlidersHorizontal, Check, Undo2,
+  SlidersHorizontal, Check, Undo2, Search,
 } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
@@ -285,7 +285,7 @@ export default function TasksOverview() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col h-full overflow-hidden p-4 gap-4 bg-[hsl(var(--background))]">
 
       {/* ── Filters ──────────────────────────────────────────────────────── */}
 
@@ -355,15 +355,23 @@ export default function TasksOverview() {
       </div>
 
       {/* Desktop filter bar (sm+) */}
-      <div className="hidden sm:flex items-center gap-2 flex-wrap rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm px-4 py-3">
-        <Input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar tarefa…"
-          className="h-9 w-52 text-sm"
-        />
+      <div className="hidden sm:flex items-center gap-2.5 flex-wrap rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm px-4 py-3">
+        <div className="relative flex-1 min-w-[160px] max-w-[240px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] pointer-events-none" />
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar tarefa…"
+            className="pl-8 h-8 text-sm bg-[hsl(var(--background))]"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]">
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="h-9 w-44 text-sm"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-8 w-40 text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
             {STATUS_OPTIONS.map(o => (
               <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
@@ -371,7 +379,7 @@ export default function TasksOverview() {
           </SelectContent>
         </Select>
         <Select value={filterEditor} onValueChange={setFilterEditor}>
-          <SelectTrigger className="h-9 w-44 text-sm">
+          <SelectTrigger className="h-8 w-40 text-xs">
             <SelectValue placeholder="Todos os editores" />
           </SelectTrigger>
           <SelectContent>
@@ -382,7 +390,7 @@ export default function TasksOverview() {
           </SelectContent>
         </Select>
         <Select value={filterCoord} onValueChange={setFilterCoord}>
-          <SelectTrigger className="h-9 w-48 text-sm">
+          <SelectTrigger className="h-8 w-44 text-xs">
             <SelectValue placeholder="Todos" />
           </SelectTrigger>
           <SelectContent>
@@ -394,23 +402,22 @@ export default function TasksOverview() {
           </SelectContent>
         </Select>
         {hasFilter && (
-          <Button variant="ghost" size="sm" className="h-9 text-xs gap-1.5 text-[hsl(var(--muted-foreground))]"
-            onClick={clearFilters}>
+          <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] border border-[hsl(var(--border))] rounded-md px-2.5 h-8 transition-colors">
             <X className="h-3 w-3" />Limpar
-          </Button>
+          </button>
         )}
         {canCreate && (
-          <Button size="sm" className="h-9 gap-1.5 ml-auto" onClick={() => { setEditTaskId(null); setFormOpen(true); }}>
+          <Button size="sm" className="h-8 gap-1.5 ml-auto" onClick={() => { setEditTaskId(null); setFormOpen(true); }}>
             <Plus className="h-3.5 w-3.5" />Nova tarefa
           </Button>
         )}
-        <span className={`text-xs text-[hsl(var(--muted-foreground))] ${!canCreate ? "ml-auto" : ""}`}>
+        <span className={`text-xs text-[hsl(var(--muted-foreground))] shrink-0 ${!canCreate ? "ml-auto" : ""}`}>
           {filtered.length} tarefa{filtered.length !== 1 ? "s" : ""}
         </span>
       </div>
 
       {/* ── Table ────────────────────────────────────────────────────────── */}
-      <div className="rounded-xl border bg-[hsl(var(--card))] card-float flex flex-col md:max-h-[calc(100vh-200px)] overflow-hidden">
+      <div className="flex-1 min-h-0 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm overflow-hidden flex flex-col">
 
         {/* Column headers — desktop fixed, não scrollam */}
         {(() => {

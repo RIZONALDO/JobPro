@@ -136,7 +136,7 @@ export default function Pipeline() {
   return (
     <div className="flex flex-col h-full overflow-hidden p-4 gap-4 bg-[hsl(var(--background))]">
       {/* Filter card */}
-      <div className="shrink-0 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm px-4 py-3 flex items-center gap-2 flex-wrap">
+      <div className="shrink-0 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm px-4 py-3 flex items-center gap-2.5 flex-wrap">
         <div className="relative flex items-center">
           <Search className="absolute left-2.5 h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] pointer-events-none" />
           <Input
