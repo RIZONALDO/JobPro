@@ -212,7 +212,7 @@ export default function Pipeline() {
                       <div
                         key={t.id}
                         onClick={() => openTask(t.id)}
-                        className="rounded-lg border bg-[hsl(var(--card))] card-float px-2.5 py-2 flex flex-col gap-1.5 hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
+                        className="rounded-lg border bg-[hsl(var(--card))] card-float px-2.5 py-2 flex flex-col gap-1.5 hover:shadow-md transition-shadow cursor-pointer"
                         style={{ borderLeft: `3px solid ${col.accent}`, minHeight: 72 }}
                       >
                         {/* Code + revision */}
