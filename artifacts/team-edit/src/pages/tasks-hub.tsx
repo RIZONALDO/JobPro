@@ -24,8 +24,10 @@ export default function TasksHub() {
   const TABS: { key: Tab; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
     { key: "lista",      label: "Lista",      Icon: List          },
     { key: "board",      label: "Board",      Icon: LayoutGrid    },
-    { key: "calendario", label: "Calendário", Icon: CalendarDays  },
-    ...(!isEditor ? [{ key: "timeline" as Tab, label: "Timeline", Icon: CalendarRange }] : []),
+    ...(!isEditor ? [
+      { key: "calendario" as Tab, label: "Calendário", Icon: CalendarDays  },
+      { key: "timeline"   as Tab, label: "Timeline",   Icon: CalendarRange },
+    ] : []),
   ];
 
   return (
@@ -77,8 +79,8 @@ export default function TasksHub() {
         </div>
       )}
 
-      {/* ── Calendário ─────────────────────────────────────────────── */}
-      {tab === "calendario" && (
+      {/* ── Calendário — apenas coordenadores ──────────────────────── */}
+      {tab === "calendario" && !isEditor && (
         <div className="flex-1 min-h-0 overflow-hidden">
           <CalendarPage />
         </div>
