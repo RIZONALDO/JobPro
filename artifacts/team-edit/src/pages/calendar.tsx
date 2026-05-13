@@ -295,7 +295,7 @@ export default function Calendar() {
               })}
             </div>
             <div className="flex-1 overflow-y-auto">
-              <div className="grid grid-cols-7 min-h-full">
+              <div className="grid grid-cols-7 min-h-full w-full">
                 {weekDays.map((day, i) => {
                   const isToday  = fmt(day) === today;
                   const dayTasks = tasksByDay(day);
