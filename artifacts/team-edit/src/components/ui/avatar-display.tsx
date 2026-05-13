@@ -34,14 +34,14 @@ export function AvatarDisplay({ name, avatarUrl, className, style, title, size =
         src={avatarUrl}
         alt={name}
         title={title ?? name}
-        className={cn("rounded-full object-cover shrink-0 ring-1 ring-gray-300 shadow-sm", className)}
+        className={cn("rounded-full object-cover shrink-0 ring-2 ring-gray-200 shadow-sm", className)}
         style={merged}
       />
     );
   }
   return (
     <div
-      className={cn("rounded-full flex items-center justify-center font-bold shrink-0 ring-1 ring-gray-300 shadow-sm select-none", className)}
+      className={cn("rounded-full flex items-center justify-center font-bold shrink-0 ring-2 ring-gray-200 shadow-sm select-none", className)}
       style={{ ...merged, backgroundColor: bgColor, color: "#fff" }}
       title={title ?? name}
     >
@@ -83,7 +83,7 @@ export function StackedAvatars({ people, size = 28, max = 3, className }: Stacke
       ))}
       {overflow > 0 && (
         <div
-          className="rounded-full flex items-center justify-center font-bold shrink-0 ring-1 ring-gray-300 shadow-sm select-none bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
+          className="rounded-full flex items-center justify-center font-bold shrink-0 ring-2 ring-gray-200 shadow-sm select-none bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
           style={{ width: size, height: size, fontSize, marginLeft: -overlap, zIndex: 0 }}
           title={people.slice(max).map(p => p.name).join(", ")}
         >
