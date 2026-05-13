@@ -254,8 +254,6 @@ export default function Team() {
                           <AvatarDisplay
                             name={editor.name}
                             avatarUrl={editor.avatarUrl}
-                            className="h-8 w-8 text-xs ring-0"
-                            style={{ backgroundColor: color + "22", color, border: `1.5px solid ${color}` }}
                           />
 
                           {/* Name + login */}
