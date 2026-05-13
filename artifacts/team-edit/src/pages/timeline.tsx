@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRealtime } from "@/hooks/use-realtime";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { useToast } from "@/hooks/use-toast";
 import { usePageTitle } from "@/lib/use-page-title";
@@ -413,17 +414,19 @@ export default function Timeline() {
   usePageTitle("Timeline");
   const { openTask } = useTaskModal();
   const { toast }    = useToast();
+  const { user }     = useAuth();
 
   const [tasks,   setTasks]   = useState<TimelineTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [zoom,    setZoom]    = useState<ZoomMode>("month");
 
   // Filters
+  const defaultCoord = user ? String(user.id) : "all";
   const [search,  setSearch]  = useState("");
   const [fStatus, setFStatus] = useState("all");
   const [fClient, setFClient] = useState("all");
   const [fEditor, setFEditor] = useState("all");
-  const [fCoord,  setFCoord]  = useState("all");
+  const [fCoord,  setFCoord]  = useState(() => user ? String(user.id) : "all");
 
   const [lifecycle, setLifecycle] = useState<LifecycleData | null>(null);
   const [lcLoading, setLcLoading] = useState(false);
@@ -474,16 +477,16 @@ export default function Timeline() {
   const coordOpts = useMemo(() => {
     const seen = new Map<string, string>();
     tasks.forEach(t => {
-      if (t.coordinator) seen.set(String(t.coordinator.id), t.coordinator.name);
+      if (t.coordinator && t.coordinator.id !== user?.id) seen.set(String(t.coordinator.id), t.coordinator.name);
     });
     return Array.from(seen.entries()).map(([v, l]) => ({ value: v, label: l }));
-  }, [tasks]);
+  }, [tasks, user]);
 
-  const hasFilters = search || fStatus !== "all" || fClient !== "all" || fEditor !== "all" || fCoord !== "all";
+  const hasFilters = search || fStatus !== "all" || fClient !== "all" || fEditor !== "all" || fCoord !== defaultCoord;
 
   const clearAll = () => {
     setSearch(""); setFStatus("all"); setFClient("all");
-    setFEditor("all"); setFCoord("all");
+    setFEditor("all"); setFCoord(defaultCoord);
   };
 
   const filtered = useMemo(() => tasks.filter(t => {
@@ -539,10 +542,23 @@ export default function Timeline() {
             label="Editor" value={fEditor} onChange={setFEditor}
             options={editorOpts}
           />
-          <FilterSelect
-            label="Coordenador" value={fCoord} onChange={setFCoord}
-            options={coordOpts}
-          />
+          <div className="relative flex items-center">
+            <select
+              value={fCoord}
+              onChange={e => setFCoord(e.target.value)}
+              className="h-8 pl-3 pr-7 text-xs rounded-md border border-[hsl(var(--border))]
+                bg-[hsl(var(--background))] text-[hsl(var(--foreground))]
+                appearance-none cursor-pointer focus:outline-none
+                focus:ring-1 focus:ring-[hsl(var(--primary)/0.4)]
+                hover:border-[hsl(var(--primary)/0.5)] transition-colors"
+              style={{ minWidth: 110 }}
+            >
+              <option value="all">Geral</option>
+              {user && <option value={String(user.id)}>Minhas</option>}
+              {coordOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 h-3 w-3 text-[hsl(var(--muted-foreground))]" />
+          </div>
 
           {/* Clear */}
           {hasFilters && (
