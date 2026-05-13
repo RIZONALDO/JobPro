@@ -168,7 +168,7 @@ export default function EditorTaskList() {
           <div className="w-20 shrink-0 hidden lg:block">Prioridade</div>
           <div className="w-28 shrink-0 hidden lg:block">Prazo</div>
           <div className="w-20 shrink-0 hidden xl:block">Coord.</div>
-          <div className="w-36 shrink-0">Ação</div>
+          <div className="w-44 shrink-0">Ação</div>
           <div className="w-8 shrink-0" />
         </div>
 
@@ -357,7 +357,7 @@ export default function EditorTaskList() {
               </div>
 
               {/* Primary action */}
-              <div className="hidden md:flex w-36 shrink-0 items-center" onClick={e => e.stopPropagation()}>
+              <div className="hidden md:flex w-44 shrink-0 items-center" onClick={e => e.stopPropagation()}>
                 {trans ? (
                   <Button size="sm" variant="outline" className="h-7 text-xs px-2 w-full whitespace-nowrap"
                     onClick={() => updateStatus(t, trans.next)}>
