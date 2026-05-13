@@ -59,11 +59,12 @@ export default function Reports() {
   const [loading, setLoading] = useState(false);
 
   // Filters
+  const defaultCoord = user ? String(user.id) : "all";
   const [search,      setSearch]      = useState("");
   const [fStatus,     setFStatus]     = useState("all");
   const [fClient,     setFClient]     = useState("all");
   const [fEditor,     setFEditor]     = useState("all");
-  const [fCoord,      setFCoord]      = useState("all");
+  const [fCoord,      setFCoord]      = useState(() => user ? String(user.id) : "all");
   const [fPriority,   setFPriority]   = useState("all");
   const [fComplexity, setFComplexity] = useState("all");
 
@@ -87,9 +88,9 @@ export default function Reports() {
   }, [tasks]);
   const coords = useMemo(() => {
     const map = new Map<number, string>();
-    tasks.forEach(t => { if (t.coordinator) map.set(t.coordinator.id, t.coordinator.name); });
+    tasks.forEach(t => { if (t.coordinator && t.coordinator.id !== user?.id) map.set(t.coordinator.id, t.coordinator.name); });
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [tasks]);
+  }, [tasks, user]);
 
   const filtered = useMemo(() => tasks.filter(t => {
     if (fStatus     !== "all" && t.status                    !== fStatus)               return false;
@@ -109,11 +110,11 @@ export default function Reports() {
   }), [tasks, fStatus, fClient, fEditor, fCoord, fPriority, fComplexity, search]);
 
   const hasFilters = fStatus !== "all" || fClient !== "all" || fEditor !== "all"
-    || fCoord !== "all" || fPriority !== "all" || fComplexity !== "all" || search;
+    || fCoord !== defaultCoord || fPriority !== "all" || fComplexity !== "all" || search;
 
   const clearFilters = () => {
     setFStatus("all"); setFClient("all"); setFEditor("all");
-    setFCoord("all"); setFPriority("all"); setFComplexity("all"); setSearch("");
+    setFCoord(defaultCoord); setFPriority("all"); setFComplexity("all"); setSearch("");
   };
 
   // Summary counts from filtered set
@@ -175,7 +176,8 @@ export default function Reports() {
           </Select>
 
           <Select value={fCoord} onChange={setFCoord}>
-            <option value="all">Todos os coordenadores</option>
+            <option value="all">Geral</option>
+            {user && <option value={String(user.id)}>Minhas</option>}
             {coords.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
           </Select>
 
