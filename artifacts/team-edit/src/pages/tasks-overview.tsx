@@ -102,7 +102,8 @@ export default function TasksOverview() {
   const [search,       setSearch]       = useState("");
   const [filterStatus, setFilterStatus] = useState("active");
   const [filterEditor, setFilterEditor] = useState("all");
-  const [filterCoord,  setFilterCoord]  = useState("all");
+  const defaultCoord = (!isSuper && user?.role === "coordinator") ? String(user?.id ?? "all") : "all";
+  const [filterCoord,  setFilterCoord]  = useState(defaultCoord);
 
   // Sort
   const [sortKey, setSortKey] = useState<string>("taskCode");
@@ -201,8 +202,8 @@ export default function TasksOverview() {
     return true;
   });
 
-  const hasFilter = search || filterStatus !== "active" || filterEditor !== "all" || filterCoord !== "all";
-  const clearFilters = () => { setSearch(""); setFilterStatus("active"); setFilterEditor("all"); setFilterCoord("all"); };
+  const hasFilter = search || filterStatus !== "active" || filterEditor !== "all" || filterCoord !== defaultCoord;
+  const clearFilters = () => { setSearch(""); setFilterStatus("active"); setFilterEditor("all"); setFilterCoord(defaultCoord); };
 
   // ── Client-side sort ──────────────────────────────────────────────────────
 
@@ -332,10 +333,11 @@ export default function TasksOverview() {
               </SelectContent>
             </Select>
             <Select value={filterCoord} onValueChange={setFilterCoord}>
-              <SelectTrigger className="h-9 text-sm w-full"><SelectValue placeholder="Todos os coordenadores" /></SelectTrigger>
+              <SelectTrigger className="h-9 text-sm w-full"><SelectValue placeholder="Todos" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os coordenadores</SelectItem>
-                {coordinators.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                <SelectItem value="all">Todos</SelectItem>
+                {user && <SelectItem value={String(user.id)}>Eu</SelectItem>}
+                {coordinators.filter(c => c.id !== user?.id).map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
             {hasFilter && (
@@ -381,11 +383,12 @@ export default function TasksOverview() {
         </Select>
         <Select value={filterCoord} onValueChange={setFilterCoord}>
           <SelectTrigger className="h-9 w-48 text-sm">
-            <SelectValue placeholder="Todos os coordenadores" />
+            <SelectValue placeholder="Todos" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos os coordenadores</SelectItem>
-            {coordinators.map(c => (
+            <SelectItem value="all">Todos</SelectItem>
+            {user && <SelectItem value={String(user.id)}>Eu</SelectItem>}
+            {coordinators.filter(c => c.id !== user?.id).map(c => (
               <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
             ))}
           </SelectContent>
