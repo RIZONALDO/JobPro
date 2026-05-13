@@ -399,7 +399,7 @@ export default function JobDetail() {
                       const h = fmtDateHuman(t.dueDate); const n = fmtDate(t.dueDate);
                       return <>
                         <span className="text-xs text-[hsl(var(--muted-foreground))]">{h}</span>
-                        {h !== n && <span className="text-xs text-[hsl(var(--muted-foreground))]/50">{n}</span>}
+                        {h !== n && <span className="text-[10px] text-[hsl(var(--muted-foreground))]/50">{n}</span>}
                       </>;
                     })()}
                   </div>
