@@ -166,7 +166,7 @@ export default function EditorTaskList() {
           <div className="w-36 shrink-0 px-2">Status</div>
           <div className="flex-1 min-w-0 pr-3">Tarefa</div>
           <div className="w-20 shrink-0 hidden lg:block">Prioridade</div>
-          <div className="w-28 shrink-0 hidden lg:block pl-3">Prazo</div>
+          <div className="w-28 shrink-0 hidden lg:block pl-6">Prazo</div>
           <div className="w-20 shrink-0 hidden xl:block">Coord.</div>
           <div className="w-28 shrink-0">Ação</div>
           <div className="w-8 shrink-0" />
