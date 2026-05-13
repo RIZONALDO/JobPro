@@ -163,12 +163,12 @@ export default function EditorTaskList() {
 
         {/* Header — desktop fixo */}
         <div className="hidden md:flex shrink-0 items-center gap-3 px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
-          <div className="w-28 shrink-0">Status</div>
+          <div className="w-36 shrink-0">Status</div>
           <div className="flex-1 min-w-0">Tarefa</div>
           <div className="w-20 shrink-0 hidden lg:block">Prioridade</div>
           <div className="w-28 shrink-0 hidden lg:block">Prazo</div>
           <div className="w-20 shrink-0 hidden xl:block">Coord.</div>
-          <div className="w-32 shrink-0">Ação</div>
+          <div className="w-36 shrink-0">Ação</div>
           <div className="w-8 shrink-0" />
         </div>
 
@@ -312,8 +312,8 @@ export default function EditorTaskList() {
               {/* ── Desktop table (md+) ────────────────────────────── */}
 
               {/* Status */}
-              <div className="hidden md:flex w-28 shrink-0 items-center px-4">
-                <Badge className={`${STATUS_CLASS[t.status] ?? ""} text-[11px] px-2 py-0.5 font-medium`}>
+              <div className="hidden md:flex w-36 shrink-0 items-center px-2">
+                <Badge className={`${STATUS_CLASS[t.status] ?? ""} text-[11px] px-2 py-0.5 font-medium whitespace-nowrap`}>
                   {STATUS_LABEL[t.status] ?? t.status}
                 </Badge>
               </div>
@@ -357,9 +357,9 @@ export default function EditorTaskList() {
               </div>
 
               {/* Primary action */}
-              <div className="hidden md:flex w-32 shrink-0 items-center" onClick={e => e.stopPropagation()}>
+              <div className="hidden md:flex w-36 shrink-0 items-center" onClick={e => e.stopPropagation()}>
                 {trans ? (
-                  <Button size="sm" variant="outline" className="h-7 text-xs px-2 w-full"
+                  <Button size="sm" variant="outline" className="h-7 text-xs px-2 w-full whitespace-nowrap"
                     onClick={() => updateStatus(t, trans.next)}>
                     {trans.label}
                   </Button>
