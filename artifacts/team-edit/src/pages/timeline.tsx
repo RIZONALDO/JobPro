@@ -166,7 +166,7 @@ function GanttGrid({ tasks, zoom, onOpen }: {
   onOpen: (id: number) => void;
 }) {
   const { days: DAYS, pxPerDay: PX } = ZOOM_CONFIG[zoom];
-  const fill   = zoom === "week";
+  const fill   = true;
   const today  = today0();
   const wStart = windowStart(zoom);
   const totalW = DAYS * PX;
