@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@types/multer": "^2.1.0",
     "@workspace/db": "workspace:*",
     "bcryptjs": "^3.0.3",
     "connect-pg-simple": "^10.0.0",
@@ -17,6 +18,7 @@
     "drizzle-orm": "catalog:",
     "express": "^5",
     "express-session": "^1.19.0",
+    "multer": "^2.1.1",
     "pino": "^9",
     "pino-http": "^10",
     "socket.io": "^4.8.3"

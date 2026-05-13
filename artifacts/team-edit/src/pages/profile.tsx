@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiPut } from "@/lib/api";
+import { uploadAvatar } from "@/lib/compress-image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,7 +29,8 @@ export default function Profile() {
   const [showNew,  setShowNew]  = useState(false);
   const [showConf, setShowConf] = useState(false);
 
-  const [saving, setSaving] = useState(false);
+  const [saving,         setSaving]         = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -39,15 +41,20 @@ export default function Profile() {
     }
   }, [user]);
 
-  const handleAvatar = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      toast({ title: "Imagem muito grande (máx 2MB)", variant: "destructive" }); return;
+    setUploadingAvatar(true);
+    try {
+      const url = await uploadAvatar(file);
+      setAvatar(url);
+      await refresh();
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Erro ao enviar avatar", variant: "destructive" });
+    } finally {
+      setUploadingAvatar(false);
     }
-    const reader = new FileReader();
-    reader.onload = ev => setAvatar(ev.target?.result as string);
-    reader.readAsDataURL(file);
   };
 
   const saveProfile = async () => {
@@ -57,10 +64,9 @@ export default function Profile() {
     setSaving(true);
     try {
       await apiPut("/api/auth/profile", {
-        name:      name.trim() || undefined,
-        email:     email || null,
-        phone:     phone || null,
-        avatarUrl: avatar || null,
+        name:  name.trim() || undefined,
+        email: email || null,
+        phone: phone || null,
         ...(newPwd ? { currentPassword: curPwd, newPassword: newPwd } : {}),
       });
       await refresh();
@@ -101,10 +107,13 @@ export default function Profile() {
               )}
               <button
                 type="button"
-                onClick={() => fileRef.current?.click()}
-                className="absolute bottom-0 right-0 h-7 w-7 rounded-full bg-[hsl(var(--primary))] text-white flex items-center justify-center shadow hover:opacity-90 transition-opacity"
+                onClick={() => !uploadingAvatar && fileRef.current?.click()}
+                disabled={uploadingAvatar}
+                className="absolute bottom-0 right-0 h-7 w-7 rounded-full bg-[hsl(var(--primary))] text-white flex items-center justify-center shadow hover:opacity-90 transition-opacity disabled:opacity-60"
               >
-                <Camera className="h-3.5 w-3.5" />
+                {uploadingAvatar
+                  ? <span className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  : <Camera className="h-3.5 w-3.5" />}
               </button>
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatar} />
             </div>
@@ -120,10 +129,14 @@ export default function Profile() {
                 )}
               </div>
             </div>
-            {avatar && (
+            {avatar && !uploadingAvatar && (
               <button
                 type="button"
-                onClick={() => setAvatar("")}
+                onClick={async () => {
+                  setAvatar("");
+                  await apiPut("/api/auth/profile", { avatarUrl: null });
+                  await refresh();
+                }}
                 className="ml-auto text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] transition-colors"
               >
                 Remover foto
