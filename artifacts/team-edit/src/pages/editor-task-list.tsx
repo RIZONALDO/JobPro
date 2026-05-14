@@ -182,8 +182,8 @@ export default function EditorTaskList() {
 
         {/* Header — desktop fixo */}
         <div className="hidden md:flex shrink-0 items-center py-2.5 pl-[3px] bg-[hsl(var(--muted))]/30 border-b text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
-          <div className="w-36 shrink-0 px-2">Status</div>
           <div className="flex-1 min-w-0 pr-3">Tarefa</div>
+          <div className="w-36 shrink-0 px-2">Status</div>
           <div className="w-28 shrink-0 hidden lg:block pl-6">Prioridade</div>
           <div className="w-28 shrink-0 hidden lg:block pl-6">Prazo</div>
           <div className="w-20 shrink-0 hidden xl:block pl-6">Coord.</div>
@@ -343,13 +343,6 @@ export default function EditorTaskList() {
 
               {/* ── Desktop table (md+) ────────────────────────────── */}
 
-              {/* Status */}
-              <div className="hidden md:flex w-36 shrink-0 items-center px-2">
-                <Badge className={`${STATUS_CLASS[t.status] ?? ""} text-[11px] px-2 py-0.5 font-medium whitespace-nowrap`}>
-                  {STATUS_LABEL[t.status] ?? t.status}
-                </Badge>
-              </div>
-
               {/* Title + client + revision */}
               <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-3 pr-3">
                 <div className="flex items-baseline gap-1.5 min-w-0">
@@ -364,6 +357,13 @@ export default function EditorTaskList() {
                 {t.client && (
                   <span className="text-[11px] text-[hsl(var(--muted-foreground))]/60 truncate mt-0.5">{t.client}</span>
                 )}
+              </div>
+
+              {/* Status */}
+              <div className="hidden md:flex w-36 shrink-0 items-center px-2">
+                <Badge className={`${STATUS_CLASS[t.status] ?? ""} text-[11px] px-2 py-0.5 font-medium whitespace-nowrap`}>
+                  {STATUS_LABEL[t.status] ?? t.status}
+                </Badge>
               </div>
 
               {/* Priority */}
