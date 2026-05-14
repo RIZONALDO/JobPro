@@ -421,7 +421,7 @@ function TaskChip({ t, isCoord, onClick }: { t: CalendarTask; isCoord: boolean; 
         <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 truncate">{t.client}</p>
       )}
       <div className="flex items-center justify-between mt-1 gap-1 flex-wrap">
-        <Badge className={`text-xs px-1 py-0 leading-4 ${STATUS_CLASS[t.status] ?? ""}`}>
+        <Badge className={`text-xs px-1 py-0 leading-4 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
           {STATUS_LABEL[t.status] ?? t.status}
         </Badge>
         {isCoord && t.assigneeName && (
