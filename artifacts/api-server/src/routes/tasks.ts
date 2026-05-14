@@ -83,15 +83,24 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
 // ── Overview (coordinator: all tasks created by coordinators) ────────────────
 router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void> => {
   const { status, assignedToId, createdById } = req.query;
+  const userId = req.session.userId!;
+  const role   = req.session.userRole!;
 
-  const coordUsers = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(inArray(usersTable.role, ["coordinator", "supervisor", "admin"]));
-  const coordIds = coordUsers.map(u => u.id);
-  if (coordIds.length === 0) { res.json([]); return; }
+  // coordinator sees only their own tasks; supervisor/admin see all coord tasks
+  let ownerCondition;
+  if (role === "coordinator") {
+    ownerCondition = eq(tasksTable.createdById, userId);
+  } else {
+    const coordUsers = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(inArray(usersTable.role, ["coordinator", "supervisor", "admin"]));
+    const coordIds = coordUsers.map(u => u.id);
+    if (coordIds.length === 0) { res.json([]); return; }
+    ownerCondition = inArray(tasksTable.createdById, coordIds);
+  }
 
-  const conditions: any[] = [inArray(tasksTable.createdById, coordIds)];
+  const conditions: any[] = [ownerCondition];
   if (status === "active") {
     conditions.push(ne(tasksTable.status, "completed"));
     conditions.push(ne(tasksTable.status, "cancelled"));
@@ -146,7 +155,6 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     editorsMap.get(e.taskId)!.push({ id: e.userId, name: e.name, avatarUrl: e.avatarUrl });
   }
 
-  const userId = req.session.userId!;
   res.json(rows.map(r => ({
     id: r.id,
     taskCode: fmtCode(r.taskNumber, r.taskYear),
