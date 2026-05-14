@@ -435,7 +435,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               >
                 <Bell className="h-4 w-4" />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-0.5 rounded-full bg-orange-500 text-white text-xs font-bold flex items-center justify-center leading-none shadow-[0_0_0_1.5px_theme(colors.orange.300)]">
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] min-h-[16px] px-1 rounded-full bg-orange-500 text-white text-[10px] font-bold flex items-center justify-center leading-none shadow-[0_0_0_1.5px_theme(colors.orange.300)]">
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
