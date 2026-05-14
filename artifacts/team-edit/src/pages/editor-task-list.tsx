@@ -182,7 +182,7 @@ export default function EditorTaskList() {
 
         {/* Header — desktop fixo */}
         <div className="hidden md:flex shrink-0 items-center py-2.5 pl-[3px] bg-[hsl(var(--muted))]/30 border-b text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
-          <div className="flex-1 min-w-0 pr-3">Tarefa</div>
+          <div className="flex-1 min-w-0 pl-4 pr-3">Tarefa</div>
           <div className="w-36 shrink-0 px-2">Status</div>
           <div className="w-28 shrink-0 hidden lg:block pl-6">Prioridade</div>
           <div className="w-28 shrink-0 hidden lg:block pl-6">Prazo</div>
@@ -344,7 +344,7 @@ export default function EditorTaskList() {
               {/* ── Desktop table (md+) ────────────────────────────── */}
 
               {/* Title + client + revision */}
-              <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-3 pr-3">
+              <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-3 pl-4 pr-3">
                 <div className="flex items-baseline gap-1.5 min-w-0">
                   {t.taskCode && (
                     <span className="text-[11px] font-semibold font-mono shrink-0 text-[hsl(var(--muted-foreground))]/55 tracking-tight">{t.taskCode}</span>
