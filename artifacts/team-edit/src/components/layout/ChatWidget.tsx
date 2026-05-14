@@ -701,20 +701,22 @@ export function ChatWidget() {
                         </div>
                       );
                     })}
-                    {typeof activeView === "number" && typingUsers.has(activeView) && (
-                      <div className="flex gap-2 items-end">
-                        <Avatar name={currentDmUser?.name ?? null} url={currentDmUser?.avatarUrl ?? null} size="xs" />
-                        <div className="rounded-2xl px-3.5 py-3" style={{ backgroundColor: "hsl(var(--muted))", borderBottomLeftRadius: "4px" }}>
-                          <div className="flex gap-1 items-center">
-                            <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "hsl(var(--muted-foreground))", animationDelay: "0ms" }} />
-                            <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "hsl(var(--muted-foreground))", animationDelay: "160ms" }} />
-                            <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "hsl(var(--muted-foreground))", animationDelay: "320ms" }} />
-                          </div>
-                        </div>
-                      </div>
-                    )}
                     <div ref={dmEndRef} />
                   </div>
+
+                  {/* Typing indicator — fora do scroll para não causar salto */}
+                  {typeof activeView === "number" && typingUsers.has(activeView) && (
+                    <div className="shrink-0 flex gap-2 items-center px-4 py-1.5">
+                      <Avatar name={currentDmUser?.name ?? null} url={currentDmUser?.avatarUrl ?? null} size="xs" />
+                      <div className="rounded-2xl px-3 py-2" style={{ backgroundColor: "hsl(var(--muted))", borderBottomLeftRadius: "4px" }}>
+                        <div className="flex gap-1 items-center">
+                          <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "hsl(var(--muted-foreground))", animationDelay: "0ms" }} />
+                          <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "hsl(var(--muted-foreground))", animationDelay: "160ms" }} />
+                          <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "hsl(var(--muted-foreground))", animationDelay: "320ms" }} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* DM input */}
                   <div className="shrink-0 p-3 border-t" style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
