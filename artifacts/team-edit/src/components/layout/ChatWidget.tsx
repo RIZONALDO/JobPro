@@ -668,19 +668,19 @@ export function ChatWidget() {
                     {dmTaskRef && (
                       <div
                         className="mb-2 flex items-stretch rounded-xl overflow-hidden"
-                        style={{ backgroundColor: "hsl(var(--primary))" }}
+                        style={{ backgroundColor: "hsl(220 20% 16%)" }}
                       >
                         {/* Accent bar */}
-                        <div className="w-[3px] shrink-0" style={{ backgroundColor: "hsl(var(--primary-foreground) / 0.35)" }} />
+                        <div className="w-[3px] shrink-0" style={{ backgroundColor: "rgba(255,255,255,0.25)" }} />
                         {/* Clickable content */}
                         <button
                           type="button"
                           onClick={() => navigate(`/tasks?tab=lista&highlight=${dmTaskRef.id}`)}
                           className="flex-1 min-w-0 flex flex-col items-start px-3 py-2 text-left hover:opacity-90 transition-opacity"
-                          style={{ color: "hsl(var(--primary-foreground))" }}
+                          style={{ color: "#fff" }}
                         >
-                          <span className="text-[10px] font-semibold uppercase tracking-wide opacity-60 leading-none mb-0.5">Tarefa</span>
-                          <span className="text-[12px] font-semibold leading-snug truncate w-full">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide leading-none mb-0.5" style={{ color: "rgba(255,255,255,0.5)" }}>Tarefa</span>
+                          <span className="text-[12px] font-semibold leading-snug truncate w-full" style={{ color: "rgba(255,255,255,0.9)" }}>
                             {dmTaskRef.code}{dmTaskRef.title ? ` · ${dmTaskRef.title}` : ""}
                           </span>
                         </button>
@@ -689,7 +689,7 @@ export function ChatWidget() {
                           type="button"
                           onClick={() => setDmTaskRef(null)}
                           className="px-3 flex items-center justify-center shrink-0 hover:opacity-70 transition-opacity"
-                          style={{ color: "hsl(var(--primary-foreground))" }}
+                          style={{ color: "rgba(255,255,255,0.7)" }}
                         >
                           <X className="h-4 w-4" />
                         </button>
