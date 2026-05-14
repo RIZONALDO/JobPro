@@ -315,7 +315,7 @@ export default function EditorTaskList() {
 
                   {/* status + priority + due date */}
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "6px", flexWrap: "wrap" }}>
-                    <Badge className={`text-xs px-1.5 py-0 h-5 ${STATUS_CLASS[t.status] ?? ""}`}>
+                    <Badge className={`text-xs px-1.5 py-0 h-5 shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
                     <PriorityBadge priority={t.priority} />
@@ -377,7 +377,7 @@ export default function EditorTaskList() {
 
               {/* Status */}
               <div className="hidden md:flex w-36 shrink-0 items-center px-2">
-                <Badge className={`${STATUS_CLASS[t.status] ?? ""} text-[11px] px-2 py-0.5 font-medium whitespace-nowrap`}>
+                <Badge className={`${STATUS_CLASS[t.status] ?? ""} text-[11px] px-2 py-0.5 font-medium whitespace-nowrap shrink-0`}>
                   {STATUS_LABEL[t.status] ?? t.status}
                 </Badge>
               </div>

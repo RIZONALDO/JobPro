@@ -34,6 +34,8 @@ export function AvatarDisplay({ name, avatarUrl, className, style, title, size =
         src={avatarUrl}
         alt={name}
         title={title ?? name}
+        width={size}
+        height={size}
         className={cn("rounded-full object-cover shrink-0 ring-[1.5px] ring-gray-200 shadow-sm", className)}
         style={merged}
       />
@@ -42,7 +44,7 @@ export function AvatarDisplay({ name, avatarUrl, className, style, title, size =
   return (
     <div
       className={cn("rounded-full flex items-center justify-center font-bold shrink-0 ring-[1.5px] ring-gray-200 shadow-sm select-none", className)}
-      style={{ ...merged, backgroundColor: bgColor, color: "#fff" }}
+      style={{ ...merged, backgroundColor: bgColor, color: "#fff", minWidth: size, minHeight: size }}
       title={title ?? name}
     >
       {initials(name)}

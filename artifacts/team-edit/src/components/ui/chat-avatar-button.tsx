@@ -64,7 +64,7 @@ export function ChatAvatarButton({ userId, name, avatarUrl, size = 30, taskId, t
   return (
     <div
       ref={anchorRef}
-      className="relative"
+      className="relative shrink-0"
       onClick={e => e.stopPropagation()}
       onMouseEnter={handleOpen}
       onMouseLeave={scheduleClose}
