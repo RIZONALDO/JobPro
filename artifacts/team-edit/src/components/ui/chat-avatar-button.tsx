@@ -1,4 +1,5 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageCircle } from "lucide-react";
 import { AvatarDisplay } from "./avatar-display";
@@ -16,11 +17,36 @@ interface Props {
 
 export function ChatAvatarButton({ userId, name, avatarUrl, size = 30, taskId, taskCode, taskTitle }: Props) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const anchorRef = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { openDmWith } = useChatContext();
 
   const cancelClose = () => { if (closeTimer.current) clearTimeout(closeTimer.current); };
   const scheduleClose = () => { closeTimer.current = setTimeout(() => setOpen(false), 120); };
+
+  const handleOpen = () => {
+    if (anchorRef.current) {
+      const r = anchorRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 6, left: r.left });
+    }
+    cancelClose();
+    setOpen(true);
+  };
+
+  // Reposition on scroll/resize
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      if (anchorRef.current) {
+        const r = anchorRef.current.getBoundingClientRect();
+        setPos({ top: r.bottom + 6, left: r.left });
+      }
+    };
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => { window.removeEventListener("scroll", update, true); window.removeEventListener("resize", update); };
+  }, [open]);
 
   const handleConverse = () => {
     setOpen(false);
@@ -31,9 +57,10 @@ export function ChatAvatarButton({ userId, name, avatarUrl, size = 30, taskId, t
 
   return (
     <div
+      ref={anchorRef}
       className="relative"
       onClick={e => e.stopPropagation()}
-      onMouseEnter={() => { cancelClose(); setOpen(true); }}
+      onMouseEnter={handleOpen}
       onMouseLeave={scheduleClose}
     >
       <button
@@ -49,31 +76,35 @@ export function ChatAvatarButton({ userId, name, avatarUrl, size = 30, taskId, t
         <AvatarDisplay name={name} avatarUrl={avatarUrl} size={size} />
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.7, y: -4 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.85, y: -4 }}
-            transition={{ type: "spring", stiffness: 420, damping: 18, mass: 0.6 }}
-            className="absolute left-0 top-full mt-1.5 z-[200] min-w-[170px] rounded-xl border bg-[hsl(var(--card))] shadow-xl overflow-hidden origin-top-left"
-            onMouseEnter={cancelClose}
-            onMouseLeave={scheduleClose}
-          >
-            <div className="px-3 py-2 border-b bg-[hsl(var(--muted))]/50">
-              <p className="text-xs font-semibold truncate max-w-[150px]">{name}</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleConverse}
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-[hsl(var(--muted))] transition-colors text-left"
+      {createPortal(
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.7, y: -4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.85, y: -4 }}
+              transition={{ type: "spring", stiffness: 420, damping: 18, mass: 0.6 }}
+              style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 9999 }}
+              className="min-w-[170px] rounded-xl border bg-[hsl(var(--card))] shadow-xl overflow-hidden origin-top-left"
+              onMouseEnter={cancelClose}
+              onMouseLeave={scheduleClose}
             >
-              <MessageCircle className="h-3.5 w-3.5 text-[hsl(var(--primary))] shrink-0" />
-              Conversar
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <div className="px-3 py-2 border-b bg-[hsl(var(--muted))]/50">
+                <p className="text-xs font-semibold truncate max-w-[150px]">{name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleConverse}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-[hsl(var(--muted))] transition-colors text-left"
+              >
+                <MessageCircle className="h-3.5 w-3.5 text-[hsl(var(--primary))] shrink-0" />
+                Conversar
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }
