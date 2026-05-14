@@ -77,7 +77,7 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -430,9 +430,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
                           markRead(n);
                           setNotifOpen(false);
                           if (n.taskId) {
-                            openTask(n.taskId);
+                            navigate(`/tasks?tab=lista&highlight=${n.taskId}`);
                           } else {
-                            window.location.href = "/";
+                            navigate("/");
                           }
                         }}
                         className={cn(
