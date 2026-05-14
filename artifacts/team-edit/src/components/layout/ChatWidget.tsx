@@ -309,7 +309,9 @@ export function ChatWidget() {
       setDmMessages(prev => {
         const existing = prev[otherId] ?? [];
         if (existing.some(m => m.id === msg.id)) return prev;
-        return { ...prev, [otherId]: [...existing, msg] };
+        // Remove optimistic placeholder (negative id) quando mensagem real do próprio usuário chega
+        const base = msg.fromUserId === user?.id ? existing.filter(m => m.id > 0) : existing;
+        return { ...prev, [otherId]: [...base, msg] };
       });
       loadConversations();
       if (!chatOpenRef.current || activeViewRef.current !== otherId) {
@@ -385,19 +387,49 @@ export function ChatWidget() {
   };
 
   const sendDm = async () => {
-    if (typeof activeView !== "number") return;
+    if (typeof activeView !== "number" || !user) return;
     const taskPart = dmTaskRef
       ? `[${dmTaskRef.code}|id:${dmTaskRef.id}]${dmTaskRef.title ? ` — ${dmTaskRef.title}` : ""}`
       : "";
     const content = [taskPart, dmText.trim()].filter(Boolean).join("\n").trim();
     if (!content) return;
+
+    // Optimistic update — mostra a mensagem imediatamente
+    const toUserId = activeView;
+    const optimisticId = -Date.now();
+    setDmMessages(prev => ({
+      ...prev,
+      [toUserId]: [...(prev[toUserId] ?? []), {
+        id: optimisticId,
+        fromUserId: user.id,
+        toUserId,
+        content,
+        createdAt: new Date().toISOString(),
+        readAt: null,
+        fromName: user.name ?? null,
+        fromAvatar: user.avatarUrl ?? null,
+      }],
+    }));
+    setDmText("");
+    setDmTaskRef(null);
+
     setDmSending(true);
     try {
-      await apiPost(`/api/dm/${activeView}`, { content });
-      setDmText("");
-      setDmTaskRef(null);
+      await apiPost(`/api/dm/${toUserId}`, { content });
+      // O socket (onDmMessage) já limpa o placeholder ao chegar; este filter é fallback
+      setDmMessages(prev => ({
+        ...prev,
+        [toUserId]: (prev[toUserId] ?? []).filter(m => m.id !== optimisticId),
+      }));
       loadConversations();
-    } catch {} finally { setDmSending(false); }
+    } catch {
+      // Rollback
+      setDmMessages(prev => ({
+        ...prev,
+        [toUserId]: (prev[toUserId] ?? []).filter(m => m.id !== optimisticId),
+      }));
+      setDmText(content);
+    } finally { setDmSending(false); }
   };
 
   const openChat = () => {
