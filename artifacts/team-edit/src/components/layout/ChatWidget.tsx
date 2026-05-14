@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Send, MessageCircle, X, ExternalLink } from "lucide-react";
+import { Send, MessageCircle, X, ExternalLink, Check, CheckCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch, apiPost } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -42,6 +42,10 @@ function timeAgo(dateStr: string) {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h`;
   return `${Math.floor(h / 24)}d`;
+}
+
+function fmtTime(dateStr: string) {
+  return new Date(dateStr).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
 function Avatar({
@@ -122,7 +126,7 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
         onBlur={() => setTimeout(() => setShowDrop(false), 150)}
         placeholder={placeholder}
         rows={1}
-        className="resize-none overflow-hidden border-none shadow-none focus-visible:ring-0 bg-transparent p-0 text-sm placeholder:text-[hsl(var(--muted-foreground))] w-full leading-relaxed"
+        className="resize-none overflow-hidden border-none shadow-none focus-visible:ring-0 bg-transparent p-0 text-[15px] placeholder:text-[hsl(var(--muted-foreground))] w-full leading-relaxed"
       />
       {showDrop && filtered.length > 0 && (
         <div className="absolute bottom-[calc(100%+8px)] left-0 w-52 rounded-2xl border bg-[hsl(var(--card))] shadow-xl z-[300] overflow-hidden">
@@ -582,15 +586,15 @@ export function ChatWidget() {
                         <div key={msg.id} className={cn("flex gap-2 items-end", mine && "flex-row-reverse")}>
                           {!mine && <Avatar name={msg.userName} url={msg.userAvatar} size="xs" />}
                           <div
-                            className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-sm"
+                            className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
                             style={mine
                               ? { backgroundColor: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
                               : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
                             }
                           >
-                            {!mine && <p className="text-xs font-semibold mb-0.5 opacity-60">{msg.userName}</p>}
+                            {!mine && <p className="text-[12px] font-semibold mb-0.5 opacity-60">{msg.userName}</p>}
                             <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
-                            <p className="text-[11px] mt-1 opacity-40 text-right">{timeAgo(msg.createdAt)}</p>
+                            <p className="text-[11px] mt-1 opacity-40 text-right">{fmtTime(msg.createdAt)}</p>
                           </div>
                         </div>
                       );
@@ -648,14 +652,21 @@ export function ChatWidget() {
                         <div key={msg.id} className={cn("flex gap-2 items-end", mine && "flex-row-reverse")}>
                           {!mine && <Avatar name={msg.fromName} url={msg.fromAvatar} size="xs" />}
                           <div
-                            className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-sm"
+                            className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
                             style={mine
                               ? { backgroundColor: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
                               : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
                             }
                           >
                             <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
-                            <p className="text-[11px] mt-1 opacity-40 text-right">{timeAgo(msg.createdAt)}</p>
+                            <div className="flex items-center justify-end gap-1 mt-1">
+                              <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
+                              {mine && (
+                                msg.readAt
+                                  ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-400" />
+                                  : <Check className="h-3.5 w-3.5 shrink-0 opacity-40" />
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
