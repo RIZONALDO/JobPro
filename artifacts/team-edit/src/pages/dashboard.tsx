@@ -896,11 +896,14 @@ export default function Dashboard() {
                       </>;
                     })()}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {t.assignedTo && (
                       <AvatarDisplay name={t.assignedTo.name} avatarUrl={t.assignedTo.avatarUrl} size={30} />
                     )}
                     <PriorityBadge priority={t.priority} />
+                    <Badge className={`text-[10px] px-1.5 py-0.5 whitespace-nowrap shrink-0 ${STATUS_CLASS[t.status] ?? ""}`}>
+                      {STATUS_LABEL[t.status] ?? t.status}
+                    </Badge>
                   </div>
                 </div>
               ))}
@@ -1054,11 +1057,14 @@ export default function Dashboard() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {t.createdBy && (
                       <AvatarDisplay name={t.createdBy.name} avatarUrl={t.createdBy.avatarUrl} size={30} />
                     )}
                     <PriorityBadge priority={t.priority} />
+                    <Badge className={`text-[10px] px-1.5 py-0.5 whitespace-nowrap shrink-0 ${STATUS_CLASS[t.status] ?? ""}`}>
+                      {STATUS_LABEL[t.status] ?? t.status}
+                    </Badge>
                   </div>
                 </div>
               ))}
