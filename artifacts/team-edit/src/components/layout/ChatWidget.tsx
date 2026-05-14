@@ -199,6 +199,7 @@ export function ChatWidget() {
   const [dmUnread, setDmUnread] = useState<Record<number, number>>({});
   const [dmText, setDmText] = useState("");
   const [dmSending, setDmSending] = useState(false);
+  const [dmTaskRef, setDmTaskRef] = useState<{ code: string; id: string; title: string } | null>(null);
 
   const [chatOpen, setChatOpen] = useState(false);
   const [activeView, setActiveView] = useState<"general" | number>("general");
@@ -237,7 +238,18 @@ export function ChatWidget() {
 
   const openDm = useCallback((userId: number, prefill?: string) => {
     setActiveView(userId);
-    setDmText(prefill ?? "");
+    if (prefill) {
+      const m = prefill.match(/^\[([^\]|]+)\|id:(\d+)\](?:\s*[-—]\s*(.+))?/);
+      if (m) {
+        setDmTaskRef({ code: m[1], id: m[2], title: m[3]?.trim() ?? "" });
+        setDmText("");
+      } else {
+        setDmTaskRef(null);
+        setDmText(prefill);
+      }
+    } else {
+      setDmTaskRef(null);
+    }
     if (!dmMessages[userId]) {
       apiFetch<DmMessage[]>(`/api/dm/${userId}`)
         .then(msgs => {
@@ -340,10 +352,19 @@ export function ChatWidget() {
   };
 
   const sendDm = async () => {
-    if (typeof activeView !== "number" || !dmText.trim()) return;
+    if (typeof activeView !== "number") return;
+    const taskPart = dmTaskRef
+      ? `[${dmTaskRef.code}|id:${dmTaskRef.id}]${dmTaskRef.title ? ` — ${dmTaskRef.title}` : ""}`
+      : "";
+    const content = [taskPart, dmText.trim()].filter(Boolean).join("\n").trim();
+    if (!content) return;
     setDmSending(true);
-    try { await apiPost(`/api/dm/${activeView}`, { content: dmText.trim() }); setDmText(""); loadConversations(); }
-    catch {} finally { setDmSending(false); }
+    try {
+      await apiPost(`/api/dm/${activeView}`, { content });
+      setDmText("");
+      setDmTaskRef(null);
+      loadConversations();
+    } catch {} finally { setDmSending(false); }
   };
 
   const openChat = () => {
@@ -645,26 +666,21 @@ export function ChatWidget() {
 
                   {/* DM input */}
                   <div className="shrink-0 p-3 border-t" style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-                    {(() => {
-                      const tm = dmText.match(/^\[([^\]|]+)\|id:(\d+)\]/);
-                      if (!tm) return null;
-                      const ctx = dmText.slice(tm[0].length).replace(/^\s*[-—]\s*/, "").trim();
-                      return (
-                        <button
-                          type="button"
-                          onClick={() => { window.location.href = `/tasks?tab=lista&highlight=${tm[2]}`; }}
-                          className="mb-2 w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold hover:opacity-80 transition-opacity text-left"
-                          style={{ backgroundColor: "hsl(var(--primary) / 0.1)", border: "1px solid hsl(var(--primary) / 0.3)", color: "hsl(var(--primary))" }}
-                        >
-                          <span className="font-mono shrink-0">[{tm[1]}]</span>
-                          {ctx && <span className="truncate opacity-70 font-normal">{ctx}</span>}
-                          <ExternalLink className="h-3 w-3 ml-auto shrink-0 opacity-60" />
-                        </button>
-                      );
-                    })()}
+                    {dmTaskRef && (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/tasks?tab=lista&highlight=${dmTaskRef.id}`)}
+                        className="mb-2 w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold hover:opacity-80 transition-opacity text-left"
+                        style={{ backgroundColor: "hsl(var(--primary) / 0.1)", border: "1px solid hsl(var(--primary) / 0.3)", color: "hsl(var(--primary))" }}
+                      >
+                        <span className="font-mono shrink-0">[{dmTaskRef.code}]</span>
+                        {dmTaskRef.title && <span className="truncate opacity-70 font-normal">{dmTaskRef.title}</span>}
+                        <ExternalLink className="h-3 w-3 ml-auto shrink-0 opacity-60" />
+                      </button>
+                    )}
                     <div className="flex gap-2 items-end rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: "hsl(var(--muted))" }}>
                       <ChatTextarea value={dmText} onChange={setDmText} onSend={sendDm} users={allUsers} placeholder="Mensagem privada..." />
-                      <Button size="sm" onClick={sendDm} disabled={dmSending || !dmText.trim()} className="h-8 w-8 p-0 shrink-0 rounded-xl">
+                      <Button size="sm" onClick={sendDm} disabled={dmSending || (!dmText.trim() && !dmTaskRef)} className="h-8 w-8 p-0 shrink-0 rounded-xl">
                         <Send className="h-3.5 w-3.5" />
                       </Button>
                     </div>

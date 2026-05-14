@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { staggerContainer, staggerRow } from "@/lib/motion";
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useLocation } from "wouter";
 import { apiFetch, apiPut, apiPost } from "@/lib/api";
 import { fmtClosedCycle, fmtPrazoWeek } from "@/lib/utils";
 import { PrazoCell } from "@/components/prazo-cell";
@@ -62,9 +63,16 @@ export default function EditorTaskList() {
   const [loading, setLoading] = useState(true);
   const [search,  setSearch]  = useState("");
 
-  const highlightId = (() => { const v = new URLSearchParams(window.location.search).get("highlight"); return v ? parseInt(v, 10) : null; })();
-  const [highlighted, setHighlighted] = useState<number | null>(highlightId);
+  const [location] = useLocation();
+  const [highlighted, setHighlighted] = useState<number | null>(() => {
+    const v = new URLSearchParams(window.location.search).get("highlight");
+    return v ? parseInt(v, 10) : null;
+  });
   const highlightRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const v = new URLSearchParams(window.location.search).get("highlight");
+    if (v) setHighlighted(parseInt(v, 10));
+  }, [location]);
   useEffect(() => {
     if (!highlighted) return;
     const timer = setTimeout(() => setHighlighted(null), 3000);
