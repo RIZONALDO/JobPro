@@ -206,13 +206,11 @@ export default function EditorTaskList() {
               if (!groupTasks.length) return null;
               return (
                 <div key={group.key}>
-                  <div
-                    className="sticky top-0 z-10 flex items-center gap-2 px-4 py-2 border-b backdrop-blur-sm"
-                    style={{ backgroundColor: `${group.color}18`, borderLeft: `3px solid ${group.color}` }}
-                  >
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
-                    <span className="text-xs font-bold uppercase tracking-widest" style={{ color: group.color }}>{group.label}</span>
-                    <span className="ml-1 text-[10px] rounded-full px-2 py-0.5 font-semibold" style={{ backgroundColor: `${group.color}22`, color: group.color }}>{groupTasks.length}</span>
+                  <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-1.5 bg-[hsl(var(--card))]">
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] shrink-0" style={{ color: group.color, opacity: 0.75 }}>{group.label}</span>
+                    <span className="flex-1 border-t border-dashed" style={{ borderColor: `${group.color}30` }} />
+                    <span className="text-[10px] tabular-nums shrink-0" style={{ color: group.color, opacity: 0.5 }}>{groupTasks.length}</span>
                   </div>
                   {groupTasks.map(t => {
                     const overdue = isOverdue(t.dueDate) && !["completed", "cancelled", "paused"].includes(t.status);
