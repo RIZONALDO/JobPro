@@ -8,6 +8,7 @@ import feedRouter from "./feed.js";
 import dmRouter from "./dm.js";
 import clientsRouter from "./clients.js";
 import pokeRouter from "./poke.js";
+import searchRouter from "./search.js";
 
 const router = Router();
 router.use(authRouter);
@@ -19,5 +20,6 @@ router.use(feedRouter);
 router.use(dmRouter);
 router.use(clientsRouter);
 router.use(pokeRouter);
+router.use(searchRouter);
 
 export default router;

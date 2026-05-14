@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, FolderOpen, ListTodo, Users, Settings, LogOut,
-  CalendarDays, Menu, Bell, Search, ChevronRight, X, UserCircle,
+  CalendarDays, Menu, Bell, ChevronRight, X, UserCircle,
   CalendarRange, BarChart3, Zap, AtSign, ClipboardList,
   CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2,
   Palette, Sun, Moon, ALargeSmall, Volume2, VolumeX,
@@ -24,6 +24,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { panelVariants, drawerVariants, backdropVariants, pageVariants } from "@/lib/motion";
 import { getSocket } from "@/lib/socket";
 import { ChatWidget } from "@/components/layout/ChatWidget";
+import { GlobalSearch } from "@/components/layout/GlobalSearch";
 
 interface AppNotification {
   id: number;
@@ -81,7 +82,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [location, navigate] = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -93,7 +93,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [shaking, setShaking] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const customRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
   const { user, logout } = useAuth();
   const { settings } = useSettings();
   const { openTask } = useTaskModal();
@@ -211,7 +210,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
   };
 
 
-  const closeSearch = () => setSearchQuery("");
   const navItems = NAV_ITEMS.filter(item => user && item.roles.includes(user.role));
   const initials = user?.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() ?? "?";
 
@@ -427,23 +425,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-1">
 
             {/* Search */}
-            <div className="hidden sm:flex items-center gap-2 rounded-lg border bg-[hsl(var(--muted))]/40 px-2.5 h-8 w-52">
-              <Search className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] shrink-0" />
-              <input
-                ref={searchRef}
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                onKeyDown={e => e.key === "Escape" && closeSearch()}
-                placeholder="Buscar..."
-                className="flex-1 bg-transparent text-xs outline-none placeholder:text-[hsl(var(--muted-foreground))] min-w-0"
-              />
-              {searchQuery && (
-                <button onClick={closeSearch} className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] shrink-0">
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
+            <GlobalSearch />
 
             {/* Notifications */}
             <div ref={notifRef} className="relative">
