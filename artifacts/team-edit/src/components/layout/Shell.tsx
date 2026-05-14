@@ -4,7 +4,7 @@ import {
   CalendarDays, Menu, Bell, Search, ChevronRight, X, UserCircle,
   CalendarRange, BarChart3, Zap, AtSign, ClipboardList,
   CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2,
-  Palette, Sun, Moon, ALargeSmall,
+  Palette, Sun, Moon, ALargeSmall, Volume2, VolumeX,
 } from "lucide-react";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { BreadcrumbBar } from "./BreadcrumbBar";
@@ -86,6 +86,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("notif_sound") !== "off");
   const [customOpen, setCustomOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const customRef = useRef<HTMLDivElement>(null);
@@ -111,16 +112,46 @@ export function Shell({ children }: { children: React.ReactNode }) {
     if (notifOpen) fetchNotifications();
   }, [notifOpen, fetchNotifications]);
 
+  const playNotifSound = useCallback(() => {
+    try {
+      const ctx = new AudioContext();
+      [[880, 0], [660, 0.15]].forEach(([freq, delay]) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+        gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + delay + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.35);
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + 0.35);
+        if (delay > 0) osc.onended = () => ctx.close();
+      });
+    } catch { /* ignore */ }
+  }, []);
+
+  const toggleSound = () => {
+    setSoundEnabled(v => {
+      const next = !v;
+      localStorage.setItem("notif_sound", next ? "on" : "off");
+      if (next) playNotifSound();
+      return next;
+    });
+  };
+
   // Socket: receber novas notificações em tempo real
   useEffect(() => {
     const socket = getSocket();
     const handle = (notif: AppNotification) => {
       setNotifications(prev => [notif, ...prev].slice(0, 40));
       setUnreadCount(prev => prev + 1);
+      setSoundEnabled(cur => { if (cur) playNotifSound(); return cur; });
     };
     socket.on("notification:new", handle);
     return () => { socket.off("notification:new", handle); };
-  }, []);
+  }, [playNotifSound]);
 
   // Fechar dropdown ao clicar fora
   useEffect(() => {
@@ -409,11 +440,35 @@ export function Shell({ children }: { children: React.ReactNode }) {
                         <span className="text-xs font-bold bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))] rounded-full px-1.5 py-0.5">{unreadCount} nova{unreadCount !== 1 ? "s" : ""}</span>
                       )}
                     </div>
-                    {unreadCount > 0 && (
-                      <button onClick={markAllRead} className="text-xs text-[hsl(var(--primary))] hover:underline shrink-0">
-                        Marcar todas
+                    <div className="flex items-center gap-3 shrink-0">
+                      {/* Sound toggle */}
+                      <button
+                        onClick={toggleSound}
+                        title={soundEnabled ? "Desligar som" : "Ligar som"}
+                        className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
+                      >
+                        {soundEnabled
+                          ? <Volume2 className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
+                          : <VolumeX className="h-3.5 w-3.5" />
+                        }
+                        <span
+                          className={cn(
+                            "relative inline-flex h-4 w-7 items-center rounded-full transition-colors",
+                            soundEnabled ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted-foreground))]/30"
+                          )}
+                        >
+                          <span className={cn(
+                            "absolute h-3 w-3 rounded-full bg-white shadow transition-transform",
+                            soundEnabled ? "translate-x-3.5" : "translate-x-0.5"
+                          )} />
+                        </span>
                       </button>
-                    )}
+                      {unreadCount > 0 && (
+                        <button onClick={markAllRead} className="text-xs text-[hsl(var(--primary))] hover:underline">
+                          Marcar todas
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* List */}
