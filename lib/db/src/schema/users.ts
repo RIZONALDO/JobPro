@@ -14,7 +14,7 @@ export const usersTable = pgTable("te_users", {
   jobTitle: text("job_title"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-  theme: text("theme").notNull().default("light"),
+  theme: text("theme").notNull().default("dark"),
 });
 
 export type User = typeof usersTable.$inferSelect;

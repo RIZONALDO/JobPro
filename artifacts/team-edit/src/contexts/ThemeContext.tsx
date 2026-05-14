@@ -29,7 +29,7 @@ function applyScale(s: Scale) {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const { user, refresh } = useAuth();
-  const theme: Theme = ((user as any)?.theme as Theme) ?? (localStorage.getItem(THEME_KEY) as Theme) ?? "light";
+  const theme: Theme = ((user as any)?.theme as Theme) ?? (localStorage.getItem(THEME_KEY) as Theme) ?? "dark";
   const [scale, setScaleState] = useState<Scale>(
     () => (localStorage.getItem(SCALE_KEY) as Scale) ?? "md"
   );
