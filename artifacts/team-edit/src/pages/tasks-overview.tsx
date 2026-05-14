@@ -28,7 +28,7 @@ import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
 import { TaskFormModal } from "@/components/task-form-modal";
 import { ReassignEditorModal } from "@/components/reassign-editor-modal";
-import { RefreshCw, UserPlus } from "lucide-react";
+import { RefreshCw, UserPlus, RotateCcw } from "lucide-react";
 import { fmtClosedCycle, fmtPrazoWeek } from "@/lib/utils";
 import { PrazoCell } from "@/components/prazo-cell";
 
@@ -67,6 +67,7 @@ const STATUS_OPTIONS = [
   { value: "in_progress", label: "Em andamento" },
   { value: "review",      label: "Em revisão" },
   { value: "in_revision", label: "Em alteração" },
+  { value: "reopened",    label: "Reaberta" },
   { value: "paused",      label: "Pausada" },
   { value: "completed",   label: "Concluída" },
   { value: "cancelled",   label: "Cancelada" },
@@ -78,6 +79,7 @@ const TASK_GROUPS = [
   { key: "editing",  label: "Em edição",    statuses: ["in_progress"],           color: "#3b82f6" },
   { key: "revision",  label: "Em alteração", statuses: ["in_revision"],          color: "#f97316" },
   { key: "approval",  label: "Em aprovação", statuses: ["review"],               color: "#f59e0b" },
+  { key: "reopened", label: "Reabertas",    statuses: ["reopened"],              color: "#e11d48" },
   { key: "paused",   label: "Pausadas",     statuses: ["paused"],                color: "#a855f7" },
   { key: "done",     label: "Concluídas",   statuses: ["completed"],             color: "#22c55e" },
   { key: "cancelled",label: "Canceladas",   statuses: ["cancelled"],             color: "#ef4444" },
@@ -137,6 +139,11 @@ export default function TasksOverview() {
   // Revision dialog
   const [revisionTask,    setRevisionTask]    = useState<OverviewTask | null>(null);
   const [revisionComment, setRevisionComment] = useState("");
+
+  // Reopen dialog
+  const [reopenTask,    setReopenTask]    = useState<OverviewTask | null>(null);
+  const [reopenComment, setReopenComment] = useState("");
+  const [sendingReopen, setSendingReopen] = useState(false);
   const [sendingRevision, setSendingRevision] = useState(false);
   const [confirmTask, setConfirmTask] = useState<{ id: number; title: string; action: "cancel" | "pause" } | null>(null);
   const [sendingConfirm, setSendingConfirm] = useState(false);
@@ -227,7 +234,7 @@ export default function TasksOverview() {
 
   // ── Client-side sort ──────────────────────────────────────────────────────
 
-  const STATUS_ORDER_SORT = ["rascunho","pending","in_progress","in_revision","review","paused","cancelled","completed"];
+  const STATUS_ORDER_SORT = ["rascunho","pending","in_progress","in_revision","review","reopened","paused","cancelled","completed"];
   const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
   const sorted = useMemo(() => {
@@ -299,6 +306,24 @@ export default function TasksOverview() {
       toast({ title: err instanceof Error ? err.message : "Erro", variant: "destructive" });
     } finally {
       setSendingRevision(false);
+    }
+  };
+
+  const submitReopen = async () => {
+    if (!reopenTask || !reopenComment.trim()) {
+      toast({ title: "Informe o motivo da reabertura", variant: "destructive" });
+      return;
+    }
+    setSendingReopen(true);
+    try {
+      await apiPut(`/api/tasks/${reopenTask.id}`, { status: "reopened", revisionComment: reopenComment.trim() });
+      toast({ title: "Tarefa reaberta" });
+      setReopenTask(null);
+      load(true);
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Erro", variant: "destructive" });
+    } finally {
+      setSendingReopen(false);
     }
   };
 
@@ -550,6 +575,16 @@ export default function TasksOverview() {
                       </DropdownMenuItem>
                     </>
                   )}
+                  {t.status === "completed" && canActNow && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="text-rose-600 focus:text-rose-600"
+                        onClick={() => { setReopenTask(t); setReopenComment(""); }}>
+                        <RotateCcw className="h-3.5 w-3.5" />Reabrir tarefa
+                      </DropdownMenuItem>
+                    </>
+                  )}
                   {!["completed","cancelled"].includes(t.status) && canActNow && (
                     <>
                       <DropdownMenuSeparator />
@@ -674,6 +709,14 @@ export default function TasksOverview() {
                             className="h-8 text-xs px-2.5 text-orange-600 border-orange-300 hover:bg-orange-50"
                             onClick={e => { e.stopPropagation(); setRevisionTask(t); setRevisionComment(""); }}>↩</Button>
                         </div>
+                      )}
+                      {t.status === "completed" && canActNow && (
+                        <Button size="sm" variant="outline"
+                          className="h-8 w-8 p-0 text-rose-600 border-rose-300 hover:bg-rose-50"
+                          title="Reabrir tarefa"
+                          onClick={e => { e.stopPropagation(); setReopenTask(t); setReopenComment(""); }}>
+                          <RotateCcw className="h-3.5 w-3.5" />
+                        </Button>
                       )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -803,6 +846,13 @@ export default function TasksOverview() {
                         </Button>
                       </>
                     )}
+                    {t.status === "completed" && canActNow && (
+                      <Button size="icon" variant="outline"
+                        className="h-7 w-7 text-rose-600 border-rose-300 hover:bg-rose-50" title="Reabrir tarefa"
+                        onClick={e => { e.stopPropagation(); setReopenTask(t); setReopenComment(""); }}>
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-7 w-7">
@@ -878,6 +928,38 @@ export default function TasksOverview() {
             <Button onClick={submitRevision} disabled={sendingRevision}
               className="bg-orange-600 hover:bg-orange-700">
               {sendingRevision ? "Enviando…" : "↩ Solicitar alteração"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Reopen dialog ────────────────────────────────────────────────── */}
+      <Dialog open={!!reopenTask} onOpenChange={open => !open && setReopenTask(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reabrir tarefa aprovada</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              A tarefa voltará ao status <strong>Reaberta</strong> e o editor será notificado.
+              O histórico de aprovação é preservado.
+            </p>
+            <div className="space-y-1.5">
+              <Label>Motivo da reabertura *</Label>
+              <Textarea
+                value={reopenComment}
+                onChange={e => setReopenComment(e.target.value)}
+                rows={4}
+                placeholder="Descreva o que o cliente solicitou alterar…"
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReopenTask(null)}>Cancelar</Button>
+            <Button onClick={submitReopen} disabled={sendingReopen}
+              className="bg-rose-600 hover:bg-rose-700">
+              {sendingReopen ? "Reabrindo…" : "↩ Reabrir tarefa"}
             </Button>
           </DialogFooter>
         </DialogContent>

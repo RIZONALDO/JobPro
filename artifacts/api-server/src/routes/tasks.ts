@@ -229,6 +229,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         pending:     ["in_progress"],
         in_progress: ["review"],
         in_revision: ["review"],
+        reopened:    ["in_progress"],
       };
       const allowed = editorTransitions[task.status] ?? [];
       if (!allowed.includes(s)) { res.status(400).json({ error: "Transição de status não permitida" }); return; }
@@ -250,14 +251,31 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     if (folderUrl !== undefined) update.folderUrl = folderUrl ? String(folderUrl) : null;
     if (status) {
       const s = String(status);
+      // Only truly closed states that cannot be acted upon further
       const TERMINAL = ["completed", "cancelled"];
 
-      // Cancelar ou pausar: permitido de qualquer status ativo
+      // Cancelar ou pausar: permitido de qualquer status ativo (não-terminal)
       if (s === "cancelled" || s === "paused") {
         if (TERMINAL.includes(task.status)) {
           res.status(400).json({ error: "Não é possível alterar uma tarefa já finalizada ou cancelada" }); return;
         }
         update.status = s;
+      } else if (s === "reopened") {
+        // Reabrir tarefa aprovada: apenas coordinator/supervisor/admin, somente de "completed"
+        if (task.status !== "completed") {
+          res.status(400).json({ error: "Só é possível reabrir tarefas aprovadas" }); return;
+        }
+        const comment = revisionComment ? String(revisionComment).trim() : "";
+        if (!comment) { res.status(400).json({ error: "Informe o motivo da reabertura" }); return; }
+        const newRevision = (task.revisionCount ?? 0) + 1;
+        update.revisionCount = newRevision;
+        update.status = "reopened";
+        await db.insert(taskRevisionsTable).values({
+          taskId: id,
+          revisionNumber: newRevision,
+          comment,
+          createdById: userId,
+        });
       } else if (s === "pending" && (task.status === "paused" || task.status === "rascunho")) {
         // Retomar pausada ou publicar rascunho
         if (task.status === "rascunho") {
@@ -273,7 +291,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         }
         update.status = "pending";
       } else {
-        // Fluxo normal de aprovação/revisão
+        // Fluxo normal de aprovação/revisão (task.status deve ser "review")
         if (task.status !== "review") { res.status(400).json({ error: `Coordenador só pode avaliar tarefas em revisão (status atual: ${task.status})` }); return; }
         if (!["completed", "in_progress"].includes(s)) { res.status(400).json({ error: "Transição inválida" }); return; }
         update.status = s === "in_progress" ? "in_revision" : s;
@@ -363,6 +381,35 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
       await createFeedItem({
         type: "task_completed",
         title: `Tarefa concluída: "${task.title}"`,
+        actorId: userId,
+        entityId: id,
+        entityType: "task",
+      }).catch(() => {});
+    }
+    if (newStatus === "reopened") {
+      const comment = revisionComment ? String(revisionComment).trim() : "";
+      // Notify the assigned editor
+      if (task.assignedToId) {
+        await notify(task.assignedToId, "task_reopened",
+          "Tarefa reaberta",
+          `A tarefa "${task.title}" foi reaberta${comment ? `: ${comment}` : ""}`,
+          { taskId: id }
+        );
+      }
+      // Also notify all additional editors in junction table
+      const editorRows = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
+      for (const { userId: editorId } of editorRows) {
+        if (editorId !== task.assignedToId) {
+          await notify(editorId, "task_reopened",
+            "Tarefa reaberta",
+            `A tarefa "${task.title}" foi reaberta${comment ? `: ${comment}` : ""}`,
+            { taskId: id }
+          );
+        }
+      }
+      await createFeedItem({
+        type: "task_reopened",
+        title: `Tarefa reaberta: "${task.title}"`,
         actorId: userId,
         entityId: id,
         entityType: "task",

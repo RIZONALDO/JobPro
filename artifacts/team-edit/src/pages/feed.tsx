@@ -11,7 +11,7 @@ import { getSocket } from "@/lib/socket";
 import { cn } from "@/lib/utils";
 import {
   Trash2, Zap, Folder,
-  CheckCircle2, FolderCheck, Edit3, SmilePlus, MessageCircle, Pencil, X, Check,
+  CheckCircle2, FolderCheck, Edit3, SmilePlus, MessageCircle, Pencil, X, Check, RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,6 +40,7 @@ interface OnlineUser {
 
 const FEED_ICON: Record<string, React.ReactNode> = {
   task_completed:    <CheckCircle2 className="h-4 w-4 text-green-500" />,
+  task_reopened:     <RotateCcw className="h-4 w-4 text-rose-500" />,
   job_completed:     <Zap className="h-4 w-4 text-indigo-500" />,
   project_completed: <FolderCheck className="h-4 w-4 text-green-600" />,
   project_created:   <Folder className="h-4 w-4 text-blue-500" />,
@@ -48,6 +49,7 @@ const FEED_ICON: Record<string, React.ReactNode> = {
 
 const FEED_ACCENT: Record<string, string> = {
   task_completed:    "border-t-green-400",
+  task_reopened:     "border-t-rose-400",
   job_completed:     "border-t-indigo-400",
   project_completed: "border-t-green-500",
   project_created:   "border-t-blue-400",

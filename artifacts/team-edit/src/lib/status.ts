@@ -1,4 +1,5 @@
 // Statuses where the task lifecycle is closed — overdue logic must NOT apply.
+// `reopened` is intentionally NOT here: it is an active state that allows overdue tracking.
 export const TERMINAL_STATUSES = ["completed", "cancelled", "paused"] as const;
 export function isTerminal(status: string): boolean {
   return (TERMINAL_STATUSES as readonly string[]).includes(status);
@@ -11,6 +12,7 @@ export const STATUS_LABEL: Record<string, string> = {
   in_revision: "Em alteração",
   review:      "Aguard. aprovação",
   completed:   "Aprovada",
+  reopened:    "Reaberta",
   paused:      "Pausada",
   cancelled:   "Cancelada",
 };
@@ -33,4 +35,5 @@ export const STATUS_CLASS: Record<string, string> = {
   in_progress: "bg-blue-600 text-white border-transparent",
   in_revision: "bg-orange-500 text-white border-transparent",
   review:      "bg-amber-500 text-white border-transparent",
+  reopened:    "bg-rose-600 text-white border-transparent",
 };
