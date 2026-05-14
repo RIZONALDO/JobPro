@@ -646,17 +646,18 @@ export function ChatWidget() {
                   {/* DM input */}
                   <div className="shrink-0 p-3 border-t" style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
                     {(() => {
-                      const tm = dmText.match(/^\[([^\]|]+)\|id:(\d+)\]\s*(?:—\s*(.+))?/);
+                      const tm = dmText.match(/^\[([^\]|]+)\|id:(\d+)\]/);
                       if (!tm) return null;
+                      const ctx = dmText.slice(tm[0].length).replace(/^\s*[-—]\s*/, "").trim();
                       return (
                         <button
                           type="button"
-                          onClick={() => { setChatOpen(false); navigate(`/tasks?tab=lista&highlight=${tm[2]}`); }}
+                          onClick={() => { window.location.href = `/tasks?tab=lista&highlight=${tm[2]}`; }}
                           className="mb-2 w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold hover:opacity-80 transition-opacity text-left"
                           style={{ backgroundColor: "hsl(var(--primary) / 0.1)", border: "1px solid hsl(var(--primary) / 0.3)", color: "hsl(var(--primary))" }}
                         >
                           <span className="font-mono shrink-0">[{tm[1]}]</span>
-                          {tm[3] && <span className="truncate opacity-70 font-normal">{tm[3]}</span>}
+                          {ctx && <span className="truncate opacity-70 font-normal">{ctx}</span>}
                           <ExternalLink className="h-3 w-3 ml-auto shrink-0 opacity-60" />
                         </button>
                       );
