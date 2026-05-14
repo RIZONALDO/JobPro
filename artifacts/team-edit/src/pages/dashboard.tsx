@@ -1073,8 +1073,8 @@ export default function Dashboard() {
               {activity.length === 0 ? (
                 <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10 font-sans">Nenhuma atividade ainda.</p>
               ) : activity.map((e, idx) => (
-                <Link key={e.id} href="/my-tasks"
-                  className="flex items-center gap-3 px-5 py-2 hover:bg-[hsl(var(--muted))]/30 transition-colors group">
+                <div key={e.id} role="button" onClick={() => goToTask(e.taskId)}
+                  className="flex items-center gap-3 px-5 py-2 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
                   <span className="text-xs text-[hsl(var(--muted-foreground))]/40 w-5 shrink-0 text-right select-none">{String(idx + 1).padStart(2, "0")}</span>
                   <span className="text-xs text-[hsl(var(--muted-foreground))]/60 shrink-0 w-24">
                     {fmtShort(e.createdAt)}
@@ -1085,7 +1085,7 @@ export default function Dashboard() {
                     <span className="text-[hsl(var(--muted-foreground))]"> → {STATUS_LABEL[e.toStatus] ?? e.toStatus}</span>
                     {e.changedByName && <span className="text-[hsl(var(--muted-foreground))]/60"> · {e.changedByName.split(" ")[0]}</span>}
                   </span>
-                </Link>
+                </div>
               ))}
             </div>
           </div>

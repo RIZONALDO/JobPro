@@ -10,7 +10,6 @@ import LoginPage from "@/pages/login";
 import ChangePasswordPage from "@/pages/change-password";
 import Dashboard from "@/pages/dashboard";
 
-import MyTasks from "@/pages/my-tasks";
 import CalendarPage from "@/pages/calendar";
 import Team from "@/pages/team";
 import SettingsPage from "@/pages/settings";
@@ -44,7 +43,7 @@ function Router() {
       <Switch>
         <Route path="/">{user.role === "admin" ? <Redirect to="/team" /> : <Dashboard />}</Route>
         
-        <Route path="/my-tasks" component={MyTasks} />
+        <Route path="/my-tasks"><Redirect to="/tasks?tab=lista" /></Route>
         <Route path="/calendar" component={CalendarPage} />
         <Route path="/team" component={Team} />
         <Route path="/settings" component={SettingsPage} />

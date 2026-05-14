@@ -4,7 +4,6 @@ import { usePageTitle } from "@/lib/use-page-title";
 import { useAuth } from "@/contexts/AuthContext";
 import TasksOverview   from "@/pages/tasks-overview";
 import EditorTaskList  from "@/pages/editor-task-list";
-import MyTasks         from "@/pages/my-tasks";
 import Pipeline        from "@/pages/pipeline";
 import TimelinePage    from "@/pages/timeline";
 import CalendarPage    from "@/pages/calendar";
