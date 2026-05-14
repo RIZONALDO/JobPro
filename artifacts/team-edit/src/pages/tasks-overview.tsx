@@ -72,6 +72,16 @@ const STATUS_OPTIONS = [
   { value: "cancelled",   label: "Cancelada" },
 ];
 
+const TASK_GROUPS = [
+  { key: "rascunho", label: "Rascunhos",    statuses: ["rascunho"],              color: "#a1a1aa" },
+  { key: "pending",  label: "Pendentes",    statuses: ["pending"],               color: "#64748b" },
+  { key: "editing",  label: "Em edição",    statuses: ["in_progress"],           color: "#3b82f6" },
+  { key: "approval", label: "Em aprovação", statuses: ["in_revision", "review"], color: "#f59e0b" },
+  { key: "paused",   label: "Pausadas",     statuses: ["paused"],                color: "#a855f7" },
+  { key: "done",     label: "Concluídas",   statuses: ["completed"],             color: "#22c55e" },
+  { key: "cancelled",label: "Canceladas",   statuses: ["cancelled"],             color: "#ef4444" },
+];
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function TasksOverview() {
@@ -495,12 +505,25 @@ export default function TasksOverview() {
           </div>
 
         ) : (
-          /* Task rows */
-          <div className="divide-y divide-[hsl(var(--muted))]">
-            {sorted.map(t => {
-              const overdue   = isOverdue(t);
-              const canActNow = canAct(t);
-              const isHighlighted = highlighted === t.id;
+          <div>
+            {TASK_GROUPS.map(group => {
+              const groupTasks = sorted.filter(t => group.statuses.includes(t.status));
+              if (!groupTasks.length) return null;
+              return (
+                <div key={group.key}>
+                  <div
+                    className="sticky top-0 z-10 flex items-center gap-2 px-4 py-2 border-b backdrop-blur-sm"
+                    style={{ backgroundColor: `${group.color}18`, borderLeft: `3px solid ${group.color}` }}
+                  >
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
+                    <span className="text-xs font-bold uppercase tracking-widest" style={{ color: group.color }}>{group.label}</span>
+                    <span className="ml-1 text-[10px] rounded-full px-2 py-0.5 font-semibold" style={{ backgroundColor: `${group.color}22`, color: group.color }}>{groupTasks.length}</span>
+                  </div>
+                  <div className="divide-y divide-[hsl(var(--muted))]">
+                    {groupTasks.map(t => {
+                      const overdue   = isOverdue(t);
+                      const canActNow = canAct(t);
+                      const isHighlighted = highlighted === t.id;
 
               // Shared dropdown — rendered in both mobile and desktop slots
               const DropdownItems = () => (
@@ -791,6 +814,10 @@ export default function TasksOverview() {
                     </DropdownMenu>
                   </div>
 
+                </div>
+              );
+                    })}
+                  </div>
                 </div>
               );
             })}

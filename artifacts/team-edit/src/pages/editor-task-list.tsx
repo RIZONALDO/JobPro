@@ -47,6 +47,15 @@ const transitions: Record<string, { next: string; label: string; shortLabel: str
   in_revision: { next: "review",      label: "Enviar para aprovação",  shortLabel: "Enviar"   },
 };
 
+const TASK_GROUPS = [
+  { key: "pending",  label: "Pendentes",    statuses: ["pending"],               color: "#64748b" },
+  { key: "editing",  label: "Em edição",    statuses: ["in_progress"],           color: "#3b82f6" },
+  { key: "approval", label: "Em aprovação", statuses: ["in_revision", "review"], color: "#f59e0b" },
+  { key: "paused",   label: "Pausadas",     statuses: ["paused"],                color: "#a855f7" },
+  { key: "done",     label: "Concluídas",   statuses: ["completed"],             color: "#22c55e" },
+  { key: "cancelled",label: "Canceladas",   statuses: ["cancelled"],             color: "#ef4444" },
+];
+
 function isOverdue(dueDate: string | null) {
   if (!dueDate) return false;
   return new Date(dueDate) < new Date(new Date().toDateString());
@@ -190,13 +199,28 @@ export default function EditorTaskList() {
               {search ? "Nenhuma tarefa encontrada." : "Nenhuma tarefa atribuída."}
             </p>
           </div>
-        ) : filtered.map(t => {
-          const overdue = isOverdue(t.dueDate) && !["completed", "cancelled", "paused"].includes(t.status);
-          const accent  = t.color ?? "#6366f1";
-          const trans   = transitions[t.status];
-          const canReturn = ["pending", "in_progress", "in_revision"].includes(t.status);
-          const canPause  = !["completed", "cancelled", "paused"].includes(t.status);
-          const isHighlighted = highlighted === t.id;
+        ) : (
+          <>
+            {TASK_GROUPS.map(group => {
+              const groupTasks = filtered.filter(t => group.statuses.includes(t.status));
+              if (!groupTasks.length) return null;
+              return (
+                <div key={group.key}>
+                  <div
+                    className="sticky top-0 z-10 flex items-center gap-2 px-4 py-2 border-b backdrop-blur-sm"
+                    style={{ backgroundColor: `${group.color}18`, borderLeft: `3px solid ${group.color}` }}
+                  >
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
+                    <span className="text-xs font-bold uppercase tracking-widest" style={{ color: group.color }}>{group.label}</span>
+                    <span className="ml-1 text-[10px] rounded-full px-2 py-0.5 font-semibold" style={{ backgroundColor: `${group.color}22`, color: group.color }}>{groupTasks.length}</span>
+                  </div>
+                  {groupTasks.map(t => {
+                    const overdue = isOverdue(t.dueDate) && !["completed", "cancelled", "paused"].includes(t.status);
+                    const accent  = t.color ?? "#6366f1";
+                    const trans   = transitions[t.status];
+                    const canReturn = ["pending", "in_progress", "in_revision"].includes(t.status);
+                    const canPause  = !["completed", "cancelled", "paused"].includes(t.status);
+                    const isHighlighted = highlighted === t.id;
 
           const dropdownItems = (
             <DropdownMenuContent align="end">
@@ -399,7 +423,12 @@ export default function EditorTaskList() {
 
             </motion.div>
           );
-        })}
+          })}
+        </div>
+      );
+    })}
+  </>
+)}
         </div>{/* fim body scrollável */}
       </div>
 
