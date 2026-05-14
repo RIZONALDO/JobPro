@@ -671,7 +671,7 @@ export function ChatWidget() {
                         style={{ backgroundColor: "hsl(220 20% 16%)" }}
                       >
                         {/* Accent bar */}
-                        <div className="w-[3px] shrink-0" style={{ backgroundColor: "rgba(255,255,255,0.25)" }} />
+                        <div className="w-[3px] shrink-0" style={{ backgroundColor: "hsl(var(--primary))" }} />
                         {/* Clickable content */}
                         <button
                           type="button"
@@ -680,7 +680,7 @@ export function ChatWidget() {
                           style={{ color: "#fff" }}
                         >
                           <span className="text-[10px] font-semibold uppercase tracking-wide leading-none mb-0.5" style={{ color: "rgba(255,255,255,0.5)" }}>Tarefa</span>
-                          <span className="text-[12px] font-semibold leading-snug truncate w-full" style={{ color: "rgba(255,255,255,0.9)" }}>
+                          <span className="text-[12px] font-semibold leading-snug truncate w-full" style={{ color: "hsl(var(--primary))" }}>
                             {dmTaskRef.code}{dmTaskRef.title ? ` · ${dmTaskRef.title}` : ""}
                           </span>
                         </button>
