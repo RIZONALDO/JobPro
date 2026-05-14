@@ -24,6 +24,7 @@ import {
 import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
+import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
 import { TaskFormModal } from "@/components/task-form-modal";
 import { ReassignEditorModal } from "@/components/reassign-editor-modal";
 import { RefreshCw, UserPlus } from "lucide-react";
@@ -688,10 +689,23 @@ export default function TasksOverview() {
                   </div>
 
                   {/* Editor */}
-                  <div className="hidden md:flex w-32 shrink-0 items-center gap-2">
+                  <div className="hidden md:flex w-32 shrink-0 items-center gap-1.5">
                     {t.editors && t.editors.length > 0 ? (
                       <>
-                        <StackedAvatars people={t.editors} size={28} max={3} />
+                        <div className="flex items-center" style={{ gap: 0 }}>
+                          {t.editors.slice(0, 3).map((e, i) => (
+                            <div key={e.id} style={{ marginLeft: i === 0 ? 0 : -8, zIndex: t.editors.length - i }}>
+                              <ChatAvatarButton
+                                userId={e.id}
+                                name={e.name}
+                                avatarUrl={e.avatarUrl}
+                                size={28}
+                                taskCode={t.taskCode}
+                                taskTitle={t.title}
+                              />
+                            </div>
+                          ))}
+                        </div>
                         {t.editors.length === 1 && (
                           <span className="text-[11px] font-medium truncate">{t.editors[0].name.split(" ")[0]}</span>
                         )}
@@ -712,7 +726,14 @@ export default function TasksOverview() {
                       <span className="text-[11px] text-[hsl(var(--primary))] font-semibold truncate">Você</span>
                     ) : t.coordinator ? (
                       <>
-                        <AvatarDisplay name={t.coordinator.name} avatarUrl={t.coordinator.avatarUrl} size={30} />
+                        <ChatAvatarButton
+                          userId={t.coordinator.id}
+                          name={t.coordinator.name}
+                          avatarUrl={t.coordinator.avatarUrl}
+                          size={30}
+                          taskCode={t.taskCode}
+                          taskTitle={t.title}
+                        />
                         <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 truncate">{t.coordinator.name.split(" ")[0]}</span>
                       </>
                     ) : (

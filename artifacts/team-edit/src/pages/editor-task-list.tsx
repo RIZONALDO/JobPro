@@ -18,6 +18,7 @@ import {
   Info, Undo2, PauseCircle, XCircle, Search,
 } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
+import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 
@@ -348,7 +349,14 @@ export default function EditorTaskList() {
               <div className="hidden xl:flex w-20 shrink-0 items-center gap-1.5 pl-6">
                 {t.createdBy ? (
                   <>
-                    <AvatarDisplay name={t.createdBy.name} avatarUrl={t.createdBy.avatarUrl} size={30} />
+                    <ChatAvatarButton
+                      userId={t.createdBy.id}
+                      name={t.createdBy.name}
+                      avatarUrl={t.createdBy.avatarUrl}
+                      size={30}
+                      taskCode={t.taskCode}
+                      taskTitle={t.title}
+                    />
                     <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 truncate">{t.createdBy.name.split(" ")[0]}</span>
                   </>
                 ) : (

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { TaskModalProvider } from "@/contexts/TaskModalContext";
+import { ChatProvider } from "@/contexts/ChatContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { Shell } from "@/components/layout/Shell";
 import { Toaster } from "@/components/ui/toaster";
@@ -38,6 +39,7 @@ function Router() {
 
   return (
     <ThemeProvider>
+    <ChatProvider>
     <TaskModalProvider>
     <Shell>
       <Switch>
@@ -61,6 +63,7 @@ function Router() {
       </Switch>
     </Shell>
     </TaskModalProvider>
+    </ChatProvider>
     </ThemeProvider>
   );
 }

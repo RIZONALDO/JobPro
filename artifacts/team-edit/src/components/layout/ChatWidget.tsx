@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getSocket } from "@/lib/socket";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useChatContext } from "@/contexts/ChatContext";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -145,6 +146,7 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
 
 export function ChatWidget() {
   const { user } = useAuth();
+  const { _register } = useChatContext();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingChat, setLoadingChat] = useState(true);
@@ -194,9 +196,9 @@ export function ChatWidget() {
     apiFetch<Conversation[]>("/api/dm/conversations").then(setConversations).catch(() => {});
   }, []);
 
-  const openDm = useCallback((userId: number) => {
+  const openDm = useCallback((userId: number, prefill?: string) => {
     setActiveView(userId);
-    setDmText("");
+    setDmText(prefill ?? "");
     if (!dmMessages[userId]) {
       apiFetch<DmMessage[]>(`/api/dm/${userId}`)
         .then(msgs => {
@@ -224,6 +226,11 @@ export function ChatWidget() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
   useEffect(() => { dmEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [dmMessages, activeView]);
+
+  useEffect(() => _register((userId, prefill) => {
+    setChatOpen(true);
+    openDm(userId, prefill);
+  }), [_register, openDm]);
 
   useEffect(() => {
     const socket = getSocket();
