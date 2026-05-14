@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Send, MessageCircle, X } from "lucide-react";
+import { Send, MessageCircle, X, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch, apiPost } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -645,6 +645,22 @@ export function ChatWidget() {
 
                   {/* DM input */}
                   <div className="shrink-0 p-3 border-t" style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+                    {(() => {
+                      const tm = dmText.match(/^\[([^\]|]+)\|id:(\d+)\]\s*(?:—\s*(.+))?/);
+                      if (!tm) return null;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => { setChatOpen(false); navigate(`/tasks?tab=lista&highlight=${tm[2]}`); }}
+                          className="mb-2 w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold hover:opacity-80 transition-opacity text-left"
+                          style={{ backgroundColor: "hsl(var(--primary) / 0.1)", border: "1px solid hsl(var(--primary) / 0.3)", color: "hsl(var(--primary))" }}
+                        >
+                          <span className="font-mono shrink-0">[{tm[1]}]</span>
+                          {tm[3] && <span className="truncate opacity-70 font-normal">{tm[3]}</span>}
+                          <ExternalLink className="h-3 w-3 ml-auto shrink-0 opacity-60" />
+                        </button>
+                      );
+                    })()}
                     <div className="flex gap-2 items-end rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: "hsl(var(--muted))" }}>
                       <ChatTextarea value={dmText} onChange={setDmText} onSend={sendDm} users={allUsers} placeholder="Mensagem privada..." />
                       <Button size="sm" onClick={sendDm} disabled={dmSending || !dmText.trim()} className="h-8 w-8 p-0 shrink-0 rounded-xl">
