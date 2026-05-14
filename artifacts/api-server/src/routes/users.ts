@@ -48,6 +48,8 @@ router.get("/users/:id/tasks", requireCoordinator, async (req, res): Promise<voi
       eq(tasksTable.assignedToId, id),
       ne(tasksTable.status, "completed"),
       ne(tasksTable.status, "cancelled"),
+      ne(tasksTable.status, "paused"),
+      ne(tasksTable.status, "rascunho"),
     ))
     .orderBy(desc(tasksTable.createdAt));
 

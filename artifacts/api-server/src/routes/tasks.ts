@@ -659,7 +659,13 @@ router.get("/workload", requireCoordinator, async (_req, res): Promise<void> => 
   const open = await db
     .select({ id: tasksTable.id, status: tasksTable.status, complexity: tasksTable.complexity, assignedToId: tasksTable.assignedToId })
     .from(tasksTable)
-    .where(and(ne(tasksTable.status, "completed"), ne(tasksTable.status, "cancelled"), isNotNull(tasksTable.assignedToId)));
+    .where(and(
+      ne(tasksTable.status, "completed"),
+      ne(tasksTable.status, "cancelled"),
+      ne(tasksTable.status, "paused"),
+      ne(tasksTable.status, "rascunho"),
+      isNotNull(tasksTable.assignedToId),
+    ));
 
   const result = editors.map(editor => {
     const editorTasks = open.filter(t => t.assignedToId === editor.id);
