@@ -144,37 +144,40 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
 }
 
 // ── Task link renderer ───────────────────────────────────────────
-// Parses [CODE|id:ID] tokens in chat messages and renders them as links.
 
-const TASK_REF = /(\[[^\]|]+\|id:\d+\])/g;
+const TASK_REF = /\[([^\]|]+)\|id:(\d+)\]/g;
 
-function renderContent(
-  text: string,
-  navigate: (to: string) => void,
-  mine: boolean,
-  close: () => void,
-) {
-  const parts = text.split(TASK_REF);
-  return parts.map((part, i) => {
-    const m = part.match(/^\[([^\]|]+)\|id:(\d+)\]$/);
-    if (m) {
-      return (
-        <button
-          key={i}
-          type="button"
-          onClick={() => { close(); navigate(`/tasks?tab=lista&highlight=${m[2]}`); }}
-          className={cn(
-            "font-mono font-bold underline underline-offset-2 hover:opacity-80 transition-opacity",
-            mine ? "text-white/90" : "text-[hsl(var(--primary))]"
-          )}
-          title="Abrir tarefa"
-        >
-          [{m[1]}]
-        </button>
-      );
-    }
-    return <span key={i}>{part}</span>;
-  });
+function MsgContent({ text, navigate, mine, onClose }: {
+  text: string;
+  navigate: (to: string) => void;
+  mine: boolean;
+  onClose: () => void;
+}) {
+  const nodes: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  TASK_REF.lastIndex = 0;
+  while ((m = TASK_REF.exec(text)) !== null) {
+    if (m.index > last) nodes.push(<span key={last}>{text.slice(last, m.index)}</span>);
+    const code = m[1], id = m[2];
+    nodes.push(
+      <button
+        key={m.index}
+        type="button"
+        onClick={() => { onClose(); navigate(`/tasks?tab=lista&highlight=${id}`); }}
+        className={cn(
+          "font-mono font-bold underline underline-offset-2 hover:opacity-80 transition-opacity cursor-pointer",
+          mine ? "text-white" : "text-[hsl(var(--primary))]"
+        )}
+        title="Abrir tarefa"
+      >
+        [{code}]
+      </button>
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) nodes.push(<span key={last}>{text.slice(last)}</span>);
+  return <>{nodes}</>;
 }
 
 // ── ChatWidget ───────────────────────────────────────────────────
@@ -566,7 +569,7 @@ export function ChatWidget() {
                             }
                           >
                             {!mine && <p className="text-xs font-semibold mb-0.5 opacity-60">{msg.userName}</p>}
-                            <p className="whitespace-pre-wrap break-words">{renderContent(msg.content, navigate, mine, () => setChatOpen(false))}</p>
+                            <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} navigate={navigate} mine={mine} onClose={() => setChatOpen(false)} /></div>
                             <p className="text-[11px] mt-1 opacity-40 text-right">{timeAgo(msg.createdAt)}</p>
                           </div>
                         </div>
@@ -631,7 +634,7 @@ export function ChatWidget() {
                               : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
                             }
                           >
-                            <p className="whitespace-pre-wrap break-words">{renderContent(msg.content, navigate, mine, () => setChatOpen(false))}</p>
+                            <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} navigate={navigate} mine={mine} onClose={() => setChatOpen(false)} /></div>
                             <p className="text-[11px] mt-1 opacity-40 text-right">{timeAgo(msg.createdAt)}</p>
                           </div>
                         </div>
