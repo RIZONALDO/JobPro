@@ -147,9 +147,8 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
 
 const TASK_REF = /\[([^\]|]+)\|id:(\d+)\]/g;
 
-function MsgContent({ text, navigate, mine, onClose }: {
+function MsgContent({ text, mine, onClose }: {
   text: string;
-  navigate: (to: string) => void;
   mine: boolean;
   onClose: () => void;
 }) {
@@ -164,7 +163,7 @@ function MsgContent({ text, navigate, mine, onClose }: {
       <button
         key={m.index}
         type="button"
-        onClick={() => { onClose(); navigate(`/tasks?tab=lista&highlight=${id}`); }}
+        onClick={() => { onClose(); window.location.href = `/tasks?tab=lista&highlight=${id}`; }}
         className={cn(
           "font-mono font-bold underline underline-offset-2 hover:opacity-80 transition-opacity cursor-pointer",
           mine ? "text-white" : "text-[hsl(var(--primary))]"
@@ -590,7 +589,7 @@ export function ChatWidget() {
                             }
                           >
                             {!mine && <p className="text-xs font-semibold mb-0.5 opacity-60">{msg.userName}</p>}
-                            <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} navigate={navigate} mine={mine} onClose={() => setChatOpen(false)} /></div>
+                            <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
                             <p className="text-[11px] mt-1 opacity-40 text-right">{timeAgo(msg.createdAt)}</p>
                           </div>
                         </div>
@@ -655,7 +654,7 @@ export function ChatWidget() {
                               : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
                             }
                           >
-                            <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} navigate={navigate} mine={mine} onClose={() => setChatOpen(false)} /></div>
+                            <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
                             <p className="text-[11px] mt-1 opacity-40 text-right">{timeAgo(msg.createdAt)}</p>
                           </div>
                         </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useSearch } from "wouter";
 import { List, LayoutGrid, CalendarRange, CalendarDays } from "lucide-react";
 import { usePageTitle } from "@/lib/use-page-title";
 import { useAuth } from "@/contexts/AuthContext";
@@ -15,16 +15,15 @@ export default function TasksHub() {
   usePageTitle("Tarefas");
   const { user } = useAuth();
   const isEditor = user?.role === "editor";
-  const [location] = useLocation();
+  const search = useSearch();
   const [tab, setTab] = useState<Tab>(() => {
-    const p = new URLSearchParams(window.location.search);
-    const t = p.get("tab");
+    const t = new URLSearchParams(window.location.search).get("tab");
     return (t === "board" || t === "lista" || t === "timeline" || t === "calendario") ? t as Tab : "lista";
   });
   useEffect(() => {
-    const t = new URLSearchParams(window.location.search).get("tab");
+    const t = new URLSearchParams(search).get("tab");
     if (t === "board" || t === "lista" || t === "timeline" || t === "calendario") setTab(t as Tab);
-  }, [location]);
+  }, [search]);
 
   const TABS: { key: Tab; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
     { key: "lista",      label: "Lista",      Icon: List          },

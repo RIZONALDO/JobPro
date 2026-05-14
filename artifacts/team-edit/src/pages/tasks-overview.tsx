@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { staggerContainer, staggerRow } from "@/lib/motion";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { useLocation } from "wouter";
+import { useSearch } from "wouter";
 import { apiFetch, apiPut, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -86,16 +86,16 @@ export default function TasksOverview() {
   const [tasks,        setTasks]        = useState<OverviewTask[]>([]);
   const [loading,      setLoading]      = useState(true);
 
-  const [location] = useLocation();
+  const search = useSearch();
   const [highlighted, setHighlighted] = useState<number | null>(() => {
     const v = new URLSearchParams(window.location.search).get("highlight");
     return v ? parseInt(v, 10) : null;
   });
   const highlightRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    const v = new URLSearchParams(window.location.search).get("highlight");
+    const v = new URLSearchParams(search).get("highlight");
     if (v) setHighlighted(parseInt(v, 10));
-  }, [location]);
+  }, [search]);
   useEffect(() => {
     if (!highlighted) return;
     const timer = setTimeout(() => setHighlighted(null), 3000);
