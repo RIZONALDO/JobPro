@@ -120,7 +120,7 @@ export default function TasksOverview() {
 
   // Filters
   const [search,       setSearch]       = useState("");
-  const [filterStatus, setFilterStatus] = useState("active");
+  const [filterStatus, setFilterStatus] = useState("all");
   const [filterEditor, setFilterEditor] = useState("all");
   const defaultCoord = (!isSuper && user?.role === "coordinator") ? String(user?.id ?? "all") : "all";
   const [filterCoord,  setFilterCoord]  = useState(defaultCoord);
@@ -222,8 +222,8 @@ export default function TasksOverview() {
     return true;
   });
 
-  const hasFilter = search || filterStatus !== "active" || filterEditor !== "all" || filterCoord !== defaultCoord;
-  const clearFilters = () => { setSearch(""); setFilterStatus("active"); setFilterEditor("all"); setFilterCoord(defaultCoord); };
+  const hasFilter = search || filterStatus !== "all" || filterEditor !== "all" || filterCoord !== defaultCoord;
+  const clearFilters = () => { setSearch(""); setFilterStatus("all"); setFilterEditor("all"); setFilterCoord(defaultCoord); };
 
   // ── Client-side sort ──────────────────────────────────────────────────────
 
@@ -326,7 +326,7 @@ export default function TasksOverview() {
             <SlidersHorizontal className="h-3.5 w-3.5" />
             {(filterStatus !== "all" || filterEditor !== "all" || filterCoord !== "all") && (
               <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-[hsl(var(--primary))] text-white text-[10px] font-bold flex items-center justify-center">
-                {[filterStatus !== "active", filterEditor !== "all", filterCoord !== "all"].filter(Boolean).length}
+                {[filterStatus !== "all", filterEditor !== "all", filterCoord !== "all"].filter(Boolean).length}
               </span>
             )}
           </Button>
