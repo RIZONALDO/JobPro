@@ -38,6 +38,10 @@ io.on("connection", (socket) => {
   socket.join(`user:${userId}`);
   logger.debug({ userId, socketId: socket.id }, "socket connected");
 
+  socket.on("dm:typing", ({ toUserId }: { toUserId: number }) => {
+    io.to(`user:${toUserId}`).emit("dm:typing", { fromUserId: userId });
+  });
+
   socket.on("disconnect", async () => {
     try {
       // Check if user has other active sockets before marking offline

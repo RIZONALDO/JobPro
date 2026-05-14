@@ -209,6 +209,8 @@ export function ChatWidget() {
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
   const [allUsers, setAllUsers] = useState<MentionUser[]>([]);
 
+  const [typingUsers, setTypingUsers] = useState<Set<number>>(new Set());
+
   const chatEndRef = useRef<HTMLDivElement>(null);
   const dmEndRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -216,6 +218,8 @@ export function ChatWidget() {
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeViewRef = useRef<"general" | number>("general");
   const chatOpenRef = useRef(false);
+  const typingTimeoutsRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const lastTypingEmitRef = useRef<number>(0);
   useEffect(() => { chatOpenRef.current = chatOpen; }, [chatOpen]);
   useEffect(() => { activeViewRef.current = activeView; }, [activeView]);
 
@@ -320,6 +324,14 @@ export function ChatWidget() {
         ? prev.some(p => p.userId === userId) ? prev : [...prev, { ...u, userId, isOnline: true }]
         : prev.filter(p => p.userId !== userId));
 
+    const onDmTyping = ({ fromUserId }: { fromUserId: number }) => {
+      setTypingUsers(prev => new Set(prev).add(fromUserId));
+      if (typingTimeoutsRef.current[fromUserId]) clearTimeout(typingTimeoutsRef.current[fromUserId]);
+      typingTimeoutsRef.current[fromUserId] = setTimeout(() => {
+        setTypingUsers(prev => { const s = new Set(prev); s.delete(fromUserId); return s; });
+      }, 3000);
+    };
+
     const onDmRead = ({ byUserId }: { byUserId: number }) => {
       const readAt = new Date().toISOString();
       setDmMessages(prev => {
@@ -338,11 +350,13 @@ export function ChatWidget() {
     socket.on("dm:message", onDmMessage);
     socket.on("presence:update", onPresence);
     socket.on("dm:read", onDmRead);
+    socket.on("dm:typing", onDmTyping);
     return () => {
       socket.off("chat:message", onChatMessage);
       socket.off("dm:message", onDmMessage);
       socket.off("presence:update", onPresence);
       socket.off("dm:read", onDmRead);
+      socket.off("dm:typing", onDmTyping);
     };
   }, [user]);
 
@@ -687,6 +701,18 @@ export function ChatWidget() {
                         </div>
                       );
                     })}
+                    {typeof activeView === "number" && typingUsers.has(activeView) && (
+                      <div className="flex gap-2 items-end">
+                        <Avatar name={currentDmUser?.name ?? null} url={currentDmUser?.avatarUrl ?? null} size="xs" />
+                        <div className="rounded-2xl px-3.5 py-3" style={{ backgroundColor: "hsl(var(--muted))", borderBottomLeftRadius: "4px" }}>
+                          <div className="flex gap-1 items-center">
+                            <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "hsl(var(--muted-foreground))", animationDelay: "0ms" }} />
+                            <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "hsl(var(--muted-foreground))", animationDelay: "160ms" }} />
+                            <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "hsl(var(--muted-foreground))", animationDelay: "320ms" }} />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div ref={dmEndRef} />
                   </div>
 
@@ -723,7 +749,22 @@ export function ChatWidget() {
                       </div>
                     )}
                     <div className="flex gap-2 items-end rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: "hsl(var(--muted))" }}>
-                      <ChatTextarea value={dmText} onChange={setDmText} onSend={sendDm} users={allUsers} placeholder="Mensagem privada..." />
+                      <ChatTextarea
+                        value={dmText}
+                        onChange={v => {
+                          setDmText(v);
+                          if (typeof activeView === "number" && v.trim()) {
+                            const now = Date.now();
+                            if (now - lastTypingEmitRef.current > 2000) {
+                              getSocket().emit("dm:typing", { toUserId: activeView });
+                              lastTypingEmitRef.current = now;
+                            }
+                          }
+                        }}
+                        onSend={sendDm}
+                        users={allUsers}
+                        placeholder="Mensagem privada..."
+                      />
                       <Button size="sm" onClick={sendDm} disabled={dmSending || (!dmText.trim() && !dmTaskRef)} className="h-8 w-8 p-0 shrink-0 rounded-xl">
                         <Send className="h-3.5 w-3.5" />
                       </Button>
