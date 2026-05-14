@@ -50,7 +50,8 @@ const transitions: Record<string, { next: string; label: string; shortLabel: str
 const TASK_GROUPS = [
   { key: "pending",  label: "Pendentes",    statuses: ["pending"],               color: "#64748b" },
   { key: "editing",  label: "Em edição",    statuses: ["in_progress"],           color: "#3b82f6" },
-  { key: "approval", label: "Em aprovação", statuses: ["in_revision", "review"], color: "#f59e0b" },
+  { key: "revision",  label: "Em alteração", statuses: ["in_revision"],          color: "#f97316" },
+  { key: "approval",  label: "Em aprovação", statuses: ["review"],               color: "#f59e0b" },
   { key: "paused",   label: "Pausadas",     statuses: ["paused"],                color: "#a855f7" },
   { key: "done",     label: "Concluídas",   statuses: ["completed"],             color: "#22c55e" },
   { key: "cancelled",label: "Canceladas",   statuses: ["cancelled"],             color: "#ef4444" },
