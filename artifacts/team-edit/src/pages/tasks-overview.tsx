@@ -143,6 +143,7 @@ export default function TasksOverview() {
   // Reopen dialog
   const [reopenTask,    setReopenTask]    = useState<OverviewTask | null>(null);
   const [reopenComment, setReopenComment] = useState("");
+  const [reopenDueDate, setReopenDueDate] = useState("");
   const [sendingReopen, setSendingReopen] = useState(false);
   const [sendingRevision, setSendingRevision] = useState(false);
   const [confirmTask, setConfirmTask] = useState<{ id: number; title: string; action: "cancel" | "pause" } | null>(null);
@@ -316,7 +317,11 @@ export default function TasksOverview() {
     }
     setSendingReopen(true);
     try {
-      await apiPut(`/api/tasks/${reopenTask.id}`, { status: "reopened", revisionComment: reopenComment.trim() });
+      await apiPut(`/api/tasks/${reopenTask.id}`, {
+        status: "reopened",
+        revisionComment: reopenComment.trim(),
+        ...(reopenDueDate ? { dueDate: reopenDueDate } : {}),
+      });
       toast({ title: "Tarefa reaberta" });
       setReopenTask(null);
       load(true);
@@ -580,7 +585,7 @@ export default function TasksOverview() {
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         className="text-rose-600 focus:text-rose-600"
-                        onClick={() => { setReopenTask(t); setReopenComment(""); }}>
+                        onClick={() => { setReopenTask(t); setReopenComment(""); setReopenDueDate(""); }}>
                         <RotateCcw className="h-3.5 w-3.5" />Reabrir tarefa
                       </DropdownMenuItem>
                     </>
@@ -714,7 +719,7 @@ export default function TasksOverview() {
                         <Button size="sm" variant="outline"
                           className="h-8 w-8 p-0 text-rose-600 border-rose-300 hover:bg-rose-50"
                           title="Reabrir tarefa"
-                          onClick={e => { e.stopPropagation(); setReopenTask(t); setReopenComment(""); }}>
+                          onClick={e => { e.stopPropagation(); setReopenTask(t); setReopenComment(""); setReopenDueDate(""); }}>
                           <RotateCcw className="h-3.5 w-3.5" />
                         </Button>
                       )}
@@ -849,7 +854,7 @@ export default function TasksOverview() {
                     {t.status === "completed" && canActNow && (
                       <Button size="icon" variant="outline"
                         className="h-7 w-7 text-rose-600 border-rose-300 hover:bg-rose-50" title="Reabrir tarefa"
-                        onClick={e => { e.stopPropagation(); setReopenTask(t); setReopenComment(""); }}>
+                        onClick={e => { e.stopPropagation(); setReopenTask(t); setReopenComment(""); setReopenDueDate(""); }}>
                         <RotateCcw className="h-3.5 w-3.5" />
                       </Button>
                     )}
@@ -934,7 +939,7 @@ export default function TasksOverview() {
       </Dialog>
 
       {/* ── Reopen dialog ────────────────────────────────────────────────── */}
-      <Dialog open={!!reopenTask} onOpenChange={open => !open && setReopenTask(null)}>
+      <Dialog open={!!reopenTask} onOpenChange={open => { if (!open) { setReopenTask(null); setReopenDueDate(""); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Reabrir tarefa aprovada</DialogTitle>
@@ -949,9 +954,21 @@ export default function TasksOverview() {
               <Textarea
                 value={reopenComment}
                 onChange={e => setReopenComment(e.target.value)}
-                rows={4}
+                rows={3}
                 placeholder="Descreva o que o cliente solicitou alterar…"
                 autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>
+                Novo prazo
+                <span className="text-[hsl(var(--muted-foreground))] font-normal ml-1">(opcional — deixe em branco para manter o prazo atual)</span>
+              </Label>
+              <Input
+                type="date"
+                value={reopenDueDate}
+                onChange={e => setReopenDueDate(e.target.value)}
+                min={new Date().toISOString().split("T")[0]}
               />
             </div>
           </div>
