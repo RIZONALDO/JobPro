@@ -13,14 +13,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import {
-  AlertCircle, MessageSquare, MoreVertical,
-  Info, Undo2, Search,
+  AlertCircle, MoreVertical,
+  Info, Undo2, Search, X,
 } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
-import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
@@ -45,33 +46,49 @@ const transitions: Record<string, { next: string; label: string; shortLabel: str
   pending:     { next: "in_progress", label: "Iniciar edição",         shortLabel: "Iniciar"  },
   in_progress: { next: "review",      label: "Enviar para aprovação",  shortLabel: "Enviar"   },
   in_revision: { next: "review",      label: "Enviar para aprovação",  shortLabel: "Enviar"   },
+  reopened:    { next: "in_progress", label: "Iniciar edição",         shortLabel: "Iniciar"  },
 };
 
-const TASK_GROUPS = [
-  { key: "pending",  label: "Pendentes",    statuses: ["pending"],               color: "#64748b" },
-  { key: "editing",  label: "Em edição",    statuses: ["in_progress"],           color: "#3b82f6" },
-  { key: "revision",  label: "Em alteração", statuses: ["in_revision"],          color: "#f97316" },
-  { key: "approval",  label: "Em aprovação", statuses: ["review"],               color: "#f59e0b" },
-  { key: "paused",   label: "Pausadas",     statuses: ["paused"],                color: "#a855f7" },
-  { key: "done",     label: "Concluídas",   statuses: ["completed"],             color: "#22c55e" },
-  { key: "cancelled",label: "Canceladas",   statuses: ["cancelled"],             color: "#ef4444" },
+const STATUS_OPTIONS = [
+  { value: "all",         label: "Todas" },
+  { value: "active",      label: "Ativas" },
+  { value: "pending",     label: "Pendente" },
+  { value: "in_progress", label: "Em edição" },
+  { value: "in_revision", label: "Em alteração" },
+  { value: "review",      label: "Em aprovação" },
+  { value: "reopened",    label: "Reaberta" },
+  { value: "paused",      label: "Pausada" },
+  { value: "completed",   label: "Concluída" },
+  { value: "cancelled",   label: "Cancelada" },
 ];
 
-function isOverdue(dueDate: string | null) {
-  if (!dueDate) return false;
+const TASK_GROUPS = [
+  { key: "pending",   label: "Pendentes",     statuses: ["pending"],      color: "#64748b" },
+  { key: "editing",   label: "Em edição",     statuses: ["in_progress"],  color: "#3b82f6" },
+  { key: "revision",  label: "Em alteração",  statuses: ["in_revision"],  color: "#f97316" },
+  { key: "approval",  label: "Em aprovação",  statuses: ["review"],       color: "#f59e0b" },
+  { key: "reopened",  label: "Reabertas",     statuses: ["reopened"],     color: "#e11d48" },
+  { key: "paused",    label: "Pausadas",      statuses: ["paused"],       color: "#a855f7" },
+  { key: "done",      label: "Concluídas",    statuses: ["completed"],    color: "#22c55e" },
+  { key: "cancelled", label: "Canceladas",    statuses: ["cancelled"],    color: "#ef4444" },
+];
+
+function isOverdue(dueDate: string | null, status: string) {
+  if (!dueDate || isTerminal(status)) return false;
   return new Date(dueDate) < new Date(new Date().toDateString());
 }
 
-const STATUS_ORDER = ["pending", "in_progress", "in_revision", "review", "paused", "completed", "cancelled"];
+const STATUS_ORDER = ["pending", "in_progress", "in_revision", "review", "reopened", "paused", "completed", "cancelled"];
 
 export default function EditorTaskList() {
   const { toast } = useToast();
   const { user } = useAuth();
   const { openTask } = useTaskModal();
 
-  const [tasks,   setTasks]   = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search,  setSearch]  = useState("");
+  const [tasks,        setTasks]        = useState<Task[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [search,       setSearch]       = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
 
   const urlSearch = useSearch();
   const [highlighted, setHighlighted] = useState<number | null>(() => {
@@ -133,8 +150,15 @@ export default function EditorTaskList() {
   };
 
   const filtered = tasks
-    .filter(t => !search || t.title.toLowerCase().includes(search.toLowerCase()) || (t.client ?? "").toLowerCase().includes(search.toLowerCase()))
+    .filter(t => {
+      if (search && !t.title.toLowerCase().includes(search.toLowerCase()) && !(t.client ?? "").toLowerCase().includes(search.toLowerCase())) return false;
+      if (filterStatus === "active") return !isTerminal(t.status);
+      if (filterStatus !== "all") return t.status === filterStatus;
+      return true;
+    })
     .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
+
+  const hasFilter = search || filterStatus !== "all";
 
   if (loading) return (
     <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden animate-pulse">
@@ -152,15 +176,41 @@ export default function EditorTaskList() {
   return (
     <div className="space-y-4">
 
-      {/* Search */}
-      <div className="flex items-center gap-2 rounded-lg border bg-[hsl(var(--muted))]/40 px-3 h-9">
-        <Search className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] shrink-0" />
-        <Input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar tarefa ou cliente…"
-          className="border-0 bg-transparent p-0 h-auto text-sm outline-none focus-visible:ring-0 shadow-none"
-        />
+      {/* Toolbar */}
+      <div className="flex items-center gap-2.5 flex-wrap rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm px-4 py-3">
+        <div className="relative flex-1 min-w-[160px] max-w-[260px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] pointer-events-none" />
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar tarefa ou cliente…"
+            className="pl-8 h-8 text-sm bg-[hsl(var(--background))]"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]">
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className="h-8 w-40 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {STATUS_OPTIONS.map(o => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {hasFilter && (
+          <button
+            onClick={() => { setSearch(""); setFilterStatus("all"); }}
+            className="flex items-center gap-1 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] border border-[hsl(var(--border))] rounded-md px-2.5 h-8 transition-colors"
+          >
+            <X className="h-3 w-3" />Limpar
+          </button>
+        )}
+        <span className="text-xs text-[hsl(var(--muted-foreground))] ml-auto shrink-0">
+          {filtered.length} tarefa{filtered.length !== 1 ? "s" : ""}
+        </span>
       </div>
 
       {/* Table */}
@@ -200,7 +250,7 @@ export default function EditorTaskList() {
                     <span className="text-[10px] tabular-nums shrink-0" style={{ color: group.color, opacity: 0.5 }}>{groupTasks.length}</span>
                   </div>
                   {groupTasks.map(t => {
-                    const overdue = isOverdue(t.dueDate) && !["completed", "cancelled", "paused"].includes(t.status);
+                    const overdue = isOverdue(t.dueDate, t.status);
                     const accent  = t.color ?? "#6366f1";
                     const trans   = transitions[t.status];
                     const canReturn = ["pending", "in_progress", "in_revision"].includes(t.status);
