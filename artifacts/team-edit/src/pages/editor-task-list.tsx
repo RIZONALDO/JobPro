@@ -165,7 +165,7 @@ export default function EditorTaskList() {
         <div className="hidden md:flex shrink-0 items-center py-2.5 pl-[3px] bg-[hsl(var(--muted))]/30 border-b text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
           <div className="w-36 shrink-0 px-2">Status</div>
           <div className="flex-1 min-w-0 pr-3">Tarefa</div>
-          <div className="w-20 shrink-0 hidden lg:block pl-6">Prioridade</div>
+          <div className="w-28 shrink-0 hidden lg:block pl-6">Prioridade</div>
           <div className="w-28 shrink-0 hidden lg:block pl-6">Prazo</div>
           <div className="w-20 shrink-0 hidden xl:block pl-6">Coord.</div>
           <div className="w-28 shrink-0 pl-6">Ação</div>
@@ -335,7 +335,7 @@ export default function EditorTaskList() {
               </div>
 
               {/* Priority */}
-              <div className="hidden lg:flex w-20 shrink-0 items-center pl-6">
+              <div className="hidden lg:flex w-28 shrink-0 items-center pl-6">
                 <PriorityBadge priority={t.priority} />
               </div>
 
