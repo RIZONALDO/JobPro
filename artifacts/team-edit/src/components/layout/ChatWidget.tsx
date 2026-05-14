@@ -48,6 +48,10 @@ function fmtTime(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
+function fmtPreview(text: string) {
+  return text.replace(/\[([^\]|]+)\|id:\d+\]/g, "[$1]");
+}
+
 function Avatar({
   name, url, size = "sm",
 }: {
@@ -651,7 +655,7 @@ export function ChatWidget() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold">Canal Geral</p>
                         <p className="text-xs truncate" style={{ color: "hsl(var(--muted-foreground))" }}>
-                          {messages.length > 0 ? messages[messages.length - 1].content : "Canal público da equipe"}
+                          {messages.length > 0 ? fmtPreview(messages[messages.length - 1].content) : "Canal público da equipe"}
                         </p>
                       </div>
                       {(generalUnread > 0 || hasMention) && (
@@ -683,7 +687,7 @@ export function ChatWidget() {
                             <p className="text-sm font-semibold truncate">{u.name ?? "?"}</p>
                             {conv?.lastMessage && (
                               <p className="text-xs truncate" style={{ color: "hsl(var(--muted-foreground))" }}>
-                                {conv.lastFromId === user?.id ? "Você: " : ""}{conv.lastMessage}
+                                {conv.lastFromId === user?.id ? "Você: " : ""}{fmtPreview(conv.lastMessage)}
                               </p>
                             )}
                           </div>
