@@ -16,7 +16,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from "@/components/ui/input";
 import {
   AlertCircle, MessageSquare, MoreVertical,
-  Info, Undo2, PauseCircle, XCircle, Search,
+  Info, Undo2, Search,
 } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
@@ -96,8 +96,6 @@ export default function EditorTaskList() {
 
   const [returnTarget,  setReturnTarget]  = useState<Task | null>(null);
   const [returning,     setReturning]     = useState(false);
-  const [confirmTask,   setConfirmTask]   = useState<{ id: number; title: string; action: "pause" | "cancel" } | null>(null);
-  const [confirming,    setConfirming]    = useState(false);
 
   const load = useCallback(() => {
     apiFetch<Task[]>("/api/my-tasks")
@@ -132,18 +130,6 @@ export default function EditorTaskList() {
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Erro ao devolver", variant: "destructive" });
     } finally { setReturning(false); }
-  };
-
-  const executeConfirm = async () => {
-    if (!confirmTask) return;
-    setConfirming(true);
-    try {
-      await apiPut(`/api/tasks/${confirmTask.id}`, { status: confirmTask.action === "cancel" ? "cancelled" : "paused" });
-      setConfirmTask(null);
-      load();
-      toast({ title: confirmTask.action === "pause" ? "Tarefa pausada." : "Tarefa cancelada." });
-    } catch { toast({ title: "Erro ao executar ação", variant: "destructive" }); }
-    finally { setConfirming(false); }
   };
 
   const filtered = tasks
@@ -218,7 +204,6 @@ export default function EditorTaskList() {
                     const accent  = t.color ?? "#6366f1";
                     const trans   = transitions[t.status];
                     const canReturn = ["pending", "in_progress", "in_revision"].includes(t.status);
-                    const canPause  = !["completed", "cancelled", "paused"].includes(t.status);
                     const isHighlighted = highlighted === t.id;
 
           const dropdownItems = (
@@ -230,25 +215,6 @@ export default function EditorTaskList() {
                 <DropdownMenuItem onClick={() => setReturnTarget(t)}>
                   <Undo2 className="h-3.5 w-3.5 mr-2" />Devolver
                 </DropdownMenuItem>
-              )}
-              {canPause && (
-                <>
-                  <DropdownMenuSeparator />
-                  {t.status !== "paused" && (
-                    <DropdownMenuItem
-                      onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "pause" })}
-                      className="text-purple-700 focus:text-purple-700"
-                    >
-                      <PauseCircle className="h-3.5 w-3.5 mr-2" />Pausar
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuItem
-                    onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "cancel" })}
-                    className="text-red-600 focus:text-red-600"
-                  >
-                    <XCircle className="h-3.5 w-3.5 mr-2" />Cancelar
-                  </DropdownMenuItem>
-                </>
               )}
             </DropdownMenuContent>
           );
@@ -448,30 +414,6 @@ export default function EditorTaskList() {
         </DialogContent>
       </Dialog>
 
-      {/* Pause / Cancel confirm dialog */}
-      <Dialog open={!!confirmTask} onOpenChange={v => { if (!v && !confirming) setConfirmTask(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{confirmTask?.action === "pause" ? "Pausar tarefa" : "Cancelar tarefa"}</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {confirmTask?.action === "pause"
-              ? <>Deseja pausar <strong>"{confirmTask.title}"</strong>?</>
-              : <>Deseja cancelar <strong>"{confirmTask?.title}"</strong>? Esta ação não pode ser desfeita.</>
-            }
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmTask(null)} disabled={confirming}>Voltar</Button>
-            <Button
-              variant={confirmTask?.action === "cancel" ? "destructive" : "default"}
-              onClick={executeConfirm}
-              disabled={confirming}
-            >
-              {confirming ? "Aguarde…" : confirmTask?.action === "pause" ? "Pausar" : "Cancelar tarefa"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
