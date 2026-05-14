@@ -319,22 +319,22 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                   <DateTimePicker value={form.dueDateTime} onChange={v => f({ dueDateTime: v })} withTime placeholder="Data e horário" />
                 </div>
 
-                {/* Pasta no servidor */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))] flex items-center gap-1">
-                    <FolderOpen className="h-3.5 w-3.5" />Pasta
-                  </Label>
-                  <div className="flex gap-1.5">
-                    <Input value={form.folderUrl} onChange={e => f({ folderUrl: e.target.value })} placeholder="https://…" className="text-sm" />
-                    {form.folderUrl && (
-                      <a href={form.folderUrl} target="_blank" rel="noreferrer"
-                        className="inline-flex items-center justify-center h-9 w-9 shrink-0 rounded-md border bg-[hsl(var(--background))] hover:bg-[hsl(var(--muted))] transition-colors">
-                        <ExternalLink className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-                      </a>
-                    )}
-                  </div>
-                </div>
+              </div>
+            </div>
 
+            {/* Pasta — largura total */}
+            <div className="px-6 pb-6 space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))] flex items-center gap-1">
+                <FolderOpen className="h-3.5 w-3.5" />Pasta no servidor
+              </Label>
+              <div className="flex gap-1.5">
+                <Input value={form.folderUrl} onChange={e => f({ folderUrl: e.target.value })} placeholder="https://…" className="text-sm" />
+                {form.folderUrl && (
+                  <a href={form.folderUrl} target="_blank" rel="noreferrer"
+                    className="inline-flex items-center justify-center h-9 w-9 shrink-0 rounded-md border bg-[hsl(var(--muted))]/40 hover:bg-[hsl(var(--muted))] transition-colors">
+                    <ExternalLink className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
+                  </a>
+                )}
               </div>
             </div>
           )}
