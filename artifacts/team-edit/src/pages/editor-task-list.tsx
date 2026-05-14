@@ -63,16 +63,16 @@ export default function EditorTaskList() {
   const [loading, setLoading] = useState(true);
   const [search,  setSearch]  = useState("");
 
-  const search = useSearch();
+  const urlSearch = useSearch();
   const [highlighted, setHighlighted] = useState<number | null>(() => {
     const v = new URLSearchParams(window.location.search).get("highlight");
     return v ? parseInt(v, 10) : null;
   });
   const highlightRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    const v = new URLSearchParams(search).get("highlight");
+    const v = new URLSearchParams(urlSearch).get("highlight");
     if (v) setHighlighted(parseInt(v, 10));
-  }, [search]);
+  }, [urlSearch]);
   useEffect(() => {
     if (!highlighted) return;
     const timer = setTimeout(() => setHighlighted(null), 3000);
