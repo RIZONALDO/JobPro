@@ -162,6 +162,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
               ))}
             </div>
           ) : (
+            <>
             <div className="flex min-h-0">
 
               {/* ── Coluna esquerda ─────────────────────────────────── */}
@@ -337,6 +338,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                 )}
               </div>
             </div>
+            </>
           )}
         </div>
 
