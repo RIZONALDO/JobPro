@@ -439,7 +439,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                       <Bell className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
                       <span className="text-sm font-semibold">Notificações</span>
                       {unreadCount > 0 && (
-                        <span className="text-xs font-bold bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))] rounded-full px-1.5 py-0.5">{unreadCount} nova{unreadCount !== 1 ? "s" : ""}</span>
+                        <span className="text-xs font-bold bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))] rounded-full px-1.5 py-0.5 whitespace-nowrap">{unreadCount} nova{unreadCount !== 1 ? "s" : ""}</span>
                       )}
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
