@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { MessageCircle } from "lucide-react";
 import { AvatarDisplay } from "./avatar-display";
 import { useChatContext } from "@/contexts/ChatContext";
@@ -48,25 +49,31 @@ export function ChatAvatarButton({ userId, name, avatarUrl, size = 30, taskId, t
         <AvatarDisplay name={name} avatarUrl={avatarUrl} size={size} />
       </button>
 
-      {open && (
-        <div
-          className="absolute left-0 top-full mt-1.5 z-[200] min-w-[170px] rounded-xl border bg-[hsl(var(--card))] shadow-xl overflow-hidden animate-in fade-in-0 zoom-in-95 slide-in-from-top-1 duration-150"
-          onMouseEnter={cancelClose}
-          onMouseLeave={scheduleClose}
-        >
-          <div className="px-3 py-2 border-b bg-[hsl(var(--muted))]/50">
-            <p className="text-xs font-semibold truncate max-w-[150px]">{name}</p>
-          </div>
-          <button
-            type="button"
-            onClick={handleConverse}
-            className="w-full flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-[hsl(var(--muted))] transition-colors text-left"
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.7, y: -4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.85, y: -4 }}
+            transition={{ type: "spring", stiffness: 420, damping: 18, mass: 0.6 }}
+            className="absolute left-0 top-full mt-1.5 z-[200] min-w-[170px] rounded-xl border bg-[hsl(var(--card))] shadow-xl overflow-hidden origin-top-left"
+            onMouseEnter={cancelClose}
+            onMouseLeave={scheduleClose}
           >
-            <MessageCircle className="h-3.5 w-3.5 text-[hsl(var(--primary))] shrink-0" />
-            Conversar
-          </button>
-        </div>
-      )}
+            <div className="px-3 py-2 border-b bg-[hsl(var(--muted))]/50">
+              <p className="text-xs font-semibold truncate max-w-[150px]">{name}</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleConverse}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-[hsl(var(--muted))] transition-colors text-left"
+            >
+              <MessageCircle className="h-3.5 w-3.5 text-[hsl(var(--primary))] shrink-0" />
+              Conversar
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
