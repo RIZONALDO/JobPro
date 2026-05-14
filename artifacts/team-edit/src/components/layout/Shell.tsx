@@ -33,6 +33,7 @@ interface AppNotification {
   read: boolean;
   taskId: number | null;
   jobId: number | null;
+  taskCode: string | null;
   createdAt: string;
 }
 
@@ -445,6 +446,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className={cn("text-xs leading-snug", !n.read ? "font-semibold text-[hsl(var(--foreground))]" : "font-medium text-[hsl(var(--foreground))]/80")}>
+                            {n.taskCode && (
+                              <span className="font-mono text-[hsl(var(--primary))] mr-1">{n.taskCode}</span>
+                            )}
                             {n.title}
                           </p>
                           <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 leading-snug line-clamp-2">{n.message}</p>
