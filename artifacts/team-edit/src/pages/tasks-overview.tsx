@@ -29,8 +29,9 @@ import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
 import { TaskFormModal } from "@/components/task-form-modal";
 import { ReassignEditorModal } from "@/components/reassign-editor-modal";
 import { RefreshCw, UserPlus, RotateCcw } from "lucide-react";
-import { fmtClosedCycle, fmtPrazoWeek } from "@/lib/utils";
+import { fmtClosedCycle, fmtPrazoWeek, fmtDate } from "@/lib/utils";
 import { PrazoCell } from "@/components/prazo-cell";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -949,6 +950,12 @@ export default function TasksOverview() {
               A tarefa voltará ao status <strong>Reaberta</strong> e o editor será notificado.
               O histórico de aprovação é preservado.
             </p>
+            {reopenTask?.dueDate && (
+              <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-[hsl(var(--muted))]/40 text-sm">
+                <span className="text-[hsl(var(--muted-foreground))]">Prazo anterior:</span>
+                <span className="font-semibold">{fmtDate(reopenTask.dueDate)}</span>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Motivo da reabertura *</Label>
               <Textarea
@@ -962,12 +969,13 @@ export default function TasksOverview() {
             <div className="space-y-1.5">
               <Label>
                 Novo prazo
-                <span className="text-[hsl(var(--muted-foreground))] font-normal ml-1">(opcional — deixe em branco para manter o prazo atual)</span>
+                <span className="text-[hsl(var(--muted-foreground))] font-normal ml-1 text-xs">(opcional)</span>
               </Label>
-              <Input
-                type="date"
+              <DateTimePicker
                 value={reopenDueDate}
-                onChange={e => setReopenDueDate(e.target.value)}
+                onChange={setReopenDueDate}
+                withTime
+                placeholder="Selecionar novo prazo…"
                 min={new Date().toISOString().split("T")[0]}
               />
             </div>
