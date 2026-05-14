@@ -881,27 +881,27 @@ export default function Dashboard() {
                 <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma tarefa em aberto.</p>
               ) : openTasks.map(t => (
                 <div key={t.id} role="button" onClick={() => goToTask(t.id)}
-                  className="flex items-center gap-3 px-5 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
+                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
                   <div className={`w-0.5 h-8 rounded-full shrink-0 ${STATUS_BAR[t.status] ?? "bg-slate-300"}`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      {t.taskCode ? <span className="text-sm font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">{t.taskCode}</span> : null}
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {t.taskCode ? <span className="text-xs font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">{t.taskCode}</span> : null}
                       <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
                     </div>
                     {t.dueDate && (() => {
                       const h = fmtDateHuman(t.dueDate); const n = fmtDate(t.dueDate);
                       return <>
-                        <p className="text-xs text-[hsl(var(--muted-foreground))]">Entrega: {h}</p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">Entrega: {h}</p>
                         {h !== n && <p className="text-[9px] text-[hsl(var(--muted-foreground))]/40">{n}</p>}
                       </>;
                     })()}
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="w-48 flex items-center justify-end gap-2 shrink-0">
                     {t.assignedTo && (
                       <AvatarDisplay name={t.assignedTo.name} avatarUrl={t.assignedTo.avatarUrl} size={30} />
                     )}
                     <PriorityBadge priority={t.priority} />
-                    <Badge className={`text-[10px] px-1.5 py-0.5 whitespace-nowrap shrink-0 ${STATUS_CLASS[t.status] ?? ""}`}>
+                    <Badge className={`text-[10px] px-1.5 py-0.5 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
                   </div>
@@ -1039,30 +1039,30 @@ export default function Dashboard() {
                 <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma tarefa em aberto.</p>
               ) : openTasks.map(t => (
                 <div key={t.id} role="button" onClick={() => goToTask(t.id)}
-                  className="flex items-center gap-3 px-5 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
+                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
                   <div className={`w-0.5 h-8 rounded-full shrink-0 ${STATUS_BAR[t.status] ?? "bg-slate-300"}`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      {t.taskCode ? <span className="text-sm font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">{t.taskCode}</span> : null}
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {t.taskCode ? <span className="text-xs font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">{t.taskCode}</span> : null}
                       <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
                       {t.client && (
                         <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.client}</span>
                       )}
                       {t.dueDate && (
-                        <span className="text-xs text-[hsl(var(--muted-foreground))]">
+                        <span className="text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap shrink-0">
                           Entrega: {fmtDateHuman(t.dueDate)}
                         </span>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="w-48 flex items-center justify-end gap-2 shrink-0">
                     {t.createdBy && (
                       <AvatarDisplay name={t.createdBy.name} avatarUrl={t.createdBy.avatarUrl} size={30} />
                     )}
                     <PriorityBadge priority={t.priority} />
-                    <Badge className={`text-[10px] px-1.5 py-0.5 whitespace-nowrap shrink-0 ${STATUS_CLASS[t.status] ?? ""}`}>
+                    <Badge className={`text-[10px] px-1.5 py-0.5 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
                   </div>
