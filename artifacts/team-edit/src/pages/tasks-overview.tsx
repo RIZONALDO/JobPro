@@ -585,7 +585,6 @@ export default function TasksOverview() {
                     <>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
-                        className="text-rose-600 focus:text-rose-600"
                         onClick={() => { setReopenTask(t); setReopenComment(""); setReopenDueDate(""); }}>
                         <RotateCcw className="h-3.5 w-3.5" />Reabrir tarefa
                       </DropdownMenuItem>
@@ -716,14 +715,6 @@ export default function TasksOverview() {
                             onClick={e => { e.stopPropagation(); setRevisionTask(t); setRevisionComment(""); }}>↩</Button>
                         </div>
                       )}
-                      {t.status === "completed" && canActNow && (
-                        <Button size="sm" variant="outline"
-                          className="h-8 w-8 p-0 text-rose-600 border-rose-300 hover:bg-rose-50"
-                          title="Reabrir tarefa"
-                          onClick={e => { e.stopPropagation(); setReopenTask(t); setReopenComment(""); setReopenDueDate(""); }}>
-                          <RotateCcw className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -851,13 +842,6 @@ export default function TasksOverview() {
                           <Undo2 className="h-3.5 w-3.5" />
                         </Button>
                       </>
-                    )}
-                    {t.status === "completed" && canActNow && (
-                      <Button size="icon" variant="outline"
-                        className="h-7 w-7 text-rose-600 border-rose-300 hover:bg-rose-50" title="Reabrir tarefa"
-                        onClick={e => { e.stopPropagation(); setReopenTask(t); setReopenComment(""); setReopenDueDate(""); }}>
-                        <RotateCcw className="h-3.5 w-3.5" />
-                      </Button>
                     )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
