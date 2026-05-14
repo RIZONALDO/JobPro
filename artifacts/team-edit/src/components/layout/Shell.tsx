@@ -87,6 +87,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("notif_sound") !== "off");
+  const soundEnabledRef = useRef(localStorage.getItem("notif_sound") !== "off");
   const [customOpen, setCustomOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const customRef = useRef<HTMLDivElement>(null);
@@ -112,10 +113,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
     if (notifOpen) fetchNotifications();
   }, [notifOpen, fetchNotifications]);
 
-  const playNotifSound = useCallback(() => {
+  const playNotifSound = useCallback(async () => {
     try {
       const ctx = new AudioContext();
-      [[880, 0], [660, 0.15]].forEach(([freq, delay]) => {
+      if (ctx.state === "suspended") await ctx.resume();
+      const tones: [number, number][] = [[880, 0], [660, 0.15]];
+      tones.forEach(([freq, delay], i) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain);
@@ -127,18 +130,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.35);
         osc.start(ctx.currentTime + delay);
         osc.stop(ctx.currentTime + delay + 0.35);
-        if (delay > 0) osc.onended = () => ctx.close();
+        if (i === tones.length - 1) osc.onended = () => ctx.close();
       });
     } catch { /* ignore */ }
   }, []);
 
   const toggleSound = () => {
-    setSoundEnabled(v => {
-      const next = !v;
-      localStorage.setItem("notif_sound", next ? "on" : "off");
-      if (next) playNotifSound();
-      return next;
-    });
+    const next = !soundEnabledRef.current;
+    soundEnabledRef.current = next;
+    localStorage.setItem("notif_sound", next ? "on" : "off");
+    setSoundEnabled(next);
+    if (next) playNotifSound();
   };
 
   // Socket: receber novas notificações em tempo real
@@ -147,7 +149,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     const handle = (notif: AppNotification) => {
       setNotifications(prev => [notif, ...prev].slice(0, 40));
       setUnreadCount(prev => prev + 1);
-      setSoundEnabled(cur => { if (cur) playNotifSound(); return cur; });
+      if (soundEnabledRef.current) playNotifSound();
     };
     socket.on("notification:new", handle);
     return () => { socket.off("notification:new", handle); };
