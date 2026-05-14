@@ -206,7 +206,7 @@ export default function EditorTaskList() {
               if (!groupTasks.length) return null;
               return (
                 <div key={group.key}>
-                  <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-1.5 bg-[hsl(var(--card))]">
+                  <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-2 mt-4 bg-[hsl(var(--card))]">
                     <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
                     <span className="text-[10px] font-semibold uppercase tracking-[0.12em] shrink-0" style={{ color: group.color, opacity: 0.75 }}>{group.label}</span>
                     <span className="flex-1 border-t border-dashed" style={{ borderColor: `${group.color}30` }} />
