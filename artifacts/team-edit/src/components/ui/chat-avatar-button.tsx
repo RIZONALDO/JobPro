@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Zap } from "lucide-react";
 import { AvatarDisplay } from "./avatar-display";
 import { useChatContext } from "@/contexts/ChatContext";
+import { apiPost } from "@/lib/api";
 
 interface Props {
   userId: number;
@@ -55,6 +56,11 @@ export function ChatAvatarButton({ userId, name, avatarUrl, size = 30, taskId, t
     openDmWith(userId, prefill);
   };
 
+  const handlePoke = () => {
+    setOpen(false);
+    apiPost(`/api/poke/${userId}`, {}).catch(() => {});
+  };
+
   return (
     <div
       ref={anchorRef}
@@ -99,6 +105,14 @@ export function ChatAvatarButton({ userId, name, avatarUrl, size = 30, taskId, t
               >
                 <MessageCircle className="h-3.5 w-3.5 text-[hsl(var(--primary))] shrink-0" />
                 Conversar
+              </button>
+              <button
+                type="button"
+                onClick={handlePoke}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-[hsl(var(--muted))] transition-colors text-left border-t"
+              >
+                <Zap className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                Cutucar
               </button>
             </motion.div>
           )}

@@ -31,6 +31,10 @@ export function broadcastNotification(userId: number, notification: AppNotificat
   } catch {}
 }
 
+export function broadcastPoke(toUserId: number, fromName: string) {
+  try { getIo().to(`user:${toUserId}`).emit("poke:received", { fromName }); } catch {}
+}
+
 export function broadcastDm(toUserId: number, fromUserId: number, message: unknown) {
   try {
     getIo().to(`user:${toUserId}`).emit("dm:message", message);

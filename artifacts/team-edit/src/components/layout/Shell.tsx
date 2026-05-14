@@ -89,6 +89,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("notif_sound") !== "off");
   const soundEnabledRef = useRef(localStorage.getItem("notif_sound") !== "off");
   const [customOpen, setCustomOpen] = useState(false);
+  const [pokeFrom, setPokeFrom] = useState<string | null>(null);
+  const [shaking, setShaking] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const customRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -143,6 +145,27 @@ export function Shell({ children }: { children: React.ReactNode }) {
     if (next) playNotifSound();
   };
 
+  const playPokeSound = useCallback(async () => {
+    try {
+      const ctx = new AudioContext();
+      if (ctx.state === "suspended") await ctx.resume();
+      // Three quick ascending "boop" pulses
+      [[300, 0], [500, 0.12], [700, 0.24]].forEach(([freq, delay], i, arr) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = "triangle";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+        gain.gain.linearRampToValueAtTime(0.35, ctx.currentTime + delay + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.18);
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + 0.18);
+        if (i === arr.length - 1) osc.onended = () => ctx.close();
+      });
+    } catch { /* ignore */ }
+  }, []);
+
   // Socket: receber novas notificações em tempo real
   useEffect(() => {
     const socket = getSocket();
@@ -151,9 +174,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
       setUnreadCount(prev => prev + 1);
       if (soundEnabledRef.current) playNotifSound();
     };
+    const handlePoke = ({ fromName }: { fromName: string }) => {
+      playPokeSound();
+      setShaking(true);
+      setPokeFrom(fromName);
+      setTimeout(() => setShaking(false), 600);
+      setTimeout(() => setPokeFrom(null), 3500);
+    };
     socket.on("notification:new", handle);
-    return () => { socket.off("notification:new", handle); };
-  }, [playNotifSound]);
+    socket.on("poke:received", handlePoke);
+    return () => { socket.off("notification:new", handle); socket.off("poke:received", handlePoke); };
+  }, [playNotifSound, playPokeSound]);
 
   // Fechar dropdown ao clicar fora
   useEffect(() => {
@@ -647,17 +678,38 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Main content */}
-        <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <motion.main
+          className="flex-1 flex flex-col min-w-0 overflow-hidden"
+          animate={shaking ? { x: [-3, 6, -8, 8, -6, 4, -2, 0] } : { x: 0 }}
+          transition={{ duration: 0.55, ease: "easeOut" }}
+        >
           <BreadcrumbBar />
           <div className="flex-1 overflow-y-auto overflow-x-hidden">
             <div className="p-4 md:p-6 pb-8">
               {children}
             </div>
           </div>
-        </main>
+        </motion.main>
       </div>
 
       <ChatWidget />
+
+      {/* Poke toast */}
+      <AnimatePresence>
+        {pokeFrom && (
+          <motion.div
+            initial={{ opacity: 0, y: 40, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 380, damping: 22 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2.5 px-4 py-2.5 rounded-2xl shadow-2xl text-sm font-medium select-none pointer-events-none"
+            style={{ backgroundColor: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}
+          >
+            <span className="text-lg">👈</span>
+            <span><strong>{pokeFrom}</strong> cutucou você!</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Mobile drawer ────────────────────────────────────────── */}
       <AnimatePresence>
