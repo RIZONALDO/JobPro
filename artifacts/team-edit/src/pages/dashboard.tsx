@@ -898,7 +898,7 @@ export default function Dashboard() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {t.assignedTo && (
-                      <AvatarDisplay name={t.assignedTo.name} avatarUrl={t.assignedTo.avatarUrl} size={22} />
+                      <AvatarDisplay name={t.assignedTo.name} avatarUrl={t.assignedTo.avatarUrl} size={30} />
                     )}
                     <PriorityBadge priority={t.priority} />
                     <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
@@ -1059,7 +1059,7 @@ export default function Dashboard() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {t.createdBy && (
-                      <AvatarDisplay name={t.createdBy.name} avatarUrl={t.createdBy.avatarUrl} size={22} />
+                      <AvatarDisplay name={t.createdBy.name} avatarUrl={t.createdBy.avatarUrl} size={30} />
                     )}
                     <PriorityBadge priority={t.priority} />
                     <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
