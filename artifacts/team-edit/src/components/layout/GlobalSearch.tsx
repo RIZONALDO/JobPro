@@ -29,7 +29,6 @@ interface SearchProject {
   name: string;
   client: string | null;
   status: string;
-  color: string;
 }
 
 interface SearchResults {
@@ -329,11 +328,8 @@ export function GlobalSearch() {
                             cursor === idx ? "bg-[hsl(var(--primary))]/8" : "hover:bg-[hsl(var(--muted))]/50"
                           )}
                         >
-                          <div
-                            className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0"
-                            style={{ backgroundColor: p.color + "22" }}
-                          >
-                            <FolderOpen className="h-3.5 w-3.5" style={{ color: p.color }} />
+                          <div className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 bg-[hsl(var(--primary))]/10">
+                            <FolderOpen className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium leading-tight truncate">{p.name}</p>

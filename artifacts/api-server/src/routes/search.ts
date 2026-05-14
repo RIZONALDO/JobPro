@@ -56,7 +56,7 @@ router.get("/search", requireAuth, async (req, res): Promise<void> => {
     `),
 
     db.execute(sql`
-      SELECT id, name, client, status, color
+      SELECT id, name, client, status
       FROM te_projects
       WHERE
         name        ILIKE ${like}
