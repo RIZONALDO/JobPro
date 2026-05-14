@@ -691,8 +691,21 @@ router.get("/workload", requireCoordinator, async (_req, res): Promise<void> => 
 });
 
 // ── Dashboard extras ──────────────────────────────────────────────────────────
-router.get("/dashboard-extras", requireAuth, async (_req, res): Promise<void> => {
+router.get("/dashboard-extras", requireAuth, async (req, res): Promise<void> => {
   const todayStr = new Date().toISOString().split("T")[0];
+  const userId = req.session.userId!;
+  const role   = req.session.userRole!;
+
+  const baseOverdue = and(
+    ne(tasksTable.status, "completed"),
+    ne(tasksTable.status, "cancelled"),
+    ne(tasksTable.status, "paused"),
+    isNotNull(tasksTable.dueDate),
+    sql`${tasksTable.dueDate} < ${todayStr}`,
+  );
+  const overdueWhere = (role === "coordinator" || role === "supervisor")
+    ? and(baseOverdue, eq(tasksTable.createdById, userId))
+    : baseOverdue;
 
   const overdueRows = await db
     .select({
@@ -707,13 +720,7 @@ router.get("/dashboard-extras", requireAuth, async (_req, res): Promise<void> =>
       taskYear: tasksTable.taskYear,
     })
     .from(tasksTable)
-    .where(and(
-      ne(tasksTable.status, "completed"),
-      ne(tasksTable.status, "cancelled"),
-      ne(tasksTable.status, "paused"),
-      isNotNull(tasksTable.dueDate),
-      sql`${tasksTable.dueDate} < ${todayStr}`,
-    ));
+    .where(overdueWhere);
 
   const assigneeIds = [...new Set(overdueRows.map(t => t.assignedToId).filter(Boolean))] as number[];
   const assigneeMap = new Map<number, { id: number; name: string; avatarUrl: string | null }>();
@@ -753,7 +760,11 @@ router.get("/deadline-overview", requireAuth, async (req, res): Promise<void> =>
   ];
 
   const baseWhere = and(ne(tasksTable.status, "completed"), ne(tasksTable.status, "cancelled"), ne(tasksTable.status, "paused"), isNotNull(tasksTable.dueDate));
-  const taskWhere = role === "editor" ? and(baseWhere, eq(tasksTable.assignedToId, userId)) : baseWhere;
+  const taskWhere = role === "editor"
+    ? and(baseWhere, eq(tasksTable.assignedToId, userId))
+    : (role === "coordinator" || role === "supervisor")
+      ? and(baseWhere, eq(tasksTable.createdById, userId))
+      : baseWhere;
 
   const rows = await db
     .select({
@@ -964,7 +975,11 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
 router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const role   = req.session.userRole!;
-  const editorFilter = role === "editor" ? eq(tasksTable.assignedToId, userId) : undefined;
+  const editorFilter = role === "editor"
+    ? eq(tasksTable.assignedToId, userId)
+    : (role === "coordinator" || role === "supervisor")
+      ? eq(tasksTable.createdById, userId)
+      : undefined;
 
   const tasks = await db
     .select({
