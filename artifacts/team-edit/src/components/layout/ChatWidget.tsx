@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Send, MessageCircle, X, ExternalLink, Check, CheckCheck } from "lucide-react";
+import { Send, MessageCircle, X, ExternalLink, Check, CheckCheck, ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch, apiPost } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -183,6 +183,14 @@ function MsgContent({ text, mine, onClose }: {
   return <>{nodes}</>;
 }
 
+// ── Slide variants ───────────────────────────────────────────────
+const SLIDE = {
+  enter: (d: number) => ({ x: d * 36, opacity: 0 }),
+  center: { x: 0, opacity: 1 },
+  exit: (d: number) => ({ x: d * -36, opacity: 0 }),
+};
+const SLIDE_T = { type: "spring", stiffness: 420, damping: 34 } as const;
+
 // ── ChatWidget ───────────────────────────────────────────────────
 
 export function ChatWidget() {
@@ -205,7 +213,8 @@ export function ChatWidget() {
   const [dmTaskRef, setDmTaskRef] = useState<{ code: string; id: string; title: string } | null>(null);
 
   const [chatOpen, setChatOpen] = useState(false);
-  const [activeView, setActiveView] = useState<"general" | number>("general");
+  const [activeView, setActiveView] = useState<"list" | "general" | number>("list");
+  const [slideDir, setSlideDir] = useState<1 | -1>(1);
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
   const [allUsers, setAllUsers] = useState<MentionUser[]>([]);
 
@@ -216,7 +225,7 @@ export function ChatWidget() {
   const panelRef = useRef<HTMLDivElement>(null);
   const fabRef = useRef<HTMLButtonElement>(null);
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const activeViewRef = useRef<"general" | number>("general");
+  const activeViewRef = useRef<"list" | "general" | number>("list");
   const chatOpenRef = useRef(false);
   const typingTimeoutsRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const lastTypingEmitRef = useRef<number>(0);
@@ -244,6 +253,7 @@ export function ChatWidget() {
   }, []);
 
   const openDm = useCallback((userId: number, prefill?: string) => {
+    setSlideDir(1);
     setActiveView(userId);
     if (prefill) {
       const m = prefill.match(/^\[([^\]|]+)\|id:(\d+)\](?:\s*[-—]\s*(.+))?/);
@@ -435,6 +445,7 @@ export function ChatWidget() {
   const openChat = () => {
     setChatOpen(true);
     if (activeView === "general") { setGeneralUnread(0); setHasMention(false); }
+    if (activeView === "list") { /* keep list */ }
   };
 
   const navUsers: { id: number; name: string | null; avatarUrl: string | null }[] = [
@@ -517,295 +528,347 @@ export function ChatWidget() {
             exit={{ opacity: 0, y: 14, scale: 0.97 }}
             transition={{ type: "spring", stiffness: 380, damping: 16, mass: 0.9 }}
             className={cn(
-              "fixed z-50 flex overflow-hidden shadow-2xl",
+              "fixed z-50 flex flex-col overflow-hidden shadow-2xl",
               "bottom-0 left-0 right-0 h-[85dvh] rounded-t-3xl border-t border-x",
-              "sm:bottom-20 sm:right-5 sm:left-auto sm:w-[440px] sm:h-[560px] sm:rounded-3xl sm:border"
+              "sm:bottom-20 sm:right-5 sm:left-auto sm:w-[420px] sm:h-[580px] sm:rounded-3xl sm:border"
             )}
             style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
           >
             {/* Mobile drag handle */}
-            <div className="sm:hidden absolute top-2.5 left-0 right-0 flex justify-center pointer-events-none">
+            <div className="sm:hidden absolute top-2.5 left-0 right-0 flex justify-center pointer-events-none z-10">
               <div className="w-10 h-1 rounded-full" style={{ backgroundColor: "hsl(var(--muted-foreground))" }} />
             </div>
 
-            {/* ── Icon Nav Strip ── */}
+            {/* ── Unified header ── */}
             <div
-              className="w-[54px] shrink-0 border-r flex flex-col items-center pt-8 sm:pt-3 pb-3 gap-1.5"
+              className="shrink-0 flex items-center gap-1 px-2 pt-8 pb-2.5 sm:pt-2.5 border-b"
               style={{ backgroundColor: "hsl(var(--muted))", borderColor: "hsl(var(--border))" }}
             >
-              {/* Close */}
-              <button
-                onClick={() => setChatOpen(false)}
-                title="Fechar"
-                className="h-8 w-8 rounded-xl flex items-center justify-center transition-all mb-1 shrink-0"
-                style={{ color: "hsl(var(--muted-foreground))" }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = "hsl(var(--accent))"; (e.currentTarget as HTMLElement).style.color = "hsl(var(--foreground))"; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ""; (e.currentTarget as HTMLElement).style.color = "hsl(var(--muted-foreground))"; }}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-
-              <div className="w-7 h-px shrink-0" style={{ backgroundColor: "hsl(var(--border))" }} />
-
-              {/* Geral */}
-              <button
-                title="Canal Geral"
-                onClick={() => { setActiveView("general"); setGeneralUnread(0); setHasMention(false); }}
-                className="relative h-10 w-10 rounded-2xl flex items-center justify-center transition-all shrink-0"
-                style={activeView === "general"
-                  ? { backgroundColor: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }
-                  : { color: "hsl(var(--muted-foreground))" }
-                }
-                onMouseEnter={e => { if (activeView !== "general") { (e.currentTarget as HTMLElement).style.backgroundColor = "hsl(var(--accent))"; (e.currentTarget as HTMLElement).style.color = "hsl(var(--foreground))"; } }}
-                onMouseLeave={e => { if (activeView !== "general") { (e.currentTarget as HTMLElement).style.backgroundColor = ""; (e.currentTarget as HTMLElement).style.color = "hsl(var(--muted-foreground))"; } }}
-              >
-                <MessageCircle className="h-[18px] w-[18px]" />
-                {(generalUnread > 0 || hasMention) && (
-                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                    {generalUnread > 9 ? "9+" : generalUnread || "•"}
-                  </span>
-                )}
-              </button>
-
-              <div className="w-7 h-px shrink-0" style={{ backgroundColor: "hsl(var(--border))" }} />
-
-              {/* DM user avatars */}
-              <div className="flex-1 flex flex-col items-center gap-1.5 overflow-y-auto scrollbar-none w-full px-1 py-0.5">
-                {navUsers.map(u => {
-                  const unread = dmUnread[u.id] ?? conversations.find(c => c.userId === u.id)?.unread ?? 0;
-                  const isOnline = onlineUsers.some(o => o.userId === u.id);
-                  const isActive = activeView === u.id;
-                  return (
-                    <button
-                      key={u.id}
-                      title={u.name ?? "?"}
-                      onClick={() => openDm(u.id)}
-                      className={cn(
-                        "relative h-10 w-10 rounded-2xl flex items-center justify-center transition-all shrink-0",
-                        isActive ? "" : "opacity-75 hover:opacity-100"
-                      )}
-                      style={isActive ? { boxShadow: "0 0 0 2px hsl(var(--primary))" } : {}}
-                    >
-                      <Avatar name={u.name} url={u.avatarUrl} size="sm" />
-                      {isOnline && (
-                        <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2" style={{ borderColor: "hsl(var(--muted))" }} />
-                      )}
-                      {unread > 0 && (
-                        <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 rounded-full bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] text-[10px] font-bold flex items-center justify-center">
-                          {unread > 9 ? "9+" : unread}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* ── Main Content ── */}
-            <div className="flex-1 flex flex-col min-w-0" style={{ backgroundColor: "hsl(var(--card))" }}>
-              {activeView === "general" ? (
-                <>
-                  {/* General header */}
-                  <div
-                    className="shrink-0 px-4 pt-8 pb-3 sm:pt-3 border-b flex items-center gap-3"
-                    style={{ backgroundColor: "hsl(var(--muted))", borderColor: "hsl(var(--border))" }}
+              {/* Back button — slides in when leaving list */}
+              <AnimatePresence initial={false}>
+                {activeView !== "list" && (
+                  <motion.button
+                    key="back"
+                    initial={{ opacity: 0, x: -10, width: 0 }}
+                    animate={{ opacity: 1, x: 0, width: 32 }}
+                    exit={{ opacity: 0, x: -10, width: 0 }}
+                    transition={{ duration: 0.18 }}
+                    onClick={() => { setSlideDir(-1); setActiveView("list"); }}
+                    className="h-8 w-8 rounded-xl flex items-center justify-center shrink-0 hover:bg-[hsl(var(--accent))] transition-colors overflow-hidden"
+                    style={{ color: "hsl(var(--muted-foreground))" }}
                   >
-                    <div className="h-8 w-8 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: "hsl(var(--primary))"/*, opacity with /10 */ }}>
+                    <ChevronLeft className="h-5 w-5" />
+                  </motion.button>
+                )}
+              </AnimatePresence>
+
+              {/* Title / info */}
+              <div className="flex-1 min-w-0 flex items-center gap-2.5 px-1">
+                {activeView === "list" && (
+                  <>
+                    <div className="h-8 w-8 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: "hsl(var(--primary))" }}>
                       <MessageCircle className="h-4 w-4" style={{ color: "hsl(var(--primary-foreground))" }} />
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div>
+                      <p className="text-sm font-semibold leading-tight">Conversas</p>
+                      {onlineUsers.length > 0 && (
+                        <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>{onlineUsers.length} online</p>
+                      )}
+                    </div>
+                  </>
+                )}
+                {activeView === "general" && (
+                  <>
+                    <div className="h-8 w-8 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: "hsl(var(--primary))" }}>
+                      <MessageCircle className="h-4 w-4" style={{ color: "hsl(var(--primary-foreground))" }} />
+                    </div>
+                    <div>
                       <p className="text-sm font-semibold leading-tight">Canal Geral</p>
                       {onlineUsers.length > 0 && (
                         <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>{onlineUsers.length} online</p>
                       )}
                     </div>
-                    {onlineUsers.length > 0 && (
-                      <div className="flex -space-x-1.5 shrink-0">
-                        {onlineUsers.slice(0, 3).map(u => (
-                          <div key={u.userId} title={u.name ?? "?"} className="rounded-full ring-1" style={{ ringColor: "hsl(var(--card))" }}>
-                            <Avatar name={u.name} url={u.avatarUrl} size="xs" />
-                          </div>
-                        ))}
-                        {onlineUsers.length > 3 && (
-                          <div className="h-6 w-6 rounded-full ring-1 flex items-center justify-center text-[10px] font-bold"
-                            style={{ backgroundColor: "hsl(var(--muted))", ringColor: "hsl(var(--card))", color: "hsl(var(--muted-foreground))" }}>
-                            +{onlineUsers.length - 3}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  </>
+                )}
+                {typeof activeView === "number" && (
+                  <>
+                    <div className="relative shrink-0">
+                      <Avatar name={currentDmUser?.name ?? null} url={currentDmUser?.avatarUrl ?? null} size="sm" />
+                      <span
+                        className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2"
+                        style={{
+                          backgroundColor: onlineUsers.some(u => u.userId === (activeView as number)) ? "rgb(16 185 129)" : "hsl(var(--muted-foreground))",
+                          borderColor: "hsl(var(--muted))",
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold leading-tight truncate">{currentDmUser?.name ?? "?"}</p>
+                      <p className="text-xs" style={{ color: onlineUsers.some(u => u.userId === (activeView as number)) ? "rgb(5 150 105)" : "hsl(var(--muted-foreground))" }}>
+                        {onlineUsers.some(u => u.userId === (activeView as number)) ? "● online" : "offline"}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
 
-                  {/* General messages */}
-                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3" style={{ backgroundColor: "hsl(var(--card))" }}>
-                    {loadingChat ? (
-                      <p className="text-sm text-center py-10" style={{ color: "hsl(var(--muted-foreground))" }}>Carregando...</p>
-                    ) : messages.length === 0 ? (
-                      <p className="text-sm text-center py-10" style={{ color: "hsl(var(--muted-foreground))" }}>Sem mensagens. Diga olá! 👋</p>
-                    ) : messages.map(msg => {
-                      const mine = msg.userId === user?.id;
+              {/* X close — always right */}
+              <button
+                onClick={() => setChatOpen(false)}
+                className="h-8 w-8 rounded-xl flex items-center justify-center shrink-0 hover:bg-[hsl(var(--accent))] transition-colors"
+                style={{ color: "hsl(var(--muted-foreground))" }}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* ── Animated views ── */}
+            <div className="flex-1 min-h-0 overflow-hidden relative">
+              <AnimatePresence custom={slideDir} mode="wait">
+
+                {/* LIST VIEW */}
+                {activeView === "list" && (
+                  <motion.div
+                    key="list"
+                    custom={slideDir}
+                    variants={SLIDE}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={SLIDE_T}
+                    className="absolute inset-0 flex flex-col overflow-y-auto"
+                    style={{ backgroundColor: "hsl(var(--card))" }}
+                  >
+                    {/* Canal Geral row */}
+                    <button
+                      onClick={() => { setSlideDir(1); setActiveView("general"); setGeneralUnread(0); setHasMention(false); }}
+                      className="flex items-center gap-3 px-4 py-3.5 hover:bg-[hsl(var(--muted))] transition-colors border-b text-left shrink-0"
+                      style={{ borderColor: "hsl(var(--border))" }}
+                    >
+                      <div className="h-10 w-10 rounded-2xl flex items-center justify-center shrink-0" style={{ backgroundColor: "hsl(var(--primary))" }}>
+                        <MessageCircle className="h-5 w-5" style={{ color: "hsl(var(--primary-foreground))" }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold">Canal Geral</p>
+                        <p className="text-xs truncate" style={{ color: "hsl(var(--muted-foreground))" }}>
+                          {messages.length > 0 ? messages[messages.length - 1].content : "Canal público da equipe"}
+                        </p>
+                      </div>
+                      {(generalUnread > 0 || hasMention) && (
+                        <span className="min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center shrink-0">
+                          {generalUnread > 9 ? "9+" : generalUnread || "•"}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* DM list */}
+                    {navUsers.map(u => {
+                      const conv = conversations.find(c => c.userId === u.id);
+                      const unread = dmUnread[u.id] ?? conv?.unread ?? 0;
+                      const isOnline = onlineUsers.some(o => o.userId === u.id);
                       return (
-                        <div key={msg.id} className={cn("flex gap-2 items-end", mine && "flex-row-reverse")}>
-                          {!mine && <Avatar name={msg.userName} url={msg.userAvatar} size="xs" />}
-                          <div
-                            className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
-                            style={mine
-                              ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
-                              : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
-                            }
-                          >
-                            {!mine && <p className="text-[12px] font-semibold mb-0.5 opacity-60">{msg.userName}</p>}
-                            <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
-                            <p className="text-[11px] mt-1 opacity-40 text-right">{fmtTime(msg.createdAt)}</p>
+                        <button
+                          key={u.id}
+                          onClick={() => openDm(u.id)}
+                          className="flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))] transition-colors border-b text-left shrink-0"
+                          style={{ borderColor: "hsl(var(--border))" }}
+                        >
+                          <div className="relative shrink-0">
+                            <Avatar name={u.name} url={u.avatarUrl} size="sm" />
+                            {isOnline && (
+                              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2" style={{ borderColor: "hsl(var(--card))" }} />
+                            )}
                           </div>
-                        </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold truncate">{u.name ?? "?"}</p>
+                            {conv?.lastMessage && (
+                              <p className="text-xs truncate" style={{ color: "hsl(var(--muted-foreground))" }}>
+                                {conv.lastFromId === user?.id ? "Você: " : ""}{conv.lastMessage}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            {conv?.lastAt && (
+                              <span className="text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>{timeAgo(conv.lastAt)}</span>
+                            )}
+                            {unread > 0 && (
+                              <span className="min-w-[20px] h-5 px-1 rounded-full bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] text-xs font-bold flex items-center justify-center">
+                                {unread > 9 ? "9+" : unread}
+                              </span>
+                            )}
+                          </div>
+                        </button>
                       );
                     })}
-                    <div ref={chatEndRef} />
-                  </div>
 
-                  {/* General input */}
-                  <div className="shrink-0 p-3 border-t" style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-                    <div className="flex gap-2 items-end rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: "hsl(var(--muted))" }}>
-                      <ChatTextarea value={msgText} onChange={setMsgText} onSend={sendMsg} users={allUsers} placeholder="Mensagem..." />
-                      <Button size="sm" onClick={sendMsg} disabled={!msgText.trim()} className="h-8 w-8 p-0 shrink-0 rounded-xl">
-                        <Send className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {/* DM header */}
-                  {(() => {
-                    const other = currentDmUser;
-                    const isOnline = onlineUsers.some(u => u.userId === activeView);
-                    return (
-                      <div
-                        className="shrink-0 px-4 pt-8 pb-3 sm:pt-3 border-b flex items-center gap-3"
-                        style={{ backgroundColor: "hsl(var(--muted))", borderColor: "hsl(var(--border))" }}
-                      >
-                        <div className="relative shrink-0">
-                          <Avatar name={other?.name ?? null} url={other?.avatarUrl ?? null} size="md" />
-                          <span
-                            className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2"
-                            style={{ backgroundColor: isOnline ? "rgb(16 185 129)" : "hsl(var(--muted-foreground))", borderColor: "hsl(var(--muted))" }}
-                          />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold leading-tight truncate">{other?.name ?? "?"}</p>
-                          <p className="text-xs" style={{ color: isOnline ? "rgb(5 150 105)" : "hsl(var(--muted-foreground))" }}>
-                            {isOnline ? "● online" : "offline"}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                    {navUsers.length === 0 && (
+                      <p className="text-sm text-center py-10" style={{ color: "hsl(var(--muted-foreground))" }}>Nenhuma conversa ainda.</p>
+                    )}
+                  </motion.div>
+                )}
 
-                  {/* DM messages */}
-                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3" style={{ backgroundColor: "hsl(var(--card))" }}>
-                    {!(dmMessages[activeView as number]) ? (
-                      <p className="text-sm text-center py-10" style={{ color: "hsl(var(--muted-foreground))" }}>Carregando...</p>
-                    ) : (dmMessages[activeView as number] ?? []).length === 0 ? (
-                      <p className="text-sm text-center py-10" style={{ color: "hsl(var(--muted-foreground))" }}>Nenhuma mensagem. Diga olá! 👋</p>
-                    ) : (dmMessages[activeView as number] ?? []).map(msg => {
-                      const mine = msg.fromUserId === user?.id;
-                      return (
-                        <div key={msg.id} className={cn("flex gap-2 items-end", mine && "flex-row-reverse")}>
-                          {!mine && <Avatar name={msg.fromName} url={msg.fromAvatar} size="xs" />}
-                          <div
-                            className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
-                            style={mine
-                              ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
-                              : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
-                            }
-                          >
-                            <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
-                            <div className="flex items-center justify-end gap-1 mt-1">
-                              <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
-                              {mine && (
-                                msg.readAt
-                                  ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-400" />
-                                  : <Check className="h-3.5 w-3.5 shrink-0 opacity-40" />
-                              )}
+                {/* GENERAL VIEW */}
+                {activeView === "general" && (
+                  <motion.div
+                    key="general"
+                    custom={slideDir}
+                    variants={SLIDE}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={SLIDE_T}
+                    className="absolute inset-0 flex flex-col"
+                    style={{ backgroundColor: "hsl(var(--card))" }}
+                  >
+                    <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                      {loadingChat ? (
+                        <p className="text-sm text-center py-10" style={{ color: "hsl(var(--muted-foreground))" }}>Carregando...</p>
+                      ) : messages.length === 0 ? (
+                        <p className="text-sm text-center py-10" style={{ color: "hsl(var(--muted-foreground))" }}>Sem mensagens. Diga olá! 👋</p>
+                      ) : messages.map(msg => {
+                        const mine = msg.userId === user?.id;
+                        return (
+                          <div key={msg.id} className={cn("flex gap-2 items-end", mine && "flex-row-reverse")}>
+                            {!mine && <Avatar name={msg.userName} url={msg.userAvatar} size="xs" />}
+                            <div
+                              className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
+                              style={mine
+                                ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
+                                : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
+                              }
+                            >
+                              {!mine && <p className="text-[12px] font-semibold mb-0.5 opacity-60">{msg.userName}</p>}
+                              <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
+                              <p className="text-[11px] mt-1 opacity-40 text-right">{fmtTime(msg.createdAt)}</p>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                    <div ref={dmEndRef} />
-                  </div>
-
-                  {/* Typing indicator — fora do scroll para não causar salto */}
-                  {typeof activeView === "number" && typingUsers.has(activeView) && (
-                    <div className="shrink-0 flex gap-2 items-center px-4 py-1.5">
-                      <Avatar name={currentDmUser?.name ?? null} url={currentDmUser?.avatarUrl ?? null} size="xs" />
-                      <div className="rounded-2xl px-3 py-2" style={{ backgroundColor: "hsl(var(--muted))", borderBottomLeftRadius: "4px" }}>
-                        <div className="flex gap-1 items-center">
-                          <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "hsl(var(--muted-foreground))", animationDelay: "0ms" }} />
-                          <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "hsl(var(--muted-foreground))", animationDelay: "160ms" }} />
-                          <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "hsl(var(--muted-foreground))", animationDelay: "320ms" }} />
-                        </div>
+                        );
+                      })}
+                      <div ref={chatEndRef} />
+                    </div>
+                    <div className="shrink-0 p-3 border-t" style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+                      <div className="flex gap-2 items-end rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: "hsl(var(--muted))" }}>
+                        <ChatTextarea value={msgText} onChange={setMsgText} onSend={sendMsg} users={allUsers} placeholder="Mensagem..." />
+                        <Button size="sm" onClick={sendMsg} disabled={!msgText.trim()} className="h-8 w-8 p-0 shrink-0 rounded-xl">
+                          <Send className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </div>
-                  )}
+                  </motion.div>
+                )}
 
-                  {/* DM input */}
-                  <div className="shrink-0 p-3 border-t" style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-                    {dmTaskRef && (
-                      <div
-                        className="mb-2 flex items-stretch rounded-xl overflow-hidden"
-                        style={{ backgroundColor: "hsl(220 20% 16%)" }}
-                      >
-                        {/* Accent bar */}
-                        <div className="w-[3px] shrink-0" style={{ backgroundColor: "hsl(var(--primary))" }} />
-                        {/* Clickable content */}
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/tasks?tab=lista&highlight=${dmTaskRef.id}`)}
-                          className="flex-1 min-w-0 flex flex-col items-start px-3 py-2 text-left hover:opacity-90 transition-opacity"
-                          style={{ color: "#fff" }}
-                        >
-                          <span className="text-[10px] font-semibold uppercase tracking-wide leading-none mb-0.5" style={{ color: "rgba(255,255,255,0.5)" }}>Tarefa</span>
-                          <span className="text-[12px] font-semibold leading-snug truncate w-full" style={{ color: "hsl(var(--primary))" }}>
-                            {dmTaskRef.code}{dmTaskRef.title ? ` · ${dmTaskRef.title}` : ""}
-                          </span>
-                        </button>
-                        {/* Dismiss */}
-                        <button
-                          type="button"
-                          onClick={() => setDmTaskRef(null)}
-                          className="px-3 flex items-center justify-center shrink-0 hover:opacity-70 transition-opacity"
-                          style={{ color: "rgba(255,255,255,0.7)" }}
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
+                {/* DM VIEW */}
+                {typeof activeView === "number" && (
+                  <motion.div
+                    key={`dm-${activeView}`}
+                    custom={slideDir}
+                    variants={SLIDE}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={SLIDE_T}
+                    className="absolute inset-0 flex flex-col"
+                    style={{ backgroundColor: "hsl(var(--card))" }}
+                  >
+                    <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                      {!(dmMessages[activeView as number]) ? (
+                        <p className="text-sm text-center py-10" style={{ color: "hsl(var(--muted-foreground))" }}>Carregando...</p>
+                      ) : (dmMessages[activeView as number] ?? []).length === 0 ? (
+                        <p className="text-sm text-center py-10" style={{ color: "hsl(var(--muted-foreground))" }}>Nenhuma mensagem. Diga olá! 👋</p>
+                      ) : (dmMessages[activeView as number] ?? []).map(msg => {
+                        const mine = msg.fromUserId === user?.id;
+                        return (
+                          <div key={msg.id} className={cn("flex gap-2 items-end", mine && "flex-row-reverse")}>
+                            {!mine && <Avatar name={msg.fromName} url={msg.fromAvatar} size="xs" />}
+                            <div
+                              className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
+                              style={mine
+                                ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
+                                : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
+                              }
+                            >
+                              <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
+                              <div className="flex items-center justify-end gap-1 mt-1">
+                                <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
+                                {mine && (
+                                  msg.readAt
+                                    ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-400" />
+                                    : <Check className="h-3.5 w-3.5 shrink-0 opacity-40" />
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div ref={dmEndRef} />
+                    </div>
+
+                    {/* Typing indicator — outside scroll to prevent jump */}
+                    {typingUsers.has(activeView as number) && (
+                      <div className="shrink-0 flex gap-2 items-center px-4 py-1.5">
+                        <Avatar name={currentDmUser?.name ?? null} url={currentDmUser?.avatarUrl ?? null} size="xs" />
+                        <div className="rounded-2xl px-3 py-2" style={{ backgroundColor: "hsl(var(--muted))", borderBottomLeftRadius: "4px" }}>
+                          <div className="flex gap-1 items-center">
+                            <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "hsl(var(--muted-foreground))", animationDelay: "0ms" }} />
+                            <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "hsl(var(--muted-foreground))", animationDelay: "160ms" }} />
+                            <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "hsl(var(--muted-foreground))", animationDelay: "320ms" }} />
+                          </div>
+                        </div>
                       </div>
                     )}
-                    <div className="flex gap-2 items-end rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: "hsl(var(--muted))" }}>
-                      <ChatTextarea
-                        value={dmText}
-                        onChange={v => {
-                          setDmText(v);
-                          if (typeof activeView === "number" && v.trim()) {
-                            const now = Date.now();
-                            if (now - lastTypingEmitRef.current > 2000) {
-                              getSocket().emit("dm:typing", { toUserId: activeView });
-                              lastTypingEmitRef.current = now;
+
+                    {/* DM input */}
+                    <div className="shrink-0 p-3 border-t" style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+                      {dmTaskRef && (
+                        <div className="mb-2 flex items-stretch rounded-xl overflow-hidden" style={{ backgroundColor: "hsl(220 20% 16%)" }}>
+                          <div className="w-[3px] shrink-0" style={{ backgroundColor: "hsl(var(--primary))" }} />
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/tasks?tab=lista&highlight=${dmTaskRef.id}`)}
+                            className="flex-1 min-w-0 flex flex-col items-start px-3 py-2 text-left hover:opacity-90 transition-opacity"
+                            style={{ color: "#fff" }}
+                          >
+                            <span className="text-[10px] font-semibold uppercase tracking-wide leading-none mb-0.5" style={{ color: "rgba(255,255,255,0.5)" }}>Tarefa</span>
+                            <span className="text-[12px] font-semibold leading-snug truncate w-full" style={{ color: "hsl(var(--primary))" }}>
+                              {dmTaskRef.code}{dmTaskRef.title ? ` · ${dmTaskRef.title}` : ""}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDmTaskRef(null)}
+                            className="px-3 flex items-center justify-center shrink-0 hover:opacity-70 transition-opacity"
+                            style={{ color: "rgba(255,255,255,0.7)" }}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+                      <div className="flex gap-2 items-end rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: "hsl(var(--muted))" }}>
+                        <ChatTextarea
+                          value={dmText}
+                          onChange={v => {
+                            setDmText(v);
+                            if (typeof activeView === "number" && v.trim()) {
+                              const now = Date.now();
+                              if (now - lastTypingEmitRef.current > 2000) {
+                                getSocket().emit("dm:typing", { toUserId: activeView });
+                                lastTypingEmitRef.current = now;
+                              }
                             }
-                          }
-                        }}
-                        onSend={sendDm}
-                        users={allUsers}
-                        placeholder="Mensagem privada..."
-                      />
-                      <Button size="sm" onClick={sendDm} disabled={dmSending || (!dmText.trim() && !dmTaskRef)} className="h-8 w-8 p-0 shrink-0 rounded-xl">
-                        <Send className="h-3.5 w-3.5" />
-                      </Button>
+                          }}
+                          onSend={sendDm}
+                          users={allUsers}
+                          placeholder="Mensagem privada..."
+                        />
+                        <Button size="sm" onClick={sendDm} disabled={dmSending || (!dmText.trim() && !dmTaskRef)} className="h-8 w-8 p-0 shrink-0 rounded-xl">
+                          <Send className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </>
-              )}
+                  </motion.div>
+                )}
+
+              </AnimatePresence>
             </div>
           </motion.div>
         )}
