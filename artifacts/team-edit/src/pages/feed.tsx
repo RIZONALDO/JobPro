@@ -430,7 +430,7 @@ function FeedCard({ item, myUserId, myRole, users, onReact, updatedReactions, on
             <div className="divide-y">
               {comments.map(c => (
                 <div key={c.id} className="flex gap-3 px-5 py-3 group">
-                  <Avatar name={c.userName} url={c.userAvatar} size="sm" />
+                  <AvatarDisplay name={c.userName ?? "?"} avatarUrl={c.userAvatar} size={32} />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs">
                       <strong className="font-semibold mr-1">{c.userName ?? "?"}</strong>
