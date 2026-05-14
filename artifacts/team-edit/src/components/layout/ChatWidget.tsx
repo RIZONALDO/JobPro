@@ -320,13 +320,29 @@ export function ChatWidget() {
         ? prev.some(p => p.userId === userId) ? prev : [...prev, { ...u, userId, isOnline: true }]
         : prev.filter(p => p.userId !== userId));
 
+    const onDmRead = ({ byUserId }: { byUserId: number }) => {
+      const readAt = new Date().toISOString();
+      setDmMessages(prev => {
+        const msgs = prev[byUserId];
+        if (!msgs) return prev;
+        return {
+          ...prev,
+          [byUserId]: msgs.map(m =>
+            m.fromUserId === user?.id && !m.readAt ? { ...m, readAt } : m
+          ),
+        };
+      });
+    };
+
     socket.on("chat:message", onChatMessage);
     socket.on("dm:message", onDmMessage);
     socket.on("presence:update", onPresence);
+    socket.on("dm:read", onDmRead);
     return () => {
       socket.off("chat:message", onChatMessage);
       socket.off("dm:message", onDmMessage);
       socket.off("presence:update", onPresence);
+      socket.off("dm:read", onDmRead);
     };
   }, [user]);
 
@@ -588,7 +604,7 @@ export function ChatWidget() {
                           <div
                             className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
                             style={mine
-                              ? { backgroundColor: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
+                              ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
                               : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
                             }
                           >
@@ -654,7 +670,7 @@ export function ChatWidget() {
                           <div
                             className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
                             style={mine
-                              ? { backgroundColor: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
+                              ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
                               : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
                             }
                           >

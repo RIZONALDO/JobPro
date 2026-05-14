@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, directMessagesTable, usersTable } from "@workspace/db";
 import { eq, and, or, desc, asc, lt, sql } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
-import { broadcastDm } from "../lib/broadcast.js";
+import { broadcastDm, broadcastDmRead } from "../lib/broadcast.js";
 
 const router = Router();
 
@@ -64,7 +64,7 @@ router.get("/dm/:userId", requireAuth, async (req, res): Promise<void> => {
     .orderBy(asc(directMessagesTable.createdAt))
     .limit(100);
 
-  // Mark as read
+  // Mark as read and notify sender
   await db
     .update(directMessagesTable)
     .set({ readAt: new Date() })
@@ -72,6 +72,7 @@ router.get("/dm/:userId", requireAuth, async (req, res): Promise<void> => {
       and(eq(directMessagesTable.toUserId, myId), eq(directMessagesTable.fromUserId, otherId),
         sql`${directMessagesTable.readAt} IS NULL`)
     );
+  broadcastDmRead(otherId, myId);
 
   res.json(messages);
 });
@@ -113,6 +114,7 @@ router.post("/dm/:userId/read", requireAuth, async (req, res): Promise<void> => 
       and(eq(directMessagesTable.toUserId, myId), eq(directMessagesTable.fromUserId, fromId),
         sql`${directMessagesTable.readAt} IS NULL`)
     );
+  broadcastDmRead(fromId, myId);
 
   res.sendStatus(204);
 });

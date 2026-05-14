@@ -41,3 +41,7 @@ export function broadcastDm(toUserId: number, fromUserId: number, message: unkno
     getIo().to(`user:${fromUserId}`).emit("dm:message", message);
   } catch {}
 }
+
+export function broadcastDmRead(senderUserId: number, readerUserId: number) {
+  try { getIo().to(`user:${senderUserId}`).emit("dm:read", { byUserId: readerUserId }); } catch {}
+}
