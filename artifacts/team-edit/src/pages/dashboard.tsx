@@ -901,9 +901,6 @@ export default function Dashboard() {
                       <AvatarDisplay name={t.assignedTo.name} avatarUrl={t.assignedTo.avatarUrl} size={30} />
                     )}
                     <PriorityBadge priority={t.priority} />
-                    <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
-                      {STATUS_LABEL[t.status] ?? t.status}
-                    </Badge>
                   </div>
                 </div>
               ))}
@@ -1062,9 +1059,6 @@ export default function Dashboard() {
                       <AvatarDisplay name={t.createdBy.name} avatarUrl={t.createdBy.avatarUrl} size={30} />
                     )}
                     <PriorityBadge priority={t.priority} />
-                    <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
-                      {STATUS_LABEL[t.status] ?? t.status}
-                    </Badge>
                   </div>
                 </div>
               ))}
