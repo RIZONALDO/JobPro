@@ -670,12 +670,18 @@ export function ChatWidget() {
                       <button
                         type="button"
                         onClick={() => navigate(`/tasks?tab=lista&highlight=${dmTaskRef.id}`)}
-                        className="mb-2 w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold hover:opacity-80 transition-opacity text-left"
-                        style={{ backgroundColor: "hsl(var(--primary) / 0.1)", border: "1px solid hsl(var(--primary) / 0.3)", color: "hsl(var(--primary))" }}
+                        className="mb-2 w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl text-left hover:opacity-80 transition-opacity"
+                        style={{ backgroundColor: "hsl(var(--primary) / 0.08)", border: "1px solid hsl(var(--primary) / 0.25)", color: "hsl(var(--primary))" }}
                       >
-                        <span className="font-mono shrink-0">[{dmTaskRef.code}]</span>
-                        {dmTaskRef.title && <span className="truncate opacity-70 font-normal">{dmTaskRef.title}</span>}
-                        <ExternalLink className="h-3 w-3 ml-auto shrink-0 opacity-60" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-mono font-bold leading-none mb-1">{dmTaskRef.code}</p>
+                          {dmTaskRef.title && (
+                            <p className="text-[12px] font-normal leading-snug line-clamp-2" style={{ color: "hsl(var(--foreground))", opacity: 0.75 }}>
+                              {dmTaskRef.title}
+                            </p>
+                          )}
+                        </div>
+                        <ExternalLink className="h-3.5 w-3.5 shrink-0 mt-0.5 opacity-50" />
                       </button>
                     )}
                     <div className="flex gap-2 items-end rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: "hsl(var(--muted))" }}>
