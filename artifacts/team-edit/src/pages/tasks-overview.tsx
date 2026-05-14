@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
-  ClipboardList, MoreVertical, FolderOpen,
+  ClipboardList, MoreVertical,
   ArrowUpRight, X, PauseCircle, XCircle,
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
   SlidersHorizontal, Check, Undo2, Search,
@@ -815,12 +815,6 @@ export default function TasksOverview() {
 
                   {/* Ações — desktop (largura fixa w-32 para não desalinhar) */}
                   <div className="hidden md:flex w-32 shrink-0 items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
-                    {t.folderUrl && (
-                      <a href={t.folderUrl} target="_blank" rel="noreferrer" title="Abrir pasta"
-                        className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--primary))]">
-                        <FolderOpen className="h-3.5 w-3.5" />
-                      </a>
-                    )}
                     {t.status === "rascunho" && canActNow && (
                       <Button size="icon"
                         className={`h-7 w-7 ${t.editors?.length > 0 ? "bg-zinc-700 hover:bg-zinc-800" : "bg-zinc-300 cursor-not-allowed"}`}
