@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { db, usersTable, tasksTable, taskRevisionsTable, taskEventsTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, ne, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireCoordinator } from "../lib/auth.js";
 
 const router = Router();
@@ -44,7 +44,11 @@ router.get("/users/:id/tasks", requireCoordinator, async (req, res): Promise<voi
       color: tasksTable.color,
     })
     .from(tasksTable)
-    .where(eq(tasksTable.assignedToId, id))
+    .where(and(
+      eq(tasksTable.assignedToId, id),
+      ne(tasksTable.status, "completed"),
+      ne(tasksTable.status, "cancelled"),
+    ))
     .orderBy(desc(tasksTable.createdAt));
 
   res.json(tasks);
