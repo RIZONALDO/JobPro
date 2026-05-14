@@ -354,6 +354,7 @@ export default function EditorTaskList() {
                       name={t.createdBy.name}
                       avatarUrl={t.createdBy.avatarUrl}
                       size={30}
+                      taskId={t.id}
                       taskCode={t.taskCode}
                       taskTitle={t.title}
                     />

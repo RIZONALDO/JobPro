@@ -8,6 +8,7 @@ import { getSocket } from "@/lib/socket";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useChatContext } from "@/contexts/ChatContext";
+import { useLocation } from "wouter";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -142,11 +143,40 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
   );
 }
 
+// ── Task link renderer ───────────────────────────────────────────
+// Parses [CODE|id:ID] tokens in chat messages and renders them as links.
+
+const TASK_REF = /(\[[^\]|]+\|id:\d+\])/g;
+
+function renderContent(text: string, navigate: (to: string) => void, mine: boolean) {
+  const parts = text.split(TASK_REF);
+  return parts.map((part, i) => {
+    const m = part.match(/^\[([^\]|]+)\|id:(\d+)\]$/);
+    if (m) {
+      return (
+        <button
+          key={i}
+          type="button"
+          onClick={() => navigate(`/tasks?tab=lista&highlight=${m[2]}`)}
+          className={cn(
+            "font-mono font-bold underline underline-offset-2 hover:opacity-80 transition-opacity",
+            mine ? "text-white/90" : "text-[hsl(var(--primary))]"
+          )}
+        >
+          [{m[1]}]
+        </button>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
 // ── ChatWidget ───────────────────────────────────────────────────
 
 export function ChatWidget() {
   const { user } = useAuth();
   const { _register } = useChatContext();
+  const [, navigate] = useLocation();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingChat, setLoadingChat] = useState(true);
@@ -530,7 +560,7 @@ export function ChatWidget() {
                             }
                           >
                             {!mine && <p className="text-xs font-semibold mb-0.5 opacity-60">{msg.userName}</p>}
-                            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                            <p className="whitespace-pre-wrap break-words">{renderContent(msg.content, navigate, mine)}</p>
                             <p className="text-[11px] mt-1 opacity-40 text-right">{timeAgo(msg.createdAt)}</p>
                           </div>
                         </div>
@@ -595,7 +625,7 @@ export function ChatWidget() {
                               : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
                             }
                           >
-                            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                            <p className="whitespace-pre-wrap break-words">{renderContent(msg.content, navigate, mine)}</p>
                             <p className="text-[11px] mt-1 opacity-40 text-right">{timeAgo(msg.createdAt)}</p>
                           </div>
                         </div>

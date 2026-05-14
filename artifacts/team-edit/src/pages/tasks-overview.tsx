@@ -700,6 +700,7 @@ export default function TasksOverview() {
                                 name={e.name}
                                 avatarUrl={e.avatarUrl}
                                 size={28}
+                                taskId={t.id}
                                 taskCode={t.taskCode}
                                 taskTitle={t.title}
                               />
@@ -731,6 +732,7 @@ export default function TasksOverview() {
                           name={t.coordinator.name}
                           avatarUrl={t.coordinator.avatarUrl}
                           size={30}
+                          taskId={t.id}
                           taskCode={t.taskCode}
                           taskTitle={t.title}
                         />

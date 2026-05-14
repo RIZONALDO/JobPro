@@ -8,11 +8,12 @@ interface Props {
   name: string;
   avatarUrl?: string | null;
   size?: number;
+  taskId?: number;
   taskCode?: string;
   taskTitle?: string;
 }
 
-export function ChatAvatarButton({ userId, name, avatarUrl, size = 30, taskCode, taskTitle }: Props) {
+export function ChatAvatarButton({ userId, name, avatarUrl, size = 30, taskId, taskCode, taskTitle }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const { openDmWith } = useChatContext();
@@ -28,7 +29,9 @@ export function ChatAvatarButton({ userId, name, avatarUrl, size = 30, taskCode,
 
   const handleConverse = () => {
     setOpen(false);
-    const prefill = [taskCode, taskTitle].filter(Boolean).join(" — ");
+    // Format: [CODE|id:ID] — Title  → rendered as clickable link in chat
+    const codeRef = taskCode && taskId ? `[${taskCode}|id:${taskId}]` : taskCode ?? "";
+    const prefill = [codeRef, taskTitle].filter(Boolean).join(" — ");
     openDmWith(userId, prefill);
   };
 
