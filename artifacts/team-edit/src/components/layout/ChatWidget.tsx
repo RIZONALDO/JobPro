@@ -148,7 +148,12 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
 
 const TASK_REF = /(\[[^\]|]+\|id:\d+\])/g;
 
-function renderContent(text: string, navigate: (to: string) => void, mine: boolean) {
+function renderContent(
+  text: string,
+  navigate: (to: string) => void,
+  mine: boolean,
+  close: () => void,
+) {
   const parts = text.split(TASK_REF);
   return parts.map((part, i) => {
     const m = part.match(/^\[([^\]|]+)\|id:(\d+)\]$/);
@@ -157,11 +162,12 @@ function renderContent(text: string, navigate: (to: string) => void, mine: boole
         <button
           key={i}
           type="button"
-          onClick={() => navigate(`/tasks?tab=lista&highlight=${m[2]}`)}
+          onClick={() => { close(); navigate(`/tasks?tab=lista&highlight=${m[2]}`); }}
           className={cn(
             "font-mono font-bold underline underline-offset-2 hover:opacity-80 transition-opacity",
             mine ? "text-white/90" : "text-[hsl(var(--primary))]"
           )}
+          title="Abrir tarefa"
         >
           [{m[1]}]
         </button>
@@ -560,7 +566,7 @@ export function ChatWidget() {
                             }
                           >
                             {!mine && <p className="text-xs font-semibold mb-0.5 opacity-60">{msg.userName}</p>}
-                            <p className="whitespace-pre-wrap break-words">{renderContent(msg.content, navigate, mine)}</p>
+                            <p className="whitespace-pre-wrap break-words">{renderContent(msg.content, navigate, mine, () => setChatOpen(false))}</p>
                             <p className="text-[11px] mt-1 opacity-40 text-right">{timeAgo(msg.createdAt)}</p>
                           </div>
                         </div>
@@ -625,7 +631,7 @@ export function ChatWidget() {
                               : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
                             }
                           >
-                            <p className="whitespace-pre-wrap break-words">{renderContent(msg.content, navigate, mine)}</p>
+                            <p className="whitespace-pre-wrap break-words">{renderContent(msg.content, navigate, mine, () => setChatOpen(false))}</p>
                             <p className="text-[11px] mt-1 opacity-40 text-right">{timeAgo(msg.createdAt)}</p>
                           </div>
                         </div>
