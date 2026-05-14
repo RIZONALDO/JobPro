@@ -26,6 +26,8 @@ interface Task {
   client?: string | null;
   color?: string;
   number?: number;
+  createdBy?: { id: number; name: string; avatarUrl: string | null } | null;
+  assignedTo?: { id: number; name: string; avatarUrl: string | null } | null;
 }
 
 interface AtRiskTask {
@@ -870,7 +872,7 @@ export default function Dashboard() {
                   <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{openTasks.length}</span>
                 )}
               </div>
-              <Link href="/tasks?tab=board" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
+              <Link href="/tasks?tab=lista" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
                 Ver todas <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
@@ -895,6 +897,9 @@ export default function Dashboard() {
                     })()}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    {t.assignedTo && (
+                      <AvatarDisplay name={t.assignedTo.name} avatarUrl={t.assignedTo.avatarUrl} size={22} />
+                    )}
                     <PriorityBadge priority={t.priority} />
                     <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
@@ -1025,7 +1030,7 @@ export default function Dashboard() {
                   <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{openTasks.length}</span>
                 )}
               </div>
-              <Link href="/tasks?tab=board" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
+              <Link href="/tasks?tab=lista" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
                 Ver todas <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
@@ -1053,6 +1058,9 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    {t.createdBy && (
+                      <AvatarDisplay name={t.createdBy.name} avatarUrl={t.createdBy.avatarUrl} size={22} />
+                    )}
                     <PriorityBadge priority={t.priority} />
                     <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
