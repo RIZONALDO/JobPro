@@ -20,7 +20,7 @@ import {
   ClipboardList, MoreVertical,
   ArrowUpRight, X, PauseCircle, XCircle,
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
-  SlidersHorizontal, Check, Undo2, Search, UserX,
+  SlidersHorizontal, Check, Undo2, Search,
 } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
@@ -698,7 +698,7 @@ export default function TasksOverview() {
                         <Badge className={`text-xs px-2 py-0.5 font-medium shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
                           {STATUS_LABEL[t.status] ?? t.status}
                         </Badge>
-                        {isUnassigned && <UserX className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                        {isUnassigned && <span className="text-[11px] text-slate-400 shrink-0">sem editor</span>}
                         <PriorityBadge priority={t.priority} />
                         {(() => {
                           const closed = fmtClosedCycle(t.status, t.dueDate, t.updatedAt);
@@ -800,7 +800,7 @@ export default function TasksOverview() {
                   {/* Editor */}
                   <div className="hidden md:flex w-32 shrink-0 items-center gap-1.5">
                     {isUnassigned ? (
-                      <UserX className="h-4 w-4 text-slate-400" title="Sem editor atribuído" />
+                      <span className="text-xs text-slate-400">sem editor</span>
                     ) : t.editors && t.editors.length > 0 ? (
                       <>
                         <div className="flex items-center" style={{ gap: 0 }}>
