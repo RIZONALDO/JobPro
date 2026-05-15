@@ -529,8 +529,8 @@ export function ChatWidget() {
             key="panel"
             initial={{ opacity: 0, y: 40, scale: 0.94 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 14, scale: 0.97 }}
-            transition={{ type: "spring", stiffness: 380, damping: 16, mass: 0.9 }}
+            exit={{ opacity: 0, y: 10, scale: 0.97, transition: { duration: 0.16, ease: "easeIn" } }}
+            transition={{ type: "spring", stiffness: 380, damping: 28, mass: 0.9 }}
             className={cn(
               "fixed z-50 flex flex-col overflow-hidden shadow-2xl",
               "bottom-0 left-0 right-0 h-[85dvh] rounded-t-3xl border-t border-x",
