@@ -20,7 +20,7 @@ import {
   ClipboardList, MoreVertical,
   ArrowUpRight, X, PauseCircle, XCircle,
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
-  SlidersHorizontal, Check, Undo2, Search,
+  SlidersHorizontal, Check, Undo2, Search, UserX,
 } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
@@ -561,9 +561,10 @@ export default function TasksOverview() {
                   </div>
                   <div className="divide-y divide-[hsl(var(--muted))]">
                     {groupTasks.map(t => {
-                      const overdue   = isOverdue(t);
-                      const canActNow = canAct(t);
+                      const overdue      = isOverdue(t);
+                      const canActNow    = canAct(t);
                       const isHighlighted = highlighted === t.id;
+                      const isUnassigned = t.status === "pending" && (!t.editors || t.editors.length === 0) && !t.assignee;
 
               // Shared dropdown — rendered in both mobile and desktop slots
               const DropdownItems = () => (
@@ -715,8 +716,15 @@ export default function TasksOverview() {
                         })()}
                       </div>
 
-                      {/* Row 4: editors */}
-                      {t.editors && t.editors.length > 0 && (
+                      {/* Row 4: editors / unassigned warning */}
+                      {isUnassigned ? (
+                        <div className="flex items-center gap-1.5 mt-2.5">
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 px-1.5 py-0.5 rounded">
+                            <UserX className="h-3 w-3 shrink-0" />
+                            Sem editor atribuído
+                          </span>
+                        </div>
+                      ) : t.editors && t.editors.length > 0 && (
                         <div className="flex items-center gap-2 mt-2.5">
                           <StackedAvatars people={t.editors} size={26} max={3} />
                           <span className="text-xs text-[hsl(var(--muted-foreground))]/70 truncate">
@@ -797,7 +805,12 @@ export default function TasksOverview() {
 
                   {/* Editor */}
                   <div className="hidden md:flex w-32 shrink-0 items-center gap-1.5">
-                    {t.editors && t.editors.length > 0 ? (
+                    {isUnassigned ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 px-1.5 py-0.5 rounded whitespace-nowrap">
+                        <UserX className="h-3 w-3 shrink-0" />
+                        Sem editor
+                      </span>
+                    ) : t.editors && t.editors.length > 0 ? (
                       <>
                         <div className="flex items-center" style={{ gap: 0 }}>
                           {t.editors.slice(0, 3).map((e, i) => (
