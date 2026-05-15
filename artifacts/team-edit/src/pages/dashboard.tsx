@@ -64,6 +64,7 @@ interface ActivityEvent {
   taskClient: string | null;
   fromStatus: string;
   toStatus: string;
+  taskStatus: string;
   changedByName: string | null;
   createdAt: string;
 }
@@ -1024,17 +1025,22 @@ export default function Dashboard() {
                 <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-8 font-sans">Nenhuma atividade ainda.</p>
               ) : activity.map((e, idx) => (
                 <div key={e.id} role="button" onClick={() => goToTask(e.taskId)}
-                  className="flex items-center gap-4 px-5 py-2 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
+                  className="flex items-center gap-3 px-5 py-2 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
                   <span className="text-xs text-[hsl(var(--muted-foreground))]/40 w-5 shrink-0 text-right select-none">{String(idx + 1).padStart(2, "0")}</span>
-                  <span className="text-xs text-[hsl(var(--muted-foreground))]/60 shrink-0 w-24">
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]/60 shrink-0 w-20">
                     {fmtShort(e.createdAt)}
                   </span>
-                  <span className="flex-1 text-xs truncate font-sans">
+                  <span className="flex-1 text-xs truncate font-sans min-w-0">
                     {e.taskCode && <span className="font-mono font-bold text-sm text-[hsl(var(--primary))] mr-1">{e.taskCode}</span>}
                     <span className="text-[hsl(var(--foreground))] font-medium group-hover:text-[hsl(var(--primary))] transition-colors">{e.taskTitle}</span>
-                    <span className="text-[hsl(var(--muted-foreground))]"> → {STATUS_LABEL[e.toStatus] ?? e.toStatus}</span>
-                    {e.changedByName && <span className="text-[hsl(var(--muted-foreground))]/60"> · {e.changedByName.split(" ")[0]}</span>}
+                    <span className="text-[hsl(var(--muted-foreground))]/60"> · {STATUS_LABEL[e.toStatus] ?? e.toStatus}</span>
+                    {e.changedByName && <span className="text-[hsl(var(--muted-foreground))]/40"> · {e.changedByName.split(" ")[0]}</span>}
                   </span>
+                  {e.taskStatus !== e.toStatus && (
+                    <Badge className={`text-[10px] px-1.5 py-0 shrink-0 ${STATUS_CLASS[e.taskStatus] ?? ""}`}>
+                      {STATUS_LABEL[e.taskStatus] ?? e.taskStatus}
+                    </Badge>
+                  )}
                 </div>
               ))}
             </div>
@@ -1187,15 +1193,20 @@ export default function Dashboard() {
                 <div key={e.id} role="button" onClick={() => goToTask(e.taskId)}
                   className="flex items-center gap-3 px-5 py-2 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
                   <span className="text-xs text-[hsl(var(--muted-foreground))]/40 w-5 shrink-0 text-right select-none">{String(idx + 1).padStart(2, "0")}</span>
-                  <span className="text-xs text-[hsl(var(--muted-foreground))]/60 shrink-0 w-24">
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]/60 shrink-0 w-20">
                     {fmtShort(e.createdAt)}
                   </span>
-                  <span className="flex-1 text-xs truncate font-sans">
+                  <span className="flex-1 text-xs truncate font-sans min-w-0">
                     {e.taskCode && <span className="font-mono font-bold text-sm text-[hsl(var(--primary))] mr-1">{e.taskCode}</span>}
                     <span className="text-[hsl(var(--foreground))] font-medium group-hover:text-[hsl(var(--primary))] transition-colors">{e.taskTitle}</span>
-                    <span className="text-[hsl(var(--muted-foreground))]"> → {STATUS_LABEL[e.toStatus] ?? e.toStatus}</span>
-                    {e.changedByName && <span className="text-[hsl(var(--muted-foreground))]/60"> · {e.changedByName.split(" ")[0]}</span>}
+                    <span className="text-[hsl(var(--muted-foreground))]/60"> · {STATUS_LABEL[e.toStatus] ?? e.toStatus}</span>
+                    {e.changedByName && <span className="text-[hsl(var(--muted-foreground))]/40"> · {e.changedByName.split(" ")[0]}</span>}
                   </span>
+                  {e.taskStatus !== e.toStatus && (
+                    <Badge className={`text-[10px] px-1.5 py-0 shrink-0 ${STATUS_CLASS[e.taskStatus] ?? ""}`}>
+                      {STATUS_LABEL[e.taskStatus] ?? e.taskStatus}
+                    </Badge>
+                  )}
                 </div>
               ))}
             </div>

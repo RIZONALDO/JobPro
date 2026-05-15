@@ -764,6 +764,7 @@ router.get("/activity", requireAuth, async (req, res): Promise<void> => {
       taskClient: tasksTable.client,
       taskNumber: tasksTable.taskNumber,
       taskYear: tasksTable.taskYear,
+      taskStatus: tasksTable.status,
     })
     .from(taskEventsTable)
     .innerJoin(tasksTable, eq(taskEventsTable.taskId, tasksTable.id))
