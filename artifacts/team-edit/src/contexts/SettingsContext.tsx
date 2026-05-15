@@ -10,12 +10,13 @@ interface AppSettings {
 
 interface SettingsContextValue {
   settings: AppSettings;
+  ready: boolean;
   refreshSettings: () => Promise<void>;
 }
 
 const DEFAULTS: AppSettings = {
-  company_name: "TeamEdit",
-  system_name: "TeamEdit",
+  company_name: "",
+  system_name: "",
   logo_url: "",
   favicon_url: "",
   primary_color: "#6366f1",
@@ -23,6 +24,7 @@ const DEFAULTS: AppSettings = {
 
 const SettingsContext = createContext<SettingsContextValue>({
   settings: DEFAULTS,
+  ready: false,
   refreshSettings: async () => {},
 });
 
@@ -49,6 +51,20 @@ function hexToHsl(hex: string): string | null {
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULTS);
+  const [ready, setReady] = useState(false);
+
+  const applySettings = useCallback((next: AppSettings) => {
+    setSettings(next);
+    const p = hexToHsl(next.primary_color);
+    if (p) {
+      document.documentElement.style.setProperty("--primary", p);
+      document.documentElement.style.setProperty("--ring", p);
+    }
+    if (next.favicon_url) {
+      const link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
+      if (link) link.href = next.favicon_url;
+    }
+  }, []);
 
   const refreshSettings = useCallback(async () => {
     try {
@@ -56,29 +72,22 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       if (!res.ok) return;
       const data: Record<string, string> = await res.json();
       const next: AppSettings = {
-        company_name: data["company_name"] || DEFAULTS.company_name,
-        system_name: data["system_name"] || DEFAULTS.system_name,
+        company_name: data["company_name"] || "",
+        system_name: data["system_name"] || "",
         logo_url: data["logo_url"] || "",
         favicon_url: data["favicon_url"] || "",
         primary_color: data["primary_color"] || DEFAULTS.primary_color,
       };
-      setSettings(next);
-      const p = hexToHsl(next.primary_color);
-      if (p) {
-        document.documentElement.style.setProperty("--primary", p);
-        document.documentElement.style.setProperty("--ring", p);
-      }
-      if (next.favicon_url) {
-        const link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
-        if (link) link.href = next.favicon_url;
-      }
-    } catch { /* ignore */ }
-  }, []);
+      applySettings(next);
+    } catch { /* ignore */ } finally {
+      setReady(true);
+    }
+  }, [applySettings]);
 
   useEffect(() => { void refreshSettings(); }, [refreshSettings]);
 
   return (
-    <SettingsContext.Provider value={{ settings, refreshSettings }}>
+    <SettingsContext.Provider value={{ settings, ready, refreshSettings }}>
       {children}
     </SettingsContext.Provider>
   );

@@ -133,11 +133,11 @@ export default function SettingsPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Nome da empresa</Label>
-              <Input value={form.company_name} onChange={e => setForm(f => ({ ...f, company_name: e.target.value }))} placeholder="TeamEdit" />
+              <Input value={form.company_name} onChange={e => setForm(f => ({ ...f, company_name: e.target.value }))} placeholder="Ex: Minha Empresa" />
             </div>
             <div className="space-y-1.5">
               <Label>Nome do sistema</Label>
-              <Input value={form.system_name} onChange={e => setForm(f => ({ ...f, system_name: e.target.value }))} placeholder="TeamEdit" />
+              <Input value={form.system_name} onChange={e => setForm(f => ({ ...f, system_name: e.target.value }))} placeholder="Ex: JobPro" />
             </div>
           </div>
           <ImageField field="logo_url" label="Logo" hint="Exibida na sidebar. Recomendado: 200×60px, fundo transparente." />

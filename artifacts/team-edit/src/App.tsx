@@ -2,7 +2,7 @@ import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { useState, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { SettingsProvider } from "@/contexts/SettingsContext";
+import { SettingsProvider, useSettings } from "@/contexts/SettingsContext";
 import { TaskModalProvider } from "@/contexts/TaskModalContext";
 import { ChatProvider } from "@/contexts/ChatContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -96,16 +96,24 @@ function Router() {
   );
 }
 
+function SettingsGate({ children }: { children: React.ReactNode }) {
+  const { ready } = useSettings();
+  if (!ready) return <div className="min-h-screen bg-[hsl(var(--background))]" />;
+  return <>{children}</>;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <SettingsProvider>
-        <AuthProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <Router />
-          </WouterRouter>
-          <ThemedSonner />
-        </AuthProvider>
+        <SettingsGate>
+          <AuthProvider>
+            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+              <Router />
+            </WouterRouter>
+            <ThemedSonner />
+          </AuthProvider>
+        </SettingsGate>
       </SettingsProvider>
     </QueryClientProvider>
   );
