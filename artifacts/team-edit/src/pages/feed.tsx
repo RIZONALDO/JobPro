@@ -553,7 +553,7 @@ export default function FeedPage() {
     <div className="max-w-2xl mx-auto space-y-4">
 
       {/* ── Compose box — Twitter/Instagram style ─────────────── */}
-      <div className="rounded-2xl border bg-[hsl(var(--card))] shadow-sm overflow-visible">
+      <div className="relative rounded-2xl border bg-[hsl(var(--card))] shadow-sm overflow-visible">
         <div className="flex gap-3 p-4">
           {/* Avatar */}
           <div className="shrink-0 pt-0.5">
