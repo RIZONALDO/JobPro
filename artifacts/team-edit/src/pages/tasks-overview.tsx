@@ -285,12 +285,16 @@ export default function TasksOverview() {
 
   // ── Summary stats ─────────────────────────────────────────────────────────
 
-  const now = new Date();
+  const now = new Date(); now.setHours(0, 0, 0, 0);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   const canAct = (t: OverviewTask) => t.isOwn || isSuper;
-  const isOverdue = (t: OverviewTask) => !!(t.dueDate && new Date(t.dueDate) < now && !isTerminal(t.status));
+  const isOverdue = (t: OverviewTask) => {
+    if (!t.dueDate || isTerminal(t.status)) return false;
+    const due = new Date(t.dueDate); due.setHours(0, 0, 0, 0);
+    return due < now;
+  };
 
   const approve = async (t: OverviewTask) => {
     try {

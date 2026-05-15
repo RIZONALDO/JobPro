@@ -178,7 +178,12 @@ export function LifecycleFlow({
 }) {
   const { task, steps } = data;
 
-  const isOverdue = task.dueDate && !isTerminal(task.status) && new Date(task.dueDate) < new Date();
+  const isOverdue = (() => {
+    if (!task.dueDate || isTerminal(task.status)) return false;
+    const due = new Date(task.dueDate); due.setHours(0, 0, 0, 0);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    return due < today;
+  })();
 
   return (
     <div

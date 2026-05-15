@@ -23,6 +23,14 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
   const { title, description, dueDate, priority, complexity, assignedToId, editorIds, folderUrl, client, color, status } = req.body ?? {};
   if (!title) { res.status(400).json({ error: "Título obrigatório" }); return; }
 
+  if (dueDate) {
+    const parsed = new Date(String(dueDate));
+    const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
+    if (parsed < todayMidnight) {
+      res.status(400).json({ error: "O prazo não pode ser uma data passada" }); return;
+    }
+  }
+
   const parsedAssignee = assignedToId ? parseInt(String(assignedToId), 10) : null;
   const initialStatus = status === "rascunho" ? "rascunho" : "pending";
 
@@ -245,7 +253,18 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     if (description !== undefined) update.description = description ? String(description) : null;
     if (client !== undefined) update.client = client ? String(client) : null;
     if (color) update.color = String(color);
-    if (dueDate !== undefined) update.dueDate = dueDate ? new Date(String(dueDate)) : null;
+    if (dueDate !== undefined) {
+      if (dueDate) {
+        const parsed = new Date(String(dueDate));
+        const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
+        if (parsed < todayMidnight) {
+          res.status(400).json({ error: "O prazo não pode ser uma data passada" }); return;
+        }
+        update.dueDate = parsed;
+      } else {
+        update.dueDate = null;
+      }
+    }
     if (priority) update.priority = String(priority);
     if (complexity) update.complexity = String(complexity);
     if (assignedToId !== undefined) update.assignedToId = assignedToId ? parseInt(String(assignedToId), 10) : null;

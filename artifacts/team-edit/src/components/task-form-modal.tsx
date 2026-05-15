@@ -316,7 +316,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                 {/* Previsão de entrega */}
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Previsão de entrega</Label>
-                  <DateTimePicker value={form.dueDateTime} onChange={v => f({ dueDateTime: v })} withTime placeholder="Data e horário" />
+                  <DateTimePicker value={form.dueDateTime} onChange={v => f({ dueDateTime: v })} withTime min={new Date().toISOString().split("T")[0]} placeholder="Data e horário" />
                 </div>
 
               </div>
