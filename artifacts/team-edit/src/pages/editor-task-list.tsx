@@ -256,7 +256,7 @@ export default function EditorTaskList() {
                     const overdue = isOverdue(t.dueDate, t.status);
                     const accent  = t.color ?? "#6366f1";
                     const trans   = transitions[t.status];
-                    const canReturn = ["in_progress", "in_revision"].includes(t.status);
+                    const canReturn = ["pending", "in_progress", "in_revision"].includes(t.status);
                     const isHighlighted = highlighted === t.id;
 
           const dropdownItems = (

@@ -468,8 +468,8 @@ router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> =>
   if (role === "editor" && task.assignedToId !== userId) {
     res.status(403).json({ error: "Você só pode devolver tarefas atribuídas a você." }); return;
   }
-  if (!["in_progress", "in_revision"].includes(task.status)) {
-    res.status(400).json({ error: "Só é possível devolver uma tarefa em edição ou em revisão." }); return;
+  if (!["pending", "in_progress", "in_revision"].includes(task.status)) {
+    res.status(400).json({ error: "Só é possível devolver uma tarefa pendente, em edição ou em revisão." }); return;
   }
 
   const returnComment = req.body?.returnComment ? String(req.body.returnComment).trim() : "";
@@ -482,6 +482,10 @@ router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> =>
     .set({ status: "pending", assignedToId: null })
     .where(eq(tasksTable.id, id))
     .returning();
+
+  // Remove the returning editor from the junction table so coordinator reassigns from scratch
+  await db.delete(taskEditorsTable)
+    .where(and(eq(taskEditorsTable.taskId, id), eq(taskEditorsTable.userId, userId)));
 
   await db.insert(taskEventsTable).values({
     taskId: id, fromStatus: prevStatus, toStatus: "pending", changedById: userId,
