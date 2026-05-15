@@ -282,6 +282,9 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           comment,
           createdById: userId,
         });
+      } else if (s === "pending" && task.status === "cancelled") {
+        // Reativar tarefa cancelada
+        update.status = "pending";
       } else if (s === "pending" && (task.status === "paused" || task.status === "rascunho")) {
         // Retomar pausada ou publicar rascunho
         if (task.status === "rascunho") {
@@ -401,6 +404,25 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
       await createFeedItem({
         type: "task_resumed",
         title: `Tarefa retomada: "${task.title}"`,
+        actorId: userId,
+        entityId: id,
+        entityType: "task",
+      }).catch(() => {});
+    }
+    if (newStatus === "pending" && task.status === "cancelled") {
+      const reactivatedEditors = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
+      const reactivateRecipients = new Set<number>(reactivatedEditors.map(e => e.userId));
+      if (task.assignedToId) reactivateRecipients.add(task.assignedToId);
+      for (const recipientId of reactivateRecipients) {
+        await notify(recipientId, "task_reactivated",
+          "Tarefa reativada",
+          `A tarefa "${task.title}" foi reativada pelo coordenador`,
+          { taskId: id }
+        );
+      }
+      await createFeedItem({
+        type: "task_reactivated",
+        title: `Tarefa reativada: "${task.title}"`,
         actorId: userId,
         entityId: id,
         entityType: "task",

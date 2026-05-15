@@ -147,7 +147,7 @@ export default function TasksOverview() {
   const [reopenDueDate, setReopenDueDate] = useState("");
   const [sendingReopen, setSendingReopen] = useState(false);
   const [sendingRevision, setSendingRevision] = useState(false);
-  const [confirmTask, setConfirmTask] = useState<{ id: number; title: string; action: "cancel" | "pause" | "resume" } | null>(null);
+  const [confirmTask, setConfirmTask] = useState<{ id: number; title: string; action: "cancel" | "pause" | "resume" | "reactivate" } | null>(null);
   const [confirmComment, setConfirmComment] = useState("");
   const [sendingConfirm, setSendingConfirm] = useState(false);
 
@@ -165,12 +165,12 @@ export default function TasksOverview() {
   const [reassignTarget, setReassignTarget] = useState<{ taskId: number; taskTitle: string; assignedTo: Person | null; mode: "reassign" | "add" } | null>(null);
   const [deleting,     setDeleting]     = useState(false);
 
-  const doTaskAction = async (taskId: number, action: "cancel" | "pause" | "resume") => {
+  const doTaskAction = async (taskId: number, action: "cancel" | "pause" | "resume" | "reactivate") => {
     setSendingConfirm(true);
     try {
-      if (action === "resume") {
+      if (action === "resume" || action === "reactivate") {
         await apiPut(`/api/tasks/${taskId}`, { status: "pending" });
-        toast({ title: "Tarefa retomada." });
+        toast({ title: action === "reactivate" ? "Tarefa reativada." : "Tarefa retomada." });
       } else {
         await apiPut(`/api/tasks/${taskId}`, {
           status: action === "cancel" ? "cancelled" : "paused",
@@ -591,6 +591,19 @@ export default function TasksOverview() {
                       </DropdownMenuItem>
                     </>
                   )}
+                  {t.status === "cancelled" && canActNow && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "reactivate" })}>
+                        <ArrowUpRight className="h-3.5 w-3.5" />Reativar tarefa
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => setDeleteTarget({ id: t.id, title: t.title })}>
+                        <Trash2 className="h-3.5 w-3.5" />Excluir tarefa
+                      </DropdownMenuItem>
+                    </>
+                  )}
                   {t.status === "completed" && canActNow && (
                     <>
                       <DropdownMenuSeparator />
@@ -889,7 +902,7 @@ export default function TasksOverview() {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>
-              {confirmTask?.action === "cancel" ? "Cancelar tarefa" : confirmTask?.action === "pause" ? "Pausar tarefa" : "Retomar tarefa"}
+              {confirmTask?.action === "cancel" ? "Cancelar tarefa" : confirmTask?.action === "pause" ? "Pausar tarefa" : confirmTask?.action === "reactivate" ? "Reativar tarefa" : "Retomar tarefa"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
@@ -898,9 +911,11 @@ export default function TasksOverview() {
                 ? <>Tem certeza que deseja <strong>cancelar</strong> <em>"{confirmTask?.title}"</em>? Os editores serão notificados.</>
                 : confirmTask?.action === "pause"
                   ? <>Tem certeza que deseja <strong>pausar</strong> <em>"{confirmTask?.title}"</em>? Os editores serão notificados.</>
-                  : <>A tarefa <em>"{confirmTask?.title}"</em> voltará para <strong>Pendente</strong> e os editores serão notificados.</>}
+                  : confirmTask?.action === "reactivate"
+                    ? <>A tarefa <em>"{confirmTask?.title}"</em> voltará para <strong>Pendente</strong> e os editores serão notificados.</>
+                    : <>A tarefa <em>"{confirmTask?.title}"</em> voltará para <strong>Pendente</strong> e os editores serão notificados.</>}
             </p>
-            {confirmTask?.action !== "resume" && (
+            {confirmTask?.action !== "resume" && confirmTask?.action !== "reactivate" && (
               <div className="space-y-1.5">
                 <label className="text-xs font-medium">
                   Motivo <span className="text-destructive">*</span>
@@ -921,9 +936,9 @@ export default function TasksOverview() {
             <Button
               className={confirmTask?.action === "cancel" ? "bg-red-600 hover:bg-red-700" : confirmTask?.action === "pause" ? "bg-purple-600 hover:bg-purple-700" : ""}
               onClick={() => confirmTask && doTaskAction(confirmTask.id, confirmTask.action)}
-              disabled={sendingConfirm || (confirmTask?.action !== "resume" && !confirmComment.trim())}
+              disabled={sendingConfirm || (confirmTask?.action !== "resume" && confirmTask?.action !== "reactivate" && !confirmComment.trim())}
             >
-              {sendingConfirm ? "Aguarde…" : confirmTask?.action === "cancel" ? "Confirmar cancelamento" : confirmTask?.action === "pause" ? "Confirmar pausa" : "Retomar"}
+              {sendingConfirm ? "Aguarde…" : confirmTask?.action === "cancel" ? "Confirmar cancelamento" : confirmTask?.action === "pause" ? "Confirmar pausa" : confirmTask?.action === "reactivate" ? "Reativar" : "Retomar"}
             </Button>
           </DialogFooter>
         </DialogContent>
