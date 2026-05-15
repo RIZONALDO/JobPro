@@ -632,23 +632,23 @@ export default function TasksOverview() {
                 >
 
                   {/* ── Mobile card layout (< md) ──────────────────────── */}
-                  <div className="md:hidden flex items-start py-3.5 w-full min-w-0 gap-3">
+                  <div className="md:hidden flex items-start py-4 w-full min-w-0 gap-3">
 
                     {/* Left: all task info */}
                     <div className="flex-1 min-w-0">
 
                       {/* Row 1: code + title + revision chip */}
-                      <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="flex items-baseline gap-2 min-w-0">
                         {t.taskCode && (
-                          <span className="shrink-0 font-mono text-[10px] font-semibold tracking-tight text-[hsl(var(--muted-foreground))]/60">
+                          <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--muted-foreground))]/55">
                             {t.taskCode}
                           </span>
                         )}
-                        <span className="text-[13px] font-semibold truncate flex-1 min-w-0 leading-snug">
+                        <span className="text-sm font-semibold truncate flex-1 min-w-0 leading-snug">
                           {t.title}
                         </span>
                         {t.revisionCount > 0 && (
-                          <span className="shrink-0 text-[10px] font-bold px-1 rounded-sm bg-orange-100 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400 border border-orange-200/80 dark:border-orange-800/40 tabular-nums">
+                          <span className="shrink-0 text-xs font-bold px-1.5 py-px rounded bg-orange-100 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400 border border-orange-200 dark:border-orange-800/40 tabular-nums leading-none">
                             ↩{t.revisionCount}
                           </span>
                         )}
@@ -656,28 +656,28 @@ export default function TasksOverview() {
 
                       {/* Row 2: client */}
                       {t.client && (
-                        <p className="text-[11px] text-[hsl(var(--muted-foreground))]/60 truncate mt-0.5 leading-snug">
+                        <p className="text-xs text-[hsl(var(--muted-foreground))]/60 truncate mt-1 leading-snug">
                           {t.client}
                         </p>
                       )}
 
                       {/* Row 3: status + priority + due date */}
-                      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                        <Badge className={`text-[10px] px-1.5 py-0 h-[18px] font-medium shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
+                      <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                        <Badge className={`text-xs px-2 py-0.5 font-medium shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
                           {STATUS_LABEL[t.status] ?? t.status}
                         </Badge>
                         <PriorityBadge priority={t.priority} />
                         {(() => {
                           const closed = fmtClosedCycle(t.status, t.dueDate, t.updatedAt);
                           if (closed) return (
-                            <span className={`text-[10px] font-semibold shrink-0 ${closed.cls}`}>
+                            <span className={`text-xs font-semibold shrink-0 ${closed.cls}`}>
                               {closed.line1}{closed.line2 ? ` · ${closed.line2}` : ""}
                             </span>
                           );
                           if (!t.dueDate) return null;
                           const { label } = fmtPrazoWeek(t.dueDate);
                           return (
-                            <span className={`text-[10px] shrink-0 tabular-nums ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]/55"}`}>
+                            <span className={`text-xs shrink-0 tabular-nums ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]/60"}`}>
                               {label}
                             </span>
                           );
@@ -686,9 +686,9 @@ export default function TasksOverview() {
 
                       {/* Row 4: editors */}
                       {t.editors && t.editors.length > 0 && (
-                        <div className="flex items-center gap-1.5 mt-2">
-                          <StackedAvatars people={t.editors} size={22} max={3} />
-                          <span className="text-[11px] text-[hsl(var(--muted-foreground))]/65 truncate">
+                        <div className="flex items-center gap-2 mt-2.5">
+                          <StackedAvatars people={t.editors} size={26} max={3} />
+                          <span className="text-xs text-[hsl(var(--muted-foreground))]/70 truncate">
                             {t.editors.map(e => e.name.split(" ")[0]).join(", ")}
                           </span>
                         </div>
@@ -696,32 +696,32 @@ export default function TasksOverview() {
                     </div>
 
                     {/* Right: action buttons */}
-                    <div className="flex flex-col items-end gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+                    <div className="flex flex-col items-end gap-2 shrink-0" onClick={e => e.stopPropagation()}>
                       {t.status === "rascunho" && canActNow && (
                         <Button size="icon"
-                          className={`h-7 w-7 ${t.editors?.length > 0 ? "bg-zinc-700 hover:bg-zinc-800" : "bg-zinc-300 cursor-not-allowed"}`}
+                          className={`h-8 w-8 ${t.editors?.length > 0 ? "bg-zinc-700 hover:bg-zinc-800" : "bg-zinc-300 cursor-not-allowed"}`}
                           disabled={!t.editors || t.editors.length === 0}
                           title={!t.editors || t.editors.length === 0 ? "Atribua um editor antes de publicar" : "Publicar"}
                           onClick={e => { e.stopPropagation(); apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(load); }}>
-                          <Send className="h-3.5 w-3.5" />
+                          <Send className="h-4 w-4" />
                         </Button>
                       )}
                       {t.status === "review" && canActNow && (
-                        <div className="flex gap-1">
-                          <Button size="icon" className="h-7 w-7 bg-green-600 hover:bg-green-700"
+                        <div className="flex gap-1.5">
+                          <Button size="icon" className="h-8 w-8 bg-green-600 hover:bg-green-700"
                             onClick={e => { e.stopPropagation(); approve(t); }}>
-                            <Check className="h-3.5 w-3.5" />
+                            <Check className="h-4 w-4" />
                           </Button>
                           <Button size="icon" variant="outline"
-                            className="h-7 w-7 text-orange-600 border-orange-300 hover:bg-orange-50"
+                            className="h-8 w-8 text-orange-600 border-orange-300 hover:bg-orange-50"
                             onClick={e => { e.stopPropagation(); setRevisionTask(t); setRevisionComment(""); }}>
-                            <Undo2 className="h-3.5 w-3.5" />
+                            <Undo2 className="h-4 w-4" />
                           </Button>
                         </div>
                       )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -733,22 +733,22 @@ export default function TasksOverview() {
                   {/* ── Desktop table columns (md+) ────────────────────── */}
 
                   {/* Tarefa */}
-                  <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-3 pl-1 pr-3">
-                    <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-3 pr-3">
+                    <div className="flex items-baseline gap-2 min-w-0">
                       {t.taskCode && (
-                        <span className="shrink-0 font-mono text-[10px] font-semibold tracking-tight text-[hsl(var(--muted-foreground))]/55">
+                        <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--muted-foreground))]/55">
                           {t.taskCode}
                         </span>
                       )}
-                      <span className="text-[13px] font-semibold truncate leading-snug">{t.title}</span>
+                      <span className="text-sm font-semibold truncate leading-snug">{t.title}</span>
                       {t.revisionCount > 0 && (
-                        <span className="shrink-0 text-[10px] font-bold px-1 rounded-sm bg-orange-100 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400 border border-orange-200/80 dark:border-orange-800/40 tabular-nums">
+                        <span className="shrink-0 text-xs font-bold px-1.5 py-px rounded bg-orange-100 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400 border border-orange-200 dark:border-orange-800/40 tabular-nums leading-none">
                           ↩{t.revisionCount}
                         </span>
                       )}
                     </div>
                     {t.client && (
-                      <p className="text-[11px] text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</p>
                     )}
                   </div>
 

@@ -287,23 +287,23 @@ export default function EditorTaskList() {
             >
 
               {/* ── Mobile card (< md) ─────────────────────────────── */}
-              <div className="md:hidden flex items-start py-3.5 px-4 w-full min-w-0 gap-3">
+              <div className="md:hidden flex items-start py-4 px-4 w-full min-w-0 gap-3">
 
                 {/* Left: all info */}
                 <div className="flex-1 min-w-0">
 
                   {/* code + title + revision chip */}
-                  <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="flex items-baseline gap-2 min-w-0">
                     {t.taskCode && (
-                      <span className="shrink-0 font-mono text-[10px] font-semibold tracking-tight text-[hsl(var(--muted-foreground))]/60">
+                      <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--muted-foreground))]/55">
                         {t.taskCode}
                       </span>
                     )}
-                    <span className="text-[13px] font-semibold truncate flex-1 min-w-0 leading-snug">
+                    <span className="text-sm font-semibold truncate flex-1 min-w-0 leading-snug">
                       {t.title}
                     </span>
                     {t.revisionCount > 0 && (
-                      <span className="shrink-0 text-[10px] font-bold px-1 rounded-sm bg-orange-100 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400 border border-orange-200/80 dark:border-orange-800/40 tabular-nums">
+                      <span className="shrink-0 text-xs font-bold px-1.5 py-px rounded bg-orange-100 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400 border border-orange-200 dark:border-orange-800/40 tabular-nums leading-none">
                         ↩{t.revisionCount}
                       </span>
                     )}
@@ -311,29 +311,29 @@ export default function EditorTaskList() {
 
                   {/* client */}
                   {t.client && (
-                    <p className="text-[11px] text-[hsl(var(--muted-foreground))]/60 truncate mt-0.5 leading-snug">
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]/60 truncate mt-1 leading-snug">
                       {t.client}
                     </p>
                   )}
 
                   {/* status + priority + due date */}
-                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <Badge className={`text-[10px] px-1.5 py-0 h-[18px] font-medium shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
+                  <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                    <Badge className={`text-xs px-2 py-0.5 font-medium shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
                     <PriorityBadge priority={t.priority} />
                     {(() => {
                       const closed = fmtClosedCycle(t.status, t.dueDate, t.updatedAt);
                       if (closed) return (
-                        <span className={`text-[10px] font-semibold shrink-0 ${closed.cls}`}>
+                        <span className={`text-xs font-semibold shrink-0 ${closed.cls}`}>
                           {closed.line1}{closed.line2 ? ` · ${closed.line2}` : ""}
                         </span>
                       );
                       if (!t.dueDate) return null;
                       const { label } = fmtPrazoWeek(t.dueDate);
                       return (
-                        <span className={`text-[10px] shrink-0 tabular-nums ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]/55"}`}>
-                          {overdue && <AlertCircle className="inline h-2.5 w-2.5 mr-0.5" />}
+                        <span className={`text-xs shrink-0 tabular-nums ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]/60"}`}>
+                          {overdue && <AlertCircle className="inline h-3 w-3 mr-0.5" />}
                           {label}
                         </span>
                       );
@@ -342,16 +342,16 @@ export default function EditorTaskList() {
                 </div>
 
                 {/* Right: action + dropdown */}
-                <div className="flex flex-col items-end gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+                <div className="flex flex-col items-end gap-2 shrink-0" onClick={e => e.stopPropagation()}>
                   {trans && (
-                    <Button size="sm" variant="outline" className="h-7 text-xs px-3 whitespace-nowrap"
+                    <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap"
                       onClick={e => { e.stopPropagation(); updateStatus(t, trans.next); }}>
                       {trans.shortLabel}
                     </Button>
                   )}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7">
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
                         <MoreVertical className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
@@ -364,19 +364,19 @@ export default function EditorTaskList() {
 
               {/* Title + client + revision */}
               <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-3 pl-4 pr-3">
-                <div className="flex items-center gap-1.5 min-w-0">
+                <div className="flex items-baseline gap-2 min-w-0">
                   {t.taskCode && (
-                    <span className="shrink-0 font-mono text-[10px] font-semibold tracking-tight text-[hsl(var(--muted-foreground))]/55">{t.taskCode}</span>
+                    <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--muted-foreground))]/55">{t.taskCode}</span>
                   )}
-                  <p className="text-[13px] font-semibold truncate leading-snug">{t.title}</p>
+                  <p className="text-sm font-semibold truncate leading-snug">{t.title}</p>
                   {t.revisionCount > 0 && (
-                    <span className="shrink-0 text-[10px] font-bold px-1 rounded-sm bg-orange-100 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400 border border-orange-200/80 dark:border-orange-800/40 tabular-nums">
+                    <span className="shrink-0 text-xs font-bold px-1.5 py-px rounded bg-orange-100 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400 border border-orange-200 dark:border-orange-800/40 tabular-nums leading-none">
                       ↩{t.revisionCount}
                     </span>
                   )}
                 </div>
                 {t.client && (
-                  <span className="text-[11px] text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</span>
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</span>
                 )}
               </div>
 
