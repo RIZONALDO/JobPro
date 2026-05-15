@@ -698,6 +698,7 @@ export default function TasksOverview() {
                         <Badge className={`text-xs px-2 py-0.5 font-medium shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
                           {STATUS_LABEL[t.status] ?? t.status}
                         </Badge>
+                        {isUnassigned && <UserX className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
                         <PriorityBadge priority={t.priority} />
                         {(() => {
                           const closed = fmtClosedCycle(t.status, t.dueDate, t.updatedAt);
@@ -716,15 +717,8 @@ export default function TasksOverview() {
                         })()}
                       </div>
 
-                      {/* Row 4: editors / unassigned warning */}
-                      {isUnassigned ? (
-                        <div className="flex items-center gap-1.5 mt-2.5">
-                          <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 px-1.5 py-0.5 rounded">
-                            <UserX className="h-3 w-3 shrink-0" />
-                            Sem editor atribuído
-                          </span>
-                        </div>
-                      ) : t.editors && t.editors.length > 0 && (
+                      {/* Row 4: editors */}
+                      {t.editors && t.editors.length > 0 && (
                         <div className="flex items-center gap-2 mt-2.5">
                           <StackedAvatars people={t.editors} size={26} max={3} />
                           <span className="text-xs text-[hsl(var(--muted-foreground))]/70 truncate">
@@ -806,10 +800,7 @@ export default function TasksOverview() {
                   {/* Editor */}
                   <div className="hidden md:flex w-32 shrink-0 items-center gap-1.5">
                     {isUnassigned ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 px-1.5 py-0.5 rounded whitespace-nowrap">
-                        <UserX className="h-3 w-3 shrink-0" />
-                        Sem editor
-                      </span>
+                      <UserX className="h-4 w-4 text-amber-500" title="Sem editor atribuído" />
                     ) : t.editors && t.editors.length > 0 ? (
                       <>
                         <div className="flex items-center" style={{ gap: 0 }}>
