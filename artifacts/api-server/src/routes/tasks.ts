@@ -1037,6 +1037,67 @@ router.get("/pipeline", requireAuth, async (req, res): Promise<void> => {
   })));
 });
 
+// ── Status history (stacked line chart data) ──────────────────────────────────
+router.get("/tasks/status-history", requireAuth, async (req, res): Promise<void> => {
+  const DAYS = 14;
+  const STATUS_KEYS = ["pending", "in_progress", "in_revision", "review", "completed", "paused", "cancelled"];
+
+  const nowMs = Date.now();
+
+  // Build the date range: DAYS days ending today (inclusive)
+  const dates: string[] = [];
+  for (let i = DAYS - 1; i >= 0; i--) {
+    const d = new Date(nowMs - i * 86_400_000);
+    dates.push(d.toISOString().split("T")[0]);
+  }
+
+  // Fetch all tasks (we only need id + createdAt; initial status is always "pending")
+  const allTasks = await db.select({ id: tasksTable.id, createdAt: tasksTable.createdAt }).from(tasksTable);
+
+  // Fetch all status-change events (ordered asc so last() gives current state on any day)
+  const allEvents = await db
+    .select({ taskId: taskEventsTable.taskId, toStatus: taskEventsTable.toStatus, createdAt: taskEventsTable.createdAt })
+    .from(taskEventsTable)
+    .orderBy(asc(taskEventsTable.createdAt));
+
+  // Group events by taskId
+  const evtByTask = new Map<number, { toStatus: string; ts: number }[]>();
+  for (const e of allEvents) {
+    const ts = e.createdAt instanceof Date ? e.createdAt.getTime() : new Date(e.createdAt).getTime();
+    if (!evtByTask.has(e.taskId)) evtByTask.set(e.taskId, []);
+    evtByTask.get(e.taskId)!.push({ toStatus: e.toStatus, ts });
+  }
+
+  // For each day compute per-status counts
+  const series: Record<string, number[]> = {};
+  STATUS_KEYS.forEach(k => { series[k] = []; });
+
+  for (const dateStr of dates) {
+    const dayEndMs = new Date(dateStr + "T23:59:59.999Z").getTime();
+
+    const counts: Record<string, number> = {};
+    STATUS_KEYS.forEach(k => { counts[k] = 0; });
+
+    for (const task of allTasks) {
+      const createdMs = task.createdAt instanceof Date ? task.createdAt.getTime() : new Date(task.createdAt).getTime();
+      if (createdMs > dayEndMs) continue; // task didn't exist yet
+
+      const evts = evtByTask.get(task.id) ?? [];
+      // Last event whose timestamp ≤ dayEnd
+      let status = "pending";
+      for (const e of evts) {
+        if (e.ts <= dayEndMs) status = e.toStatus;
+        else break;
+      }
+      if (counts[status] !== undefined) counts[status]++;
+    }
+
+    STATUS_KEYS.forEach(k => series[k].push(counts[k]));
+  }
+
+  res.json({ dates, series });
+});
+
 // ── Timeline (tasks with due dates) ──────────────────────────────────────────
 // ── Task lifecycle ────────────────────────────────────────────────────────────
 router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> => {

@@ -76,6 +76,8 @@ interface AllTask {
   complexity: string;
 }
 
+interface StatusHistory { dates: string[]; series: Record<string, number[]>; }
+
 interface DeadlineBucket { key: string; label: string; color: string; count: number; }
 interface UrgentTask {
   id: number; taskCode?: string; title: string; status: string; priority: string;
@@ -149,7 +151,13 @@ const PROD_STATUS = [
   { key: "cancelled",   label: "Canceladas",  color: "#ef4444" },
 ];
 
-function ProductionCard({ allTasks, onOpenTask }: { allTasks: AllTask[]; onOpenTask: (id: number) => void }) {
+function ProductionCard({
+  allTasks, history, onOpenTask,
+}: {
+  allTasks: AllTask[];
+  history: StatusHistory | null;
+  onOpenTask: (id: number) => void;
+}) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
@@ -166,23 +174,34 @@ function ProductionCard({ allTasks, onOpenTask }: { allTasks: AllTask[]; onOpenT
   const reviewCount    = counts.find(c => c.key === "review")?.count ?? 0;
   const completionPct  = total > 0 ? Math.round(completedCount / total * 100) : 0;
 
-  const mutedColor = isDark ? "rgba(148,163,184,0.65)" : "rgba(100,116,139,0.65)";
-  const gridLine   = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)";
+  const mutedColor = isDark ? "rgba(148,163,184,0.55)" : "rgba(100,116,139,0.55)";
+  const gridLine   = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.05)";
+
+  // Format date labels: "15/mai" style
+  const fmtLabel = (iso: string) => {
+    const d = new Date(iso + "T12:00:00");
+    return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
+  };
+
+  const xDates = history?.dates ?? [];
+  const xLabels = xDates.map(fmtLabel);
 
   const chartOption = {
     backgroundColor: "transparent",
     animation: true,
-    animationDuration: 800,
+    animationDuration: 900,
     animationEasing: "cubicOut",
-    grid: { top: 28, bottom: 36, left: 12, right: 20, containLabel: true },
+    grid: { top: 16, bottom: 42, left: 8, right: 16, containLabel: true },
     xAxis: {
       type: "category",
-      data: counts.map(c => c.label),
+      data: xLabels,
+      boundaryGap: false,
       axisLine: { show: false },
       axisTick: { show: false },
       axisLabel: {
-        fontSize: 10, color: mutedColor, fontFamily: "inherit",
-        interval: 0, rotate: 28, margin: 10,
+        fontSize: 9, color: mutedColor, fontFamily: "inherit",
+        interval: 1, rotate: 0, margin: 8,
+        formatter: (_: string, idx: number) => idx % 2 === 0 ? xLabels[idx] : "",
       },
       splitLine: { show: false },
     },
@@ -190,84 +209,60 @@ function ProductionCard({ allTasks, onOpenTask }: { allTasks: AllTask[]; onOpenT
       type: "value",
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { fontSize: 10, color: mutedColor, fontFamily: "inherit" },
+      axisLabel: { fontSize: 9, color: mutedColor, fontFamily: "inherit" },
       splitLine: { lineStyle: { color: gridLine, type: "dashed" } },
       minInterval: 1,
     },
-    series: [
-      // Shadow/depth back bar
-      {
-        type: "bar",
-        data: counts.map(c => ({
-          value: c.count,
-          itemStyle: {
-            color: c.color + "18",
-            borderRadius: [8, 8, 4, 4],
-          },
-        })),
-        barWidth: "52%",
-        barGap: "-100%",
-        silent: true,
-        z: 1,
-      },
-      // Main gradient bars
-      {
-        type: "bar",
-        data: counts.map(c => ({
-          value: c.count,
-          itemStyle: {
-            borderRadius: [6, 6, 2, 2],
-            color: {
-              type: "linear", x: 0, y: 0, x2: 0, y2: 1,
-              colorStops: [
-                { offset: 0, color: c.color },
-                { offset: 0.7, color: c.color + "cc" },
-                { offset: 1,   color: c.color + "55" },
-              ],
-            },
-            shadowBlur: 12,
-            shadowOffsetY: 4,
-            shadowColor: c.color + "40",
-          },
-        })),
-        barWidth: "38%",
-        barGap: "-73%",
-        z: 2,
-        label: {
-          show: true,
-          position: "top",
-          distance: 4,
-          fontSize: 11,
-          fontWeight: "bold",
-          fontFamily: "inherit",
-          color: isDark ? "#cbd5e1" : "#475569",
-          formatter: (p: any) => p.value > 0 ? String(p.value) : "",
-        },
-        emphasis: {
-          focus: "self",
-          itemStyle: { shadowBlur: 20, shadowOffsetY: 6 },
+    series: PROD_STATUS.map(s => ({
+      name: s.label,
+      type: "line",
+      stack: "total",
+      smooth: true,
+      symbol: "none",
+      lineStyle: { width: 1.5, color: s.color },
+      areaStyle: {
+        color: {
+          type: "linear", x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: s.color + "88" },
+            { offset: 1, color: s.color + "11" },
+          ],
         },
       },
-    ],
+      emphasis: { focus: "series" },
+      data: history?.series[s.key] ?? [],
+    })),
     tooltip: {
       trigger: "axis",
-      axisPointer: { type: "none" },
+      axisPointer: { type: "line", lineStyle: { color: isDark ? "#334155" : "#e2e8f0", type: "dashed" } },
       backgroundColor: isDark ? "#1e293b" : "#ffffff",
       borderColor: isDark ? "#334155" : "#e2e8f0",
       borderWidth: 1,
-      padding: [8, 12],
+      padding: [10, 14],
       textStyle: { color: isDark ? "#e2e8f0" : "#1e293b", fontSize: 12, fontFamily: "inherit" },
       formatter: (params: any[]) => {
-        const p = params.find((x: any) => x.seriesIndex === 1) ?? params[0];
-        const st = counts[p.dataIndex];
-        if (!st) return "";
-        const pct = total > 0 ? Math.round((p.value / total) * 100) : 0;
-        return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-          <span style="width:8px;height:8px;border-radius:50%;background:${st.color};display:inline-block"></span>
-          <strong>${st.label}</strong></div>
-          <span style="color:${mutedColor}">${p.value} tarefa${p.value !== 1 ? "s" : ""} · ${pct}%</span>`;
+        if (!params.length) return "";
+        const date = xDates[params[0].dataIndex] ?? "";
+        const fmted = date ? new Date(date + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" }) : "";
+        const rows = params
+          .filter((p: any) => p.value > 0)
+          .sort((a: any, b: any) => b.value - a.value)
+          .map((p: any) =>
+            `<div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+              <span style="width:8px;height:8px;border-radius:50%;background:${p.color};display:inline-block;flex-shrink:0"></span>
+              <span style="flex:1">${p.seriesName}</span>
+              <strong>${p.value}</strong>
+            </div>`
+          ).join("");
+        const dayTotal = params.reduce((s: number, p: any) => s + (p.value ?? 0), 0);
+        return `<div style="font-size:10px;color:${mutedColor};margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">${fmted}</div>
+          ${rows}
+          <div style="margin-top:6px;padding-top:6px;border-top:1px solid ${isDark ? "#334155" : "#e2e8f0"};font-size:11px">
+            Total: <strong>${dayTotal}</strong>
+          </div>`;
       },
     },
+    legend: { show: false },
   };
 
   const clientMap = new Map<string, number>();
@@ -295,12 +290,12 @@ function ProductionCard({ allTasks, onOpenTask }: { allTasks: AllTask[]; onOpenT
 
       {/* Body */}
       <div className="flex flex-1 min-h-0">
-        {/* Polar bar chart */}
+        {/* Stacked line chart */}
         <div className="flex-1 min-w-0 relative" style={{ minHeight: 248 }}>
-          {total === 0 ? (
+          {!history || xDates.length === 0 ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[hsl(var(--muted-foreground))]">
               <BarChart2 className="h-10 w-10 opacity-15" />
-              <p className="text-sm">Nenhuma tarefa</p>
+              <p className="text-sm">Carregando…</p>
             </div>
           ) : (
             <ReactECharts
@@ -317,7 +312,7 @@ function ProductionCard({ allTasks, onOpenTask }: { allTasks: AllTask[]; onOpenT
           {/* Status legend */}
           <div className="px-4 py-4 flex flex-col gap-2.5 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 mb-0.5">
-              Por status
+              Agora · por status
             </p>
             {counts.map(c => (
               <div key={c.key} className="flex items-center gap-2 min-w-0">
@@ -360,7 +355,8 @@ function ProductionCard({ allTasks, onOpenTask }: { allTasks: AllTask[]; onOpenT
         <span><strong className="text-emerald-600">{completionPct}%</strong> concluídas</span>
         {revisionCount > 0 && <span><strong className="text-orange-500">{revisionCount}</strong> em revisão</span>}
         {reviewCount > 0 && <span><strong className="text-amber-500">{reviewCount}</strong> aguardando aprovação</span>}
-        <Link href="/tasks?tab=timeline" className="ml-auto text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
+        <span className="ml-auto text-[hsl(var(--muted-foreground))]/50">últimos 14 dias</span>
+        <Link href="/tasks?tab=timeline" className="text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
           Ver timeline <ArrowRight className="h-3 w-3" />
         </Link>
       </div>
@@ -829,6 +825,7 @@ export default function Dashboard() {
   const [atRisk, setAtRisk] = useState<AtRiskTask[]>([]);
   const [deadlineData, setDeadlineData] = useState<DeadlineOverview | null>(null);
   const [allTasks, setAllTasks]         = useState<AllTask[]>([]);
+  const [statusHistory, setStatusHistory] = useState<StatusHistory | null>(null);
 
   const load = useCallback(() => {
     apiFetch<Task[]>("/api/my-tasks").then(setTasks).catch(() => {});
@@ -837,6 +834,7 @@ export default function Dashboard() {
     if (user?.role !== "editor") {
       apiFetch<EditorWorkload[]>("/api/workload").then(setWorkload).catch(() => {});
       apiFetch<AllTask[]>("/api/timeline").then(setAllTasks).catch(() => {});
+      apiFetch<StatusHistory>("/api/tasks/status-history").then(setStatusHistory).catch(() => {});
       apiFetch<{ atRisk: AtRiskTask[] }>("/api/dashboard-extras")
         .then(d => { setAtRisk(d.atRisk); })
         .catch(() => {});
@@ -962,7 +960,7 @@ export default function Dashboard() {
       {!isEditor && (
         <div className="grid gap-5 md:grid-cols-3">
 
-          <ProductionCard allTasks={allTasks} onOpenTask={goToTask} />
+          <ProductionCard allTasks={allTasks} history={statusHistory} onOpenTask={goToTask} />
 
           {/* Workload — coluna direita */}
           <WorkloadCard workload={workload} />
