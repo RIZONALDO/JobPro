@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Search, Printer, X } from "lucide-react";
 import { usePageTitle } from "@/lib/use-page-title";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
@@ -48,7 +48,6 @@ function Select({ value, onChange, children }: {
 
 export default function Reports() {
   usePageTitle("Relatórios");
-  const { toast } = useToast();
   const { user }  = useAuth();
   const isCoord   = COORD_ROLES.includes(user?.role ?? "");
   const today     = new Date();
@@ -73,7 +72,7 @@ export default function Reports() {
     setLoading(true);
     apiFetch<{ tasks: ReportTask[] }>(`/api/reports?from=${from}&to=${to}`)
       .then(d => setTasks(d.tasks))
-      .catch(() => toast({ title: "Erro ao carregar relatório", variant: "destructive" }))
+      .catch(() => toast.error("Erro ao carregar relatório"))
       .finally(() => setLoading(false));
   };
 

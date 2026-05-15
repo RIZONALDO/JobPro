@@ -5,7 +5,7 @@ import { compressAvatar } from "@/lib/compress-image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Camera, User, Mail, Phone, Lock, Eye, EyeOff, Save } from "lucide-react";
 import { usePageTitle } from "@/lib/use-page-title";
 
@@ -14,7 +14,6 @@ import { ROLE_LABEL } from "@/lib/roles";
 export default function Profile() {
   usePageTitle("Perfil");
   const { user, refresh } = useAuth();
-  const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [name,     setName]     = useState(user?.name     ?? "");
@@ -50,7 +49,7 @@ export default function Profile() {
       const dataUrl = await compressAvatar(file);
       setAvatar(dataUrl);
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro ao processar imagem", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro ao processar imagem");
     } finally {
       setUploadingAvatar(false);
     }
@@ -58,7 +57,7 @@ export default function Profile() {
 
   const saveProfile = async () => {
     if (newPwd && newPwd !== confPwd) {
-      toast({ title: "As senhas não coincidem", variant: "destructive" }); return;
+      toast.error("As senhas não coincidem"); return;
     }
     setSaving(true);
     try {
@@ -71,9 +70,9 @@ export default function Profile() {
       });
       await refresh();
       setCurPwd(""); setNewPwd(""); setConfPwd("");
-      toast({ title: "Perfil atualizado com sucesso" });
+      toast.success("Perfil atualizado com sucesso");
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro ao salvar", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar");
     } finally { setSaving(false); }
   };
 

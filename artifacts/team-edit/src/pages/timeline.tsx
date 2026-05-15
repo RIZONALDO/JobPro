@@ -3,7 +3,7 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTaskModal } from "@/contexts/TaskModalContext";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { usePageTitle } from "@/lib/use-page-title";
 import { Input } from "@/components/ui/input";
 import { STATUS_LABEL } from "@/lib/status";
@@ -413,7 +413,6 @@ function GanttGrid({ tasks, zoom, onOpen }: {
 export default function Timeline() {
   usePageTitle("Timeline");
   const { openTask } = useTaskModal();
-  const { toast }    = useToast();
   const { user }     = useAuth();
 
   const [tasks,   setTasks]   = useState<TimelineTask[]>([]);
@@ -437,17 +436,17 @@ export default function Timeline() {
       const data = await apiFetch<LifecycleData>(`/api/tasks/${id}/lifecycle`);
       setLifecycle(data);
     } catch {
-      toast({ title: "Erro ao carregar ciclo de vida", variant: "destructive" });
+      toast.error("Erro ao carregar ciclo de vida");
     } finally {
       setLcLoading(false);
     }
-  }, [toast]);
+  }, []);
 
   const load = useCallback(() => {
     setLoading(true);
     apiFetch<TimelineTask[]>("/api/timeline")
       .then(setTasks)
-      .catch(() => toast({ title: "Erro ao carregar timeline", variant: "destructive" }))
+      .catch(() => toast.error("Erro ao carregar timeline"))
       .finally(() => setLoading(false));
   }, []);
 

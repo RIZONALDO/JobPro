@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRealtime } from "@/hooks/use-realtime";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { usePageTitle } from "@/lib/use-page-title";
 import { fmtDateParts } from "@/lib/utils";
@@ -74,7 +74,6 @@ const PRIORITY_OPTS = [
 export default function Pipeline() {
   usePageTitle("Pipeline");
   const { user } = useAuth();
-  const { toast } = useToast();
   const { openTask } = useTaskModal();
   const [tasks, setTasks] = useState<PipelineTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,9 +90,9 @@ export default function Pipeline() {
   const load = useCallback(() => {
     apiFetch<PipelineTask[]>("/api/pipeline")
       .then(setTasks)
-      .catch(() => toast({ title: "Erro ao carregar pipeline", variant: "destructive" }))
+      .catch(() => toast.error("Erro ao carregar pipeline"))
       .finally(() => setLoading(false));
-  }, [toast]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
   useRealtime({ onTasksChanged: load });

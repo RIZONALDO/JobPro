@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Plus, Briefcase, List, LayoutGrid, Pencil, Trash2, MoreVertical, PauseCircle, PlayCircle, CheckCircle2, Archive, FolderOpen } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -77,7 +77,6 @@ const PROJECT_COLORS = [
 export default function ProjectsList() {
   usePageTitle("Projetos");
   const { user } = useAuth();
-  const { toast } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"list" | "grid">("list");
@@ -99,7 +98,7 @@ export default function ProjectsList() {
   const load = () => {
     apiFetch<Project[]>("/api/projects")
       .then(setProjects)
-      .catch(() => toast({ title: "Erro ao carregar projetos", variant: "destructive" }))
+      .catch(() => toast.error("Erro ao carregar projetos"))
       .finally(() => setLoading(false));
   };
 
@@ -118,7 +117,7 @@ export default function ProjectsList() {
   };
 
   const doSave = async (force = false) => {
-    if (!form.name.trim()) { toast({ title: "Nome obrigatório", variant: "destructive" }); return; }
+    if (!form.name.trim()) { toast.error("Nome obrigatório"); return; }
     setSaving(true);
     const payload = {
       name: form.name,
@@ -133,10 +132,10 @@ export default function ProjectsList() {
     try {
       if (editingProject) {
         await apiPut(url, payload);
-        toast({ title: "Projeto atualizado" });
+        toast.success("Projeto atualizado");
       } else {
         await apiPost(url, payload);
-        toast({ title: "Projeto criado" });
+        toast.success("Projeto criado");
       }
       setShowDialog(false);
       load();
@@ -153,7 +152,7 @@ export default function ProjectsList() {
           onConfirm: async () => { setGuard(g => ({ ...g, open: false })); await doSave(true); },
         });
       } else {
-        toast({ title: err instanceof Error ? err.message : "Erro ao salvar", variant: "destructive" });
+        toast.error(err instanceof Error ? err.message : "Erro ao salvar");
       }
     } finally { setSaving(false); }
   };
@@ -177,7 +176,7 @@ export default function ProjectsList() {
           onConfirm: async () => { setGuard(g => ({ ...g, open: false })); await doDel(id, name, true); },
         });
       } else {
-        toast({ title: err instanceof Error ? err.message : "Erro ao excluir", variant: "destructive" });
+        toast.error(err instanceof Error ? err.message : "Erro ao excluir");
       }
     }
   };
@@ -199,7 +198,7 @@ export default function ProjectsList() {
           onConfirm: async () => { setGuard(g => ({ ...g, open: false })); await doChangeStatus(p, newStatus, true); },
         });
       } else {
-        toast({ title: err instanceof Error ? err.message : "Erro ao atualizar status", variant: "destructive" });
+        toast.error(err instanceof Error ? err.message : "Erro ao atualizar status");
       }
     }
   };

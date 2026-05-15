@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Plus, Briefcase, Pencil, Trash2, MoreVertical, MessageSquare, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Undo2, FolderOpen, ExternalLink, PauseCircle, XCircle } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { CoordinatorAvatar, EditorAvatars } from "@/components/ui/avatar-group";
@@ -78,7 +78,6 @@ interface Props { projectId: number; projectIds?: number[]; initialJobId?: numbe
 
 export function ProjectModal({ projectId: initialId, projectIds = [], initialJobId, onClose }: Props) {
   const { user } = useAuth();
-  const { toast } = useToast();
   const isEditor = user?.role === "editor";
   const isCoord  = !isEditor;
 
@@ -138,7 +137,7 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
     setLoadingProj(true);
     apiFetch<Project>(`/api/projects/${currentId}`)
       .then(setProject)
-      .catch(() => toast({ title: "Erro ao carregar projeto", variant: "destructive" }))
+      .catch(() => toast.error("Erro ao carregar projeto"))
       .finally(() => setLoadingProj(false));
   }, [currentId]);
 
@@ -146,11 +145,11 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
     setSendingConfirm(true);
     try {
       await apiPut(`/api/tasks/${taskId}`, { status: action === "cancel" ? "cancelled" : "paused" });
-      toast({ title: action === "cancel" ? "Tarefa cancelada" : "Tarefa pausada" });
+      toast(action === "cancel" ? "Tarefa cancelada" : "Tarefa pausada");
       setConfirmTask(null);
       loadJob();
     } catch (e) {
-      toast({ title: e instanceof Error ? e.message : "Erro", variant: "destructive" });
+      toast.error(e instanceof Error ? e.message : "Erro");
     } finally { setSendingConfirm(false); }
   };
 
@@ -159,7 +158,7 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
     setLoadingJob(true);
     apiFetch<JobDetail>(`/api/jobs/${selectedJobId}`)
       .then(setJobDetail)
-      .catch(() => toast({ title: "Erro ao carregar job", variant: "destructive" }))
+      .catch(() => toast.error("Erro ao carregar job"))
       .finally(() => setLoadingJob(false));
   }, [selectedJobId]);
 
@@ -175,26 +174,26 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
   useRealtime({
     onProjectsChanged: (d) => {
       if (d.deleted && d.projectId === currentId) {
-        toast({ title: "Este projeto foi excluído pelo coordenador." });
+        toast.info("Este projeto foi excluído pelo coordenador.");
         onClose();
         return;
       }
       if (d.projectId === currentId && d.newStatus) {
         const msg: Record<string, string> = { pausado: "Projeto pausado.", concluido: "Projeto concluído.", arquivado: "Projeto arquivado." };
-        if (msg[d.newStatus]) toast({ title: msg[d.newStatus] });
+        if (msg[d.newStatus]) toast.info(msg[d.newStatus]);
       }
       loadProject();
     },
     onJobsChanged: (d) => {
       if (d.projectId !== currentId) return;
       if (d.deleted && d.jobId === selectedJobId) {
-        toast({ title: "Este job foi excluído pelo coordenador." });
+        toast.info("Este job foi excluído pelo coordenador.");
         setSelectedJobId(null);
         setJobDetail(null);
       }
       if (d.newStatus && d.jobId === selectedJobId) {
         const msg: Record<string, string> = { entregue: "Job marcado como entregue.", aprovado: "Job marcado como aprovado." };
-        if (msg[d.newStatus]) toast({ title: msg[d.newStatus] });
+        if (msg[d.newStatus]) toast.info(msg[d.newStatus]);
       }
       loadProject();
       if (selectedJobId && !d.deleted) loadJob();
@@ -210,15 +209,15 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
     setJobDialog(true);
   };
   const doSaveJob = async (force = false) => {
-    if (!jobForm.name.trim()) { toast({ title: "Nome obrigatório", variant: "destructive" }); return; }
+    if (!jobForm.name.trim()) { toast.error("Nome obrigatório"); return; }
     setSavingJob(true);
     const payload = { name: jobForm.name, description: jobForm.description, ...(editingJob ? { status: jobForm.status } : {}) };
     const url = editingJob
       ? `/api/jobs/${editingJob.id}${force ? "?force=true" : ""}`
       : `/api/projects/${currentId}/jobs`;
     try {
-      if (editingJob) { await apiPut(url, payload); toast({ title: "Job atualizado" }); }
-      else { await apiPost(url, payload); toast({ title: "Job criado" }); }
+      if (editingJob) { await apiPut(url, payload); toast.success("Job atualizado"); }
+      else { await apiPost(url, payload); toast.success("Job criado"); }
       setJobDialog(false); loadProject();
     } catch (err: unknown) {
       if (err instanceof ApiError && err.status === 409) {
@@ -231,7 +230,7 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
           onConfirm: async () => { setGuard(g => ({ ...g, open: false })); await doSaveJob(true); },
         });
       } else {
-        toast({ title: err instanceof Error ? err.message : "Erro ao salvar", variant: "destructive" });
+        toast.error(err instanceof Error ? err.message : "Erro ao salvar");
       }
     } finally { setSavingJob(false); }
   };
@@ -251,7 +250,7 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
           onConfirm: async () => { setGuard(g => ({ ...g, open: false })); await doDelJob(id, name, true); },
         });
       } else {
-        toast({ title: err instanceof Error ? err.message : "Erro ao excluir", variant: "destructive" });
+        toast.error(err instanceof Error ? err.message : "Erro ao excluir");
       }
     }
   };
@@ -265,20 +264,20 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
     setTaskDialog(true);
   };
   const saveTask = async () => {
-    if (!taskForm.title.trim()) { toast({ title: "Título obrigatório", variant: "destructive" }); return; }
+    if (!taskForm.title.trim()) { toast.error("Título obrigatório"); return; }
     setSavingTask(true);
     const payload = { title: taskForm.title, description: taskForm.description, dueDate: taskForm.dueDateTime || null, priority: taskForm.priority, complexity: taskForm.complexity, assignedToId: taskForm.assignedToId || null, folderUrl: taskForm.folderUrl };
     try {
-      if (editingTask) { await apiPut(`/api/tasks/${editingTask.id}`, payload); toast({ title: "Tarefa atualizada" }); }
-      else { await apiPost(`/api/jobs/${selectedJobId}/tasks`, payload); toast({ title: "Tarefa criada" }); }
+      if (editingTask) { await apiPut(`/api/tasks/${editingTask.id}`, payload); toast.success("Tarefa atualizada"); }
+      else { await apiPost(`/api/jobs/${selectedJobId}/tasks`, payload); toast.success("Tarefa criada"); }
       setTaskDialog(false); loadJob();
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro ao salvar", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar");
     } finally { setSavingTask(false); }
   };
   const updateStatus = async (task: Task, status: string) => {
     try { await apiPut(`/api/tasks/${task.id}`, { status }); loadJob(); }
-    catch (err: unknown) { toast({ title: err instanceof Error ? err.message : "Erro", variant: "destructive" }); }
+    catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Erro"); }
   };
   const delTask = async (id: number) => {
     try {
@@ -286,9 +285,9 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
       loadJob();
     } catch (err: unknown) {
       if (err instanceof ApiError && err.status === 409) {
-        toast({ title: err.message, variant: "destructive" });
+        toast.error(err.message);
       } else {
-        toast({ title: err instanceof Error ? err.message : "Erro ao excluir", variant: "destructive" });
+        toast.error(err instanceof Error ? err.message : "Erro ao excluir");
       }
     }
   };
@@ -296,21 +295,21 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
     try {
       await apiPost(`/api/tasks/${id}/return`, {});
       loadJob();
-      toast({ title: "Tarefa devolvida." });
+      toast.success("Tarefa devolvida.");
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro ao devolver", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro ao devolver");
     }
   };
   const submitRevision = async () => {
-    if (!revisionTask || !revisionComment.trim()) { toast({ title: "Informe o comentário", variant: "destructive" }); return; }
+    if (!revisionTask || !revisionComment.trim()) { toast.error("Informe o comentário"); return; }
     setSendingRevision(true);
     try {
       await apiPut(`/api/tasks/${revisionTask.id}`, { status: "in_progress", revisionComment: revisionComment.trim() });
-      toast({ title: "Alteração solicitada" });
+      toast.success("Alteração solicitada");
       setRevisionTask(null);
       loadJob();
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro");
     } finally { setSendingRevision(false); }
   };
   const toggleRev = (id: number) => setExpandedRev(prev => {

@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Users, ChevronDown, ChevronRight } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
@@ -100,7 +100,6 @@ function Battery({ score, maxScore, color }: { score: number; maxScore: number; 
 export default function Team() {
   usePageTitle("Time");
   const { user } = useAuth();
-  const { toast } = useToast();
   const { openJob } = useJobModal();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [workload, setWorkload] = useState<EditorWorkload[]>([]);
@@ -120,7 +119,7 @@ export default function Team() {
   const load = () => {
     apiFetch<AppUser[]>("/api/users")
       .then(setUsers)
-      .catch(() => toast({ title: "Erro ao carregar equipe", variant: "destructive" }))
+      .catch(() => toast.error("Erro ao carregar equipe"))
       .finally(() => setLoading(false));
 
     if (isCoordinator) {
@@ -148,7 +147,7 @@ export default function Team() {
       const tasks = await apiFetch<EditorTask[]>(`/api/users/${editorId}/tasks`);
       setEditorTasks(prev => ({ ...prev, [editorId]: tasks }));
     } catch {
-      toast({ title: "Erro ao carregar tarefas", variant: "destructive" });
+      toast.error("Erro ao carregar tarefas");
     } finally {
       setLoadingTasks(prev => { const s = new Set(prev); s.delete(editorId); return s; });
     }
@@ -167,7 +166,7 @@ export default function Team() {
 
   const save = async () => {
     if (!form.name.trim() || (!editing && (!form.login.trim() || !form.password.trim()))) {
-      toast({ title: "Preencha todos os campos obrigatórios", variant: "destructive" }); return;
+      toast.error("Preencha todos os campos obrigatórios"); return;
     }
     setSaving(true);
     try {
@@ -177,22 +176,22 @@ export default function Team() {
           jobTitle: form.jobTitle || null,
           ...(form.password ? { password: form.password } : {}),
         });
-        toast({ title: "Usuário atualizado" });
+        toast.success("Usuário atualizado");
       } else {
         await apiPost("/api/users", form);
-        toast({ title: "Usuário criado" });
+        toast.success("Usuário criado");
       }
       setShowDialog(false);
       load();
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro ao salvar", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar");
     } finally { setSaving(false); }
   };
 
   const del = async (id: number) => {
     if (!confirm("Remover este usuário?")) return;
     try { await apiDelete(`/api/users/${id}`); load(); }
-    catch (err: unknown) { toast({ title: err instanceof Error ? err.message : "Erro ao remover", variant: "destructive" }); }
+    catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Erro ao remover"); }
   };
 
   const maxScore = Math.max(...workload.map(e => e.score), 1);

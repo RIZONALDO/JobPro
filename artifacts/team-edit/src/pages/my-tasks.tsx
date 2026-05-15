@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { MessageSquare, Calendar, AlertCircle, Undo2, MoreVertical, Info, PauseCircle, XCircle } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { StackedAvatars } from "@/components/ui/avatar-display";
@@ -58,7 +58,6 @@ function isOverdue(dueDate: string | null): boolean {
 export default function MyTasks() {
   usePageTitle("Minhas Tarefas");
   const { user } = useAuth();
-  const { toast } = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedRevisions, setExpandedRevisions] = useState<Set<number>>(new Set());
@@ -70,9 +69,9 @@ export default function MyTasks() {
   const load = useCallback(() => {
     apiFetch<Task[]>("/api/my-tasks")
       .then(setTasks)
-      .catch(() => toast({ title: "Erro ao carregar tarefas", variant: "destructive" }))
+      .catch(() => toast.error("Erro ao carregar tarefas"))
       .finally(() => setLoading(false));
-  }, [toast]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -82,7 +81,7 @@ export default function MyTasks() {
     try {
       await apiPut(`/api/tasks/${task.id}`, { status });
       load();
-    } catch { toast({ title: "Erro ao atualizar status", variant: "destructive" }); }
+    } catch { toast.error("Erro ao atualizar status"); }
   };
 
   const confirmReturn = async () => {
@@ -92,9 +91,9 @@ export default function MyTasks() {
       await apiPost(`/api/tasks/${returnTarget.id}/return`, {});
       setReturnTarget(null);
       load();
-      toast({ title: "Tarefa devolvida." });
+      toast.success("Tarefa devolvida.");
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro ao devolver", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro ao devolver");
     } finally { setReturning(false); }
   };
 
@@ -114,8 +113,8 @@ export default function MyTasks() {
       setRevisionTarget(null);
       setRevisionComment("");
       load();
-      toast({ title: "Alteração solicitada." });
-    } catch { toast({ title: "Erro ao solicitar alteração", variant: "destructive" }); }
+      toast.success("Alteração solicitada.");
+    } catch { toast.error("Erro ao solicitar alteração"); }
     finally { setRevisionSubmitting(false); }
   };
 

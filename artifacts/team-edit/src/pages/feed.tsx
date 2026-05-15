@@ -5,7 +5,7 @@ import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
 import { apiFetch, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { usePageTitle } from "@/lib/use-page-title";
 import { getSocket } from "@/lib/socket";
 import { cn } from "@/lib/utils";
@@ -281,7 +281,6 @@ function FeedCard({ item, myUserId, myRole, users, onReact, updatedReactions, on
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(item.content ?? "");
   const [saving, setSaving] = useState(false);
-  const { toast } = useToast();
   const { user } = useAuth();
 
   const isAuthor = item.actorId === myUserId;
@@ -294,7 +293,7 @@ function FeedCard({ item, myUserId, myRole, users, onReact, updatedReactions, on
       await apiPut(`/api/feed/${item.id}`, { content: editText.trim() });
       onEdit(item.id, editText.trim());
       setEditing(false);
-    } catch { toast({ title: "Erro ao editar", variant: "destructive" }); }
+    } catch { toast.error("Erro ao editar"); }
     finally { setSaving(false); }
   };
 
@@ -302,7 +301,7 @@ function FeedCard({ item, myUserId, myRole, users, onReact, updatedReactions, on
     try {
       await apiDelete(`/api/feed/${item.id}`);
       onDelete(item.id);
-    } catch { toast({ title: "Erro ao excluir", variant: "destructive" }); }
+    } catch { toast.error("Erro ao excluir"); }
   };
 
   useEffect(() => {
@@ -342,7 +341,7 @@ function FeedCard({ item, myUserId, myRole, users, onReact, updatedReactions, on
       }
       setCommentText("");
     } catch {
-      toast({ title: "Erro ao enviar comentário", variant: "destructive" });
+      toast.error("Erro ao enviar comentário");
     } finally { setSending(false); }
   };
 
@@ -494,7 +493,6 @@ function FeedCard({ item, myUserId, myRole, users, onReact, updatedReactions, on
 export default function FeedPage() {
   usePageTitle("Feed");
   const { user } = useAuth();
-  const { toast } = useToast();
 
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
@@ -509,7 +507,7 @@ export default function FeedPage() {
 
   const loadFeed = useCallback(() => {
     apiFetch<FeedItem[]>("/api/feed")
-      .then(setItems).catch(() => toast({ title: "Erro ao carregar feed", variant: "destructive" }))
+      .then(setItems).catch(() => toast.error("Erro ao carregar feed"))
       .finally(() => setLoadingFeed(false));
   }, []);
 
@@ -545,7 +543,7 @@ export default function FeedPage() {
       const mentions = parseMentions(postText, allUsers);
       await apiPost("/api/feed", { content: postText, mentions });
       setPostText(""); setPostFocused(false);
-    } catch { toast({ title: "Erro ao publicar", variant: "destructive" }); }
+    } catch { toast.error("Erro ao publicar"); }
     finally { setPosting(false); }
   };
 

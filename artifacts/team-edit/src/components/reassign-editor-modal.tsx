@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { apiFetch, apiPost, apiDelete } from "@/lib/api";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -30,7 +30,6 @@ function workloadBadge(score: number) {
 }
 
 export function ReassignEditorModal({ open, onOpenChange, onSaved, taskId, taskTitle, currentAssignedTo, mode }: Props) {
-  const { toast } = useToast();
   const [editors,  setEditors]  = useState<Editor[]>([]);
   const [workload, setWorkload] = useState<EditorWorkload[]>([]);
   const [taskEditors, setTaskEditors] = useState<Editor[]>([]);
@@ -47,20 +46,20 @@ export function ReassignEditorModal({ open, onOpenChange, onSaved, taskId, taskT
   }, [open, taskId]);
 
   const save = async () => {
-    if (!selectedId) { toast({ title: "Selecione um editor", variant: "destructive" }); return; }
+    if (!selectedId) { toast.error("Selecione um editor"); return; }
     setSaving(true);
     try {
       if (mode === "reassign") {
         await apiPost(`/api/tasks/${taskId}/reassign`, { editorId: parseInt(selectedId) });
-        toast({ title: "Tarefa reatribuída com sucesso" });
+        toast.success("Tarefa reatribuída com sucesso");
       } else {
         await apiPost(`/api/tasks/${taskId}/editors`, { editorId: parseInt(selectedId) });
-        toast({ title: "Editor adicionado com sucesso" });
+        toast.success("Editor adicionado com sucesso");
       }
       onOpenChange(false);
       onSaved();
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro ao salvar", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar");
     } finally { setSaving(false); }
   };
 
@@ -69,10 +68,10 @@ export function ReassignEditorModal({ open, onOpenChange, onSaved, taskId, taskT
     try {
       await apiDelete(`/api/tasks/${taskId}/editors/${editorId}`);
       setTaskEditors(prev => prev.filter(e => e.id !== editorId));
-      toast({ title: `${editorName} removido da tarefa` });
+      toast.success(`${editorName} removido da tarefa`);
       onSaved();
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro ao remover", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro ao remover");
     } finally { setRemoving(null); }
   };
 

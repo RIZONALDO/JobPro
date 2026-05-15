@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { ImagePlus, X, TriangleAlert, Settings as SettingsIcon } from "lucide-react";
 import { usePageTitle } from "@/lib/use-page-title";
 import {
@@ -17,7 +17,6 @@ const PROJECT_COLORS_PRIMARY = ["#6366f1","#ec4899","#f59e0b","#10b981","#3b82f6
 
 export default function SettingsPage() {
   usePageTitle("Configurações");
-  const { toast } = useToast();
   const { refreshSettings } = useSettings();
   const { logout } = useAuth();
   const [form, setForm] = useState({ company_name: "", system_name: "", logo_url: "", favicon_url: "", primary_color: "#6366f1" });
@@ -53,18 +52,18 @@ export default function SettingsPage() {
     try {
       const b64 = await readBase64(file);
       setForm(f => ({ ...f, [field]: b64 }));
-    } catch (err: unknown) { toast({ title: err instanceof Error ? err.message : "Erro", variant: "destructive" }); }
+    } catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Erro"); }
   };
 
   const doReset = async () => {
     setResetting(true);
     try {
       await apiPost("/api/admin/reset", {});
-      toast({ title: "Sistema resetado com sucesso. Faça login novamente." });
+      toast.success("Sistema resetado com sucesso. Faça login novamente.");
       setResetOpen(false);
       await logout();
     } catch {
-      toast({ title: "Erro ao resetar o sistema", variant: "destructive" });
+      toast.error("Erro ao resetar o sistema");
     } finally {
       setResetting(false);
       setResetConfirm("");
@@ -76,8 +75,8 @@ export default function SettingsPage() {
     try {
       await apiPut("/api/settings", form);
       await refreshSettings();
-      toast({ title: "Configurações salvas" });
-    } catch { toast({ title: "Erro ao salvar", variant: "destructive" }); }
+      toast.success("Configurações salvas");
+    } catch { toast.error("Erro ao salvar"); }
     finally { setSaving(false); }
   };
 

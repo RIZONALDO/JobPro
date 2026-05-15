@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, ChevronRight, CalendarDays, Calendar as CalIcon, Plus, X, ChevronDown } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
@@ -91,7 +91,6 @@ function getMonthGridStart(d: Date): Date {
 
 export default function Calendar() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const isCoord = user?.role !== "editor";
 
   const [view,      setView]      = useState<View>("week");
@@ -125,7 +124,7 @@ export default function Calendar() {
       : `/api/calendar?from=${fmt(monthGridStart)}&to=${fmt(addDays(monthGridStart, 41))}`;
     apiFetch<CalendarTask[]>(url)
       .then(setTasks)
-      .catch(() => toast({ title: "Erro ao carregar calendário", variant: "destructive" }))
+      .catch(() => toast.error("Erro ao carregar calendário"))
       .finally(() => setLoading(false));
   }, [view, weekStart, monthGridStart, toast]);
 

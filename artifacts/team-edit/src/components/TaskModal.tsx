@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
@@ -60,7 +60,6 @@ function SideLabel({ children }: { children: React.ReactNode }) {
 interface Props { taskId: number; onClose: () => void; }
 
 export function TaskModal({ taskId, onClose }: Props) {
-  const { toast } = useToast();
   const [task,    setTask]    = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -68,7 +67,7 @@ export function TaskModal({ taskId, onClose }: Props) {
     setLoading(true);
     apiFetch<TaskDetail>(`/api/tasks/${taskId}`)
       .then(setTask)
-      .catch(() => toast({ title: "Erro ao carregar tarefa", variant: "destructive" }))
+      .catch(() => toast.error("Erro ao carregar tarefa"))
       .finally(() => setLoading(false));
   }, [taskId]);
 

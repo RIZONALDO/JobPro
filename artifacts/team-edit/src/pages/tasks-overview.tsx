@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useSearch } from "wouter";
 import { apiFetch, apiPut, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { useRealtime } from "@/hooks/use-realtime";
 import { usePageTitle } from "@/lib/use-page-title";
 import { useTaskModal } from "@/contexts/TaskModalContext";
@@ -91,7 +91,6 @@ const TASK_GROUPS = [
 export default function TasksOverview() {
   usePageTitle("Tarefas");
   const { user } = useAuth();
-  const { toast } = useToast();
   const { openTask } = useTaskModal();
 
   const isSuper = user?.role === "admin" || user?.role === "supervisor";
@@ -170,19 +169,19 @@ export default function TasksOverview() {
     try {
       if (action === "resume" || action === "reactivate") {
         await apiPut(`/api/tasks/${taskId}`, { status: "pending" });
-        toast({ title: action === "reactivate" ? "Tarefa reativada." : "Tarefa retomada." });
+        toast.success(action === "reactivate" ? "Tarefa reativada." : "Tarefa retomada.");
       } else {
         await apiPut(`/api/tasks/${taskId}`, {
           status: action === "cancel" ? "cancelled" : "paused",
           revisionComment: confirmComment.trim(),
         });
-        toast({ title: action === "cancel" ? "Tarefa cancelada." : "Tarefa pausada." });
+        toast(action === "cancel" ? "Tarefa cancelada." : "Tarefa pausada.");
       }
       setConfirmTask(null);
       setConfirmComment("");
       load(true);
     } catch (e: unknown) {
-      toast({ title: e instanceof Error ? e.message : "Erro", variant: "destructive" });
+      toast.error(e instanceof Error ? e.message : "Erro");
     } finally { setSendingConfirm(false); }
   };
 
@@ -191,11 +190,11 @@ export default function TasksOverview() {
     setDeleting(true);
     try {
       await apiDelete(`/api/tasks/${deleteTarget.id}`);
-      toast({ title: "Tarefa excluída" });
+      toast.success("Tarefa excluída");
       setDeleteTarget(null);
       load(true);
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro ao excluir", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro ao excluir");
     } finally { setDeleting(false); }
   };
 
@@ -204,9 +203,9 @@ export default function TasksOverview() {
     const qs = filterStatus !== "active" ? `?status=${filterStatus}` : "";
     apiFetch<OverviewTask[]>(`/api/tasks/overview${qs}`)
       .then(setTasks)
-      .catch(() => toast({ title: "Erro ao carregar tarefas", variant: "destructive" }))
+      .catch(() => toast.error("Erro ao carregar tarefas"))
       .finally(() => { if (!silent) setLoading(false); });
-  }, [filterStatus, toast]);
+  }, [filterStatus]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -296,26 +295,26 @@ export default function TasksOverview() {
   const approve = async (t: OverviewTask) => {
     try {
       await apiPut(`/api/tasks/${t.id}`, { status: "completed" });
-      toast({ title: "Tarefa aprovada" });
+      toast.success("Tarefa aprovada");
       load(true);
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro ao aprovar", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro ao aprovar");
     }
   };
 
   const submitRevision = async () => {
     if (!revisionTask || !revisionComment.trim()) {
-      toast({ title: "Informe o comentário", variant: "destructive" });
+      toast.error("Informe o comentário");
       return;
     }
     setSendingRevision(true);
     try {
       await apiPut(`/api/tasks/${revisionTask.id}`, { status: "in_progress", revisionComment: revisionComment.trim() });
-      toast({ title: "Alteração solicitada" });
+      toast.success("Alteração solicitada");
       setRevisionTask(null);
       load(true);
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro");
     } finally {
       setSendingRevision(false);
     }
@@ -323,7 +322,7 @@ export default function TasksOverview() {
 
   const submitReopen = async () => {
     if (!reopenTask || !reopenComment.trim()) {
-      toast({ title: "Informe o motivo da reabertura", variant: "destructive" });
+      toast.error("Informe o motivo da reabertura");
       return;
     }
     setSendingReopen(true);
@@ -333,11 +332,11 @@ export default function TasksOverview() {
         revisionComment: reopenComment.trim(),
         ...(reopenDueDate ? { dueDate: reopenDueDate } : {}),
       });
-      toast({ title: "Tarefa reaberta" });
+      toast.success("Tarefa reaberta");
       setReopenTask(null);
       load(true);
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro");
     } finally {
       setSendingReopen(false);
     }

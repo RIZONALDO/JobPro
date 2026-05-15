@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Plus, Briefcase, Pencil, Trash2, MoreVertical } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { CoordinatorAvatar, EditorAvatars } from "@/components/ui/avatar-group";
@@ -45,7 +45,6 @@ interface Project {
 export default function ProjectDetail() {
   const params = useParams<{ id: string }>();
   const [, navigate] = useLocation();
-  const { toast } = useToast();
   const { openJob } = useJobModal();
   const [project, setProject] = useState<Project | null>(null);
   usePageTitle(project ? `Projeto #${project.number} · ${project.name}` : "Projetos");
@@ -58,9 +57,9 @@ export default function ProjectDetail() {
   const load = useCallback(() => {
     apiFetch<Project>(`/api/projects/${params.id}`)
       .then(setProject)
-      .catch(() => toast({ title: "Erro ao carregar projeto", variant: "destructive" }))
+      .catch(() => toast.error("Erro ao carregar projeto"))
       .finally(() => setLoading(false));
-  }, [params.id, toast]);
+  }, [params.id]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -70,7 +69,7 @@ export default function ProjectDetail() {
     onTasksChanged: (d) => { if (d.projectId === projectId) load(); },
     onProjectsChanged: (d) => {
       if (d.deleted && d.projectId === projectId) {
-        toast({ title: "Este projeto foi excluído pelo coordenador." });
+        toast.info("Este projeto foi excluído pelo coordenador.");
         navigate("/projects");
         return;
       }
@@ -80,7 +79,7 @@ export default function ProjectDetail() {
           concluido: "Projeto concluído pelo coordenador.",
           arquivado: "Projeto arquivado pelo coordenador.",
         };
-        if (msg[d.newStatus]) toast({ title: msg[d.newStatus] });
+        if (msg[d.newStatus]) toast.info(msg[d.newStatus]);
       }
       load();
     },
@@ -94,15 +93,15 @@ export default function ProjectDetail() {
   };
 
   const save = async () => {
-    if (!form.name.trim()) { toast({ title: "Nome obrigatório", variant: "destructive" }); return; }
+    if (!form.name.trim()) { toast.error("Nome obrigatório"); return; }
     setSaving(true);
     const payload = { name: form.name, description: form.description };
     try {
-      if (editingJob) { await apiPut(`/api/jobs/${editingJob.id}`, payload); toast({ title: "Job atualizado" }); }
-      else { await apiPost(`/api/projects/${params.id}/jobs`, payload); toast({ title: "Job criado" }); }
+      if (editingJob) { await apiPut(`/api/jobs/${editingJob.id}`, payload); toast.success("Job atualizado"); }
+      else { await apiPost(`/api/projects/${params.id}/jobs`, payload); toast.success("Job criado"); }
       setShowDialog(false); load();
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro ao salvar", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar");
     } finally { setSaving(false); }
   };
 

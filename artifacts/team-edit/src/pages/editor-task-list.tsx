@@ -6,7 +6,7 @@ import { apiFetch, apiPut, apiPost } from "@/lib/api";
 import { fmtClosedCycle, fmtPrazoWeek } from "@/lib/utils";
 import { PrazoCell } from "@/components/prazo-cell";
 import { useAuth } from "@/contexts/AuthContext";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { useRealtime } from "@/hooks/use-realtime";
 import { Button } from "@/components/ui/button";
@@ -82,7 +82,6 @@ function isOverdue(dueDate: string | null, status: string) {
 const STATUS_ORDER = ["pending", "in_progress", "in_revision", "review", "reopened", "paused", "completed", "cancelled"];
 
 export default function EditorTaskList() {
-  const { toast } = useToast();
   const { user } = useAuth();
   const { openTask } = useTaskModal();
 
@@ -119,7 +118,7 @@ export default function EditorTaskList() {
   const load = useCallback(() => {
     apiFetch<Task[]>("/api/my-tasks")
       .then(setTasks)
-      .catch(() => toast({ title: "Erro ao carregar tarefas", variant: "destructive" }))
+      .catch(() => toast.error("Erro ao carregar tarefas"))
       .finally(() => setLoading(false));
   }, [toast]);
 
@@ -134,7 +133,7 @@ export default function EditorTaskList() {
       load();
     } catch {
       setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: task.status } : t));
-      toast({ title: "Erro ao atualizar status", variant: "destructive" });
+      toast.error("Erro ao atualizar status");
     }
   };
 
@@ -146,9 +145,9 @@ export default function EditorTaskList() {
       setReturnTarget(null);
       setReturnComment("");
       load();
-      toast({ title: "Tarefa devolvida." });
+      toast.success("Tarefa devolvida.");
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro ao devolver", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro ao devolver");
     } finally { setReturning(false); }
   };
 

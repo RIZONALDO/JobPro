@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { apiFetch, apiPost, apiPut } from "@/lib/api";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,7 +33,6 @@ function workloadLevel(score: number): "ok" | "moderate" | "high" | "critical" {
 }
 
 export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initialDueDate }: Props) {
-  const { toast } = useToast();
   const editMode = !!editTaskId;
 
   const [form, setForm]               = useState(EMPTY_FORM);
@@ -78,7 +77,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
           const ids = t.editors?.map(e => e.id) ?? (t.assignedToId ? [t.assignedToId] : []);
           setSelectedEditorIds(ids);
         })
-        .catch(() => { toast({ title: "Erro ao carregar tarefa", variant: "destructive" }); onOpenChange(false); })
+        .catch(() => { toast.error("Erro ao carregar tarefa"); onOpenChange(false); })
         .finally(() => setLoadingEdit(false));
     } else {
       setForm({ ...EMPTY_FORM, dueDateTime: initialDueDate ?? "" });
@@ -106,9 +105,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   };
 
   const save = async (publishStatus?: "rascunho" | "pending") => {
-    if (!form.title.trim()) { toast({ title: "Título obrigatório", variant: "destructive" }); return; }
+    if (!form.title.trim()) { toast.error("Título obrigatório"); return; }
     if (publishStatus === "pending" && selectedEditorIds.length === 0) {
-      toast({ title: "Atribua ao menos um editor para publicar", variant: "destructive" }); return;
+      toast.error("Atribua ao menos um editor para publicar"); return;
     }
     const payload: Record<string, unknown> = {
       title:        form.title,
@@ -128,15 +127,15 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
     try {
       if (editMode && editTaskId) {
         await apiPut(`/api/tasks/${editTaskId}`, payload);
-        toast({ title: publishStatus === "pending" ? "Tarefa publicada" : "Tarefa atualizada" });
+        toast.success(publishStatus === "pending" ? "Tarefa publicada" : "Tarefa atualizada");
       } else {
         await apiPost("/api/tasks", payload);
-        toast({ title: publishStatus === "rascunho" ? "Rascunho salvo" : "Tarefa publicada" });
+        toast.success(publishStatus === "rascunho" ? "Rascunho salvo" : "Tarefa publicada");
       }
       onOpenChange(false);
       onSaved();
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Erro ao salvar", variant: "destructive" });
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar");
     } finally { setSaving(false); }
   };
 
