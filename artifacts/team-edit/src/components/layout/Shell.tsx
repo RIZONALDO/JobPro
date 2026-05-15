@@ -80,8 +80,18 @@ const NAV_ITEMS: NavItem[] = [
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const [location, navigate] = useLocation();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSidebarEnter = () => {
+    if (collapseTimer.current) clearTimeout(collapseTimer.current);
+    setCollapsed(false);
+  };
+  const handleSidebarLeave = () => {
+    collapseTimer.current = setTimeout(() => setCollapsed(true), 220);
+  };
+  useEffect(() => () => { if (collapseTimer.current) clearTimeout(collapseTimer.current); }, []);
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -343,31 +353,38 @@ export function Shell({ children }: { children: React.ReactNode }) {
     <div className="flex h-[100dvh] bg-[hsl(var(--background))]">
 
       {/* ── Desktop Sidebar — full height ────────────────────────── */}
-      <aside className={cn(
-        "hidden md:flex flex-col border-r bg-[hsl(var(--card))] shrink-0 transition-all duration-200 z-20",
-        collapsed ? "w-14" : "w-56"
-      )}>
+      <aside
+        onMouseEnter={handleSidebarEnter}
+        onMouseLeave={handleSidebarLeave}
+        className={cn(
+          "hidden md:flex flex-col border-r bg-[hsl(var(--card))] shrink-0 transition-all duration-200 z-20",
+          collapsed ? "w-14" : "w-56"
+        )}
+      >
 
-        {/* Logo + toggle — alinhado com o header */}
+        {/* Logo — alinhado com o header */}
         <div className={cn(
-          "h-14 flex items-center gap-2.5 border-b shrink-0",
+          "h-14 flex items-center gap-2.5 border-b shrink-0 overflow-hidden",
           collapsed ? "justify-center px-0" : "px-3"
         )}>
-          <button
-            onClick={() => setCollapsed(v => !v)}
-            className="p-1.5 rounded-lg hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--muted-foreground))] shrink-0"
-          >
-            <Menu style={{ height: 18, width: 18 }} />
-          </button>
-          {!collapsed && (
-            <div className="min-w-0 flex-1">
-              {settings.logo_url
-                ? <img src={settings.logo_url} alt={settings.company_name} className="h-6 object-contain" />
-                : <>
-                    <p className="font-bold text-sm leading-tight text-[hsl(var(--foreground))] truncate"><BrandName name={settings.company_name} /></p>
-                    <p className="text-xs text-[hsl(var(--muted-foreground))] leading-tight truncate"><BrandName name={settings.system_name} /></p>
-                  </>
-              }
+          {collapsed ? (
+            <div className="h-7 w-7 rounded-lg bg-[hsl(var(--primary))]/10 flex items-center justify-center shrink-0">
+              <Menu style={{ height: 16, width: 16 }} className="text-[hsl(var(--primary))]" />
+            </div>
+          ) : (
+            <div className="min-w-0 flex-1 flex items-center gap-2.5">
+              <div className="h-7 w-7 rounded-lg bg-[hsl(var(--primary))]/10 flex items-center justify-center shrink-0">
+                <Menu style={{ height: 16, width: 16 }} className="text-[hsl(var(--primary))]" />
+              </div>
+              <div className="min-w-0 flex-1">
+                {settings.logo_url
+                  ? <img src={settings.logo_url} alt={settings.company_name} className="h-6 object-contain" />
+                  : <>
+                      <p className="font-bold text-sm leading-tight text-[hsl(var(--foreground))] truncate"><BrandName name={settings.company_name} /></p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] leading-tight truncate"><BrandName name={settings.system_name} /></p>
+                    </>
+                }
+              </div>
             </div>
           )}
         </div>
