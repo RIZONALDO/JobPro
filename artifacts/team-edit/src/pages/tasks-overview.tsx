@@ -147,7 +147,8 @@ export default function TasksOverview() {
   const [reopenDueDate, setReopenDueDate] = useState("");
   const [sendingReopen, setSendingReopen] = useState(false);
   const [sendingRevision, setSendingRevision] = useState(false);
-  const [confirmTask, setConfirmTask] = useState<{ id: number; title: string; action: "cancel" | "pause" } | null>(null);
+  const [confirmTask, setConfirmTask] = useState<{ id: number; title: string; action: "cancel" | "pause" | "resume" } | null>(null);
+  const [confirmComment, setConfirmComment] = useState("");
   const [sendingConfirm, setSendingConfirm] = useState(false);
 
   // Mobile filter panel toggle
@@ -164,12 +165,21 @@ export default function TasksOverview() {
   const [reassignTarget, setReassignTarget] = useState<{ taskId: number; taskTitle: string; assignedTo: Person | null; mode: "reassign" | "add" } | null>(null);
   const [deleting,     setDeleting]     = useState(false);
 
-  const doTaskAction = async (taskId: number, action: "cancel" | "pause") => {
+  const doTaskAction = async (taskId: number, action: "cancel" | "pause" | "resume") => {
     setSendingConfirm(true);
     try {
-      await apiPut(`/api/tasks/${taskId}`, { status: action === "cancel" ? "cancelled" : "paused" });
-      toast({ title: action === "cancel" ? "Tarefa cancelada" : "Tarefa pausada" });
+      if (action === "resume") {
+        await apiPut(`/api/tasks/${taskId}`, { status: "pending" });
+        toast({ title: "Tarefa retomada." });
+      } else {
+        await apiPut(`/api/tasks/${taskId}`, {
+          status: action === "cancel" ? "cancelled" : "paused",
+          revisionComment: confirmComment.trim(),
+        });
+        toast({ title: action === "cancel" ? "Tarefa cancelada." : "Tarefa pausada." });
+      }
       setConfirmTask(null);
+      setConfirmComment("");
       load(true);
     } catch (e: unknown) {
       toast({ title: e instanceof Error ? e.message : "Erro", variant: "destructive" });
@@ -590,6 +600,14 @@ export default function TasksOverview() {
                       </DropdownMenuItem>
                     </>
                   )}
+                  {t.status === "paused" && canActNow && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "resume" })}>
+                        <ArrowUpRight className="h-3.5 w-3.5" />Retomar tarefa
+                      </DropdownMenuItem>
+                    </>
+                  )}
                   {!["completed","cancelled"].includes(t.status) && canActNow && (
                     <>
                       <DropdownMenuSeparator />
@@ -866,25 +884,46 @@ export default function TasksOverview() {
         </div>{/* fim body scrollável */}
       </div>
 
-      {/* ── Cancel / Pause confirm dialog ─────────────────────────────────── */}
-      <Dialog open={!!confirmTask} onOpenChange={open => !open && setConfirmTask(null)}>
+      {/* ── Cancel / Pause / Resume confirm dialog ───────────────────────── */}
+      <Dialog open={!!confirmTask} onOpenChange={open => { if (!open && !sendingConfirm) { setConfirmTask(null); setConfirmComment(""); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>{confirmTask?.action === "cancel" ? "Cancelar tarefa" : "Pausar tarefa"}</DialogTitle>
+            <DialogTitle>
+              {confirmTask?.action === "cancel" ? "Cancelar tarefa" : confirmTask?.action === "pause" ? "Pausar tarefa" : "Retomar tarefa"}
+            </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            {confirmTask?.action === "cancel"
-              ? <>Tem certeza que deseja <strong>cancelar</strong> a tarefa <em>"{confirmTask?.title}"</em>? O editor será notificado.</>
-              : <>Tem certeza que deseja <strong>pausar</strong> a tarefa <em>"{confirmTask?.title}"</em>? O editor será notificado.</>}
-          </p>
+          <div className="space-y-3">
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              {confirmTask?.action === "cancel"
+                ? <>Tem certeza que deseja <strong>cancelar</strong> <em>"{confirmTask?.title}"</em>? Os editores serão notificados.</>
+                : confirmTask?.action === "pause"
+                  ? <>Tem certeza que deseja <strong>pausar</strong> <em>"{confirmTask?.title}"</em>? Os editores serão notificados.</>
+                  : <>A tarefa <em>"{confirmTask?.title}"</em> voltará para <strong>Pendente</strong> e os editores serão notificados.</>}
+            </p>
+            {confirmTask?.action !== "resume" && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">
+                  Motivo <span className="text-destructive">*</span>
+                </label>
+                <Textarea
+                  placeholder={confirmTask?.action === "cancel" ? "Motivo do cancelamento…" : "Motivo da pausa…"}
+                  value={confirmComment}
+                  onChange={e => setConfirmComment(e.target.value)}
+                  rows={3}
+                  className="resize-none text-sm"
+                  disabled={sendingConfirm}
+                />
+              </div>
+            )}
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmTask(null)} disabled={sendingConfirm}>Voltar</Button>
+            <Button variant="outline" onClick={() => { setConfirmTask(null); setConfirmComment(""); }} disabled={sendingConfirm}>Voltar</Button>
             <Button
-              className={confirmTask?.action === "cancel" ? "bg-red-600 hover:bg-red-700" : "bg-purple-600 hover:bg-purple-700"}
+              className={confirmTask?.action === "cancel" ? "bg-red-600 hover:bg-red-700" : confirmTask?.action === "pause" ? "bg-purple-600 hover:bg-purple-700" : ""}
               onClick={() => confirmTask && doTaskAction(confirmTask.id, confirmTask.action)}
-              disabled={sendingConfirm}
+              disabled={sendingConfirm || (confirmTask?.action !== "resume" && !confirmComment.trim())}
             >
-              {sendingConfirm ? "Aguarde…" : confirmTask?.action === "cancel" ? "Confirmar cancelamento" : "Confirmar pausa"}
+              {sendingConfirm ? "Aguarde…" : confirmTask?.action === "cancel" ? "Confirmar cancelamento" : confirmTask?.action === "pause" ? "Confirmar pausa" : "Retomar"}
             </Button>
           </DialogFooter>
         </DialogContent>

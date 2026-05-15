@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import {
   Trash2, Zap, Folder,
   CheckCircle2, FolderCheck, Edit3, SmilePlus, MessageCircle, Pencil, X, Check, RotateCcw, Undo2,
+  PauseCircle, XCircle, PlayCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -42,6 +43,9 @@ const FEED_ICON: Record<string, React.ReactNode> = {
   task_completed:    <CheckCircle2 className="h-4 w-4 text-green-500" />,
   task_reopened:     <RotateCcw className="h-4 w-4 text-rose-500" />,
   task_returned:     <Undo2 className="h-4 w-4 text-amber-500" />,
+  task_paused:       <PauseCircle className="h-4 w-4 text-violet-500" />,
+  task_cancelled:    <XCircle className="h-4 w-4 text-red-500" />,
+  task_resumed:      <PlayCircle className="h-4 w-4 text-blue-500" />,
   job_completed:     <Zap className="h-4 w-4 text-indigo-500" />,
   project_completed: <FolderCheck className="h-4 w-4 text-green-600" />,
   project_created:   <Folder className="h-4 w-4 text-blue-500" />,
@@ -52,6 +56,9 @@ const FEED_ACCENT: Record<string, string> = {
   task_completed:    "border-t-green-400",
   task_reopened:     "border-t-rose-400",
   task_returned:     "border-t-amber-400",
+  task_paused:       "border-t-violet-400",
+  task_cancelled:    "border-t-red-400",
+  task_resumed:      "border-t-blue-400",
   job_completed:     "border-t-indigo-400",
   project_completed: "border-t-green-500",
   project_created:   "border-t-blue-400",

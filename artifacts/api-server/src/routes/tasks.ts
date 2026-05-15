@@ -249,6 +249,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     if (complexity) update.complexity = String(complexity);
     if (assignedToId !== undefined) update.assignedToId = assignedToId ? parseInt(String(assignedToId), 10) : null;
     if (folderUrl !== undefined) update.folderUrl = folderUrl ? String(folderUrl) : null;
+    let eventComment: string | undefined;
     if (status) {
       const s = String(status);
       // Only truly closed states that cannot be acted upon further
@@ -259,6 +260,11 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         if (TERMINAL.includes(task.status)) {
           res.status(400).json({ error: "Não é possível alterar uma tarefa já finalizada ou cancelada" }); return;
         }
+        const actionComment = revisionComment ? String(revisionComment).trim() : "";
+        if (!actionComment) {
+          res.status(400).json({ error: s === "cancelled" ? "Informe o motivo do cancelamento" : "Informe o motivo da pausa" }); return;
+        }
+        eventComment = actionComment;
         update.status = s;
       } else if (s === "reopened") {
         // Reabrir tarefa aprovada: apenas coordinator/supervisor/admin, somente de "completed"
@@ -319,6 +325,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
       fromStatus: task.status,
       toStatus: String(update.status),
       changedById: userId,
+      ...(eventComment ? { revisionComment: eventComment } : {}),
     });
   }
 
@@ -340,26 +347,64 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         { taskId: id }
       );
     }
-    if (newStatus === "cancelled" && task.assignedToId) {
-      await notify(task.assignedToId, "task_cancelled",
-        "Tarefa cancelada",
-        `A tarefa "${task.title}" foi cancelada pelo coordenador`,
-        { taskId: id }
-      );
+    if (newStatus === "cancelled") {
+      const comment = eventComment ?? "";
+      const cancelledEditors = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
+      const cancelRecipients = new Set<number>(cancelledEditors.map(e => e.userId));
+      if (task.assignedToId) cancelRecipients.add(task.assignedToId);
+      for (const recipientId of cancelRecipients) {
+        await notify(recipientId, "task_cancelled",
+          "Tarefa cancelada",
+          `A tarefa "${task.title}" foi cancelada${comment ? `: ${comment}` : ""}`,
+          { taskId: id }
+        );
+      }
+      await createFeedItem({
+        type: "task_cancelled",
+        title: `Tarefa cancelada: "${task.title}"`,
+        actorId: userId,
+        entityId: id,
+        entityType: "task",
+      }).catch(() => {});
     }
-    if (newStatus === "paused" && task.assignedToId) {
-      await notify(task.assignedToId, "task_paused",
-        "Tarefa pausada",
-        `A tarefa "${task.title}" foi pausada pelo coordenador`,
-        { taskId: id }
-      );
+    if (newStatus === "paused") {
+      const comment = eventComment ?? "";
+      const pausedEditors = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
+      const pauseRecipients = new Set<number>(pausedEditors.map(e => e.userId));
+      if (task.assignedToId) pauseRecipients.add(task.assignedToId);
+      for (const recipientId of pauseRecipients) {
+        await notify(recipientId, "task_paused",
+          "Tarefa pausada",
+          `A tarefa "${task.title}" foi pausada${comment ? `: ${comment}` : ""}`,
+          { taskId: id }
+        );
+      }
+      await createFeedItem({
+        type: "task_paused",
+        title: `Tarefa pausada: "${task.title}"`,
+        actorId: userId,
+        entityId: id,
+        entityType: "task",
+      }).catch(() => {});
     }
-    if (newStatus === "pending" && task.status === "paused" && task.assignedToId) {
-      await notify(task.assignedToId, "task_resumed",
-        "Tarefa retomada",
-        `A tarefa "${task.title}" foi retomada pelo coordenador`,
-        { taskId: id }
-      );
+    if (newStatus === "pending" && task.status === "paused") {
+      const resumedEditors = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
+      const resumeRecipients = new Set<number>(resumedEditors.map(e => e.userId));
+      if (task.assignedToId) resumeRecipients.add(task.assignedToId);
+      for (const recipientId of resumeRecipients) {
+        await notify(recipientId, "task_resumed",
+          "Tarefa retomada",
+          `A tarefa "${task.title}" foi retomada pelo coordenador`,
+          { taskId: id }
+        );
+      }
+      await createFeedItem({
+        type: "task_resumed",
+        title: `Tarefa retomada: "${task.title}"`,
+        actorId: userId,
+        entityId: id,
+        entityType: "task",
+      }).catch(() => {});
     }
     if (newStatus === "pending" && task.status === "rascunho") {
       // Notify all assigned editors when draft is published
