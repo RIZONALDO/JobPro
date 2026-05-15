@@ -101,11 +101,15 @@ export function DateTimePicker({
   const color = settings.primary_color || "#6366f1";
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"calendar" | "time">("calendar");
-  const [time, setTime] = useState({ h: 0, m: 0 });
+  const [time, setTime] = useState({ h: 18, m: 0 });
 
   useEffect(() => {
-    const { h, m } = parseIso(value);
-    setTime({ h, m });
+    if (value && value.includes("T")) {
+      const { h, m } = parseIso(value);
+      setTime({ h, m });
+    } else if (!value) {
+      setTime({ h: 18, m: 0 });
+    }
   }, [value]);
 
   // Reset to calendar after popover closes (after transition)
