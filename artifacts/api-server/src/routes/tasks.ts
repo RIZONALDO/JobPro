@@ -216,6 +216,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
 
   const { title, description, dueDate, priority, complexity, assignedToId, folderUrl, status, revisionComment, client, color } = req.body ?? {};
   const update: Record<string, unknown> = {};
+  let eventComment: string | undefined;
 
   if (role === "editor") {
     const [editorEntry] = await db.select({ taskId: taskEditorsTable.taskId })
@@ -249,7 +250,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     if (complexity) update.complexity = String(complexity);
     if (assignedToId !== undefined) update.assignedToId = assignedToId ? parseInt(String(assignedToId), 10) : null;
     if (folderUrl !== undefined) update.folderUrl = folderUrl ? String(folderUrl) : null;
-    let eventComment: string | undefined;
     if (status) {
       const s = String(status);
       // Only truly closed states that cannot be acted upon further
