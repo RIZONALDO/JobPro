@@ -1,6 +1,8 @@
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem, staggerRow } from "@/lib/motion";
 import { useEffect, useState, useCallback } from "react";
+import ReactECharts from "echarts-for-react";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useRealtime } from "@/hooks/use-realtime";
 import { fmtDate, fmtDateHuman, fmtShort } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -147,35 +149,10 @@ const PROD_STATUS = [
   { key: "cancelled",   label: "Canceladas",  color: "#ef4444" },
 ];
 
-function DonutRing({ segs }: { segs: Array<{ color: string; pct: number }> }) {
-  const R = 38; const cx = 50; const cy = 50; const SW = 16;
-  const nonZero = segs.filter(s => s.pct > 0);
-  if (nonZero.length === 0)
-    return <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%" }}><circle cx={cx} cy={cy} r={R} fill="none" stroke="hsl(var(--muted))" strokeWidth={SW} /></svg>;
-  if (nonZero.length === 1)
-    return <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%" }}><circle cx={cx} cy={cy} r={R} fill="none" stroke={nonZero[0].color} strokeWidth={SW} /></svg>;
-  let angle = -90;
-  return (
-    <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%" }}>
-      {segs.map((seg, i) => {
-        if (seg.pct === 0) return null;
-        const sweep = seg.pct * 360;
-        const startRad = (angle * Math.PI) / 180;
-        angle += sweep;
-        const endRad = ((angle - 0.01) * Math.PI) / 180;
-        const x1 = cx + R * Math.cos(startRad); const y1 = cy + R * Math.sin(startRad);
-        const x2 = cx + R * Math.cos(endRad);   const y2 = cy + R * Math.sin(endRad);
-        return (
-          <path key={i}
-            d={`M${x1.toFixed(2)},${y1.toFixed(2)} A${R},${R} 0 ${sweep > 180 ? 1 : 0},1 ${x2.toFixed(2)},${y2.toFixed(2)}`}
-            fill="none" stroke={seg.color} strokeWidth={SW} strokeLinecap="butt" />
-        );
-      })}
-    </svg>
-  );
-}
-
 function ProductionCard({ allTasks, onOpenTask }: { allTasks: AllTask[]; onOpenTask: (id: number) => void }) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   const total  = allTasks.length;
   const active = allTasks.filter(t => !["completed", "cancelled", "paused"].includes(t.status)).length;
 
@@ -183,76 +160,180 @@ function ProductionCard({ allTasks, onOpenTask }: { allTasks: AllTask[]; onOpenT
     ...s,
     count: allTasks.filter(t => t.status === s.key).length,
   }));
-  const segs = counts.map(c => ({ color: c.color, pct: total > 0 ? c.count / total : 0 }));
+
+  const activeCounts = counts.filter(c => c.count > 0);
 
   const completedCount = counts.find(c => c.key === "completed")?.count ?? 0;
   const revisionCount  = counts.find(c => c.key === "in_revision")?.count ?? 0;
   const reviewCount    = counts.find(c => c.key === "review")?.count ?? 0;
   const completionPct  = total > 0 ? Math.round(completedCount / total * 100) : 0;
 
+  const mutedColor = isDark ? "rgba(148,163,184,0.65)" : "rgba(100,116,139,0.65)";
+  const trackColor = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)";
+
+  const chartOption = {
+    backgroundColor: "transparent",
+    animation: true,
+    animationDuration: 900,
+    animationEasing: "cubicOut",
+    polar: { radius: ["20%", "84%"], center: ["46%", "50%"] },
+    angleAxis: { max: total || 1, startAngle: 90, show: false },
+    radiusAxis: {
+      type: "category",
+      data: activeCounts.map(c => c.label),
+      z: 10,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { fontSize: 11, color: mutedColor, fontWeight: "500", fontFamily: "inherit" },
+    },
+    series: [
+      // Background track (full ring)
+      {
+        type: "bar",
+        data: activeCounts.map(() => ({ value: total || 1, itemStyle: { color: trackColor } })),
+        coordinateSystem: "polar",
+        roundCap: true,
+        silent: true,
+        barGap: "-100%",
+        z: 1,
+      },
+      // Data bars
+      {
+        type: "bar",
+        data: activeCounts.map(c => ({
+          value: c.count,
+          itemStyle: {
+            color: { type: "linear", x: 0, y: 0, x2: 1, y2: 0,
+              colorStops: [{ offset: 0, color: c.color + "88" }, { offset: 1, color: c.color }] },
+            shadowBlur: 10,
+            shadowColor: c.color + "55",
+          },
+        })),
+        coordinateSystem: "polar",
+        roundCap: true,
+        barGap: "-100%",
+        z: 2,
+        label: {
+          show: true,
+          position: "end",
+          distance: 10,
+          fontSize: 11,
+          fontWeight: "bold",
+          fontFamily: "inherit",
+          color: isDark ? "#e2e8f0" : "#334155",
+          formatter: (p: any) => p.value > 0 ? String(p.value) : "",
+        },
+        emphasis: { focus: "self", itemStyle: { shadowBlur: 22 } },
+      },
+    ],
+    tooltip: {
+      trigger: "item",
+      backgroundColor: isDark ? "#1e293b" : "#ffffff",
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+      borderWidth: 1,
+      padding: [8, 12],
+      textStyle: { color: isDark ? "#e2e8f0" : "#1e293b", fontSize: 12, fontFamily: "inherit" },
+      formatter: (p: any) => {
+        if (p.seriesIndex === 0) return "";
+        const st = activeCounts[p.dataIndex];
+        if (!st) return "";
+        const pct = total > 0 ? Math.round((p.value / total) * 100) : 0;
+        return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <span style="width:8px;height:8px;border-radius:50%;background:${st.color};display:inline-block;flex-shrink:0"></span>
+          <strong>${st.label}</strong></div>
+          <span style="color:${mutedColor}">${p.value} tarefa${p.value !== 1 ? "s" : ""} · ${pct}%</span>`;
+      },
+    },
+  };
+
   const clientMap = new Map<string, number>();
-  allTasks.filter(t => !["completed", "cancelled"].includes(t.status) && t.client).forEach(t => {
-    const k = t.client!;
-    clientMap.set(k, (clientMap.get(k) ?? 0) + 1);
-  });
-  const topClients = [...clientMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const maxClientCount = topClients[0]?.[1] ?? 1;
+  allTasks.filter(t => !["completed", "cancelled"].includes(t.status) && t.client)
+    .forEach(t => { const k = t.client!; clientMap.set(k, (clientMap.get(k) ?? 0) + 1); });
+  const topClients = [...clientMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const maxClient  = topClients[0]?.[1] ?? 1;
 
   return (
     <div className="md:col-span-2 rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
+      {/* Header */}
       <div className="flex items-center gap-2 px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
         <BarChart2 className="h-4 w-4 text-[hsl(var(--primary))]" />
         <span className="font-semibold text-sm">Visão geral da produção</span>
-        <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">
-          {total} tarefa{total !== 1 ? "s" : ""}
-        </span>
+        {total > 0 && (
+          <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">
+            {total} tarefa{total !== 1 ? "s" : ""}
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-3 text-xs text-[hsl(var(--muted-foreground))]">
+          <span><strong className="text-emerald-500">{active}</strong> ativas</span>
+          <span><strong className="text-emerald-500">{completionPct}%</strong> concluídas</span>
+        </div>
       </div>
 
-      <div className="flex flex-1 min-h-0 divide-x">
-        {/* Donut + legend */}
-        <div className="flex items-center gap-5 px-5 py-4 flex-1 min-w-0">
-          <div className="relative shrink-0" style={{ width: 96, height: 96 }}>
-            <DonutRing segs={segs} />
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-lg font-bold leading-none tabular-nums">{active}</span>
-              <span className="text-xs text-[hsl(var(--muted-foreground))] leading-tight">ativas</span>
+      {/* Body */}
+      <div className="flex flex-1 min-h-0">
+        {/* Polar bar chart */}
+        <div className="flex-1 min-w-0 relative" style={{ minHeight: 248 }}>
+          {total === 0 ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[hsl(var(--muted-foreground))]">
+              <BarChart2 className="h-10 w-10 opacity-15" />
+              <p className="text-sm">Nenhuma tarefa</p>
             </div>
-          </div>
-          <div className="flex flex-col gap-2 flex-1 min-w-0">
-            {counts.map(s => (
-              <div key={s.key} className="flex items-center gap-2 min-w-0">
-                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-                <span className="text-xs text-[hsl(var(--muted-foreground))] flex-1 truncate">{s.label}</span>
-                <span className="text-xs font-bold tabular-nums ml-auto" style={{ color: s.count > 0 ? s.color : "hsl(var(--muted-foreground))" }}>
-                  {s.count}
+          ) : (
+            <ReactECharts
+              option={chartOption}
+              style={{ height: "100%", width: "100%", minHeight: 248 }}
+              opts={{ renderer: "canvas", devicePixelRatio: window.devicePixelRatio || 1 }}
+              lazyUpdate
+            />
+          )}
+        </div>
+
+        {/* Right panel */}
+        <div className="w-44 shrink-0 border-l flex flex-col">
+          {/* Status legend */}
+          <div className="px-4 py-4 flex flex-col gap-2.5 flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 mb-0.5">
+              Por status
+            </p>
+            {counts.map(c => (
+              <div key={c.key} className="flex items-center gap-2 min-w-0">
+                <div className="h-2 w-2 rounded-full shrink-0"
+                  style={{ backgroundColor: c.count > 0 ? c.color : "hsl(var(--muted-foreground)/40%)" }} />
+                <span className="text-xs text-[hsl(var(--muted-foreground))] flex-1 truncate leading-none">{c.label}</span>
+                <span className="text-xs font-bold tabular-nums leading-none"
+                  style={{ color: c.count > 0 ? c.color : "hsl(var(--muted-foreground)/40%)" }}>
+                  {c.count}
                 </span>
               </div>
             ))}
           </div>
-        </div>
 
-        {/* Top clients */}
-        {topClients.length > 0 && (
-          <div className="shrink-0 w-[170px] px-4 py-4 flex flex-col gap-1">
-            <p className="text-xs uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2">Clientes com tarefas ativas</p>
-            {topClients.map(([client, count]) => (
-              <div key={client} className="flex items-center gap-2 min-w-0">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{client}</p>
-                  <div className="mt-0.5 h-1.5 rounded-full bg-[hsl(var(--muted))]">
-                    <div className="h-1.5 rounded-full bg-[hsl(var(--primary))]/50 transition-all"
-                      style={{ width: `${Math.round(count / maxClientCount * 100)}%` }} />
+          {/* Client breakdown */}
+          {topClients.length > 0 && (
+            <div className="px-4 py-3 border-t flex flex-col gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 mb-0.5">
+                Clientes ativos
+              </p>
+              {topClients.map(([client, count]) => (
+                <div key={client} className="flex flex-col gap-0.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <p className="text-xs font-medium truncate flex-1">{client}</p>
+                    <span className="text-[11px] font-bold tabular-nums text-[hsl(var(--muted-foreground))] shrink-0">{count}</span>
+                  </div>
+                  <div className="h-1 rounded-full bg-[hsl(var(--muted))] overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-700"
+                      style={{ width: `${Math.round(count / maxClient * 100)}%`, backgroundColor: "hsl(var(--primary))" }} />
                   </div>
                 </div>
-                <span className="text-xs font-bold tabular-nums shrink-0 text-[hsl(var(--muted-foreground))]">{count}</span>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
+      {/* Footer */}
       <div className="px-5 py-2 border-t bg-[hsl(var(--muted))]/10 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-[hsl(var(--muted-foreground))] shrink-0">
-        <span><strong className="text-green-600">{completionPct}%</strong> concluídas</span>
+        <span><strong className="text-emerald-600">{completionPct}%</strong> concluídas</span>
         {revisionCount > 0 && <span><strong className="text-orange-500">{revisionCount}</strong> em revisão</span>}
         {reviewCount > 0 && <span><strong className="text-amber-500">{reviewCount}</strong> aguardando aprovação</span>}
         <Link href="/tasks?tab=timeline" className="ml-auto text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
