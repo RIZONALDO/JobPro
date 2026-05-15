@@ -197,7 +197,18 @@ router.get("/tasks/status-history", requireAuth, async (req, res): Promise<void>
     dates.push(d.toISOString().split("T")[0]);
   }
 
-  const allTasks = await db.select({ id: tasksTable.id, createdAt: tasksTable.createdAt }).from(tasksTable);
+  const userId = req.session.userId!;
+  const role   = req.session.userRole!;
+  const taskFilter = role === "editor"
+    ? eq(tasksTable.assignedToId, userId)
+    : (role === "coordinator" || role === "supervisor")
+      ? eq(tasksTable.createdById, userId)
+      : undefined;
+
+  const allTasks = await db
+    .select({ id: tasksTable.id, createdAt: tasksTable.createdAt })
+    .from(tasksTable)
+    .where(taskFilter);
 
   const allEvents = await db
     .select({ taskId: taskEventsTable.taskId, toStatus: taskEventsTable.toStatus, createdAt: taskEventsTable.createdAt })

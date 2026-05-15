@@ -160,7 +160,9 @@ function ProductionCard({
   onOpenTask: (id: number) => void;
 }) {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const isDark = theme === "dark";
+  const isAdmin = user?.role === "admin";
 
   const total  = allTasks.length;
   const active = allTasks.filter(t => !["completed", "cancelled", "paused"].includes(t.status)).length;
@@ -277,7 +279,7 @@ function ProductionCard({
       {/* Header */}
       <div className="flex items-center gap-2 px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
         <BarChart2 className="h-4 w-4 text-[hsl(var(--primary))]" />
-        <span className="font-semibold text-sm">Visão geral da produção</span>
+        <span className="font-semibold text-sm">{isAdmin ? "Visão geral da produção" : "Visão geral da minha produção"}</span>
         {total > 0 && (
           <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">
             {total} tarefa{total !== 1 ? "s" : ""}
