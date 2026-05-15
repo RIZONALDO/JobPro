@@ -166,10 +166,39 @@ function GanttGrid({ tasks, zoom, onOpen }: {
   zoom: ZoomMode;
   onOpen: (id: number) => void;
 }) {
-  const { days: DAYS, pxPerDay: PX } = ZOOM_CONFIG[zoom];
-  const fill   = true;
-  const today  = today0();
-  const wStart = windowStart(zoom);
+  const { pxPerDay: PX } = ZOOM_CONFIG[zoom];
+  const fill  = true;
+  const today = today0();
+
+  // Dynamic window: covers all task dates + padding regardless of zoom
+  const { wStart, DAYS } = useMemo(() => {
+    const list = tasks.filter(t => t.dueDate);
+    const defaultStart = windowStart(zoom);
+    const forwardDays  = zoom === "week" ? 6 : zoom === "month" ? 25 : 83;
+
+    if (list.length === 0) {
+      return { wStart: defaultStart, DAYS: ZOOM_CONFIG[zoom].days };
+    }
+
+    const earliest = list.reduce<Date>((min, t) => {
+      const d = isoToDay(t.createdAt); return d < min ? d : min;
+    }, isoToDay(list[0].createdAt));
+    const latest = list.reduce<Date>((max, t) => {
+      const d = isoToDay(t.dueDate!); return d > max ? d : max;
+    }, isoToDay(list[0].dueDate!));
+
+    const start = new Date(Math.min(earliest.getTime(), defaultStart.getTime()));
+    start.setDate(start.getDate() - 2);
+
+    const end = new Date(today);
+    end.setDate(end.getDate() + forwardDays);
+    const endCovered = new Date(Math.max(latest.getTime(), end.getTime()));
+    endCovered.setDate(endCovered.getDate() + 2);
+
+    const totalDays = Math.max(ZOOM_CONFIG[zoom].days, daysBetween(start, endCovered));
+    return { wStart: start, DAYS: totalDays };
+  }, [tasks, zoom]);
+
   const totalW = DAYS * PX;
 
   const days = Array.from({ length: DAYS }, (_, i) => {
