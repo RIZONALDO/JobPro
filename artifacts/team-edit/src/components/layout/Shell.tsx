@@ -89,7 +89,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     setCollapsed(false);
   };
   const handleSidebarLeave = () => {
-    collapseTimer.current = setTimeout(() => setCollapsed(true), 220);
+    collapseTimer.current = setTimeout(() => setCollapsed(true), 80);
   };
   useEffect(() => () => { if (collapseTimer.current) clearTimeout(collapseTimer.current); }, []);
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
