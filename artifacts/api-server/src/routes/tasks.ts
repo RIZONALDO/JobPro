@@ -1125,6 +1125,7 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
       client: task.client,
       color: task.color,
       dueDate: task.dueDate,
+      revisionCount: task.revisionCount ?? 0,
       assignee: task.assignedToId ? (personMap.get(task.assignedToId) ?? null) : null,
       coordinator: task.createdById ? (personMap.get(task.createdById) ?? null) : null,
     },
