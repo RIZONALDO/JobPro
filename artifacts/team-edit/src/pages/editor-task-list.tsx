@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   AlertCircle, MoreVertical,
   Info, Undo2, Search, X,
@@ -112,6 +113,7 @@ export default function EditorTaskList() {
   }, [loading]);
 
   const [returnTarget,  setReturnTarget]  = useState<Task | null>(null);
+  const [returnComment, setReturnComment] = useState("");
   const [returning,     setReturning]     = useState(false);
 
   const load = useCallback(() => {
@@ -140,8 +142,9 @@ export default function EditorTaskList() {
     if (!returnTarget) return;
     setReturning(true);
     try {
-      await apiPost(`/api/tasks/${returnTarget.id}/return`, {});
+      await apiPost(`/api/tasks/${returnTarget.id}/return`, { returnComment: returnComment.trim() });
       setReturnTarget(null);
+      setReturnComment("");
       load();
       toast({ title: "Tarefa devolvida." });
     } catch (err: unknown) {
@@ -253,7 +256,7 @@ export default function EditorTaskList() {
                     const overdue = isOverdue(t.dueDate, t.status);
                     const accent  = t.color ?? "#6366f1";
                     const trans   = transitions[t.status];
-                    const canReturn = ["pending", "in_progress", "in_revision"].includes(t.status);
+                    const canReturn = ["in_progress", "in_revision"].includes(t.status);
                     const isHighlighted = highlighted === t.id;
 
           const dropdownItems = (
@@ -448,16 +451,30 @@ export default function EditorTaskList() {
       </div>
 
       {/* Devolver dialog */}
-      <Dialog open={!!returnTarget} onOpenChange={v => { if (!v && !returning) setReturnTarget(null); }}>
+      <Dialog open={!!returnTarget} onOpenChange={v => { if (!v && !returning) { setReturnTarget(null); setReturnComment(""); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Devolver tarefa</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Tem certeza que deseja devolver <strong>"{returnTarget?.title}"</strong>?
-            Ela voltará para pendente.
-          </p>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              A tarefa <strong>"{returnTarget?.title}"</strong> voltará para pendente e ficará sem editor atribuído.
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">
+                Motivo da devolução <span className="text-destructive">*</span>
+              </label>
+              <Textarea
+                placeholder="Explique o motivo para o coordenador…"
+                value={returnComment}
+                onChange={e => setReturnComment(e.target.value)}
+                rows={3}
+                className="resize-none text-sm"
+                disabled={returning}
+              />
+            </div>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setReturnTarget(null)} disabled={returning}>Cancelar</Button>
-            <Button onClick={confirmReturn} disabled={returning}>
+            <Button variant="outline" onClick={() => { setReturnTarget(null); setReturnComment(""); }} disabled={returning}>Cancelar</Button>
+            <Button onClick={confirmReturn} disabled={returning || !returnComment.trim()}>
               {returning ? "Aguarde…" : "Devolver"}
             </Button>
           </DialogFooter>

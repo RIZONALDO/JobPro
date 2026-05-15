@@ -468,8 +468,13 @@ router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> =>
   if (role === "editor" && task.assignedToId !== userId) {
     res.status(403).json({ error: "Você só pode devolver tarefas atribuídas a você." }); return;
   }
-  if (task.status === "completed" || task.status === "cancelled") {
-    res.status(400).json({ error: "Não é possível devolver uma tarefa já concluída ou cancelada." }); return;
+  if (!["in_progress", "in_revision"].includes(task.status)) {
+    res.status(400).json({ error: "Só é possível devolver uma tarefa em edição ou em revisão." }); return;
+  }
+
+  const returnComment = req.body?.returnComment ? String(req.body.returnComment).trim() : "";
+  if (!returnComment) {
+    res.status(400).json({ error: "Informe o motivo da devolução." }); return;
   }
 
   const prevStatus = task.status;
@@ -480,16 +485,27 @@ router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> =>
 
   await db.insert(taskEventsTable).values({
     taskId: id, fromStatus: prevStatus, toStatus: "pending", changedById: userId,
+    revisionComment: returnComment,
   });
 
+  const [editor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
+  const editorName = editor?.name ?? "Editor";
+
   if (task.createdById) {
-    const [editor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
     await notify(task.createdById, "task_returned",
       "Tarefa devolvida",
-      `${editor?.name ?? "Editor"} devolveu a tarefa "${task.title}".`,
+      `${editorName} devolveu "${task.title}": ${returnComment}`,
       { taskId: id },
     );
   }
+
+  await createFeedItem({
+    type: "task_returned",
+    title: `Tarefa devolvida: "${task.title}"`,
+    actorId: userId,
+    entityId: id,
+    entityType: "task",
+  }).catch(() => {});
 
   broadcastTaskChange();
   res.json(updated);
