@@ -161,85 +161,109 @@ function ProductionCard({ allTasks, onOpenTask }: { allTasks: AllTask[]; onOpenT
     count: allTasks.filter(t => t.status === s.key).length,
   }));
 
-  const activeCounts = counts.filter(c => c.count > 0);
-
   const completedCount = counts.find(c => c.key === "completed")?.count ?? 0;
   const revisionCount  = counts.find(c => c.key === "in_revision")?.count ?? 0;
   const reviewCount    = counts.find(c => c.key === "review")?.count ?? 0;
   const completionPct  = total > 0 ? Math.round(completedCount / total * 100) : 0;
 
   const mutedColor = isDark ? "rgba(148,163,184,0.65)" : "rgba(100,116,139,0.65)";
-  const trackColor = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)";
+  const gridLine   = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)";
 
   const chartOption = {
     backgroundColor: "transparent",
     animation: true,
-    animationDuration: 900,
+    animationDuration: 800,
     animationEasing: "cubicOut",
-    polar: { radius: ["20%", "84%"], center: ["46%", "50%"] },
-    angleAxis: { max: total || 1, startAngle: 90, show: false },
-    radiusAxis: {
+    grid: { top: 28, bottom: 36, left: 12, right: 20, containLabel: true },
+    xAxis: {
       type: "category",
-      data: activeCounts.map(c => c.label),
-      z: 10,
+      data: counts.map(c => c.label),
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { fontSize: 11, color: mutedColor, fontWeight: "500", fontFamily: "inherit" },
+      axisLabel: {
+        fontSize: 10, color: mutedColor, fontFamily: "inherit",
+        interval: 0, rotate: 28, margin: 10,
+      },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: "value",
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { fontSize: 10, color: mutedColor, fontFamily: "inherit" },
+      splitLine: { lineStyle: { color: gridLine, type: "dashed" } },
+      minInterval: 1,
     },
     series: [
-      // Background track (full ring)
+      // Shadow/depth back bar
       {
         type: "bar",
-        data: activeCounts.map(() => ({ value: total || 1, itemStyle: { color: trackColor } })),
-        coordinateSystem: "polar",
-        roundCap: true,
-        silent: true,
-        barGap: "-100%",
-        z: 1,
-      },
-      // Data bars
-      {
-        type: "bar",
-        data: activeCounts.map(c => ({
+        data: counts.map(c => ({
           value: c.count,
           itemStyle: {
-            color: { type: "linear", x: 0, y: 0, x2: 1, y2: 0,
-              colorStops: [{ offset: 0, color: c.color + "88" }, { offset: 1, color: c.color }] },
-            shadowBlur: 10,
-            shadowColor: c.color + "55",
+            color: c.color + "18",
+            borderRadius: [8, 8, 4, 4],
           },
         })),
-        coordinateSystem: "polar",
-        roundCap: true,
+        barWidth: "52%",
         barGap: "-100%",
+        silent: true,
+        z: 1,
+      },
+      // Main gradient bars
+      {
+        type: "bar",
+        data: counts.map(c => ({
+          value: c.count,
+          itemStyle: {
+            borderRadius: [6, 6, 2, 2],
+            color: {
+              type: "linear", x: 0, y: 0, x2: 0, y2: 1,
+              colorStops: [
+                { offset: 0, color: c.color },
+                { offset: 0.7, color: c.color + "cc" },
+                { offset: 1,   color: c.color + "55" },
+              ],
+            },
+            shadowBlur: 12,
+            shadowOffsetY: 4,
+            shadowColor: c.color + "40",
+          },
+        })),
+        barWidth: "38%",
+        barGap: "-73%",
         z: 2,
         label: {
           show: true,
-          position: "end",
-          distance: 10,
+          position: "top",
+          distance: 4,
           fontSize: 11,
           fontWeight: "bold",
           fontFamily: "inherit",
-          color: isDark ? "#e2e8f0" : "#334155",
+          color: isDark ? "#cbd5e1" : "#475569",
           formatter: (p: any) => p.value > 0 ? String(p.value) : "",
         },
-        emphasis: { focus: "self", itemStyle: { shadowBlur: 22 } },
+        emphasis: {
+          focus: "self",
+          itemStyle: { shadowBlur: 20, shadowOffsetY: 6 },
+        },
       },
     ],
     tooltip: {
-      trigger: "item",
+      trigger: "axis",
+      axisPointer: { type: "none" },
       backgroundColor: isDark ? "#1e293b" : "#ffffff",
       borderColor: isDark ? "#334155" : "#e2e8f0",
       borderWidth: 1,
       padding: [8, 12],
       textStyle: { color: isDark ? "#e2e8f0" : "#1e293b", fontSize: 12, fontFamily: "inherit" },
-      formatter: (p: any) => {
-        if (p.seriesIndex === 0) return "";
-        const st = activeCounts[p.dataIndex];
+      formatter: (params: any[]) => {
+        const p = params.find((x: any) => x.seriesIndex === 1) ?? params[0];
+        const st = counts[p.dataIndex];
         if (!st) return "";
         const pct = total > 0 ? Math.round((p.value / total) * 100) : 0;
         return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-          <span style="width:8px;height:8px;border-radius:50%;background:${st.color};display:inline-block;flex-shrink:0"></span>
+          <span style="width:8px;height:8px;border-radius:50%;background:${st.color};display:inline-block"></span>
           <strong>${st.label}</strong></div>
           <span style="color:${mutedColor}">${p.value} tarefa${p.value !== 1 ? "s" : ""} · ${pct}%</span>`;
       },
