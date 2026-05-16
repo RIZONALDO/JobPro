@@ -8,7 +8,7 @@ import { fmtDate, fmtDateHuman, fmtShort } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, AlertTriangle, CheckCircle2, CalendarClock, Zap } from "lucide-react";
+import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, AlertTriangle, CheckCircle2, CalendarClock, Zap, Search } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { StatusBars } from "@/components/charts/StatusBars";
 import { WaffleChart } from "@/components/charts/WaffleChart";
@@ -847,6 +847,118 @@ function OverdueCard({ items, onOpenTask, emptyStats }: {
   );
 }
 
+/* ── Bottleneck Card (opção N — Gargalo Identificado) ──────────── */
+type InsightLevel = "critical" | "warning" | "info" | "ok";
+interface Insight { level: InsightLevel; text: string; detail?: string; }
+
+function BottleneckCard({ tasks, allTasks, workload, atRiskCount, deadlineData }: {
+  tasks: Task[];
+  allTasks: AllTask[];
+  workload: EditorWorkload[];
+  atRiskCount: number;
+  deadlineData: DeadlineOverview | null;
+}) {
+  const byStatus = (s: string) => tasks.filter(t => t.status === s).length;
+
+  const reviewCount     = byStatus("review");
+  const inRevisionCount = byStatus("in_revision");
+  const pendingCount    = byStatus("pending");
+  const todayCount      = deadlineData?.buckets.find(b => b.key === "today")?.count ?? 0;
+  const in3Count        = deadlineData?.buckets.find(b => b.key === "in3days")?.count ?? 0;
+  const overloaded      = workload.filter(e => e.score > 18);
+  const heavy           = workload.filter(e => e.score > 9 && e.score <= 18);
+
+  const insights: Insight[] = [];
+
+  if (atRiskCount > 0)
+    insights.push({ level: "critical", text: `${atRiskCount} tarefa${atRiskCount !== 1 ? "s" : ""} com prazo vencido`, detail: "Requer ação imediata" });
+
+  if (reviewCount > 0)
+    insights.push({ level: "critical", text: `${reviewCount} tarefa${reviewCount !== 1 ? "s" : ""} aguardando sua aprovação`, detail: reviewCount > 2 ? "Fila de aprovação acumulada" : "Verificar e aprovar" });
+
+  if (overloaded.length > 0) {
+    const names = overloaded.map(e => e.name.split(" ")[0]).join(", ");
+    insights.push({ level: "warning", text: `${names} ${overloaded.length === 1 ? "está" : "estão"} no limite`, detail: "Considerar redistribuição de tarefas" });
+  }
+
+  if (inRevisionCount > 0)
+    insights.push({ level: "warning", text: `${inRevisionCount} tarefa${inRevisionCount !== 1 ? "s" : ""} devolvida${inRevisionCount !== 1 ? "s" : ""} para alteração`, detail: inRevisionCount > 2 ? "Alto índice de retrabalho" : undefined });
+
+  if (todayCount > 0)
+    insights.push({ level: "info", text: `${todayCount} entrega${todayCount !== 1 ? "s" : ""} vence${todayCount !== 1 ? "m" : ""} hoje`, detail: "Monitorar progresso" });
+  else if (in3Count > 0)
+    insights.push({ level: "info", text: `${in3Count} entrega${in3Count !== 1 ? "s" : ""} nos próximos 3 dias` });
+
+  if (heavy.length > 0 && overloaded.length === 0)
+    insights.push({ level: "info", text: `${heavy.map(e => e.name.split(" ")[0]).join(", ")} com carga elevada`, detail: "Monitorar capacidade" });
+
+  if (pendingCount > 3)
+    insights.push({ level: "info", text: `${pendingCount} tarefas pendentes sem início`, detail: "Editores ainda não começaram" });
+
+  if (insights.length === 0)
+    insights.push({ level: "ok", text: "Nenhum gargalo identificado", detail: "Equipe funcionando dentro do esperado" });
+
+  const criticalCount = insights.filter(i => i.level === "critical").length;
+  const warningCount  = insights.filter(i => i.level === "warning").length;
+
+  const LEVEL_STYLE: Record<InsightLevel, { dot: string; text: string; badge?: string }> = {
+    critical: { dot: "#ef4444", text: "text-red-600 dark:text-red-400",    badge: "bg-red-500/10 text-red-600" },
+    warning:  { dot: "#f97316", text: "text-orange-600 dark:text-orange-400", badge: "bg-orange-500/10 text-orange-600" },
+    info:     { dot: "#3b82f6", text: "text-[hsl(var(--foreground))]" },
+    ok:       { dot: "#22c55e", text: "text-green-600 dark:text-green-400" },
+  };
+
+  const visible = insights.slice(0, 4);
+
+  return (
+    <div className="col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <div className="flex items-center gap-1.5">
+          <Search className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
+          <span className="text-xs font-semibold">Gargalo Identificado</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {criticalCount > 0 && (
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full leading-none bg-red-500/10 text-red-600">
+              {criticalCount} crítico{criticalCount !== 1 ? "s" : ""}
+            </span>
+          )}
+          {warningCount > 0 && (
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full leading-none bg-orange-500/10 text-orange-600">
+              {warningCount} alerta{warningCount !== 1 ? "s" : ""}
+            </span>
+          )}
+          {criticalCount === 0 && warningCount === 0 && (
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full leading-none bg-green-500/10 text-green-600">Saudável</span>
+          )}
+        </div>
+      </div>
+
+      {/* Insight list */}
+      <div className="flex-1 min-h-0 overflow-hidden divide-y divide-[hsl(var(--border))]/50">
+        {visible.map((ins, idx) => {
+          const s = LEVEL_STYLE[ins.level];
+          return (
+            <div key={idx} className="flex items-start gap-3 px-4 py-2.5 min-w-0">
+              <div className="mt-1 w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.dot }} />
+              <div className="flex-1 min-w-0">
+                <p className={`text-xs font-semibold leading-snug ${s.text}`}>{ins.text}</p>
+                {ins.detail && (
+                  <p className="text-[10px] text-[hsl(var(--muted-foreground))]/70 mt-0.5 leading-snug">{ins.detail}</p>
+                )}
+              </div>
+              {ins.level === "ok" && <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />}
+              {ins.level === "critical" && <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0 mt-0.5" />}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ── Task Deadline Card (replaces Saúde dos projetos) ──────────── */
 const BUCKET_COLOR: Record<string, string> = {
   overdue: "#ef4444",
@@ -1172,8 +1284,14 @@ export default function Dashboard() {
           onOpenTask={goToTask}
         />
 
-        {/* Card 3+4 — urgency deadline chart (all tasks, col-span-2) */}
-        <TaskDeadlineCard data={deadlineData} onOpenTask={goToTask} />
+        {/* Card 3+4 — bottleneck analysis col-span-2 */}
+        <BottleneckCard
+          tasks={tasks}
+          allTasks={allTasks}
+          workload={workload}
+          atRiskCount={atRisk.length}
+          deadlineData={deadlineData}
+        />
       </div>
 
       {/* ── COORDINATOR LAYOUT ──────────────────────────────────── */}
