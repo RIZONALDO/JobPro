@@ -8,7 +8,7 @@ import { fmtDate, fmtDateHuman, fmtShort } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, BarChart2, AlertTriangle, CheckCircle2, CalendarClock } from "lucide-react";
+import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, AlertTriangle, CheckCircle2, CalendarClock } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { StatusBars } from "@/components/charts/StatusBars";
 import { WaffleChart } from "@/components/charts/WaffleChart";
@@ -75,6 +75,7 @@ interface AllTask {
   client: string | null;
   priority: string;
   complexity: string;
+  dueDate?: string | null;
 }
 
 interface StatusHistory { dates: string[]; series: Record<string, number[]>; }
@@ -140,72 +141,67 @@ function Battery({ score, maxScore, color }: { score: number; maxScore: number; 
   );
 }
 
-// ── Production Overview Card ──────────────────────────────────────────────────
+// ── Delivery Projection Card ──────────────────────────────────────────────────
 
-const PROD_STATUS = [
-  { key: "pending",     label: "Pendente",    color: "#94a3b8" },
-  { key: "in_progress", label: "Em edição",   color: "#3b82f6" },
-  { key: "in_revision", label: "Em revisão",  color: "#f97316" },
-  { key: "review",      label: "Aprovar",     color: "#f59e0b" },
-  { key: "completed",   label: "Concluídas",  color: "#22c55e" },
-  { key: "paused",      label: "Pausadas",    color: "#a855f7" },
-  { key: "cancelled",   label: "Canceladas",  color: "#ef4444" },
-];
-
-function ProductionCard({
-  allTasks, history, onOpenTask,
+function DeliveryProjectionCard({
+  allTasks,
+  history,
 }: {
   allTasks: AllTask[];
   history: StatusHistory | null;
-  onOpenTask: (id: number) => void;
 }) {
   const { theme } = useTheme();
-  const { user } = useAuth();
   const isDark = theme === "dark";
-  const isAdmin = user?.role === "admin";
 
-  const total  = allTasks.length;
-  const active = allTasks.filter(t => !["completed", "cancelled", "paused"].includes(t.status)).length;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const inDays = (n: number) => { const d = new Date(today); d.setDate(d.getDate() + n); return d; };
 
-  const counts = PROD_STATUS.map(s => ({
-    ...s,
-    count: allTasks.filter(t => t.status === s.key).length,
-  }));
+  const parse = (s: string | null | undefined): Date | null => {
+    if (!s) return null;
+    return new Date(s.includes("T") ? s : s + "T00:00:00");
+  };
 
-  const completedCount = counts.find(c => c.key === "completed")?.count ?? 0;
-  const revisionCount  = counts.find(c => c.key === "in_revision")?.count ?? 0;
-  const reviewCount    = counts.find(c => c.key === "review")?.count ?? 0;
-  const completionPct  = total > 0 ? Math.round(completedCount / total * 100) : 0;
+  const activeTasks = allTasks.filter(t => !["completed", "cancelled"].includes(t.status));
+  const total = allTasks.length;
+  const completedCount = allTasks.filter(t => t.status === "completed").length;
+  const completionPct = total > 0 ? Math.round(completedCount / total * 100) : 0;
+
+  const buckets = [
+    { key: "overdue", label: "Atrasadas", color: "#ef4444", count: activeTasks.filter(t => { const d = parse(t.dueDate); return d !== null && d < today; }).length },
+    { key: "week1",   label: "Esta sem.", color: "#f97316", count: activeTasks.filter(t => { const d = parse(t.dueDate); return d !== null && d >= today && d < inDays(7); }).length },
+    { key: "week2",   label: "Próxima",   color: "#f59e0b", count: activeTasks.filter(t => { const d = parse(t.dueDate); return d !== null && d >= inDays(7) && d < inDays(14); }).length },
+    { key: "week3",   label: "Sem. +2",   color: "#3b82f6", count: activeTasks.filter(t => { const d = parse(t.dueDate); return d !== null && d >= inDays(14) && d < inDays(21); }).length },
+    { key: "later",   label: "Depois",    color: "#94a3b8", count: activeTasks.filter(t => { const d = parse(t.dueDate); return d === null || d >= inDays(21); }).length },
+  ];
+
+  let velocity = 0;
+  if (history?.series["completed"]) {
+    const comp = history.series["completed"];
+    const len = comp.length;
+    if (len >= 2) velocity = Math.max(0, (comp[len - 1] ?? 0) - (comp[Math.max(0, len - 8)] ?? 0));
+  }
+
+  const overdueCount = buckets[0].count;
+  const thisWeekCount = buckets[1].count;
+  const inProgress = activeTasks.filter(t => ["in_progress", "in_revision", "review"].includes(t.status)).length;
+  const onTrack = overdueCount === 0 && (velocity >= thisWeekCount || thisWeekCount === 0);
 
   const mutedColor = isDark ? "rgba(148,163,184,0.55)" : "rgba(100,116,139,0.55)";
   const gridLine   = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.05)";
 
-  // Format date labels: "15/mai" style
-  const fmtLabel = (iso: string) => {
-    const d = new Date(iso + "T12:00:00");
-    return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
-  };
-
-  const xDates = history?.dates ?? [];
-  const xLabels = xDates.map(fmtLabel);
-
   const chartOption = {
     backgroundColor: "transparent",
     animation: true,
-    animationDuration: 900,
+    animationDuration: 700,
     animationEasing: "cubicOut",
-    grid: { top: 16, bottom: 42, left: 8, right: 16, containLabel: true },
+    grid: { top: 20, bottom: 42, left: 8, right: 16, containLabel: true },
     xAxis: {
       type: "category",
-      data: xLabels,
-      boundaryGap: false,
+      data: buckets.map(b => b.label),
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: {
-        fontSize: 9, color: mutedColor, fontFamily: "inherit",
-        interval: 1, rotate: 0, margin: 8,
-        formatter: (_: string, idx: number) => idx % 2 === 0 ? xLabels[idx] : "",
-      },
+      axisLabel: { fontSize: 10, color: mutedColor, fontFamily: "inherit", margin: 8 },
       splitLine: { show: false },
     },
     yAxis: {
@@ -216,89 +212,88 @@ function ProductionCard({
       splitLine: { lineStyle: { color: gridLine, type: "dashed" } },
       minInterval: 1,
     },
-    series: PROD_STATUS.map(s => ({
-      name: s.label,
-      type: "line",
-      stack: "total",
-      smooth: true,
-      symbol: "none",
-      lineStyle: { width: 1.5, color: s.color },
-      areaStyle: {
-        color: {
-          type: "linear", x: 0, y: 0, x2: 0, y2: 1,
-          colorStops: [
-            { offset: 0, color: s.color + "88" },
-            { offset: 1, color: s.color + "11" },
-          ],
+    series: [{
+      type: "bar",
+      data: buckets.map(b => ({
+        value: b.count,
+        itemStyle: {
+          color: {
+            type: "linear", x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: b.color + "cc" },
+              { offset: 1, color: b.color + "33" },
+            ],
+          },
+          borderRadius: [4, 4, 0, 0],
         },
+      })),
+      barMaxWidth: 48,
+      label: {
+        show: true,
+        position: "top",
+        fontSize: 11,
+        fontWeight: "bold",
+        fontFamily: "inherit",
+        color: mutedColor,
+        formatter: (p: any) => p.value > 0 ? String(p.value) : "",
       },
-      emphasis: { focus: "series" },
-      data: history?.series[s.key] ?? [],
-    })),
+    }],
     tooltip: {
       trigger: "axis",
-      axisPointer: { type: "line", lineStyle: { color: isDark ? "#334155" : "#e2e8f0", type: "dashed" } },
       backgroundColor: isDark ? "#1e293b" : "#ffffff",
       borderColor: isDark ? "#334155" : "#e2e8f0",
       borderWidth: 1,
       padding: [10, 14],
       textStyle: { color: isDark ? "#e2e8f0" : "#1e293b", fontSize: 12, fontFamily: "inherit" },
       formatter: (params: any[]) => {
-        if (!params.length) return "";
-        const date = xDates[params[0].dataIndex] ?? "";
-        const fmted = date ? new Date(date + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" }) : "";
-        const rows = params
-          .filter((p: any) => p.value > 0)
-          .sort((a: any, b: any) => b.value - a.value)
-          .map((p: any) =>
-            `<div style="display:flex;align-items:center;gap:6px;margin-top:3px">
-              <span style="width:8px;height:8px;border-radius:50%;background:${p.color};display:inline-block;flex-shrink:0"></span>
-              <span style="flex:1">${p.seriesName}</span>
-              <strong>${p.value}</strong>
-            </div>`
-          ).join("");
-        const dayTotal = params.reduce((s: number, p: any) => s + (p.value ?? 0), 0);
-        return `<div style="font-size:10px;color:${mutedColor};margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">${fmted}</div>
-          ${rows}
-          <div style="margin-top:6px;padding-top:6px;border-top:1px solid ${isDark ? "#334155" : "#e2e8f0"};font-size:11px">
-            Total: <strong>${dayTotal}</strong>
+        const p = params[0];
+        if (!p) return "";
+        const b = buckets[p.dataIndex];
+        return `<div style="font-weight:600;margin-bottom:4px">${b.label}</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="width:8px;height:8px;border-radius:50%;background:${b.color};display:inline-block"></span>
+            ${p.value} tarefa${p.value !== 1 ? "s" : ""}
           </div>`;
       },
     },
     legend: { show: false },
   };
 
-  const clientMap = new Map<string, number>();
-  allTasks.filter(t => !["completed", "cancelled"].includes(t.status) && t.client)
-    .forEach(t => { const k = t.client!; clientMap.set(k, (clientMap.get(k) ?? 0) + 1); });
-  const topClients = [...clientMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
-  const maxClient  = topClients[0]?.[1] ?? 1;
+  const statusRows = [
+    { key: "in_progress", label: "Editando",  color: "#3b82f6" },
+    { key: "in_revision", label: "Revisando", color: "#f97316" },
+    { key: "review",      label: "Aprovar",   color: "#f59e0b" },
+    { key: "pending",     label: "Pendente",  color: "#94a3b8" },
+  ];
 
   return (
     <div className="md:col-span-2 rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-2 px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
-        <BarChart2 className="h-4 w-4 text-[hsl(var(--primary))]" />
-        <span className="font-semibold text-sm">{isAdmin ? "Visão geral da produção" : "Visão geral da minha produção"}</span>
-        {total > 0 && (
+        <CalendarClock className="h-4 w-4 text-[hsl(var(--primary))]" />
+        <span className="font-semibold text-sm">Projeção de entregas</span>
+        {activeTasks.length > 0 && (
           <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">
-            {total} tarefa{total !== 1 ? "s" : ""}
+            {activeTasks.length} ativas
           </span>
         )}
-        <div className="ml-auto flex items-center gap-3 text-xs text-[hsl(var(--muted-foreground))]">
-          <span><strong className="text-emerald-500">{active}</strong> ativas</span>
-          <span><strong className="text-emerald-500">{completionPct}%</strong> concluídas</span>
+        <div className="ml-auto flex items-center gap-3 text-xs">
+          {onTrack
+            ? <span className="text-green-600 font-semibold">No prazo</span>
+            : <span className="text-red-500 font-semibold">{overdueCount > 0 ? `${overdueCount} atrasada${overdueCount !== 1 ? "s" : ""}` : "Atenção"}</span>
+          }
+          <span className="text-[hsl(var(--muted-foreground))]"><strong className="text-emerald-500">{completionPct}%</strong> concluídas</span>
         </div>
       </div>
 
       {/* Body */}
       <div className="flex flex-1 min-h-0">
-        {/* Stacked line chart */}
+        {/* Bar chart */}
         <div className="flex-1 min-w-0 relative" style={{ minHeight: 248 }}>
-          {!history || xDates.length === 0 ? (
+          {activeTasks.length === 0 ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[hsl(var(--muted-foreground))]">
-              <BarChart2 className="h-10 w-10 opacity-15" />
-              <p className="text-sm">Carregando…</p>
+              <CalendarClock className="h-10 w-10 opacity-15" />
+              <p className="text-sm">Nenhuma tarefa ativa</p>
             </div>
           ) : (
             <ReactECharts
@@ -312,54 +307,59 @@ function ProductionCard({
 
         {/* Right panel */}
         <div className="w-44 shrink-0 border-l flex flex-col">
-          {/* Status legend */}
           <div className="px-4 py-4 flex flex-col gap-2.5 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 mb-0.5">
-              Agora · por status
+              Ritmo · 7 dias
             </p>
-            {counts.map(c => (
-              <div key={c.key} className="flex items-center gap-2 min-w-0">
-                <div className="h-2 w-2 rounded-full shrink-0"
-                  style={{ backgroundColor: c.count > 0 ? c.color : "hsl(var(--muted-foreground)/40%)" }} />
-                <span className="text-xs text-[hsl(var(--muted-foreground))] flex-1 truncate leading-none">{c.label}</span>
-                <span className="text-xs font-bold tabular-nums leading-none"
-                  style={{ color: c.count > 0 ? c.color : "hsl(var(--muted-foreground)/40%)" }}>
-                  {c.count}
-                </span>
-              </div>
-            ))}
+            <div className="flex items-baseline gap-1">
+              <span className="text-2xl font-bold tabular-nums">{velocity}</span>
+              <span className="text-xs text-[hsl(var(--muted-foreground))]">concluídas</span>
+            </div>
+
+            <div className="border-t pt-2.5 mt-0.5 flex flex-col gap-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 mb-0.5">
+                Por status
+              </p>
+              {statusRows.map(s => {
+                const count = activeTasks.filter(t => t.status === s.key).length;
+                return (
+                  <div key={s.key} className="flex items-center gap-2 min-w-0">
+                    <div className="h-2 w-2 rounded-full shrink-0"
+                      style={{ backgroundColor: count > 0 ? s.color : "hsl(var(--muted-foreground)/40%)" }} />
+                    <span className="text-xs text-[hsl(var(--muted-foreground))] flex-1 truncate leading-none">{s.label}</span>
+                    <span className="text-xs font-bold tabular-nums leading-none"
+                      style={{ color: count > 0 ? s.color : "hsl(var(--muted-foreground)/40%)" }}>
+                      {count}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-          {/* Client breakdown */}
-          {topClients.length > 0 && (
-            <div className="px-4 py-3 border-t flex flex-col gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 mb-0.5">
-                Clientes ativos
-              </p>
-              {topClients.map(([client, count]) => (
-                <div key={client} className="flex flex-col gap-0.5">
-                  <div className="flex items-center justify-between gap-1">
-                    <p className="text-xs font-medium truncate flex-1">{client}</p>
-                    <span className="text-[11px] font-bold tabular-nums text-[hsl(var(--muted-foreground))] shrink-0">{count}</span>
-                  </div>
-                  <div className="h-1 rounded-full bg-[hsl(var(--muted))] overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-700"
-                      style={{ width: `${Math.round(count / maxClient * 100)}%`, backgroundColor: "hsl(var(--primary))" }} />
-                  </div>
-                </div>
-              ))}
+          <div className="px-4 py-3 border-t shrink-0">
+            <div className={`flex items-center gap-1.5 text-xs font-semibold ${onTrack ? "text-green-600" : overdueCount > 0 ? "text-red-500" : "text-amber-500"}`}>
+              {onTrack
+                ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                : <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              }
+              <span>{onTrack ? "Ritmo saudável" : overdueCount > 0 ? "Tarefas atrasadas" : "Ritmo baixo"}</span>
             </div>
-          )}
+            {thisWeekCount > 0 && (
+              <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-1">
+                {thisWeekCount} entrega{thisWeekCount !== 1 ? "s" : ""} esta semana
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Footer */}
       <div className="px-5 py-2 border-t bg-[hsl(var(--muted))]/10 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-[hsl(var(--muted-foreground))] shrink-0">
-        <span><strong className="text-emerald-600">{completionPct}%</strong> concluídas</span>
-        {revisionCount > 0 && <span><strong className="text-orange-500">{revisionCount}</strong> em revisão</span>}
-        {reviewCount > 0 && <span><strong className="text-amber-500">{reviewCount}</strong> aguardando aprovação</span>}
-        <span className="ml-auto text-[hsl(var(--muted-foreground))]/50">últimos 14 dias</span>
-        <Link href="/tasks?tab=timeline" className="text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
+        <span><strong className="text-emerald-600">{completedCount}</strong> concluídas no total</span>
+        {inProgress > 0 && <span><strong className="text-blue-500">{inProgress}</strong> em andamento</span>}
+        {velocity > 0 && <span>ritmo: <strong className="text-[hsl(var(--foreground))]">{velocity}/sem</strong></span>}
+        <Link href="/tasks?tab=timeline" className="ml-auto text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
           Ver timeline <ArrowRight className="h-3 w-3" />
         </Link>
       </div>
@@ -963,7 +963,7 @@ export default function Dashboard() {
       {!isEditor && (
         <div className="grid gap-5 md:grid-cols-3">
 
-          <ProductionCard allTasks={allTasks} history={statusHistory} onOpenTask={goToTask} />
+          <DeliveryProjectionCard allTasks={allTasks} history={statusHistory} />
 
           {/* Workload — coluna direita */}
           <WorkloadCard workload={workload} />
