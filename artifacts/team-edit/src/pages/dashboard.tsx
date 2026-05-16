@@ -76,6 +76,10 @@ interface AllTask {
   priority: string;
   complexity: string;
   dueDate?: string | null;
+  title?: string;
+  color?: string | null;
+  taskNumber?: number;
+  taskYear?: number;
 }
 
 interface StatusHistory { dates: string[]; series: Record<string, number[]>; }
@@ -488,6 +492,136 @@ function DeadlineCard({ label, sub, subCls, pill, days, color }: {
         <StatusBars data={data} width={w} height={h} />
       </div>
       <p className={`text-xs px-1 shrink-0 mt-1 ${subCls}`}>{sub}</p>
+    </div>
+  );
+}
+
+/* ── Mini Gantt 7 dias ──────────────────────────────────────────── */
+interface GanttItem {
+  id: number;
+  title?: string;
+  status: string;
+  dueDate?: string | null;
+  color?: string | null;
+  client?: string | null;
+  taskCode?: string;
+}
+
+const DAY_ABBR = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+function MiniGanttCard({ items, onOpenTask }: {
+  items: GanttItem[];
+  onOpenTask: (id: number) => void;
+}) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+
+  const parse = (s: string) => new Date(s.includes("T") ? s : s + "T00:00:00");
+
+  const due = items
+    .filter(t => {
+      if (!t.dueDate || ["completed", "cancelled"].includes(t.status)) return false;
+      const d = parse(t.dueDate);
+      return d >= today && d < new Date(today.getTime() + 7 * 86400000);
+    })
+    .sort((a, b) => parse(a.dueDate!).getTime() - parse(b.dueDate!).getTime());
+
+  const visible = due.slice(0, 4);
+  const extra   = due.length - visible.length;
+
+  const dayIdx = (dueDate: string) =>
+    Math.round((parse(dueDate).getTime() - today.getTime()) / 86400000);
+
+  return (
+    <div className="rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <div className="flex items-center gap-1.5">
+          <CalendarClock className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
+          <span className="text-xs font-semibold">Próximas entregas</span>
+        </div>
+        <span className={`text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-full leading-none ${due.length > 0 ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"}`}>
+          {due.length} em 7 dias
+        </span>
+      </div>
+
+      {due.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-1.5 text-[hsl(var(--muted-foreground))]">
+          <CalendarClock className="h-8 w-8 opacity-15" />
+          <p className="text-xs">Sem entregas nos próximos 7 dias</p>
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+
+          {/* Day headers */}
+          <div className="flex items-end px-2.5 pt-2 pb-1.5 shrink-0 border-b border-[hsl(var(--border))]/40">
+            <div className="w-[88px] shrink-0" />
+            {days.map((d, i) => (
+              <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                <span className={`text-[8px] font-semibold leading-none ${i === 0 ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--muted-foreground))]/50"}`}>
+                  {DAY_ABBR[d.getDay()]}
+                </span>
+                <span className={`text-[9px] font-bold leading-none tabular-nums ${i === 0 ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--muted-foreground))]/40"}`}>
+                  {d.getDate()}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Task rows */}
+          <div className="flex-1 min-h-0 overflow-hidden divide-y divide-[hsl(var(--border))]/40">
+            {visible.map(t => {
+              const idx    = dayIdx(t.dueDate!);
+              const accent = t.color ?? "#6366f1";
+              const label  = t.title ?? t.client ?? "Tarefa";
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onOpenTask(t.id)}
+                  className="w-full flex items-center px-2.5 py-1.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group min-w-0"
+                >
+                  <div className="w-[88px] shrink-0 pr-2 text-left min-w-0">
+                    {t.taskCode && (
+                      <span className="text-[8px] font-mono font-bold text-[hsl(var(--muted-foreground))]/45 block leading-none mb-0.5">
+                        {t.taskCode}
+                      </span>
+                    )}
+                    <p className="text-[10px] font-semibold truncate leading-tight group-hover:text-[hsl(var(--primary))] transition-colors">
+                      {label}
+                    </p>
+                  </div>
+                  {days.map((_, i) => (
+                    <div key={i} className="flex-1 flex justify-center items-center">
+                      {i === idx ? (
+                        <div
+                          className="w-2.5 h-2.5 rounded-full shadow-sm ring-2 ring-offset-1"
+                          style={{ backgroundColor: accent, ringColor: accent + "44" }}
+                        />
+                      ) : (
+                        <div className="w-px h-3 bg-[hsl(var(--border))]/30 rounded-full" />
+                      )}
+                    </div>
+                  ))}
+                </button>
+              );
+            })}
+          </div>
+
+          {extra > 0 && (
+            <div className="shrink-0 px-3.5 py-1.5 border-t bg-[hsl(var(--muted))]/10 text-[10px] text-[hsl(var(--muted-foreground))]/70 font-medium">
+              +{extra} entrega{extra !== 1 ? "s" : ""} esta semana
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -948,11 +1082,13 @@ export default function Dashboard() {
           rows={actionRows}
         />
 
-        {/* Card 2 — overdue tasks list for both roles */}
-        <OverdueCard
-          items={isEditor ? editorOverdue : coordOverdue}
+        {/* Card 2 — mini gantt próximas entregas */}
+        <MiniGanttCard
+          items={isEditor
+            ? tasks.map(t => ({ id: t.id, title: t.title, status: t.status, dueDate: t.dueDate, color: t.color, client: t.client, taskCode: t.taskCode }))
+            : allTasks.map(t => ({ id: t.id, title: t.title, status: t.status, dueDate: t.dueDate, color: t.color, client: t.client, taskCode: t.taskNumber && t.taskYear ? `${String(t.taskNumber).padStart(3, "0")}.${t.taskYear}` : undefined }))
+          }
           onOpenTask={goToTask}
-          emptyStats={isEditor ? editorEmptyStats : coordEmptyStats}
         />
 
         {/* Card 3+4 — urgency deadline chart (all tasks, col-span-2) */}
