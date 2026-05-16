@@ -8,7 +8,7 @@ import { fmtDate, fmtDateHuman, fmtShort } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, AlertTriangle, CheckCircle2, CalendarClock } from "lucide-react";
+import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, AlertTriangle, CheckCircle2, CalendarClock, Zap } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { StatusBars } from "@/components/charts/StatusBars";
 import { WaffleChart } from "@/components/charts/WaffleChart";
@@ -442,6 +442,79 @@ const STATUS_BAR: Record<string, string> = {
   review:      "bg-amber-400",
   completed:   "bg-green-500",
 };
+
+// ── Command Panel Card (coordinator only) ────────────────────────────────────
+
+function CommandPanelCard({ tasks, allTasks, atRiskCount }: {
+  tasks: Task[];
+  allTasks: AllTask[];
+  atRiskCount: number;
+}) {
+  const reviewCount    = tasks.filter(t => t.status === "review").length;
+  const inRevisionCount = tasks.filter(t => t.status === "in_revision").length;
+  const inProgressCount = tasks.filter(t => t.status === "in_progress").length;
+  const totalAll       = allTasks.length;
+  const completedAll   = allTasks.filter(t => t.status === "completed").length;
+  const completionPct  = totalAll > 0 ? Math.round(completedAll / totalAll * 100) : 0;
+
+  const urgentCount = reviewCount + atRiskCount;
+  const hasAlert    = urgentCount > 0;
+
+  const kpis = [
+    { label: "Aprovar",   value: reviewCount,     color: "#f59e0b", alert: reviewCount > 0 },
+    { label: "Atrasadas", value: atRiskCount,     color: "#ef4444", alert: atRiskCount > 0 },
+    { label: "Edição",    value: inProgressCount, color: "#3b82f6", alert: false },
+    { label: "Concluídas", value: `${completionPct}%`, color: "#22c55e", alert: false },
+  ];
+
+  return (
+    <div className="rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <div className="flex items-center gap-1.5">
+          <Zap className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
+          <span className="text-xs font-semibold">Painel de Comando</span>
+        </div>
+        {hasAlert
+          ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full leading-none bg-amber-500/10 text-amber-600">Ação</span>
+          : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full leading-none bg-green-500/10 text-green-600">Em dia</span>
+        }
+      </div>
+
+      {/* 2×2 KPI grid */}
+      <div className="flex-1 min-h-0 grid grid-cols-2 divide-x divide-y divide-[hsl(var(--border))]/60">
+        {kpis.map(kpi => (
+          <div key={kpi.label} className="flex flex-col justify-center px-3.5 py-2 gap-0.5 min-w-0">
+            <span
+              className="text-2xl font-bold tabular-nums leading-none"
+              style={{ color: (typeof kpi.value === "number" ? kpi.value : parseFloat(kpi.value)) > 0 ? kpi.color : "hsl(var(--muted-foreground)/50%)" }}
+            >
+              {kpi.value}
+            </span>
+            <span className="text-[10px] text-[hsl(var(--muted-foreground))] font-medium leading-none mt-0.5">
+              {kpi.label}
+            </span>
+            {kpi.alert && (
+              <div className="w-1.5 h-1.5 rounded-full mt-1" style={{ backgroundColor: kpi.color }} />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Alert footer */}
+      <div className={`px-3.5 py-2 border-t shrink-0 flex items-center gap-1.5 text-[10px] font-semibold ${hasAlert ? "bg-amber-500/5 text-amber-600" : "text-[hsl(var(--muted-foreground))]"}`}>
+        {hasAlert
+          ? <><AlertTriangle className="h-3 w-3 shrink-0" />{urgentCount} precisam de ação</>
+          : <><CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />Tudo sob controle</>
+        }
+        {inRevisionCount > 0 && (
+          <span className="ml-auto text-orange-500">{inRevisionCount} em revisão</span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 interface ActionRow { label: string; count: number; color: string; gradientId?: string; }
 
@@ -1074,13 +1147,21 @@ export default function Dashboard() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
 
-        {/* Card 1 — status distribution */}
-        <ActionCard
-          label={isEditor ? "Para revisar / alterar" : "Aguardando aprovação"}
-          actionCount={actionCount}
-          total={tasks.length}
-          rows={actionRows}
-        />
+        {/* Card 1 — editor: ação pessoal | coordinator: painel de comando */}
+        {isEditor ? (
+          <ActionCard
+            label="Para revisar / alterar"
+            actionCount={actionCount}
+            total={tasks.length}
+            rows={actionRows}
+          />
+        ) : (
+          <CommandPanelCard
+            tasks={tasks}
+            allTasks={allTasks}
+            atRiskCount={atRisk.length}
+          />
+        )}
 
         {/* Card 2 — mini gantt próximas entregas */}
         <MiniGanttCard
