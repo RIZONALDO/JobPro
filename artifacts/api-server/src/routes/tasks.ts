@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, tasksTable, usersTable, taskRevisionsTable, taskEventsTable, taskEditorsTable } from "@workspace/db";
-import { eq, ne, desc, asc, and, or, gte, lte, isNotNull, lt, inArray, sql } from "drizzle-orm";
+import { eq, ne, desc, asc, and, or, gte, lte, isNotNull, lt, inArray, notInArray, sql } from "drizzle-orm";
 import { requireAuth, requireCoordinator } from "../lib/auth.js";
 import { notify } from "../lib/notify.js";
 import { broadcastTaskChange } from "../lib/broadcast.js";
@@ -874,6 +874,25 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
     coordinatorId:   r.createdById ?? null,
     coordinatorName: r.createdById ? personMap[r.createdById] ?? null : null,
   })));
+});
+
+// ── Weekly Heatmap ────────────────────────────────────────────────────────────
+router.get("/heatmap", requireCoordinator, async (_req, res): Promise<void> => {
+  const tasks = await db
+    .select({
+      assignedToId: tasksTable.assignedToId,
+      dueDate:      tasksTable.dueDate,
+      status:       tasksTable.status,
+    })
+    .from(tasksTable)
+    .where(
+      and(
+        notInArray(tasksTable.status, ["completed", "cancelled", "rascunho"]),
+        isNotNull(tasksTable.dueDate),
+        isNotNull(tasksTable.assignedToId),
+      )
+    );
+  res.json(tasks);
 });
 
 // ── Workload ──────────────────────────────────────────────────────────────────

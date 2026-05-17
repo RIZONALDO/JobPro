@@ -849,8 +849,8 @@ function OverdueCard({ items, onOpenTask, emptyStats }: {
 }
 
 /* ── Weekly Heatmap Card (opção J — Mapa de Calor Semanal) ─────── */
-function WeeklyHeatmapCard({ allTasks, workload }: {
-  allTasks: AllTask[];
+function WeeklyHeatmapCard({ heatmapTasks, workload }: {
+  heatmapTasks: { assignedToId: number | null; dueDate: string | null; status: string }[];
   workload: EditorWorkload[];
 }) {
   const { theme } = useTheme();
@@ -868,7 +868,7 @@ function WeeklyHeatmapCard({ allTasks, workload }: {
   const dayKey = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-  const activeTasks = allTasks.filter(t => !["completed", "cancelled"].includes(t.status));
+  const activeTasks = heatmapTasks;
 
   const editors = workload.slice(0, 7);
 
@@ -1155,6 +1155,7 @@ export default function Dashboard() {
   const [deadlineData, setDeadlineData] = useState<DeadlineOverview | null>(null);
   const [allTasks, setAllTasks]         = useState<AllTask[]>([]);
   const [statusHistory, setStatusHistory] = useState<StatusHistory | null>(null);
+  const [heatmapTasks, setHeatmapTasks] = useState<{ assignedToId: number | null; dueDate: string | null; status: string }[]>([]);
 
   const load = useCallback(() => {
     apiFetch<Task[]>("/api/my-tasks").then(setTasks).catch(() => {});
@@ -1167,6 +1168,8 @@ export default function Dashboard() {
       apiFetch<{ atRisk: AtRiskTask[] }>("/api/dashboard-extras")
         .then(d => { setAtRisk(d.atRisk); })
         .catch(() => {});
+      apiFetch<{ assignedToId: number | null; dueDate: string | null; status: string }[]>("/api/tasks/heatmap")
+        .then(setHeatmapTasks).catch(() => {});
     }
   }, [user]);
 
@@ -1292,7 +1295,7 @@ export default function Dashboard() {
         />
 
         {/* Card 3+4 — weekly heatmap col-span-2 */}
-        <WeeklyHeatmapCard allTasks={allTasks} workload={workload} />
+        <WeeklyHeatmapCard heatmapTasks={heatmapTasks} workload={workload} />
       </div>
 
       {/* ── COORDINATOR LAYOUT ──────────────────────────────────── */}
