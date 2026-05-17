@@ -250,6 +250,27 @@ router.get("/tasks/status-history", requireAuth, async (req, res): Promise<void>
   res.json({ dates, series });
 });
 
+// ── Weekly Heatmap ────────────────────────────────────────────────────────────
+router.get("/tasks/heatmap", requireCoordinator, async (_req, res): Promise<void> => {
+  const tasks = await db
+    .select({
+      assignedToId: tasksTable.assignedToId,
+      dueDate:      tasksTable.dueDate,
+      status:       tasksTable.status,
+    })
+    .from(tasksTable)
+    .where(
+      and(
+        ne(tasksTable.status, "completed"),
+        ne(tasksTable.status, "cancelled"),
+        ne(tasksTable.status, "rascunho"),
+        isNotNull(tasksTable.dueDate),
+        isNotNull(tasksTable.assignedToId),
+      )
+    );
+  res.json(tasks);
+});
+
 // ── Get single task ──────────────────────────────────────────────────────────
 router.get("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
@@ -874,27 +895,6 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
     coordinatorId:   r.createdById ?? null,
     coordinatorName: r.createdById ? personMap[r.createdById] ?? null : null,
   })));
-});
-
-// ── Weekly Heatmap ────────────────────────────────────────────────────────────
-router.get("/heatmap", requireCoordinator, async (_req, res): Promise<void> => {
-  const tasks = await db
-    .select({
-      assignedToId: tasksTable.assignedToId,
-      dueDate:      tasksTable.dueDate,
-      status:       tasksTable.status,
-    })
-    .from(tasksTable)
-    .where(
-      and(
-        ne(tasksTable.status, "completed"),
-        ne(tasksTable.status, "cancelled"),
-        ne(tasksTable.status, "rascunho"),
-        isNotNull(tasksTable.dueDate),
-        isNotNull(tasksTable.assignedToId),
-      )
-    );
-  res.json(tasks);
 });
 
 // ── Workload ──────────────────────────────────────────────────────────────────
