@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, tasksTable, usersTable, taskRevisionsTable, taskEventsTable, taskEditorsTable } from "@workspace/db";
-import { eq, ne, desc, asc, and, or, gte, lte, isNotNull, lt, inArray, notInArray, sql } from "drizzle-orm";
+import { eq, ne, desc, asc, and, or, gte, lte, isNotNull, lt, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireCoordinator } from "../lib/auth.js";
 import { notify } from "../lib/notify.js";
 import { broadcastTaskChange } from "../lib/broadcast.js";
@@ -887,7 +887,9 @@ router.get("/heatmap", requireCoordinator, async (_req, res): Promise<void> => {
     .from(tasksTable)
     .where(
       and(
-        notInArray(tasksTable.status, ["completed", "cancelled", "rascunho"]),
+        ne(tasksTable.status, "completed"),
+        ne(tasksTable.status, "cancelled"),
+        ne(tasksTable.status, "rascunho"),
         isNotNull(tasksTable.dueDate),
         isNotNull(tasksTable.assignedToId),
       )
