@@ -321,14 +321,12 @@ export default function DutyPage() {
     }
   };
 
-  // ── Admin: group by month ────────────────────────────────────────────────────
-  const byMonth: { month: number; slots: WeekendSlot[] }[] = [];
+  // ── Admin: index slots by month ──────────────────────────────────────────────
+  const slotsByMonth = new Map<number, WeekendSlot[]>();
   for (const slot of schedule) {
     const m = monthOf(slot.weekendStart);
-    if (!byMonth.length || byMonth[byMonth.length - 1].month !== m) {
-      byMonth.push({ month: m, slots: [] });
-    }
-    byMonth[byMonth.length - 1].slots.push(slot);
+    if (!slotsByMonth.has(m)) slotsByMonth.set(m, []);
+    slotsByMonth.get(m)!.push(slot);
   }
 
   const availableEditors = (slot: WeekendSlot) =>
@@ -527,99 +525,109 @@ export default function DutyPage() {
         </div>
       </div>
 
-      {/* Schedule grid */}
+      {/* Schedule grid — 3 months per row */}
       {loading ? (
         <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
           Carregando…
         </div>
       ) : (
-        <div className="space-y-6">
-          {byMonth.map(({ month, slots }) => (
-            <div key={month}>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--muted-foreground))] mb-2">
-                {MON_PT[month]}
-              </p>
-              <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] overflow-hidden card-float">
-                {slots.map((slot, i) => {
-                  const isSat     = isSaturdayDate(slot.weekendStart);
-                  const isCurrent = isSat ? isCurrentWeekend(slot.weekendStart) : isToday(slot.weekendStart);
-                  const isEmpty   = slot.editors.length === 0;
-                  const avail     = availableEditors(slot);
-                  const addVal    = adding[slot.weekendStart] ?? "";
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {MON_PT.map((monthName, m) => {
+            const slots = slotsByMonth.get(m) ?? [];
+            return (
+              <div key={m} className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] overflow-hidden card-float flex flex-col">
+                {/* Month header */}
+                <div className="px-3 py-2 bg-[hsl(var(--muted))]/30 border-b border-[hsl(var(--border))] flex items-center justify-between">
+                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-[hsl(var(--muted-foreground))]">
+                    {monthName}
+                  </p>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))] tabular-nums">{year}</p>
+                </div>
 
-                  return (
-                    <div
-                      key={slot.weekendStart}
-                      className={`flex items-center gap-3 px-4 py-3 transition-colors ${
-                        i > 0 ? "border-t border-[hsl(var(--border))]" : ""
-                      } ${!isSat ? "bg-amber-50/40 dark:bg-amber-900/10" : ""}
-                      ${isCurrent ? "bg-[hsl(var(--primary)/0.07)]" : ""}`}>
+                {/* Slots */}
+                <div className="flex-1 divide-y divide-[hsl(var(--border))]">
+                  {slots.length === 0 ? (
+                    <p className="px-3 py-4 text-xs text-[hsl(var(--muted-foreground))] text-center">
+                      Sem plantões cadastrados
+                    </p>
+                  ) : slots.map(slot => {
+                    const isSat     = isSaturdayDate(slot.weekendStart);
+                    const isCurrent = isSat ? isCurrentWeekend(slot.weekendStart) : isToday(slot.weekendStart);
+                    const avail     = availableEditors(slot);
+                    const addVal    = adding[slot.weekendStart] ?? "";
 
-                      {/* Date */}
-                      <div className="w-36 shrink-0 flex items-center gap-1.5">
-                        <span className={`text-sm tabular-nums ${isCurrent ? "font-bold text-[hsl(var(--primary))]" : "font-medium"}`}>
-                          {isSat ? fmtWeekend(slot.weekendStart) : fmtSingleDate(slot.weekendStart)}
-                        </span>
-                        {!isSat && (
-                          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-300/50 dark:border-amber-700/50">
-                            feriado
+                    return (
+                      <div
+                        key={slot.weekendStart}
+                        className={`px-3 py-2.5 transition-colors ${
+                          !isSat ? "bg-amber-50/50 dark:bg-amber-900/10" : ""
+                        } ${isCurrent ? "bg-[hsl(var(--primary)/0.06)]" : ""}`}>
+
+                        {/* Date row */}
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <span className={`text-xs tabular-nums leading-none ${
+                            isCurrent ? "font-bold text-[hsl(var(--primary))]" : "font-semibold"
+                          }`}>
+                            {isSat ? fmtWeekend(slot.weekendStart) : fmtSingleDate(slot.weekendStart)}
                           </span>
-                        )}
-                        {isCurrent && isSat && (
-                          <span className="text-[10px] font-bold text-[hsl(var(--primary))] uppercase tracking-wide">
-                            hoje
-                          </span>
-                        )}
-                      </div>
+                          {!isSat && (
+                            <span className="px-1 py-px rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                              feriado
+                            </span>
+                          )}
+                          {isCurrent && (
+                            <span className="px-1 py-px rounded text-[9px] font-bold bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] border border-[hsl(var(--primary))]/20">
+                              hoje
+                            </span>
+                          )}
+                        </div>
 
-                      {/* Editors */}
-                      <div className="flex-1 flex flex-wrap items-center gap-1.5">
-                        {isEmpty && (
-                          <span className="text-xs text-[hsl(var(--muted-foreground))]">Sem editor escalado</span>
-                        )}
-                        {slot.editors.map(ed => (
-                          <div
-                            key={ed.scheduleId}
-                            className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(var(--muted))]/50 border border-[hsl(var(--border))] text-xs">
-                            <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={16} />
-                            <span className="font-medium">{ed.name.split(" ")[0]}</span>
-                            <button
-                              onClick={() => removeEntry(ed.scheduleId)}
-                              className="ml-0.5 text-[hsl(var(--muted-foreground))] hover:text-destructive transition-colors">
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))}
-
-                        {avail.length > 0 && (
-                          <div className="flex items-center gap-1">
-                            <select
-                              value={addVal}
-                              onChange={e => setAdding(prev => ({ ...prev, [slot.weekendStart]: e.target.value }))}
-                              className="h-6 pl-2 pr-6 text-xs rounded-md border border-dashed border-[hsl(var(--border))]
-                                bg-[hsl(var(--background))] appearance-none cursor-pointer
-                                focus:outline-none focus:border-[hsl(var(--primary))]">
-                              <option value="">+ Adicionar</option>
-                              {avail.map(e => (
-                                <option key={e.id} value={e.id}>{e.name.split(" ")[0]}</option>
-                              ))}
-                            </select>
-                            {addVal && (
+                        {/* Editor chips */}
+                        <div className="flex flex-wrap gap-1">
+                          {slot.editors.map(ed => (
+                            <div
+                              key={ed.scheduleId}
+                              className="flex items-center gap-1 pl-1 pr-1.5 py-0.5 rounded-full bg-[hsl(var(--muted))]/50 border border-[hsl(var(--border))] text-[11px]">
+                              <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={14} />
+                              <span className="font-medium leading-none">{ed.name.split(" ")[0]}</span>
                               <button
-                                onClick={() => addEditor(slot.weekendStart)}
-                                className="h-6 w-6 rounded-md bg-[hsl(var(--primary))] text-white flex items-center justify-center hover:opacity-90 transition-opacity">
-                                <Plus className="h-3 w-3" />
+                                onClick={() => removeEntry(ed.scheduleId)}
+                                className="ml-0.5 text-[hsl(var(--muted-foreground))] hover:text-destructive transition-colors">
+                                <Trash2 className="h-2.5 w-2.5" />
                               </button>
-                            )}
-                          </div>
-                        )}
+                            </div>
+                          ))}
+
+                          {avail.length > 0 && (
+                            <div className="flex items-center gap-1">
+                              <select
+                                value={addVal}
+                                onChange={e => setAdding(prev => ({ ...prev, [slot.weekendStart]: e.target.value }))}
+                                className="h-5 pl-1.5 pr-5 text-[11px] rounded border border-dashed border-[hsl(var(--border))]
+                                  bg-[hsl(var(--background))] appearance-none cursor-pointer
+                                  focus:outline-none focus:border-[hsl(var(--primary))]">
+                                <option value="">+ Add</option>
+                                {avail.map(e => (
+                                  <option key={e.id} value={e.id}>{e.name.split(" ")[0]}</option>
+                                ))}
+                              </select>
+                              {addVal && (
+                                <button
+                                  onClick={() => addEditor(slot.weekendStart)}
+                                  className="h-5 w-5 rounded bg-[hsl(var(--primary))] text-white flex items-center justify-center hover:opacity-90 transition-opacity">
+                                  <Plus className="h-2.5 w-2.5" />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
