@@ -94,19 +94,15 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
   const userId = req.session.userId!;
   const role   = req.session.userRole!;
 
-  // coordinator sees only their own tasks; supervisor/admin see all coord tasks
-  let ownerCondition;
-  if (role === "coordinator") {
-    ownerCondition = eq(tasksTable.createdById, userId);
-  } else {
-    const coordUsers = await db
-      .select({ id: usersTable.id })
-      .from(usersTable)
-      .where(inArray(usersTable.role, ["coordinator", "supervisor", "admin"]));
-    const coordIds = coordUsers.map(u => u.id);
-    if (coordIds.length === 0) { res.json([]); return; }
-    ownerCondition = inArray(tasksTable.createdById, coordIds);
-  }
+  // All coordinator/supervisor/admin roles see all coordinator tasks;
+  // client-side filterCoord handles "Minhas" vs "Geral" per user preference.
+  const coordUsers = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(inArray(usersTable.role, ["coordinator", "supervisor", "admin"]));
+  const coordIds = coordUsers.map(u => u.id);
+  if (coordIds.length === 0) { res.json([]); return; }
+  const ownerCondition = inArray(tasksTable.createdById, coordIds);
 
   const conditions: any[] = [ownerCondition];
   if (status === "active") {
@@ -802,7 +798,7 @@ router.get("/activity", requireAuth, async (req, res): Promise<void> => {
     })
     .from(taskEventsTable)
     .innerJoin(tasksTable, eq(taskEventsTable.taskId, tasksTable.id))
-    .where(role === "editor" ? eq(tasksTable.assignedToId, userId) : eq(tasksTable.createdById, userId))
+    .where(role === "editor" ? eq(tasksTable.assignedToId, userId) : undefined)
     .orderBy(desc(taskEventsTable.createdAt))
     .limit(15);
 
@@ -942,10 +938,8 @@ router.get("/workload", requireCoordinator, async (_req, res): Promise<void> => 
 });
 
 // ── Dashboard extras ──────────────────────────────────────────────────────────
-router.get("/dashboard-extras", requireAuth, async (req, res): Promise<void> => {
+router.get("/dashboard-extras", requireAuth, async (_req, res): Promise<void> => {
   const todayStr = new Date().toISOString().split("T")[0];
-  const userId = req.session.userId!;
-  const role   = req.session.userRole!;
 
   const baseOverdue = and(
     ne(tasksTable.status, "completed"),
@@ -954,9 +948,7 @@ router.get("/dashboard-extras", requireAuth, async (req, res): Promise<void> => 
     isNotNull(tasksTable.dueDate),
     sql`${tasksTable.dueDate} < ${todayStr}`,
   );
-  const overdueWhere = (role === "coordinator" || role === "supervisor")
-    ? and(baseOverdue, eq(tasksTable.createdById, userId))
-    : baseOverdue;
+  const overdueWhere = baseOverdue;
 
   const overdueRows = await db
     .select({
@@ -1013,9 +1005,7 @@ router.get("/deadline-overview", requireAuth, async (req, res): Promise<void> =>
   const baseWhere = and(ne(tasksTable.status, "completed"), ne(tasksTable.status, "cancelled"), ne(tasksTable.status, "paused"), isNotNull(tasksTable.dueDate));
   const taskWhere = role === "editor"
     ? and(baseWhere, eq(tasksTable.assignedToId, userId))
-    : (role === "coordinator" || role === "supervisor")
-      ? and(baseWhere, eq(tasksTable.createdById, userId))
-      : baseWhere;
+    : baseWhere;
 
   const rows = await db
     .select({
@@ -1229,9 +1219,7 @@ router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
   const role   = req.session.userRole!;
   const editorFilter = role === "editor"
     ? eq(tasksTable.assignedToId, userId)
-    : (role === "coordinator" || role === "supervisor")
-      ? eq(tasksTable.createdById, userId)
-      : undefined;
+    : undefined;
 
   const tasks = await db
     .select({
