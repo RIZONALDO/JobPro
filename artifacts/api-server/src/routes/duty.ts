@@ -110,7 +110,8 @@ router.get("/duty", requireAuth, async (req, res): Promise<void> => {
   res.json(result);
 });
 
-// POST /api/duty/bulk — assign editors to all weekends of a year (admin)
+// POST /api/duty/bulk — rotate editors across all weekends of a year (admin)
+// Round-robin: with editors [A, B], assigns A→wk1, B→wk2, A→wk3, B→wk4, …
 router.post("/duty/bulk", requireAuth, async (req, res): Promise<void> => {
   if (req.session.userRole !== "admin") { res.status(403).json({ error: "Sem permissão" }); return; }
   const { year, editorIds, replaceExisting } = req.body ?? {};
@@ -119,9 +120,9 @@ router.post("/duty/bulk", requireAuth, async (req, res): Promise<void> => {
     res.status(400).json({ error: "Informe o ano e ao menos um editor" }); return;
   }
 
-  const parsedYear   = parseInt(String(year), 10);
+  const parsedYear    = parseInt(String(year), 10);
   const parsedEditors = (editorIds as unknown[]).map(Number).filter(n => !isNaN(n) && n > 0);
-  const saturdays    = getAllSaturdaysInYear(parsedYear);
+  const saturdays     = getAllSaturdaysInYear(parsedYear);
 
   if (replaceExisting) {
     await db.delete(dutySchedulesTable).where(
@@ -130,9 +131,12 @@ router.post("/duty/bulk", requireAuth, async (req, res): Promise<void> => {
     );
   }
 
-  const inserts = saturdays.flatMap(sat =>
-    parsedEditors.map(editorId => ({ weekendStart: sat, editorId, createdById: req.session.userId }))
-  );
+  // One editor per weekend, rotating through the list
+  const inserts = saturdays.map((sat, i) => ({
+    weekendStart: sat,
+    editorId: parsedEditors[i % parsedEditors.length],
+    createdById: req.session.userId,
+  }));
 
   await db.insert(dutySchedulesTable).values(inserts).onConflictDoNothing();
   res.json({ weeks: saturdays.length, entries: inserts.length });

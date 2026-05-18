@@ -360,7 +360,7 @@ export default function DutyPage() {
       <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 space-y-3 card-float">
         <p className="text-sm font-semibold">Gerar escala para {year}</p>
         <p className="text-xs text-[hsl(var(--muted-foreground))]">
-          Selecione os editores que serão escalados em todos os fins de semana do ano.
+          Os editores selecionados se revezam em rodízio — cada um fica de plantão um fim de semana, alternando na ordem escolhida. Após gerar, é possível adicionar editores extras a fins de semana específicos.
         </p>
 
         {editors.length === 0 ? (
