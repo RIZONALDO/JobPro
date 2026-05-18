@@ -1009,10 +1009,17 @@ function CommandPanelCard({ tasks, allTasks, atRiskCount, menu }: {
         {menu}
       </div>
 
-      {/* 2×2 KPI grid */}
-      <div className="flex-1 min-h-0 grid grid-cols-2 divide-x divide-y divide-[hsl(var(--border))]/60">
-        {kpis.map(kpi => (
-          <div key={kpi.label} className="flex flex-col justify-center px-3.5 py-2 gap-0.5 min-w-0">
+      {/* 2×2 KPI grid — borders applied per-index to avoid divide-x/y grid bug */}
+      <div className="flex-1 min-h-0 grid grid-cols-2">
+        {kpis.map((kpi, i) => (
+          <div
+            key={kpi.label}
+            className={[
+              "flex flex-col justify-center px-3.5 py-2 gap-0.5 min-w-0",
+              i % 2 === 1 ? "border-l border-[hsl(var(--border))]/60" : "",
+              i >= 2      ? "border-t border-[hsl(var(--border))]/60" : "",
+            ].join(" ")}
+          >
             <span
               className="text-2xl font-bold tabular-nums leading-none"
               style={{ color: (typeof kpi.value === "number" ? kpi.value : parseFloat(kpi.value)) > 0 ? kpi.color : "hsl(var(--muted-foreground)/50%)" }}
