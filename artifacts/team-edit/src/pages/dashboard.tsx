@@ -795,7 +795,7 @@ function DeliveryProjectionCard({
   ];
 
   return (
-    <div className="md:col-span-2 rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
+    <div className="h-full rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-2 px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
         <CalendarClock className="h-4 w-4 text-[hsl(var(--primary))]" />
@@ -901,8 +901,8 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
   const maxScore = Math.max(...sorted.map(e => e.score), 1);
 
   return (
-    <div className="rounded-xl border bg-[hsl(var(--card))] card-float">
-      <div className="flex items-center justify-between px-4 py-3.5 border-b bg-[hsl(var(--muted))]/30">
+    <div className="rounded-xl border bg-[hsl(var(--card))] card-float h-full flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
         <div className="flex items-center gap-2">
           <Users className="h-4 w-4 text-[hsl(var(--primary))]" />
           <span className="font-semibold text-sm">Carga dos editores</span>
@@ -914,9 +914,9 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
       </div>
 
       {workload.length === 0 ? (
-        <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhum editor cadastrado.</p>
+        <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10 flex-1">Nenhum editor cadastrado.</p>
       ) : (
-        <div className="divide-y">
+        <div className="flex-1 min-h-0 overflow-y-auto divide-y">
           {sorted.map(editor => {
             const color = scoreColor(editor.score);
             const firstName = editor.name.split(" ")[0];
