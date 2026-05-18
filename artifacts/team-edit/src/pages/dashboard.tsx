@@ -1140,9 +1140,6 @@ function MiniGanttCard({ items, onOpenTask, menu }: {
     })
     .sort((a, b) => parse(a.dueDate!).getTime() - parse(b.dueDate!).getTime());
 
-  const visible = due.slice(0, 4);
-  const extra   = due.length - visible.length;
-
   const dayIdx = (dueDate: string) =>
     Math.round((parse(dueDate).getTime() - today.getTime()) / 86400000);
 
@@ -1169,7 +1166,7 @@ function MiniGanttCard({ items, onOpenTask, menu }: {
       ) : (
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
 
-          {/* Day headers */}
+          {/* Day headers — fixed, não scrollam */}
           <div className="flex items-end px-2.5 pt-2 pb-1.5 shrink-0 border-b border-[hsl(var(--border))]/40">
             <div className="w-[88px] shrink-0" />
             {days.map((d, i) => (
@@ -1184,9 +1181,9 @@ function MiniGanttCard({ items, onOpenTask, menu }: {
             ))}
           </div>
 
-          {/* Task rows */}
-          <div className="flex-1 min-h-0 overflow-hidden divide-y divide-[hsl(var(--border))]/40">
-            {visible.map(t => {
+          {/* Task rows — scrollável */}
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain divide-y divide-[hsl(var(--border))]/40">
+            {due.map(t => {
               const idx    = dayIdx(t.dueDate!);
               const accent = t.color ?? "#6366f1";
               const label  = t.title ?? t.client ?? "Tarefa";
@@ -1223,12 +1220,6 @@ function MiniGanttCard({ items, onOpenTask, menu }: {
               );
             })}
           </div>
-
-          {extra > 0 && (
-            <div className="shrink-0 px-3.5 py-1.5 border-t bg-[hsl(var(--muted))]/10 text-[10px] text-[hsl(var(--muted-foreground))]/70 font-medium">
-              +{extra} entrega{extra !== 1 ? "s" : ""} esta semana
-            </div>
-          )}
         </div>
       )}
     </div>
