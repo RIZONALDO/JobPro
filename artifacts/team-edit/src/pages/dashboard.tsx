@@ -926,10 +926,8 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
               <div
                 key={editor.id}
                 className="flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/30 transition-colors cursor-default"
-                onMouseEnter={e => {
-                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                  setTip({ x: r.right, y: r.top + r.height / 2, editor });
-                }}
+                onMouseEnter={e => setTip({ x: e.clientX, y: e.clientY, editor })}
+                onMouseMove={e => setTip(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null)}
                 onMouseLeave={() => setTip(null)}
               >
                 <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={36} fallbackColor={color} />
@@ -950,7 +948,7 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
       {tip && createPortal(
         <div
           className="pointer-events-none fixed z-[99999] rounded-lg border bg-[hsl(var(--card))] shadow-xl p-3 text-xs space-y-1.5 min-w-[170px]"
-          style={{ left: tip.x + 8, top: tip.y, transform: "translateY(-50%)" }}
+          style={{ left: tip.x + 14, top: tip.y - 8 }}
         >
           <p className="font-semibold">{tip.editor.name}</p>
           <p className="text-[hsl(var(--muted-foreground))]">{tip.editor.taskCount} tarefa(s) ativas</p>
