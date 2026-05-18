@@ -364,13 +364,13 @@ export default function TasksOverview() {
           />
           <Button
             variant="outline" size="sm"
-            className={`h-9 shrink-0 gap-1.5 relative ${mobileFiltersOpen || (filterStatus !== "all" || filterEditor !== "all" || filterCoord !== "all") ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]" : ""}`}
+            className={`h-9 shrink-0 gap-1.5 relative ${mobileFiltersOpen || (filterStatus !== "all" || filterEditor !== "all" || filterCoord !== defaultCoord) ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]" : ""}`}
             onClick={() => setMobileFiltersOpen(v => !v)}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
-            {(filterStatus !== "all" || filterEditor !== "all" || filterCoord !== "all") && (
+            {(filterStatus !== "all" || filterEditor !== "all" || filterCoord !== defaultCoord) && (
               <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-[hsl(var(--primary))] text-white text-[10px] font-bold flex items-center justify-center">
-                {[filterStatus !== "all", filterEditor !== "all", filterCoord !== "all"].filter(Boolean).length}
+                {[filterStatus !== "all", filterEditor !== "all", filterCoord !== defaultCoord].filter(Boolean).length}
               </span>
             )}
           </Button>
