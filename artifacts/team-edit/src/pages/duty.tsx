@@ -3,7 +3,8 @@ import { apiFetch, apiPost, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/lib/use-page-title";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Plus, RefreshCw, Shield, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Shield, CalendarPlus, X } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -191,9 +192,15 @@ export default function DutyPage() {
   const [year,       setYear]       = useState(new Date().getFullYear());
   const [schedule,   setSchedule]   = useState<WeekendSlot[]>([]);
   const [editors,    setEditors]    = useState<Editor[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [month,   setMonth]   = useState(new Date().getMonth());
-  const [adding,  setAdding]  = useState<Record<string, string>>({});
+  const [loading,         setLoading]         = useState(true);
+  const [month,           setMonth]           = useState(new Date().getMonth());
+  const [adding,          setAdding]          = useState<Record<string, string>>({});
+  const [generating,      setGenerating]      = useState(false);
+  const [bulkEditorIds,   setBulkEditorIds]   = useState<number[]>([]);
+  const [replaceExisting, setReplaceExisting] = useState(false);
+  const [holidayDate,     setHolidayDate]     = useState("");
+  const [holidayEditorId, setHolidayEditorId] = useState("");
+  const [addingHoliday,   setAddingHoliday]   = useState(false);
 
   // ── Non-admin state ──────────────────────────────────────────────────────────
   const [upcoming,     setUpcoming]     = useState<UpcomingData | null>(null);
@@ -232,6 +239,40 @@ export default function DutyPage() {
   }, [isAdmin, loadUpcoming]);
 
   // ── Admin actions ────────────────────────────────────────────────────────────
+  const toggleBulkEditor = (id: number) =>
+    setBulkEditorIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const generate = async () => {
+    if (bulkEditorIds.length === 0) { toast.error("Selecione ao menos um editor"); return; }
+    setGenerating(true);
+    try {
+      const { weeks } = await apiPost<{ weeks: number; entries: number }>("/api/duty/bulk", {
+        year, editorIds: bulkEditorIds, replaceExisting,
+      });
+      toast.success(`Escala gerada: ${weeks} fins de semana`);
+      loadSchedule();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao gerar escala");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const addHolidayEntry = async () => {
+    if (!holidayDate || !holidayEditorId) { toast.error("Selecione a data e o editor"); return; }
+    setAddingHoliday(true);
+    try {
+      await apiPost("/api/duty", { weekendStart: holidayDate, editorId: parseInt(holidayEditorId, 10) });
+      toast.success("Feriado adicionado");
+      setHolidayDate(""); setHolidayEditorId("");
+      loadSchedule();
+    } catch {
+      toast.error("Erro ao adicionar feriado");
+    } finally {
+      setAddingHoliday(false);
+    }
+  };
+
   const removeEntry = async (scheduleId: number) => {
     try {
       await apiDelete(`/api/duty/${scheduleId}`);
@@ -384,6 +425,65 @@ export default function DutyPage() {
             className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors">
             <ChevronRight className="h-4 w-4" />
           </button>
+        </div>
+      </div>
+
+      {/* Auto-gerar escala */}
+      <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3 space-y-2.5">
+        <p className="text-xs font-semibold">Auto gerar — {year}</p>
+        <div className="flex flex-wrap gap-1.5">
+          {editors.map(e => {
+            const sel = bulkEditorIds.includes(e.id);
+            return (
+              <button key={e.id} onClick={() => toggleBulkEditor(e.id)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  sel ? "bg-[hsl(var(--primary))] text-white border-transparent"
+                      : "bg-[hsl(var(--muted))]/40 border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/50"
+                }`}>
+                <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={16} />
+                {e.name.split(" ")[0]}
+                {sel && <span className="opacity-80">✓</span>}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+            <input type="checkbox" checked={replaceExisting}
+              onChange={e => setReplaceExisting(e.target.checked)} className="rounded" />
+            Substituir existentes
+          </label>
+          <Button onClick={generate} disabled={generating || bulkEditorIds.length === 0}
+            className="h-7 text-xs px-3 gap-1.5">
+            <RefreshCw className={`h-3 w-3 ${generating ? "animate-spin" : ""}`} />
+            {generating ? "Gerando…" : "Gerar"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Feriado / dia especial */}
+      <div className="rounded-xl border border-amber-500/40 bg-amber-50/30 dark:bg-amber-900/10 p-3 space-y-2.5">
+        <div className="flex items-center gap-1.5">
+          <CalendarPlus className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+          <p className="text-xs font-semibold">Feriado / dia especial</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <input type="date" value={holidayDate} onChange={e => setHolidayDate(e.target.value)}
+            className="h-8 px-2.5 text-xs rounded-md border border-[hsl(var(--border))]
+              bg-[hsl(var(--background))] focus:outline-none focus:border-amber-500 tabular-nums" />
+          <select value={holidayEditorId} onChange={e => setHolidayEditorId(e.target.value)}
+            className="h-8 pl-2.5 pr-7 text-xs rounded-md border border-[hsl(var(--border))]
+              bg-[hsl(var(--background))] appearance-none cursor-pointer focus:outline-none focus:border-amber-500">
+            <option value="">Editor…</option>
+            {editors.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+          <Button onClick={addHolidayEntry}
+            disabled={addingHoliday || !holidayDate || !holidayEditorId}
+            variant="outline"
+            className="h-8 text-xs gap-1.5 border-amber-500/50 hover:bg-amber-50 dark:hover:bg-amber-900/20">
+            <Plus className="h-3.5 w-3.5" />
+            {addingHoliday ? "…" : "Adicionar"}
+          </Button>
         </div>
       </div>
 
