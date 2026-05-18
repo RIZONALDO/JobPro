@@ -108,6 +108,25 @@ router.post("/admin/seed", requireAdmin, async (_req, res): Promise<void> => {
     { title: "Convite Digital Formatura", client: "Alinny Serrão", description: "Convite digital animado para formatura de medicina.", priority: "high", complexity: "medium", status: "completed", dueDays: -10 },
     { title: "Manual do Colaborador", client: "Governo Federal", description: "Diagramação de manual interno com 60 páginas.", priority: "low", complexity: "high", status: "completed", dueDays: -3, folderUrl: "\\\\servidor\\projetos\\gov-federal\\manual-colaborador" },
 
+    // ── concluídas extras ──
+    { title: "Thumbnail YouTube Pack", client: "Clécio Luís", description: "20 thumbnails para canal de YouTube da campanha.", priority: "medium", complexity: "low", status: "completed", dueDays: -7 },
+    { title: "Reels Instagram × 5", client: "Mina Tucano", description: "Edição de 5 reels curtos de 30s com trilha e legenda.", priority: "high", complexity: "medium", status: "completed", dueDays: -14 },
+    { title: "Crachás e Brindes Evento", client: "Governo do Amapá", description: "Layout de crachás, sacolas, canetas e banner de fundo para evento.", priority: "low", complexity: "low", status: "completed", dueDays: -20 },
+    { title: "E-mail Marketing Corporativo", client: "Você Telecom", description: "Template HTML de e-mail marketing responsivo com 6 blocos editáveis.", priority: "medium", complexity: "medium", status: "completed", dueDays: -4 },
+    { title: "Infográfico Relatório Anual", client: "Governo Federal", description: "6 infográficos de dados para relatório de gestão 2024.", priority: "high", complexity: "high", status: "completed", dueDays: -30, folderUrl: "\\\\servidor\\projetos\\gov-federal\\relatorio-anual" },
+
+    // ── em aprovação extras ──
+    { title: "Cartão de Visita Executivo", client: "Waldez Góes", description: "Frente e verso, papel 300g, hot stamping dourado.", priority: "high", complexity: "low", status: "review", dueDays: 0 },
+    { title: "Proposta Comercial PDF", client: "Compuway", description: "Documento de proposta comercial com template da marca.", priority: "medium", complexity: "medium", status: "review", dueDays: 1 },
+    { title: "Mapa de Empatia — Workshop", client: "Alinny Serrão", description: "Ilustrações para workshop de design thinking.", priority: "low", complexity: "medium", status: "review", dueDays: 3 },
+
+    // ── atrasadas ──
+    { title: "Flyer Evento Cultural", client: "Davi Alcolumbre", description: "Arte para flyer digital e impresso de evento cultural.", priority: "high", complexity: "low", status: "in_progress", dueDays: -3 },
+    { title: "Roteiro e Storyboard Vídeo", client: "Mina Tucano", description: "Storyboard frame a frame de vídeo de 3 minutos.", priority: "high", complexity: "high", status: "in_progress", dueDays: -5 },
+    { title: "Capa Relatório de Impacto", client: "Governo Federal", description: "Capa e contracapa para relatório de impacto social 2025.", priority: "medium", complexity: "medium", status: "in_revision", dueDays: -2, revisions: ["A foto da capa não foi aprovada pela assessoria. Substituir por imagem do banco interno."] },
+    { title: "Adesivo Frota de Veículos", client: "Governo do Amapá", description: "Arte para envelopamento lateral de 12 veículos da frota.", priority: "high", complexity: "medium", status: "in_progress", dueDays: -7 },
+    { title: "Animação Story 9×16", client: "Clécio Luís", description: "Pack de 8 stories animados para campanha de lançamento.", priority: "medium", complexity: "medium", status: "pending", dueDays: -1 },
+
     // ── rascunho ──
     { title: "Campanha Natal 2025", client: "Você Telecom", description: "Briefing recebido. Proposta de cronograma e peças a definir.", priority: "medium", complexity: "medium", status: "rascunho", dueDays: 30 },
 

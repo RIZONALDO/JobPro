@@ -202,8 +202,9 @@ export default function SettingsPage() {
           <div className="rounded-lg border border-blue-100 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/20 p-4 space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-[hsl(var(--muted-foreground))]">
               {[
-                { label: "Pendentes", n: 3 }, { label: "Em edição", n: 4 }, { label: "Em alteração", n: 2 },
-                { label: "Em aprovação", n: 3 }, { label: "Concluídas", n: 3 }, { label: "Pausada / Reaberta / Cancelada / Rascunho", n: 4 },
+                { label: "Concluídas", n: 8 }, { label: "Em aprovação", n: 6 }, { label: "Atrasadas", n: 5 },
+                { label: "Em edição", n: 4 }, { label: "Pendentes", n: 3 }, { label: "Em alteração", n: 3 },
+                { label: "Pausada / Reaberta / Cancelada / Rascunho", n: 4 },
               ].map(g => (
                 <div key={g.label} className="flex items-center gap-1.5">
                   <div className="h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0" />
