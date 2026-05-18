@@ -497,7 +497,7 @@ export default function DutyPage() {
           Nenhum plantão em {MON_PT[month].toLowerCase()}.
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-2 gap-3">
           {monthSlots.map(slot => {
             const sat       = new Date(slot.weekendStart + "T12:00:00");
             const sun       = new Date(sat); sun.setDate(sun.getDate() + 1);
