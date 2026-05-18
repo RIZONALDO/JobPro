@@ -146,15 +146,15 @@ function WeekendCard({ variant, weekend, currentUserId }: {
             {p ? "Sem editor" : "A definir"}
           </p>
         ) : (
-          <div className="flex flex-col gap-2 w-full">
+          <div className={`flex w-full justify-center ${c ? "flex-row gap-4" : "flex-col gap-2"}`}>
             {weekend.editors.map(ed => (
               <div key={ed.id} className="flex flex-col items-center gap-1.5">
                 <div className={c ? "ring-2 ring-[hsl(var(--primary))]/30 ring-offset-2 ring-offset-[hsl(var(--card))] rounded-full" : ""}>
-                  <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={c ? 52 : 36} />
+                  <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={c ? 64 : 36} />
                 </div>
                 <div>
                   <p className={`font-semibold leading-tight ${c ? "text-sm" : "text-[11px]"}`}>
-                    {c ? ed.name.split(" ")[0] : ed.name.split(" ")[0]}
+                    {ed.name.split(" ")[0]}
                   </p>
                   {ed.id === currentUserId && (
                     <p className={`font-bold text-[hsl(var(--primary))] ${c ? "text-[10px]" : "text-[9px]"}`}>
