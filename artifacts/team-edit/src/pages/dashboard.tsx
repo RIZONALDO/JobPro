@@ -675,7 +675,7 @@ function DeliveryProjectionCard({
   history,
   menu,
 }: {
-  allTasks: AllTask[];
+  allTasks: { status: string; dueDate?: string | null }[];
   history: StatusHistory | null;
   menu?: React.ReactNode;
 }) {
@@ -2053,7 +2053,7 @@ export default function Dashboard() {
                 return <HealthRadarCard allTasks={allTasks} atRisk={atRisk} workload={workload} menu={menu5} />;
               if (slot5 === "kpi_comparison")
                 return <KPIComparisonCard allTasks={allTasks} history={statusHistory} menu={menu5} />;
-              return <DeliveryProjectionCard allTasks={allTasks} history={statusHistory} menu={menu5} />;
+              return <DeliveryProjectionCard allTasks={tasks} history={statusHistory} menu={menu5} />;
             })()}
           </div>
 
