@@ -145,7 +145,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[760px] flex flex-col max-h-[88vh] p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-[760px] w-[calc(100vw-16px)] flex flex-col max-h-[92vh] sm:max-h-[88vh] p-0 gap-0 overflow-hidden">
 
         {/* Header fixo */}
         <DialogHeader className="px-6 pt-5 pb-4 border-b shrink-0">
@@ -162,10 +162,10 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
             </div>
           ) : (
             <>
-            <div className="flex min-h-0">
+            <div className="flex flex-col sm:flex-row min-h-0">
 
               {/* ── Coluna esquerda ─────────────────────────────────── */}
-              <div className="flex-1 min-w-0 space-y-4 p-6">
+              <div className="flex-1 min-w-0 space-y-4 p-4 sm:p-6">
 
                 {/* Título */}
                 <div className="space-y-1.5">
@@ -275,55 +275,57 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
               </div>
 
               {/* ── Coluna direita ──────────────────────────────────── */}
-              <div className="w-60 shrink-0 space-y-4 p-6 border-l bg-[hsl(var(--muted))]/30">
+              <div className="w-full sm:w-60 shrink-0 p-4 sm:p-6 border-t sm:border-t-0 sm:border-l bg-[hsl(var(--muted))]/30">
+                <div className="grid grid-cols-2 sm:grid-cols-1 gap-3 sm:gap-4">
 
-                {/* Cor + Cliente */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Cliente</Label>
-                  <div className="flex gap-2 items-center">
-                    <input type="color" value={form.color} onChange={e => f({ color: e.target.value })}
-                      className="h-9 w-9 rounded-md border cursor-pointer p-0.5 shrink-0" title="Cor da tarefa" />
-                    <ClientCombobox value={form.client} onChange={v => f({ client: v })} />
+                  {/* Cor + Cliente */}
+                  <div className="col-span-2 space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Cliente</Label>
+                    <div className="flex gap-2 items-center">
+                      <input type="color" value={form.color} onChange={e => f({ color: e.target.value })}
+                        className="h-9 w-9 rounded-md border cursor-pointer p-0.5 shrink-0" title="Cor da tarefa" />
+                      <ClientCombobox value={form.client} onChange={v => f({ client: v })} />
+                    </div>
                   </div>
-                </div>
 
-                {/* Prioridade */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Prioridade</Label>
-                  <Select value={form.priority} onValueChange={v => f({ priority: v })}>
-                    <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Baixa</SelectItem>
-                      <SelectItem value="medium">Média</SelectItem>
-                      <SelectItem value="high">Alta</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                  {/* Prioridade */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Prioridade</Label>
+                    <Select value={form.priority} onValueChange={v => f({ priority: v })}>
+                      <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Baixa</SelectItem>
+                        <SelectItem value="medium">Média</SelectItem>
+                        <SelectItem value="high">Alta</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                {/* Complexidade */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Complexidade</Label>
-                  <Select value={form.complexity} onValueChange={v => f({ complexity: v })}>
-                    <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Simples</SelectItem>
-                      <SelectItem value="medium">Moderada</SelectItem>
-                      <SelectItem value="high">Complexa</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                  {/* Complexidade */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Complexidade</Label>
+                    <Select value={form.complexity} onValueChange={v => f({ complexity: v })}>
+                      <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Simples</SelectItem>
+                        <SelectItem value="medium">Moderada</SelectItem>
+                        <SelectItem value="high">Complexa</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                {/* Previsão de entrega */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Previsão de entrega</Label>
-                  <DateTimePicker value={form.dueDateTime} onChange={v => f({ dueDateTime: v })} withTime min={new Date().toISOString().split("T")[0]} placeholder="Data e horário" />
-                </div>
+                  {/* Previsão de entrega */}
+                  <div className="col-span-2 space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Previsão de entrega</Label>
+                    <DateTimePicker value={form.dueDateTime} onChange={v => f({ dueDateTime: v })} withTime min={new Date().toISOString().split("T")[0]} placeholder="Data e horário" />
+                  </div>
 
+                </div>
               </div>
             </div>
 
             {/* Pasta — largura total */}
-            <div className="px-6 pb-6 space-y-1.5">
+            <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))] flex items-center gap-1">
                 <FolderOpen className="h-3.5 w-3.5" />Pasta no servidor
               </Label>
@@ -342,7 +344,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
         </div>
 
         {/* Footer fixo */}
-        <DialogFooter className="px-6 py-4 border-t shrink-0 bg-[hsl(var(--background))]">
+        <DialogFooter className="px-4 sm:px-6 py-3 sm:py-4 border-t shrink-0 bg-[hsl(var(--background))] flex-wrap gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
           {editMode ? (
             <>

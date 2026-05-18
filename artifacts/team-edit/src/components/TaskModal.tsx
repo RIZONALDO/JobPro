@@ -77,7 +77,7 @@ export function TaskModal({ taskId, onClose }: Props) {
 
   return (
     <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-2xl w-[calc(100vw-16px)] p-0 gap-0 overflow-hidden max-h-[92vh] sm:max-h-[90vh] flex flex-col">
 
         {loading || !task ? (
           <>
@@ -97,11 +97,11 @@ export function TaskModal({ taskId, onClose }: Props) {
             <div className="h-[3px] shrink-0 w-full" style={{ backgroundColor: task.color }} />
 
             {/* ── SPLIT BODY ── */}
-            <div className="flex flex-1 min-h-0 overflow-hidden">
+            <div className="flex flex-col sm:flex-row flex-1 min-h-0 overflow-hidden">
 
               {/* ══ LEFT SIDEBAR ══ */}
               <div
-                className="w-52 shrink-0 flex flex-col border-r overflow-y-auto"
+                className="w-full sm:w-52 shrink-0 flex flex-col sm:border-r border-b sm:border-b-0 overflow-y-auto"
                 style={{ backgroundColor: task.color + "0a" }}
               >
                 {/* Task ID + status */}
@@ -120,7 +120,8 @@ export function TaskModal({ taskId, onClose }: Props) {
                 </div>
 
                 {/* Metadata */}
-                <div className="px-4 py-3 border-b border-[hsl(var(--border))]/60 space-y-3.5">
+                <div className="px-4 py-3 border-b border-[hsl(var(--border))]/60">
+                  <div className="grid grid-cols-2 sm:grid-cols-1 gap-x-4 gap-y-3.5">
                   {/* Priority */}
                   <div>
                     <SideLabel>Prioridade</SideLabel>
@@ -193,12 +194,14 @@ export function TaskModal({ taskId, onClose }: Props) {
                       </span>
                     </div>
                   </div>
+                  </div>{/* end grid */}
                 </div>
 
                 {/* Team */}
                 {(task.createdBy || task.editors?.length > 0) && (
-                  <div className="px-4 py-3 border-b border-[hsl(var(--border))]/60 space-y-3">
+                  <div className="px-4 py-3 border-b border-[hsl(var(--border))]/60">
                     <SideLabel>Equipe</SideLabel>
+                    <div className="flex flex-wrap gap-3 sm:block sm:space-y-3">
                     {task.createdBy && (
                       <div className="flex items-center gap-2.5">
                         <AvatarDisplay
@@ -225,11 +228,12 @@ export function TaskModal({ taskId, onClose }: Props) {
                         </div>
                       </div>
                     )}
+                    </div>{/* end flex-wrap */}
                   </div>
                 )}
 
-                {/* Timestamps */}
-                <div className="mt-auto px-4 py-3 space-y-1">
+                {/* Timestamps — hidden on mobile */}
+                <div className="hidden sm:block mt-auto px-4 py-3 space-y-1">
                   <div className="flex items-center gap-1.5 text-[10px] text-[hsl(var(--muted-foreground))]/50">
                     <Clock className="h-3 w-3 shrink-0" />
                     <span>Criado {fmtDate(task.createdAt)}</span>
@@ -244,8 +248,8 @@ export function TaskModal({ taskId, onClose }: Props) {
               <div className="flex-1 min-w-0 overflow-y-auto flex flex-col">
 
                 {/* Title + client */}
-                <div className="px-6 pt-5 pb-4 border-b">
-                  <h2 className="text-[22px] font-bold leading-tight tracking-tight mb-1.5">
+                <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-4 border-b">
+                  <h2 className="text-lg sm:text-[22px] font-bold leading-tight tracking-tight mb-1.5">
                     {task.title}
                   </h2>
                   {task.client ? (
@@ -260,7 +264,7 @@ export function TaskModal({ taskId, onClose }: Props) {
 
                 {/* Description */}
                 {task.description ? (
-                  <div className="px-6 py-4 border-b">
+                  <div className="px-4 sm:px-6 py-4 border-b">
                     <p className="text-[9px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 mb-2">
                       Descrição
                     </p>
@@ -269,14 +273,14 @@ export function TaskModal({ taskId, onClose }: Props) {
                     </p>
                   </div>
                 ) : (
-                  <div className="px-6 py-4 border-b">
+                  <div className="px-4 sm:px-6 py-4 border-b">
                     <p className="text-sm text-[hsl(var(--muted-foreground))]/40 italic">Sem descrição.</p>
                   </div>
                 )}
 
                 {/* Folder path */}
                 {task.folderUrl && (
-                  <div className="px-6 py-3 border-b">
+                  <div className="px-4 sm:px-6 py-3 border-b">
                     <p className="text-[9px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 mb-2">
                       Pasta / Arquivos
                     </p>
@@ -299,7 +303,7 @@ export function TaskModal({ taskId, onClose }: Props) {
 
                 {/* Revision history */}
                 {task.revisions.length > 0 && (
-                  <div className="px-6 py-4 border-b">
+                  <div className="px-4 sm:px-6 py-4 border-b">
                     <p className="text-[9px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 mb-3 flex items-center gap-1.5">
                       <RotateCcw className="h-3 w-3" /> Histórico de alterações
                     </p>
