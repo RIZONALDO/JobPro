@@ -25,12 +25,14 @@ function getThisWeekendSaturday(from: Date = new Date()): Date {
   return d;
 }
 
-// GET /api/duty/upcoming — this + next weekend (for dashboard card)
+// GET /api/duty/upcoming — last + this + next weekend (for duty page and dashboard card)
 router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
   const thisSat = getThisWeekendSaturday();
-  const nextSat = new Date(thisSat);
-  nextSat.setDate(nextSat.getDate() + 7);
 
+  const lastSat = new Date(thisSat); lastSat.setDate(lastSat.getDate() - 7);
+  const nextSat = new Date(thisSat); nextSat.setDate(nextSat.getDate() + 7);
+
+  const lastSatStr = lastSat.toISOString().split("T")[0];
   const thisSatStr = thisSat.toISOString().split("T")[0];
   const nextSatStr = nextSat.toISOString().split("T")[0];
 
@@ -44,7 +46,7 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
     })
     .from(dutySchedulesTable)
     .leftJoin(usersTable, eq(dutySchedulesTable.editorId, usersTable.id))
-    .where(inArray(dutySchedulesTable.weekendStart, [thisSatStr, nextSatStr]));
+    .where(inArray(dutySchedulesTable.weekendStart, [lastSatStr, thisSatStr, nextSatStr]));
 
   const group = (satStr: string) => ({
     weekendStart: satStr,
@@ -53,7 +55,11 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
       .map(r => ({ id: r.editorId!, name: r.editorName!, avatarUrl: r.editorAvatarUrl ?? null })),
   });
 
-  res.json({ thisWeekend: group(thisSatStr), nextWeekend: group(nextSatStr) });
+  res.json({
+    lastWeekend: group(lastSatStr),
+    thisWeekend: group(thisSatStr),
+    nextWeekend: group(nextSatStr),
+  });
 });
 
 // GET /api/duty?year=2026 — all weekends for year (grouped)
