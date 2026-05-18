@@ -349,7 +349,7 @@ export default function TasksOverview() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full overflow-hidden p-4 gap-4 bg-[hsl(var(--background))]">
+    <div className="flex flex-col h-full overflow-hidden p-2 sm:p-4 gap-2 sm:gap-4 bg-[hsl(var(--background))]">
 
       {/* ── Filters ──────────────────────────────────────────────────────── */}
 

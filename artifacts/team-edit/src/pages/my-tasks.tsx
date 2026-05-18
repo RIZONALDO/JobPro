@@ -285,7 +285,7 @@ export default function MyTasks() {
   if (loading) return <div className="text-[hsl(var(--muted-foreground))] text-sm p-4">Carregando...</div>;
 
   return (
-    <div>
+    <div className="p-2 sm:p-4">
 
       {/* ── Board ─────────────────────────────────────────────────── */}
       <motion.div
