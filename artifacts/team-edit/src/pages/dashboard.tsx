@@ -1917,11 +1917,17 @@ export default function Dashboard() {
     })
     .map(t => ({ id: t.id, taskCode: t.taskCode, title: t.title, dueDate: t.dueDate!, client: t.client, color: t.color }));
 
-  const coordOverdue: OverdueItem[] = atRisk.map(t => ({
-    id: t.id, taskCode: t.taskCode, title: t.title, dueDate: t.dueDate,
-    client: t.client, color: t.color,
-    assigneeName: t.assigneeName, assigneeAvatarUrl: t.assignee?.avatarUrl ?? null,
-  }));
+  const coordOverdue: OverdueItem[] = tasks
+    .filter(t => {
+      if (["completed", "cancelled", "paused"].includes(t.status) || !t.dueDate) return false;
+      const dt = new Date(t.dueDate.includes("T") ? t.dueDate : t.dueDate + "T00:00:00");
+      return dt < todayStart;
+    })
+    .map(t => ({
+      id: t.id, taskCode: t.taskCode, title: t.title, dueDate: t.dueDate!,
+      client: t.client, color: t.color,
+      assigneeName: t.assignedTo?.name ?? null, assigneeAvatarUrl: t.assignedTo?.avatarUrl ?? null,
+    }));
 
   // Empty-state stats for OverdueCard
   const editorActive       = openTasks.filter(t => !["cancelled","paused"].includes(t.status)).length;
@@ -1998,10 +2004,10 @@ export default function Dashboard() {
           const slot1 = cardPrefs.slot1 ?? "command_panel";
           const menu1 = <CardMenu value={slot1} options={SLOT1_OPTIONS} onChange={v => setCardPref("slot1", v)} />;
           if (slot1 === "health_score")
-            return <HealthScoreCard allTasks={allTasks} atRiskCount={atRisk.length} menu={menu1} />;
+            return <HealthScoreCard allTasks={allTasks} atRiskCount={coordOverdue.length} menu={menu1} />;
           if (slot1 === "bottleneck")
             return <BottleneckCard allTasks={allTasks} workload={workload} menu={menu1} />;
-          return <CommandPanelCard tasks={tasks} allTasks={allTasks} atRiskCount={atRisk.length} menu={menu1} />;
+          return <CommandPanelCard tasks={tasks} allTasks={allTasks} atRiskCount={coordOverdue.length} menu={menu1} />;
         })()}
 
         {/* Card 2 — editor: mini gantt | coordinator: personalizável (slot2) */}
@@ -2145,7 +2151,7 @@ export default function Dashboard() {
       )}
 
       {/* ── ENTREGAS DA SEMANA + EM RISCO ──────────────────────── */}
-      {!isEditor && (atRisk.length > 0) && (
+      {!isEditor && (coordOverdue.length > 0) && (
         <div className="grid gap-5 md:grid-cols-2">
 
           {/* Entregas da semana */}
@@ -2203,17 +2209,18 @@ export default function Dashboard() {
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" />
                 <span className="font-semibold text-sm">Em risco</span>
-                {atRisk.length > 0 && (
-                  <span className="text-xs bg-red-500/10 text-red-600 rounded-full px-2 py-0.5">{atRisk.length} atrasada{atRisk.length !== 1 ? "s" : ""}</span>
+                {coordOverdue.length > 0 && (
+                  <span className="text-xs bg-red-500/10 text-red-600 rounded-full px-2 py-0.5">{coordOverdue.length} atrasada{coordOverdue.length !== 1 ? "s" : ""}</span>
                 )}
               </div>
             </div>
             <div className="overflow-y-auto max-h-[280px] divide-y">
-              {atRisk.length === 0 ? (
+              {coordOverdue.length === 0 ? (
                 <p className="text-sm text-green-600 text-center py-10">Tudo dentro do prazo.</p>
-              ) : atRisk.map(t => (
-                <div key={t.id} className="flex items-center gap-4 px-5 py-3 hover:bg-[hsl(var(--muted))]/20 transition-colors"
-                  style={{ borderLeft: `4px solid ${t.color ?? "#6366f1"}88` }}>
+              ) : coordOverdue.map(t => (
+                <div key={t.id} className="flex items-center gap-4 px-5 py-3 hover:bg-[hsl(var(--muted))]/20 transition-colors cursor-pointer"
+                  style={{ borderLeft: `4px solid ${t.color ?? "#6366f1"}88` }}
+                  onClick={() => goToTask(t.id)}>
                   <div className="flex-1 min-w-0 pl-1">
                     <div className="flex items-center gap-1.5">
                       {t.taskCode ? <span className="text-sm font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">{t.taskCode}</span> : null}
