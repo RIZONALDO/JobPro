@@ -35,8 +35,8 @@ router.post("/admin/reset", requireAdmin, async (req, res): Promise<void> => {
       TRUNCATE
         te_task_events,
         te_task_revisions,
+        te_task_editors,
         te_notifications,
-        te_user_presence,
         te_direct_messages,
         te_chat_messages,
         te_feed_reactions,
@@ -45,8 +45,6 @@ router.post("/admin/reset", requireAdmin, async (req, res): Promise<void> => {
         te_tasks
       CASCADE;
     `);
-    await client.query(`DELETE FROM te_users WHERE role != 'admin'`);
-    await client.query(`DELETE FROM session`);
     res.json({ ok: true });
   } finally {
     client.release();

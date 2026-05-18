@@ -59,11 +59,10 @@ export default function SettingsPage() {
     setResetting(true);
     try {
       await apiPost("/api/admin/reset", {});
-      toast.success("Sistema resetado com sucesso. Faça login novamente.");
+      toast.success("Dados limpos com sucesso.");
       setResetOpen(false);
-      await logout();
     } catch {
-      toast.error("Erro ao resetar o sistema");
+      toast.error("Erro ao limpar os dados");
     } finally {
       setResetting(false);
       setResetConfirm("");
@@ -186,13 +185,13 @@ export default function SettingsPage() {
         <CardContent>
           <div className="flex items-center justify-between rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/20 p-4">
             <div>
-              <p className="text-sm font-medium">Resetar sistema para o estado de fábrica</p>
+              <p className="text-sm font-medium">Limpar dados operacionais</p>
               <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">
-                Remove todos os projetos, jobs, tarefas, feed, mensagens e usuários não-admin. Você será desconectado.
+                Remove tarefas, mensagens, notificações e feed. Usuários e clientes são preservados.
               </p>
             </div>
             <Button variant="destructive" size="sm" onClick={() => { setResetConfirm(""); setResetOpen(true); }}>
-              Resetar
+              Limpar dados
             </Button>
           </div>
         </CardContent>
@@ -203,24 +202,24 @@ export default function SettingsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-600">
-              <TriangleAlert className="h-5 w-5" /> Resetar sistema?
+              <TriangleAlert className="h-5 w-5" /> Limpar dados operacionais?
             </DialogTitle>
             <DialogDescription className="space-y-2 pt-1">
               <span className="block">Esta ação é <strong>permanente e irreversível</strong>. Serão apagados:</span>
               <ul className="list-disc list-inside text-sm space-y-0.5 text-[hsl(var(--foreground))]">
-                <li>Todos os projetos, jobs e tarefas</li>
+                <li>Todas as tarefas e histórico de alterações</li>
                 <li>Todo o feed, comentários e reações</li>
                 <li>Todas as mensagens de chat e DMs</li>
-                <li>Todos os usuários (exceto o administrador)</li>
-                <li>Todas as sessões ativas</li>
+                <li>Todas as notificações</li>
               </ul>
-              <span className="block mt-3">Para confirmar, digite <strong>RESETAR</strong> abaixo:</span>
+              <span className="block mt-2 text-green-700 dark:text-green-400 font-medium text-sm">✓ Usuários e clientes serão mantidos.</span>
+              <span className="block mt-2">Para confirmar, digite <strong>LIMPAR</strong> abaixo:</span>
             </DialogDescription>
           </DialogHeader>
           <Input
             value={resetConfirm}
             onChange={e => setResetConfirm(e.target.value)}
-            placeholder="RESETAR"
+            placeholder="LIMPAR"
             className="font-mono"
             autoFocus
           />
@@ -228,10 +227,10 @@ export default function SettingsPage() {
             <Button variant="outline" onClick={() => setResetOpen(false)}>Cancelar</Button>
             <Button
               variant="destructive"
-              disabled={resetConfirm !== "RESETAR" || resetting}
+              disabled={resetConfirm !== "LIMPAR" || resetting}
               onClick={doReset}
             >
-              {resetting ? "Resetando..." : "Confirmar reset"}
+              {resetting ? "Limpando..." : "Confirmar limpeza"}
             </Button>
           </DialogFooter>
         </DialogContent>
