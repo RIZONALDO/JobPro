@@ -1051,6 +1051,159 @@ function CommandPanelCard({ tasks, allTasks, atRiskCount, menu }: {
   );
 }
 
+// ── Editor: Painel de controle ───────────────────────────────────────────────
+function EditorPanelCard({ tasks, overdueCount }: { tasks: Task[]; overdueCount: number }) {
+  const inRevisionCount = tasks.filter(t => t.status === "in_revision").length;
+  const pendingCount    = tasks.filter(t => t.status === "pending").length;
+  const inProgressCount = tasks.filter(t => t.status === "in_progress").length;
+  const completed       = tasks.filter(t => t.status === "completed").length;
+  const completionPct   = tasks.length > 0 ? Math.round(completed / tasks.length * 100) : 0;
+  const hasAlert = inRevisionCount > 0 || overdueCount > 0;
+  const kpis = [
+    { label: "Alterar",    value: inRevisionCount, color: "#f97316", alert: inRevisionCount > 0 },
+    { label: "Atrasadas",  value: overdueCount,    color: "#ef4444", alert: overdueCount > 0 },
+    { label: "Em edição",  value: inProgressCount, color: "#3b82f6", alert: false },
+    { label: "Concluídas", value: `${completionPct}%`, color: "#22c55e", alert: false },
+  ];
+  return (
+    <div className="rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+      <div className="flex items-center gap-2 px-3.5 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <Zap className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
+          <span className="text-xs font-semibold">Painel de controle</span>
+        </div>
+        {hasAlert
+          ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full leading-none bg-amber-500/10 text-amber-600 shrink-0">Ação</span>
+          : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full leading-none bg-green-500/10 text-green-600 shrink-0">Em dia</span>
+        }
+      </div>
+      <div className="flex-1 min-h-0 grid grid-cols-2">
+        {kpis.map((kpi, i) => (
+          <div key={kpi.label} className={["flex flex-col justify-center px-3.5 py-2 gap-0.5 min-w-0", i % 2 === 1 ? "border-l border-[hsl(var(--border))]/60" : "", i >= 2 ? "border-t border-[hsl(var(--border))]/60" : ""].join(" ")}>
+            <span className="text-2xl font-bold tabular-nums leading-none" style={{ color: (typeof kpi.value === "number" ? kpi.value : parseFloat(kpi.value)) > 0 ? kpi.color : "hsl(var(--muted-foreground)/50%)" }}>
+              {kpi.value}
+            </span>
+            <span className="text-[10px] text-[hsl(var(--muted-foreground))] font-medium leading-none mt-0.5">{kpi.label}</span>
+            {kpi.alert && <div className="w-1.5 h-1.5 rounded-full mt-1" style={{ backgroundColor: kpi.color }} />}
+          </div>
+        ))}
+      </div>
+      <div className={`px-3.5 py-2 border-t shrink-0 flex items-center gap-1.5 text-[10px] font-semibold ${hasAlert ? "bg-amber-500/5 text-amber-600" : "text-[hsl(var(--muted-foreground))]"}`}>
+        {hasAlert
+          ? <><AlertTriangle className="h-3 w-3 shrink-0" />{inRevisionCount + overdueCount} precisam de atenção</>
+          : <><CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />Tudo sob controle</>
+        }
+        {pendingCount > 0 && <span className="ml-auto text-slate-500">{pendingCount} pendente{pendingCount !== 1 ? "s" : ""}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ── Editor: Minha Semana (heatmap pessoal) ───────────────────────────────────
+function EditorWeekCard({ tasks }: { tasks: Task[] }) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  type HeatTask = { title: string; client?: string | null };
+  const [tip, setTip] = useState<{ x: number; y: number; tasks: HeatTask[] } | null>(null);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(today); d.setDate(d.getDate() + i); return d; });
+  const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+  const activeTasks = tasks.filter(t => !["completed", "cancelled", "rascunho"].includes(t.status) && t.dueDate);
+  const cells = days.map(d => activeTasks.filter(t => t.dueDate?.split("T")[0] === dayKey(d)));
+  const maxCount = Math.max(...cells.map(c => c.length), 1);
+  const totalDue = cells.flat().length;
+
+  const STATUS_LEGEND = [
+    { label: "Pendentes",    status: "pending",     color: "#64748b" },
+    { label: "Em edição",    status: "in_progress", color: "#3b82f6" },
+    { label: "Em alteração", status: "in_revision", color: "#f97316" },
+    { label: "Em revisão",   status: "review",      color: "#f59e0b" },
+  ];
+
+  const cellStyle = (count: number): React.CSSProperties => {
+    if (count === 0) return { backgroundColor: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)" };
+    const intensity = Math.min(count / Math.max(maxCount, 2), 1);
+    return { backgroundColor: `rgba(99,102,241,${(0.15 + intensity * 0.75).toFixed(2)})` };
+  };
+  const textColor = (count: number) =>
+    count === 0 ? "transparent" : count >= Math.ceil(maxCount * 0.6) ? "#fff" : isDark ? "#c7d2fe" : "#3730a3";
+
+  return (
+    <div className="col-span-1 sm:col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px]">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0 rounded-t-2xl">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
+          <span className="text-xs font-semibold">Minha Semana</span>
+        </div>
+        <span className="text-[11px] text-[hsl(var(--muted-foreground))] shrink-0">
+          {totalDue > 0
+            ? <><strong className="text-[hsl(var(--foreground))]">{totalDue}</strong> entrega{totalDue !== 1 ? "s" : ""} esta semana</>
+            : "Sem entregas nos próximos 7 dias"
+          }
+        </span>
+      </div>
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden px-3 py-2.5 gap-2">
+        {/* Day headers */}
+        <div className="flex items-center shrink-0">
+          <div className="w-20 shrink-0" />
+          {days.map((d, i) => (
+            <div key={i} className="flex-1 flex flex-col items-center">
+              <span className={`text-[8px] font-bold leading-none ${i === 0 ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--muted-foreground))]/50"}`}>{DAY_ABBR[d.getDay()]}</span>
+              <span className={`text-[8px] leading-none mt-0.5 tabular-nums ${i === 0 ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--muted-foreground))]/40"}`}>{d.getDate()}</span>
+            </div>
+          ))}
+        </div>
+        {/* Single row */}
+        <div className="flex items-center gap-1 flex-1 min-h-0">
+          <div className="w-20 shrink-0 pr-1.5">
+            <p className="text-[10px] font-medium text-[hsl(var(--muted-foreground))]">Entregas</p>
+          </div>
+          {cells.map((dayTasks, i) => {
+            const count = dayTasks.length;
+            return (
+              <div
+                key={i}
+                className="flex-1 h-full rounded flex items-center justify-center min-h-[22px] max-h-[36px] transition-colors cursor-default"
+                style={cellStyle(count)}
+                onMouseEnter={count > 0 ? e => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setTip({ x: r.left + r.width / 2, y: r.top, tasks: dayTasks.map(t => ({ title: t.title, client: t.client })) }); } : undefined}
+                onMouseLeave={count > 0 ? () => setTip(null) : undefined}
+              >
+                <span className="text-[11px] font-bold tabular-nums" style={{ color: textColor(count) }}>{count > 0 ? count : ""}</span>
+              </div>
+            );
+          })}
+        </div>
+        {/* Status legend */}
+        <div className="flex items-center gap-3 shrink-0 flex-wrap">
+          {STATUS_LEGEND.map(s => {
+            const cnt = tasks.filter(t => t.status === s.status).length;
+            return cnt > 0 ? (
+              <div key={s.status} className="flex items-center gap-1">
+                <div className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                <span className="text-[9px] text-[hsl(var(--muted-foreground))]">{cnt} {s.label}</span>
+              </div>
+            ) : null;
+          })}
+        </div>
+      </div>
+      {tip && createPortal(
+        <div className="pointer-events-none fixed z-[99999] rounded-lg border bg-[hsl(var(--card))] shadow-xl p-2.5 space-y-1.5 w-max max-w-[200px]" style={{ left: tip.x, top: tip.y - 8, transform: "translate(-50%, -100%)" }}>
+          {tip.tasks.map((t, ti) => (
+            <div key={ti} className="flex flex-col gap-0.5">
+              <p className="text-[11px] font-semibold leading-snug">{t.title}</p>
+              {t.client && <p className="text-[10px] text-muted-foreground">{t.client}</p>}
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
 interface ActionRow { label: string; count: number; color: string; gradientId?: string; }
 
 function ActionCard({ label, actionCount, total, rows }: {
@@ -1737,7 +1890,7 @@ export default function Dashboard() {
       apiFetch<{ atRisk: AtRiskTask[] }>("/api/dashboard-extras")
         .then(d => { setAtRisk(d.atRisk); })
         .catch(() => {});
-      apiFetch<{ assignedToId: number | null; dueDate: string | null; status: string }[]>("/api/tasks/heatmap")
+      apiFetch<{ assignedToId: number | null; dueDate: string | null; status: string; title: string; client?: string | null }[]>("/api/tasks/heatmap")
         .then(setHeatmapTasks).catch(() => {});
     }
   }, [user]);
@@ -1838,14 +1991,9 @@ export default function Dashboard() {
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
 
-        {/* Card 1 — editor: ação pessoal | coordinator: personalizável (slot1) */}
+        {/* Card 1 — editor: painel de controle | coordinator: personalizável (slot1) */}
         {isEditor ? (
-          <ActionCard
-            label="Para revisar / alterar"
-            actionCount={actionCount}
-            total={tasks.length}
-            rows={actionRows}
-          />
+          <EditorPanelCard tasks={tasks} overdueCount={editorOverdue.length} />
         ) : (() => {
           const slot1 = cardPrefs.slot1 ?? "command_panel";
           const menu1 = <CardMenu value={slot1} options={SLOT1_OPTIONS} onChange={v => setCardPref("slot1", v)} />;
@@ -1878,9 +2026,9 @@ export default function Dashboard() {
           );
         })()}
 
-        {/* Card 3+4 — editor: heatmap fixo | coordinator: personalizável (slot3) */}
+        {/* Card 3+4 — editor: minha semana | coordinator: personalizável (slot3) */}
         {isEditor ? (
-          <WeeklyHeatmapCard heatmapTasks={heatmapTasks} workload={workload} />
+          <EditorWeekCard tasks={tasks} />
         ) : (() => {
           const slot3 = cardPrefs.slot3 ?? "heatmap";
           const menu3 = <CardMenu value={slot3} options={SLOT3_OPTIONS} onChange={v => setCardPref("slot3", v)} />;
