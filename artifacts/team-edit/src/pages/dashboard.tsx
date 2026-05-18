@@ -2163,7 +2163,7 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
-                    <span className="font-semibold text-sm">Entregas desta semana</span>
+                    <span className="font-semibold text-sm">Entregas previstas esta semana</span>
                     {weekTasks.length > 0 && (
                       <span className="text-xs bg-blue-500/10 text-blue-600 rounded-full px-2 py-0.5">{weekTasks.length}</span>
                     )}
