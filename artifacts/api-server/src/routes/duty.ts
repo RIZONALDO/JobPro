@@ -63,7 +63,7 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
   const holidayByDate = new Map<string, { dutyDate: string; editors: { id: number; name: string; avatarUrl: string | null }[] }>();
   for (const row of rows) {
     const isSaturday = new Date(row.weekendStart + "T12:00:00").getDay() === 6;
-    if (!weekendDates.has(row.weekendStart) && !isSaturday && row.weekendStart >= todayStr) {
+    if (!weekendDates.has(row.weekendStart) && !isSaturday && row.weekendStart >= lastSatStr) {
       if (!holidayByDate.has(row.weekendStart)) {
         holidayByDate.set(row.weekendStart, { dutyDate: row.weekendStart, editors: [] });
       }
@@ -75,6 +75,7 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
     }
   }
 
+  res.setHeader("Cache-Control", "no-store");
   res.json({
     lastWeekend:      group(lastSatStr),
     thisWeekend:      group(thisSatStr),
@@ -133,6 +134,7 @@ router.get("/duty", requireAuth, async (req, res): Promise<void> => {
     byDate.get(d) ?? { weekendStart: d, editors: [], notes: null }
   );
 
+  res.setHeader("Cache-Control", "no-store");
   res.json(result);
 });
 
