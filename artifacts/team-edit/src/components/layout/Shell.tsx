@@ -3,7 +3,7 @@ import {
   LayoutDashboard, FolderOpen, ListTodo, Users, Settings, LogOut,
   CalendarDays, Menu, Bell, ChevronRight, X, UserCircle,
   CalendarRange, BarChart3, Zap, AtSign, ClipboardList,
-  CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2, CalendarClock,
+  CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2, CalendarClock, Shield,
   Palette, Sun, Moon, ALargeSmall, Volume2, VolumeX,
 } from "lucide-react";
 import * as Collapsible from "@radix-ui/react-collapsible";
@@ -77,6 +77,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/feed",     label: "Feed",             icon: Zap,             roles: NON_ADMIN    },
   { href: "/reports",  label: "Relatórios",       icon: BarChart3,       roles: COORD_ACTIVE },
   { href: "/team",     label: "Membros",          icon: Users,           roles: COORD_ROLES  },
+  { href: "/duty",     label: "Plantões",         icon: Shield,          roles: ["admin","supervisor","coordinator","editor"] },
   { href: "/settings", label: "Configurações",    icon: Settings,        roles: ["admin"]    },
 ];
 

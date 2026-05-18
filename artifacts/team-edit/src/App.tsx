@@ -21,6 +21,7 @@ import Reports from "@/pages/reports";
 import FeedPage from "@/pages/feed";
 import TasksOverview from "@/pages/tasks-overview";
 import TasksHub      from "@/pages/tasks-hub";
+import DutyPage      from "@/pages/duty";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } });
 
@@ -82,6 +83,7 @@ function Router() {
         <Route path="/reports" component={Reports} />
         <Route path="/feed" component={FeedPage} />
         <Route path="/tasks" component={TasksHub} />
+        <Route path="/duty" component={DutyPage} />
         <Route>
           <div className="text-center py-20">
             <h2 className="text-2xl font-bold">404</h2>

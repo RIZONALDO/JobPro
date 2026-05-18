@@ -9,7 +9,7 @@ import { fmtDate, fmtDateHuman, fmtShort } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, AlertTriangle, CheckCircle2, CalendarClock, Zap, Search, LayoutGrid, MoreHorizontal } from "lucide-react";
+import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, AlertTriangle, CheckCircle2, CalendarClock, Zap, Search, LayoutGrid, MoreHorizontal, Shield } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { StatusBars } from "@/components/charts/StatusBars";
 import { WaffleChart } from "@/components/charts/WaffleChart";
@@ -1874,6 +1874,10 @@ export default function Dashboard() {
   const [allTasks, setAllTasks]         = useState<AllTask[]>([]);
   const [statusHistory, setStatusHistory] = useState<StatusHistory | null>(null);
   const [heatmapTasks, setHeatmapTasks] = useState<{ assignedToId: number | null; dueDate: string | null; status: string; title: string; client?: string | null }[]>([]);
+  const [dutyData, setDutyData] = useState<{
+    thisWeekend: { weekendStart: string; editors: { id: number; name: string; avatarUrl: string | null }[] };
+    nextWeekend: { weekendStart: string; editors: { id: number; name: string; avatarUrl: string | null }[] };
+  } | null>(null);
   const [cardPrefs, setCardPrefs] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem("jobpro_dash_prefs") ?? "{}"); }
     catch { return {}; }
@@ -1903,6 +1907,9 @@ export default function Dashboard() {
   }, [user]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    apiFetch<typeof dutyData>("/api/duty/upcoming").then(setDutyData).catch(() => {});
+  }, []);
 
   useRealtime({ onTasksChanged: load });
 
@@ -2334,6 +2341,55 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Duty card — visible to all roles ──────────────────────── */}
+      {dutyData && (
+        <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] card-float overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-3 border-b bg-[hsl(var(--muted))]/30">
+            <Shield className="h-4 w-4 text-[hsl(var(--primary))]" />
+            <span className="font-semibold text-sm">Plantão</span>
+            <Link href="/duty" className="ml-auto text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5">
+              Ver escala <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+          <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-[hsl(var(--border))]">
+            {([
+              { label: "Este fim de semana", data: dutyData.thisWeekend },
+              { label: "Próximo fim de semana", data: dutyData.nextWeekend },
+            ] as const).map(({ label, data }) => {
+              const sat = new Date(data.weekendStart + "T12:00:00");
+              const sun = new Date(sat); sun.setDate(sun.getDate() + 1);
+              const fmt = (d: Date) => `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`;
+              const isOnDuty = data.editors.some(e => e.id === user?.id);
+              return (
+                <div key={data.weekendStart} className="px-5 py-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">{label}</p>
+                    <span className="text-xs text-[hsl(var(--muted-foreground))] tabular-nums">{fmt(sat)} – {fmt(sun)}</span>
+                  </div>
+                  {data.editors.length === 0 ? (
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">Sem editor escalado</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {data.editors.map(e => (
+                        <div key={e.id} className="flex items-center gap-1.5">
+                          <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={24} />
+                          <span className="text-sm font-medium">{e.name.split(" ")[0]}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {isOnDuty && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))] uppercase tracking-wide">
+                      <Shield className="h-2.5 w-2.5" /> Você está de plantão
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

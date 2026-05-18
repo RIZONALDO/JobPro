@@ -12,3 +12,4 @@ export * from "./user_presence";
 export * from "./direct_messages";
 export * from "./task_editors";
 export * from "./clients";
+export * from "./duty_schedules";
