@@ -74,12 +74,6 @@ function isToday(iso: string): boolean {
   return new Date().toISOString().split("T")[0] === iso;
 }
 
-function getISOWeek(iso: string): number {
-  const d = new Date(iso + "T12:00:00");
-  const jan1 = new Date(d.getFullYear(), 0, 1);
-  return Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
-}
-
 // ── Weekend Card — side-by-side layout (non-admin view) ───────────────────────
 
 type CardVariant = "past" | "current" | "next";
@@ -94,9 +88,10 @@ function WeekendCard({ variant, weekend, currentUserId }: {
   const pad = (n: number) => String(n).padStart(2, "0");
   const isOnDuty = weekend.editors.some(e => e.id === currentUserId);
   const isEmpty  = weekend.editors.length === 0;
-  const week     = getISOWeek(weekend.weekendStart);
   const c = variant === "current";
   const p = variant === "past";
+
+  const label = c ? "Este fim de semana" : p ? "Fim de semana passado" : "Próximo fim de semana";
 
   return (
     <div className={`rounded-2xl flex flex-col bg-[hsl(var(--card))] overflow-hidden ${
@@ -104,31 +99,19 @@ function WeekendCard({ variant, weekend, currentUserId }: {
         : p ? "border border-[hsl(var(--border))] opacity-55"
             : "border border-[hsl(var(--border))]"
     }`}>
-      {/* top accent strip */}
+      {/* top strip */}
       <div className={`h-0.5 ${c ? "bg-[hsl(var(--primary))]" : "bg-transparent"}`} />
 
-      {/* status + round */}
-      <div className={`flex items-center justify-between pt-3 ${c ? "px-4" : "px-3"}`}>
-        <div className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-            c ? "bg-green-500 animate-pulse" : p ? "bg-[hsl(var(--muted-foreground))]" : "bg-[hsl(var(--primary))]/60"
-          }`} />
-          <span className={`text-[9px] font-black uppercase tracking-[0.16em] ${
-            c ? "text-green-600 dark:text-green-400"
-              : p ? "text-[hsl(var(--muted-foreground))]"
-                  : "text-[hsl(var(--primary))]"
-          }`}>
-            {c ? "Ao vivo" : p ? "Passado" : "Próximo"}
-          </span>
-        </div>
-        <span className={`text-[10px] font-black tabular-nums ${
-          c ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--muted-foreground))]"
+      {/* label */}
+      <div className={`${c ? "px-4 pt-3" : "px-3 pt-3"}`}>
+        <p className={`font-semibold leading-tight ${
+          c ? "text-[11px] text-[hsl(var(--primary))]" : "text-[10px] text-[hsl(var(--muted-foreground))]"
         }`}>
-          RD {week}
-        </span>
+          {label}
+        </p>
       </div>
 
-      {/* dates — hero */}
+      {/* dates */}
       <div className={`${c ? "px-4 pt-2.5 pb-3" : "px-3 pt-2 pb-2.5"}`}>
         <div className="flex flex-col gap-0.5">
           <div className="flex items-baseline gap-1">
@@ -156,24 +139,25 @@ function WeekendCard({ variant, weekend, currentUserId }: {
       {/* divider */}
       <div className={`h-px bg-[hsl(var(--border))] ${c ? "mx-4" : "mx-3"}`} />
 
-      {/* editor */}
-      <div className={`flex-1 ${c ? "px-4 py-3" : "px-3 py-2.5"}`}>
+      {/* editor — portrait, avatar centrado */}
+      <div className={`flex-1 flex flex-col items-center text-center ${c ? "px-3 py-4" : "px-2 py-3"}`}>
         {isEmpty ? (
           <p className={`text-[hsl(var(--muted-foreground))] ${c ? "text-xs" : "text-[10px]"}`}>
             {p ? "Sem editor" : "A definir"}
           </p>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 w-full">
             {weekend.editors.map(ed => (
-              <div key={ed.id} className={`flex items-center ${c ? "gap-2.5" : "gap-1.5"}`}>
-                <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={c ? 36 : 24} />
-                <div className="min-w-0">
-                  <p className={`font-semibold leading-tight truncate ${c ? "text-sm" : "text-[11px]"}`}>
-                    {c ? ed.name : ed.name.split(" ")[0]}
+              <div key={ed.id} className="flex flex-col items-center gap-1.5">
+                <div className={c ? "ring-2 ring-[hsl(var(--primary))]/30 ring-offset-2 ring-offset-[hsl(var(--card))] rounded-full" : ""}>
+                  <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={c ? 52 : 36} />
+                </div>
+                <div>
+                  <p className={`font-semibold leading-tight ${c ? "text-sm" : "text-[11px]"}`}>
+                    {c ? ed.name.split(" ")[0] : ed.name.split(" ")[0]}
                   </p>
-                  {c && <p className="text-[11px] text-[hsl(var(--muted-foreground))]">Editor de plantão</p>}
                   {ed.id === currentUserId && (
-                    <p className={`font-black uppercase text-[hsl(var(--primary))] ${c ? "text-[10px]" : "text-[9px]"}`}>
+                    <p className={`font-bold text-[hsl(var(--primary))] ${c ? "text-[10px]" : "text-[9px]"}`}>
                       você
                     </p>
                   )}
