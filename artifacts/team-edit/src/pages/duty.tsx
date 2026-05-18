@@ -68,8 +68,8 @@ export default function DutyPage() {
 
   useEffect(() => {
     if (!isAdmin) return;
-    apiFetch<Editor[]>("/api/users?role=editor")
-      .then(setEditors)
+    apiFetch<(Editor & { role: string; status: string })[]>("/api/users")
+      .then(all => setEditors(all.filter(u => u.role === "editor" && u.status === "active")))
       .catch(() => {});
   }, [isAdmin]);
 
@@ -159,25 +159,29 @@ export default function DutyPage() {
           </p>
 
           {/* Editor chips */}
-          <div className="flex flex-wrap gap-2">
-            {editors.map(e => {
-              const selected = bulkEditorIds.includes(e.id);
-              return (
-                <button
-                  key={e.id}
-                  onClick={() => toggleBulkEditor(e.id)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                    selected
-                      ? "bg-[hsl(var(--primary))] text-white border-transparent"
-                      : "bg-[hsl(var(--muted))]/40 border-[hsl(var(--border))] hover:border-[hsl(var(--primary)/0.5)]"
-                  }`}>
-                  <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={16} />
-                  {e.name.split(" ")[0]}
-                  {selected && <span className="ml-0.5 opacity-80">✓</span>}
-                </button>
-              );
-            })}
-          </div>
+          {editors.length === 0 ? (
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">Nenhum editor ativo encontrado.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {editors.map(e => {
+                const selected = bulkEditorIds.includes(e.id);
+                return (
+                  <button
+                    key={e.id}
+                    onClick={() => toggleBulkEditor(e.id)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      selected
+                        ? "bg-[hsl(var(--primary))] text-white border-transparent"
+                        : "bg-[hsl(var(--muted))]/40 border-[hsl(var(--border))] hover:border-[hsl(var(--primary)/0.5)]"
+                    }`}>
+                    <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={16} />
+                    {e.name.split(" ")[0]}
+                    {selected && <span className="ml-0.5 opacity-80">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div className="flex items-center gap-4 flex-wrap">
             <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
