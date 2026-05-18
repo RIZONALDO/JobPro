@@ -258,7 +258,6 @@ router.get("/tasks/heatmap", requireCoordinator, async (_req, res): Promise<void
       dueDate:      tasksTable.dueDate,
       status:       tasksTable.status,
       title:        tasksTable.title,
-      taskCode:     tasksTable.taskCode,
       client:       tasksTable.client,
     })
     .from(tasksTable)

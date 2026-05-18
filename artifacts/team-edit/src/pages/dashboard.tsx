@@ -1376,7 +1376,7 @@ function OverdueCard({ items, onOpenTask, emptyStats }: {
 
 /* ── Weekly Heatmap Card (opção J — Mapa de Calor Semanal) ─────── */
 function WeeklyHeatmapCard({ heatmapTasks, workload, menu }: {
-  heatmapTasks: { assignedToId: number | null; dueDate: string | null; status: string; title: string; taskCode?: string | null; client?: string | null }[];
+  heatmapTasks: { assignedToId: number | null; dueDate: string | null; status: string; title: string; client?: string | null }[];
   workload: EditorWorkload[];
   menu?: React.ReactNode;
 }) {
@@ -1491,11 +1491,6 @@ function WeeklyHeatmapCard({ heatmapTasks, workload, menu }: {
                         <div className="rounded-lg border bg-[hsl(var(--card))] shadow-xl p-2.5 space-y-1.5">
                           {tasks.map((t, ti) => (
                             <div key={ti} className="flex flex-col gap-0.5">
-                              {t.taskCode && (
-                                <span className="text-[9px] font-mono font-bold text-[hsl(var(--muted-foreground))]/60 leading-none">
-                                  {t.taskCode}
-                                </span>
-                              )}
                               <p className="text-[11px] font-semibold leading-snug text-[hsl(var(--foreground))]">
                                 {t.title}
                               </p>
@@ -1710,7 +1705,7 @@ export default function Dashboard() {
   const [deadlineData, setDeadlineData] = useState<DeadlineOverview | null>(null);
   const [allTasks, setAllTasks]         = useState<AllTask[]>([]);
   const [statusHistory, setStatusHistory] = useState<StatusHistory | null>(null);
-  const [heatmapTasks, setHeatmapTasks] = useState<{ assignedToId: number | null; dueDate: string | null; status: string; title: string; taskCode?: string | null; client?: string | null }[]>([]);
+  const [heatmapTasks, setHeatmapTasks] = useState<{ assignedToId: number | null; dueDate: string | null; status: string; title: string; client?: string | null }[]>([]);
   const [cardPrefs, setCardPrefs] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem("jobpro_dash_prefs") ?? "{}"); }
     catch { return {}; }
