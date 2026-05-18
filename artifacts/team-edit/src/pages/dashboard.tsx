@@ -1428,10 +1428,10 @@ function WeeklyHeatmapCard({ heatmapTasks, workload, menu }: {
     count === 0 ? "transparent" : count >= Math.ceil(maxCount * 0.6) ? "#fff" : isDark ? "#c7d2fe" : "#3730a3";
 
   return (
-    <div className="col-span-1 sm:col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+    <div className="col-span-1 sm:col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px]">
 
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0 rounded-t-2xl">
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
           <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
           <span className="text-xs font-semibold">Mapa de Calor Semanal</span>
