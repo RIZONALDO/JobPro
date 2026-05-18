@@ -2149,39 +2149,56 @@ export default function Dashboard() {
         <div className="grid gap-5 md:grid-cols-2">
 
           {/* Entregas da semana */}
-          <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
-                <span className="font-semibold text-sm">Entregas desta semana</span>
-                
-              </div>
-              <Link href="/tasks?tab=timeline" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
-                Ver linha do tempo <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
-            <div className="overflow-y-auto max-h-[280px] divide-y">
-              {[].length === 0 ? (
-                <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma entrega esta semana.</p>
-              ) : [].map(j => {
-                const pct = j.taskCount > 0 ? Math.round(j.completedCount / j.taskCount * 100) : 0;
-                return (
-                  <div key={j.id} className="flex items-center gap-4 px-5 py-3 hover:bg-[hsl(var(--muted))]/20 transition-colors"
-                    style={{ borderLeft: `4px solid ${j.color ?? "#6366f1"}88` }}>
-                    <div className="flex-1 min-w-0 pl-1">
-                      <p className="text-sm font-medium truncate">{j.name}</p>
-                      <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
-                        {j.taskClient ?? j.taskTitle}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-xs text-[hsl(var(--muted-foreground))]">{pct}% concluído</p>
-                    </div>
+          {(() => {
+            const in7 = new Date(todayStart); in7.setDate(in7.getDate() + 7);
+            const weekTasks = allTasks
+              .filter(t => {
+                if (!t.dueDate || ["completed","cancelled","paused","rascunho"].includes(t.status)) return false;
+                const d = new Date(t.dueDate.includes("T") ? t.dueDate : t.dueDate + "T00:00:00");
+                return d >= todayStart && d < in7;
+              })
+              .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime());
+            return (
+              <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
+                <div className="flex items-center justify-between px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
+                    <span className="font-semibold text-sm">Entregas desta semana</span>
+                    {weekTasks.length > 0 && (
+                      <span className="text-xs bg-blue-500/10 text-blue-600 rounded-full px-2 py-0.5">{weekTasks.length}</span>
+                    )}
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                  <Link href="/tasks?tab=timeline" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
+                    Ver linha do tempo <ArrowRight className="h-3 w-3" />
+                  </Link>
+                </div>
+                <div className="overflow-y-auto max-h-[280px] divide-y">
+                  {weekTasks.length === 0 ? (
+                    <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma entrega esta semana.</p>
+                  ) : weekTasks.map(t => {
+                    const fmtCode = (t.taskNumber && t.taskYear) ? `${String(t.taskNumber).padStart(3,"0")}.${t.taskYear}` : null;
+                    return (
+                      <div key={t.id} className="flex items-center gap-4 px-5 py-3 hover:bg-[hsl(var(--muted))]/20 transition-colors cursor-pointer"
+                        style={{ borderLeft: `4px solid ${t.color ?? "#6366f1"}88` }}
+                        onClick={() => goToTask(t.id)}>
+                        <div className="flex-1 min-w-0 pl-1">
+                          <div className="flex items-center gap-1.5">
+                            {fmtCode && <span className="text-xs font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">{fmtCode}</span>}
+                            <p className="text-sm font-medium truncate">{t.title}</p>
+                          </div>
+                          <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.client ?? ""}</p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-xs font-semibold text-blue-500">{fmtDateHuman(t.dueDate!)}</p>
+                          <p className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(t.dueDate!)}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Em risco */}
           <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
