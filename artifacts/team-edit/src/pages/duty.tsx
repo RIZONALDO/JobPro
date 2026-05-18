@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { apiFetch, apiPost, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/lib/use-page-title";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Plus, RefreshCw, Shield, CalendarPlus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Shield, CalendarPlus, X, Trophy, LayoutList } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -216,6 +216,141 @@ function WeekendCard({ variant, weekend, currentUserId }: {
   );
 }
 
+// ── Scoreboard View ────────────────────────────────────────────────────────────
+
+function ScoreboardView({ currentUserId }: { currentUserId: number | undefined }) {
+  const year = new Date().getFullYear();
+  const [slots,   setSlots]   = useState<WeekendSlot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const currentRowRef = useRef<HTMLDivElement>(null);
+
+  const thisSatStr = (() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const dow = today.getDay();
+    const sat = new Date(today); sat.setDate(sat.getDate() + (dow === 0 ? -1 : 6 - dow));
+    return sat.toISOString().split("T")[0];
+  })();
+
+  useEffect(() => {
+    apiFetch<WeekendSlot[]>(`/api/duty?year=${year}`)
+      .then(data => { setSlots(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [year]);
+
+  useEffect(() => {
+    if (!loading) currentRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [loading]);
+
+  const nextSatStr = slots.find(s => s.weekendStart > thisSatStr && isSaturdayDate(s.weekendStart))?.weekendStart;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
+        Carregando…
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] overflow-hidden">
+      {/* Table header */}
+      <div className="grid grid-cols-[2.5rem_1fr_1fr_5.5rem] px-4 py-2.5 bg-[hsl(var(--muted))]/40 border-b border-[hsl(var(--border))]">
+        {["RD", "Data", "Editor", "Status"].map((h, i) => (
+          <span key={h} className={`text-[9px] font-black uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))] ${i === 3 ? "text-right" : ""}`}>
+            {h}
+          </span>
+        ))}
+      </div>
+
+      {/* Rows */}
+      <div className="divide-y divide-[hsl(var(--border))]">
+        {slots.map(slot => {
+          const isCurrent = slot.weekendStart === thisSatStr;
+          const isNext    = slot.weekendStart === nextSatStr;
+          const isPast    = slot.weekendStart < thisSatStr;
+          const isSat     = isSaturdayDate(slot.weekendStart);
+          const week      = getISOWeek(slot.weekendStart);
+          const isOnDuty  = slot.editors.some(e => e.id === currentUserId);
+          const mainEd    = slot.editors[0];
+
+          return (
+            <div
+              key={slot.weekendStart}
+              ref={isCurrent ? currentRowRef : undefined}
+              className={`grid grid-cols-[2.5rem_1fr_1fr_5.5rem] items-center px-4 py-2.5 transition-colors ${
+                isCurrent
+                  ? "bg-[hsl(var(--primary))]/8 border-l-2 border-[hsl(var(--primary))]"
+                  : isPast
+                  ? "opacity-40"
+                  : !isSat
+                  ? "bg-amber-50/50 dark:bg-amber-900/10"
+                  : "hover:bg-[hsl(var(--muted))]/20"
+              }`}>
+
+              {/* Round */}
+              <span className={`text-xs font-black tabular-nums ${
+                isCurrent ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--muted-foreground))]"
+              }`}>
+                {isSat ? week : "★"}
+              </span>
+
+              {/* Date */}
+              <div className="min-w-0">
+                <span className={`text-xs tabular-nums ${isCurrent || isNext ? "font-bold" : "font-medium"}`}>
+                  {isSat ? fmtWeekend(slot.weekendStart) : fmtSingleDate(slot.weekendStart)}
+                </span>
+                {!isSat && (
+                  <span className="ml-1.5 text-[9px] font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 px-1 py-px rounded">
+                    feriado
+                  </span>
+                )}
+              </div>
+
+              {/* Editor */}
+              <div className="flex items-center gap-1.5 min-w-0">
+                {mainEd ? (
+                  <>
+                    <AvatarDisplay name={mainEd.name} avatarUrl={mainEd.avatarUrl} size={22} />
+                    <span className={`text-xs truncate ${
+                      mainEd.id === currentUserId ? "font-bold text-[hsl(var(--primary))]" : "font-medium"
+                    }`}>
+                      {mainEd.name.split(" ")[0]}
+                    </span>
+                    {slot.editors.length > 1 && (
+                      <span className="shrink-0 text-[10px] text-[hsl(var(--muted-foreground))]">
+                        +{slot.editors.length - 1}
+                      </span>
+                    )}
+                    {isOnDuty && (
+                      <span className="shrink-0 text-[9px] font-black uppercase text-[hsl(var(--primary))]">você</span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]">—</span>
+                )}
+              </div>
+
+              {/* Status */}
+              <div className="flex justify-end">
+                {isCurrent ? (
+                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-green-600 dark:text-green-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
+                    AO VIVO
+                  </span>
+                ) : isPast ? (
+                  <span className="text-[9px] font-semibold uppercase text-[hsl(var(--muted-foreground))] tracking-wide">passado</span>
+                ) : isNext ? (
+                  <span className="text-[9px] font-black uppercase tracking-wide text-[hsl(var(--primary))]">próximo</span>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function DutyPage() {
@@ -241,6 +376,7 @@ export default function DutyPage() {
   // ── Non-admin state ──────────────────────────────────────────────────────────
   const [upcoming,     setUpcoming]     = useState<UpcomingData | null>(null);
   const [upcomingLoad, setUpcomingLoad] = useState(true);
+  const [layout,       setLayout]       = useState<"championship" | "scoreboard">("championship");
 
   // ── Admin data loading ───────────────────────────────────────────────────────
   const loadSchedule = useCallback(() => {
@@ -348,75 +484,108 @@ export default function DutyPage() {
   if (!isAdmin) {
     return (
       <div className="flex flex-col h-full overflow-y-auto p-4 gap-5 bg-[hsl(var(--background))]">
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-[hsl(var(--primary))]" />
             <h1 className="text-lg font-bold">Escala de Plantões</h1>
           </div>
-          <button
-            onClick={loadUpcoming}
-            disabled={upcomingLoad}
-            className="h-8 w-8 rounded-md border flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors disabled:opacity-50">
-            <RefreshCw className={`h-4 w-4 ${upcomingLoad ? "animate-spin" : ""}`} />
-          </button>
-        </div>
-
-        {upcomingLoad ? (
-          <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
-            Carregando…
-          </div>
-        ) : upcoming ? (
-          <div className="flex flex-col gap-4">
-            <WeekendCard variant="past"    weekend={upcoming.lastWeekend} currentUserId={user?.id} />
-            <WeekendCard variant="current" weekend={upcoming.thisWeekend} currentUserId={user?.id} />
-            <WeekendCard variant="next"    weekend={upcoming.nextWeekend} currentUserId={user?.id} />
-
-            {(upcoming.upcomingHolidays ?? []).length > 0 && (
-              <div className="mt-1">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))] mb-2 px-1">
-                  Feriados / Dias especiais
-                </p>
-                <div className="rounded-2xl border border-amber-500/30 bg-amber-50/30 dark:bg-amber-900/10 overflow-hidden">
-                  {(upcoming.upcomingHolidays ?? []).map((h, i) => {
-                    const isOnDuty = h.editors.some(e => e.id === user?.id);
-                    return (
-                      <div
-                        key={h.dutyDate}
-                        className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? "border-t border-amber-500/20" : ""}`}>
-                        <div className="shrink-0">
-                          <span className="text-sm font-bold text-amber-700 dark:text-amber-400 tabular-nums">
-                            {fmtSingleDate(h.dutyDate)}
-                          </span>
-                          {isToday(h.dutyDate) && (
-                            <span className="ml-2 text-[10px] font-bold text-amber-600 uppercase tracking-wide">hoje</span>
-                          )}
-                        </div>
-                        <div className="flex-1 flex flex-wrap items-center gap-2">
-                          {h.editors.length === 0 ? (
-                            <span className="text-xs text-[hsl(var(--muted-foreground))]">Sem editor escalado</span>
-                          ) : h.editors.map(ed => (
-                            <div key={ed.id} className="flex items-center gap-1.5">
-                              <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={22} />
-                              <span className="text-sm font-medium">{ed.name.split(" ")[0]}</span>
-                            </div>
-                          ))}
-                        </div>
-                        {isOnDuty && (
-                          <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px] font-bold uppercase tracking-wide border border-amber-500/20">
-                            <Shield className="h-3 w-3" /> você
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+          <div className="flex items-center gap-1.5">
+            {/* Layout toggle */}
+            <button
+              onClick={() => setLayout("championship")}
+              title="Visão campeonato"
+              className={`h-8 w-8 rounded-md border flex items-center justify-center transition-colors ${
+                layout === "championship"
+                  ? "bg-[hsl(var(--primary))] text-white border-transparent"
+                  : "hover:bg-[hsl(var(--muted))] border-[hsl(var(--border))]"
+              }`}>
+              <Trophy className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setLayout("scoreboard")}
+              title="Visão placar"
+              className={`h-8 w-8 rounded-md border flex items-center justify-center transition-colors ${
+                layout === "scoreboard"
+                  ? "bg-[hsl(var(--primary))] text-white border-transparent"
+                  : "hover:bg-[hsl(var(--muted))] border-[hsl(var(--border))]"
+              }`}>
+              <LayoutList className="h-4 w-4" />
+            </button>
+            {/* Refresh — only for championship which uses `upcoming` */}
+            {layout === "championship" && (
+              <button
+                onClick={loadUpcoming}
+                disabled={upcomingLoad}
+                className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors disabled:opacity-50">
+                <RefreshCw className={`h-4 w-4 ${upcomingLoad ? "animate-spin" : ""}`} />
+              </button>
             )}
           </div>
-        ) : (
-          <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
-            Não foi possível carregar a escala.
-          </div>
+        </div>
+
+        {/* Scoreboard layout */}
+        {layout === "scoreboard" && <ScoreboardView currentUserId={user?.id} />}
+
+        {/* Championship layout */}
+        {layout === "championship" && (
+          upcomingLoad ? (
+            <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
+              Carregando…
+            </div>
+          ) : upcoming ? (
+            <div className="flex flex-col gap-4">
+              <WeekendCard variant="past"    weekend={upcoming.lastWeekend} currentUserId={user?.id} />
+              <WeekendCard variant="current" weekend={upcoming.thisWeekend} currentUserId={user?.id} />
+              <WeekendCard variant="next"    weekend={upcoming.nextWeekend} currentUserId={user?.id} />
+
+              {(upcoming.upcomingHolidays ?? []).length > 0 && (
+                <div className="mt-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))] mb-2 px-1">
+                    Feriados / Dias especiais
+                  </p>
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-50/30 dark:bg-amber-900/10 overflow-hidden">
+                    {(upcoming.upcomingHolidays ?? []).map((h, i) => {
+                      const isOnDuty = h.editors.some(e => e.id === user?.id);
+                      return (
+                        <div
+                          key={h.dutyDate}
+                          className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? "border-t border-amber-500/20" : ""}`}>
+                          <div className="shrink-0">
+                            <span className="text-sm font-bold text-amber-700 dark:text-amber-400 tabular-nums">
+                              {fmtSingleDate(h.dutyDate)}
+                            </span>
+                            {isToday(h.dutyDate) && (
+                              <span className="ml-2 text-[10px] font-bold text-amber-600 uppercase tracking-wide">hoje</span>
+                            )}
+                          </div>
+                          <div className="flex-1 flex flex-wrap items-center gap-2">
+                            {h.editors.length === 0 ? (
+                              <span className="text-xs text-[hsl(var(--muted-foreground))]">Sem editor escalado</span>
+                            ) : h.editors.map(ed => (
+                              <div key={ed.id} className="flex items-center gap-1.5">
+                                <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={22} />
+                                <span className="text-sm font-medium">{ed.name.split(" ")[0]}</span>
+                              </div>
+                            ))}
+                          </div>
+                          {isOnDuty && (
+                            <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px] font-bold uppercase tracking-wide border border-amber-500/20">
+                              <Shield className="h-3 w-3" /> você
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
+              Não foi possível carregar a escala.
+            </div>
+          )
         )}
       </div>
     );
