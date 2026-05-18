@@ -1383,6 +1383,9 @@ function WeeklyHeatmapCard({ heatmapTasks, workload, menu }: {
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
+  type HeatTask = { title: string; client?: string | null };
+  const [tip, setTip] = useState<{ x: number; y: number; tasks: HeatTask[] } | null>(null);
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -1480,34 +1483,37 @@ function WeeklyHeatmapCard({ heatmapTasks, workload, menu }: {
                 return (
                   <div
                     key={i}
-                    className="relative group flex-1 h-full rounded flex items-center justify-center min-h-[18px] max-h-[26px] transition-colors cursor-default"
+                    className="flex-1 h-full rounded flex items-center justify-center min-h-[18px] max-h-[26px] transition-colors cursor-default"
                     style={cellStyle(count)}
+                    onMouseEnter={count > 0 ? e => {
+                      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                      setTip({ x: r.left + r.width / 2, y: r.top, tasks });
+                    } : undefined}
+                    onMouseLeave={count > 0 ? () => setTip(null) : undefined}
                   >
                     <span className="text-[9px] font-bold tabular-nums" style={{ color: textColor(count) }}>
                       {count > 0 ? count : ""}
                     </span>
-                    {count > 0 && (
-                      <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-[9999] hidden group-hover:block w-max max-w-[200px]">
-                        <div className="rounded-lg border bg-[hsl(var(--card))] shadow-xl p-2.5 space-y-1.5">
-                          {tasks.map((t, ti) => (
-                            <div key={ti} className="flex flex-col gap-0.5">
-                              <p className="text-[11px] font-semibold leading-snug text-[hsl(var(--foreground))]">
-                                {t.title}
-                              </p>
-                              {t.client && (
-                                <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-none">
-                                  {t.client}
-                                </p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                        <div className="w-2 h-2 bg-[hsl(var(--card))] border-b border-r rotate-45 mx-auto -mt-1 border-[hsl(var(--border))]" />
-                      </div>
-                    )}
                   </div>
                 );
               })}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Fixed tooltip — escapes overflow/stacking context */}
+      {tip && (
+        <div
+          className="pointer-events-none fixed z-[99999] rounded-lg border bg-[hsl(var(--card))] shadow-xl p-2.5 space-y-1.5 w-max max-w-[200px]"
+          style={{ left: tip.x, top: tip.y - 8, transform: "translate(-50%, -100%)" }}
+        >
+          {tip.tasks.map((t, ti) => (
+            <div key={ti} className="flex flex-col gap-0.5">
+              <p className="text-[11px] font-semibold leading-snug text-[hsl(var(--foreground))]">{t.title}</p>
+              {t.client && (
+                <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-none">{t.client}</p>
+              )}
             </div>
           ))}
         </div>
