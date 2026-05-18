@@ -74,7 +74,13 @@ function isToday(iso: string): boolean {
   return new Date().toISOString().split("T")[0] === iso;
 }
 
-// ── Weekend Card (non-admin view) ──────────────────────────────────────────────
+function getISOWeek(iso: string): number {
+  const d = new Date(iso + "T12:00:00");
+  const jan1 = new Date(d.getFullYear(), 0, 1);
+  return Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
+}
+
+// ── Weekend Card — championship style (non-admin view) ─────────────────────────
 
 type CardVariant = "past" | "current" | "next";
 
@@ -83,121 +89,127 @@ function WeekendCard({ variant, weekend, currentUserId }: {
   weekend: UpcomingWeekend;
   currentUserId: number | undefined;
 }) {
-  const { satLabel, sunLabel, month, year } = fmtDay(weekend.weekendStart);
+  const sat = new Date(weekend.weekendStart + "T12:00:00");
+  const sun = new Date(sat); sun.setDate(sun.getDate() + 1);
+  const pad = (n: number) => String(n).padStart(2, "0");
   const isOnDuty = weekend.editors.some(e => e.id === currentUserId);
   const isEmpty  = weekend.editors.length === 0;
+  const week     = getISOWeek(weekend.weekendStart);
+  const satDay   = pad(sat.getDate());
+  const sunDay   = pad(sun.getDate());
+  const monthYear = `${MON_PT[sat.getMonth()]} ${sat.getFullYear()}`;
 
-  const labels: Record<CardVariant, string> = {
-    past: "Último fim de semana",
-    current: "Este fim de semana",
-    next: "Próximo fim de semana",
-  };
-
-  if (variant === "past") {
-    return (
-      <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5 opacity-70">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))] mb-3">
-          {labels.past}
-        </p>
-        <div className="flex items-baseline gap-1.5 mb-4">
-          <span className="text-xl font-bold tabular-nums">{satLabel}</span>
-          <span className="text-sm text-[hsl(var(--muted-foreground))]">–</span>
-          <span className="text-xl font-bold tabular-nums">{sunLabel}</span>
-          <span className="text-sm text-[hsl(var(--muted-foreground))] ml-1">{month} {year}</span>
-        </div>
-        {isEmpty ? (
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">Sem editor escalado</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {weekend.editors.map(ed => (
-              <div key={ed.id} className="flex items-center gap-2.5">
-                <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={28} />
-                <span className="text-sm font-medium">{ed.name}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (variant === "current") {
-    return (
-      <div className="rounded-2xl border-2 border-[hsl(var(--primary))] bg-[hsl(var(--card))] p-6 shadow-lg relative overflow-hidden card-float">
-        <div className="absolute inset-x-0 top-0 h-1 bg-[hsl(var(--primary))] rounded-t-2xl" />
-        <div className="flex items-start justify-between mb-4 mt-1">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[hsl(var(--primary))]">
-            {labels.current}
-          </p>
-          {isOnDuty && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(var(--primary))] text-white text-[10px] font-bold uppercase tracking-wide">
-              <Shield className="h-3 w-3" /> Você está de plantão
-            </span>
-          )}
-        </div>
-        <div className="flex items-baseline gap-1.5 mb-6">
-          <span className="text-3xl font-extrabold tabular-nums tracking-tight">{satLabel}</span>
-          <span className="text-xl text-[hsl(var(--muted-foreground))]">–</span>
-          <span className="text-3xl font-extrabold tabular-nums tracking-tight">{sunLabel}</span>
-          <span className="text-base text-[hsl(var(--muted-foreground))] ml-1.5 font-medium">{month} {year}</span>
-        </div>
-        {isEmpty ? (
-          <div className="rounded-xl bg-[hsl(var(--muted))]/40 px-4 py-3 text-sm text-[hsl(var(--muted-foreground))] text-center">
-            Nenhum editor escalado
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {weekend.editors.map(ed => (
-              <div key={ed.id} className="flex items-center gap-3 rounded-xl bg-[hsl(var(--muted))]/30 px-3 py-2.5">
-                <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={36} />
-                <div>
-                  <p className="text-sm font-semibold leading-tight">{ed.name}</p>
-                  <p className="text-[11px] text-[hsl(var(--muted-foreground))]">Editor de plantão</p>
-                </div>
-                {ed.id === currentUserId && (
-                  <span className="ml-auto text-[10px] font-bold text-[hsl(var(--primary))] uppercase tracking-wide">você</span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
+  const cfg = {
+    past: {
+      strip:      "bg-[hsl(var(--muted))]/60",
+      dot:        "bg-[hsl(var(--muted-foreground))]",
+      status:     "PASSADO",
+      statusCls:  "text-[hsl(var(--muted-foreground))]",
+      rdCls:      "text-[hsl(var(--muted-foreground))]",
+      wrapCls:    "border-[hsl(var(--border))] opacity-65",
+      dateSz:     "text-xl",
+      avatarSz:   28 as number,
+    },
+    current: {
+      strip:      "bg-[hsl(var(--primary))]",
+      dot:        "bg-green-500 animate-pulse",
+      status:     "AO VIVO",
+      statusCls:  "text-green-600 dark:text-green-400",
+      rdCls:      "text-[hsl(var(--primary))]",
+      wrapCls:    "border-[hsl(var(--primary))] border-2 shadow-lg",
+      dateSz:     "text-5xl",
+      avatarSz:   44 as number,
+    },
+    next: {
+      strip:      "bg-[hsl(var(--primary))]/30",
+      dot:        "bg-[hsl(var(--primary))]/70",
+      status:     "PRÓXIMO",
+      statusCls:  "text-[hsl(var(--primary))]",
+      rdCls:      "text-[hsl(var(--primary))]/80",
+      wrapCls:    "border-[hsl(var(--border))]",
+      dateSz:     "text-3xl",
+      avatarSz:   34 as number,
+    },
+  }[variant];
 
   return (
-    <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5 card-float">
-      <div className="flex items-start justify-between mb-3">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">
-          {labels.next}
-        </p>
-        {isOnDuty && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] text-[10px] font-bold uppercase tracking-wide border border-[hsl(var(--primary))]/20">
-            <Shield className="h-3 w-3" /> Você está escalado
+    <div className={`rounded-2xl border overflow-hidden bg-[hsl(var(--card))] ${cfg.wrapCls}`}>
+      {/* accent strip */}
+      <div className={`h-1 ${cfg.strip}`} />
+
+      {/* status bar */}
+      <div className="flex items-center justify-between px-4 pt-3 pb-2">
+        <div className="flex items-center gap-2">
+          <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
+          <span className={`text-[10px] font-black uppercase tracking-[0.18em] ${cfg.statusCls}`}>
+            {cfg.status}
           </span>
-        )}
+        </div>
+        <span className={`text-[11px] font-black tabular-nums ${cfg.rdCls}`}>RD {week}</span>
       </div>
-      <div className="flex items-baseline gap-1.5 mb-4">
-        <span className="text-2xl font-bold tabular-nums">{satLabel}</span>
-        <span className="text-base text-[hsl(var(--muted-foreground))]">–</span>
-        <span className="text-2xl font-bold tabular-nums">{sunLabel}</span>
-        <span className="text-sm text-[hsl(var(--muted-foreground))] ml-1">{month} {year}</span>
+
+      {/* date display */}
+      <div className="px-4 pb-3">
+        <div className="flex items-end gap-2.5">
+          <div className="flex items-baseline gap-1">
+            <span className={`font-black tabular-nums tracking-tight leading-none ${cfg.dateSz}`}>{satDay}</span>
+            <span className="text-[11px] font-bold text-[hsl(var(--muted-foreground))] mb-0.5">Sáb</span>
+          </div>
+          <span className={`text-[hsl(var(--muted-foreground))] font-bold leading-none mb-0.5 ${variant === "current" ? "text-2xl" : "text-sm"}`}>—</span>
+          <div className="flex items-baseline gap-1">
+            <span className={`font-black tabular-nums tracking-tight leading-none ${cfg.dateSz}`}>{sunDay}</span>
+            <span className="text-[11px] font-bold text-[hsl(var(--muted-foreground))] mb-0.5">Dom</span>
+          </div>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] font-medium mt-1">{monthYear}</p>
       </div>
-      {isEmpty ? (
-        <p className="text-xs text-[hsl(var(--muted-foreground))]">Nenhum editor escalado ainda</p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {weekend.editors.map(ed => (
-            <div key={ed.id} className="flex items-center gap-2.5">
-              <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={32} />
-              <div>
-                <p className="text-sm font-medium leading-tight">{ed.name}</p>
+
+      {/* divider */}
+      <div className="mx-4 h-px bg-[hsl(var(--border))]" />
+
+      {/* player section */}
+      <div className={`px-4 ${variant === "current" ? "pt-4 pb-3" : "pt-3 pb-3"}`}>
+        {isEmpty ? (
+          <p className="text-xs text-[hsl(var(--muted-foreground))] text-center py-2">
+            {variant === "past" ? "Sem editor escalado" : "Nenhum editor escalado ainda"}
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {weekend.editors.map(ed => (
+              <div
+                key={ed.id}
+                className={`flex items-center gap-3 ${
+                  variant === "current"
+                    ? "rounded-xl bg-[hsl(var(--muted))]/30 px-3 py-2.5"
+                    : ""
+                }`}>
+                <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={cfg.avatarSz} />
+                <div className="flex-1 min-w-0">
+                  <p className={`font-semibold leading-tight truncate ${variant === "current" ? "text-sm" : "text-xs"}`}>
+                    {ed.name}
+                  </p>
+                  {variant === "current" && (
+                    <p className="text-[11px] text-[hsl(var(--muted-foreground))]">Editor de plantão</p>
+                  )}
+                </div>
                 {ed.id === currentUserId && (
-                  <p className="text-[10px] text-[hsl(var(--primary))] font-semibold">você</p>
+                  <span className="shrink-0 text-[10px] font-black uppercase tracking-wide text-[hsl(var(--primary))]">
+                    VOCÊ
+                  </span>
                 )}
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* "você está de plantão" banner — current only */}
+      {variant === "current" && isOnDuty && (
+        <div className="mx-4 mb-4 rounded-xl bg-[hsl(var(--primary))]/10 border border-[hsl(var(--primary))]/30 px-3 py-2 flex items-center gap-2">
+          <Shield className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+          <span className="text-xs font-black uppercase tracking-wide text-[hsl(var(--primary))]">
+            Você está de plantão
+          </span>
         </div>
       )}
     </div>
