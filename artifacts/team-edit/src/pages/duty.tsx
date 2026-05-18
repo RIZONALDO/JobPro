@@ -503,10 +503,10 @@ export default function DutyPage() {
                       key={iso}
                       className={`rounded-xl border flex flex-col p-1.5 min-h-[130px] transition-colors ${
                         isCurWknd
-                          ? "border-[hsl(var(--primary))]/40 bg-[hsl(var(--primary))]/8"
+                          ? "border-[hsl(var(--primary))]/40 bg-[hsl(var(--primary))]/10"
                           : hasEditors
-                            ? "border-[hsl(var(--border))] bg-[hsl(var(--card))]"
-                            : "border-transparent bg-[hsl(var(--muted))]/60"
+                            ? "border-[hsl(var(--border))] bg-[hsl(var(--muted))]"
+                            : "border-transparent bg-[hsl(var(--muted))]/20"
                       }`}
                     >
                       {/* Day number + add button */}
