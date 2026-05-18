@@ -8,7 +8,7 @@ import { fmtDate, fmtDateHuman, fmtShort } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, AlertTriangle, CheckCircle2, CalendarClock, Zap, Search, LayoutGrid } from "lucide-react";
+import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, AlertTriangle, CheckCircle2, CalendarClock, Zap, Search, LayoutGrid, MoreHorizontal } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { StatusBars } from "@/components/charts/StatusBars";
 import { WaffleChart } from "@/components/charts/WaffleChart";
@@ -146,14 +146,537 @@ function Battery({ score, maxScore, color }: { score: number; maxScore: number; 
   );
 }
 
+// ── Card swap menu ───────────────────────────────────────────────────────────
+
+interface CardOption { key: string; label: string; }
+
+function CardMenu({ value, options, onChange }: {
+  value: string; options: CardOption[]; onChange: (key: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
+        className="h-5 w-5 rounded flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--muted-foreground))]/50 hover:text-[hsl(var(--muted-foreground))]"
+      >
+        <MoreHorizontal className="h-3.5 w-3.5" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[100]" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 z-[101] min-w-[200px] rounded-xl border bg-[hsl(var(--card))] shadow-xl py-1.5 text-left overflow-hidden">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 px-3 pt-1 pb-1.5">
+              Trocar card
+            </p>
+            {options.map(opt => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => { onChange(opt.key); setOpen(false); }}
+                className={`w-full text-left px-3 py-2 text-xs hover:bg-[hsl(var(--muted))]/50 transition-colors flex items-center gap-2 ${value === opt.key ? "text-[hsl(var(--primary))] font-semibold bg-[hsl(var(--primary))]/5" : "text-[hsl(var(--foreground))]"}`}
+              >
+                <span className="flex-1">{opt.label}</span>
+                {value === opt.key && <span className="text-[9px] text-[hsl(var(--muted-foreground))]/60 shrink-0">Ativo</span>}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const SLOT1_OPTIONS: CardOption[] = [
+  { key: "command_panel", label: "Painel de Comando" },
+  { key: "health_score",  label: "Score de Saúde" },
+  { key: "bottleneck",    label: "Gargalo Identificado" },
+];
+const SLOT2_OPTIONS: CardOption[] = [
+  { key: "mini_gantt",     label: "Próximas Entregas" },
+  { key: "capacity",       label: "Termômetro de Capacidade" },
+  { key: "approval_queue", label: "Fila de Aprovação" },
+];
+const SLOT3_OPTIONS: CardOption[] = [
+  { key: "heatmap",       label: "Mapa de Calor Semanal" },
+  { key: "client_health", label: "Saúde por Cliente" },
+  { key: "client_status", label: "Cliente × Status" },
+];
+const SLOT5_OPTIONS: CardOption[] = [
+  { key: "delivery_projection", label: "Projeção de Entregas" },
+  { key: "health_radar",        label: "Radar de Saúde" },
+  { key: "kpi_comparison",      label: "KPIs da Equipe" },
+];
+
+// ── Alternative slot-1 cards ──────────────────────────────────────────────────
+
+function HealthScoreCard({ allTasks, atRiskCount, menu }: {
+  allTasks: AllTask[]; atRiskCount: number; menu?: React.ReactNode;
+}) {
+  const active    = allTasks.filter(t => !["completed","cancelled"].includes(t.status));
+  const completed = allTasks.filter(t => t.status === "completed").length;
+  const total     = allTasks.length;
+  const review    = active.filter(t => t.status === "review").length;
+  const inProgress = active.filter(t => t.status === "in_progress").length;
+  const completedPct = total > 0 ? Math.round(completed / total * 100) : 0;
+  const overduePenalty = active.length > 0 ? Math.round((atRiskCount / active.length) * 50) : 0;
+  const reviewPenalty  = active.length > 0 ? Math.round((review / active.length) * 20) : 0;
+  const score = Math.max(0, Math.min(100, completedPct + (inProgress > 0 ? 10 : 0) - overduePenalty - reviewPenalty + 20));
+  const color = score >= 70 ? "#22c55e" : score >= 45 ? "#f59e0b" : "#ef4444";
+  const label = score >= 70 ? "Saudável" : score >= 45 ? "Atenção" : "Crítico";
+
+  return (
+    <div className="rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+      <div className="flex items-center gap-2 px-3.5 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <Activity className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
+          <span className="text-xs font-semibold">Score de Saúde</span>
+        </div>
+        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full leading-none shrink-0"
+          style={{ backgroundColor: color + "22", color }}>{label}</span>
+        {menu}
+      </div>
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 px-5 min-h-0">
+        <span className="text-5xl font-black tabular-nums leading-none" style={{ color }}>{score}</span>
+        <div className="w-full h-2 rounded-full bg-[hsl(var(--muted))]">
+          <div className="h-2 rounded-full transition-all duration-700" style={{ width: `${score}%`, backgroundColor: color }} />
+        </div>
+        <div className="flex items-center gap-4 text-[10px] text-[hsl(var(--muted-foreground))]">
+          <span><strong style={{ color: atRiskCount > 0 ? "#ef4444" : "#94a3b8" }}>{atRiskCount}</strong> atrasadas</span>
+          <span><strong style={{ color: review > 0 ? "#f59e0b" : "#94a3b8" }}>{review}</strong> p/ aprovar</span>
+          <span><strong className="text-emerald-500">{completedPct}%</strong> concluído</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BottleneckCard({ allTasks, workload, menu }: {
+  allTasks: AllTask[]; workload: EditorWorkload[]; menu?: React.ReactNode;
+}) {
+  const active      = allTasks.filter(t => !["completed","cancelled"].includes(t.status));
+  const reviewCount = active.filter(t => t.status === "review").length;
+  const inRevision  = active.filter(t => t.status === "in_revision").length;
+  const pendingCnt  = active.filter(t => t.status === "pending").length;
+  const maxLoad     = workload.reduce<EditorWorkload | null>((m, e) => !m || e.score > m.score ? e : m, null);
+
+  const alerts: { text: string; color: string }[] = [];
+  if (reviewCount >= 3) alerts.push({ text: `${reviewCount} tarefas aguardam aprovação`, color: "#f59e0b" });
+  if (inRevision  >= 2) alerts.push({ text: `${inRevision} tarefas em revisão`,          color: "#f97316" });
+  if (pendingCnt  >= 5) alerts.push({ text: `${pendingCnt} tarefas ainda pendentes`,      color: "#94a3b8" });
+  if (maxLoad && maxLoad.score > 15) alerts.push({ text: `${maxLoad.name.split(" ")[0]} sobrecarregado`, color: "#ef4444" });
+  if (alerts.length === 0) alerts.push({ text: "Nenhum gargalo identificado", color: "#22c55e" });
+
+  return (
+    <div className="rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+      <div className="flex items-center gap-2 px-3.5 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <Search className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
+          <span className="text-xs font-semibold">Gargalo Identificado</span>
+        </div>
+        {menu}
+      </div>
+      <div className="flex-1 min-h-0 flex flex-col justify-center gap-2 px-4">
+        {alerts.slice(0, 3).map((a, i) => (
+          <div key={i} className="flex items-start gap-2.5 rounded-lg px-3 py-2" style={{ backgroundColor: a.color + "18" }}>
+            <div className="w-2 h-2 rounded-full mt-0.5 shrink-0" style={{ backgroundColor: a.color }} />
+            <span className="text-xs leading-snug font-medium" style={{ color: a.color }}>{a.text}</span>
+          </div>
+        ))}
+        {alerts.length === 1 && alerts[0].color === "#22c55e" && (
+          <p className="text-[10px] text-center text-[hsl(var(--muted-foreground))]/50 mt-1">Equipe fluindo bem</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Alternative slot-2 cards ──────────────────────────────────────────────────
+
+function CapacityCard({ workload, menu }: { workload: EditorWorkload[]; menu?: React.ReactNode }) {
+  const sorted = [...workload].sort((a, b) => b.score - a.score).slice(0, 6);
+  const maxScore = Math.max(...sorted.map(e => e.score), 1);
+
+  return (
+    <div className="rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+      <div className="flex items-center gap-2 px-3.5 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <Users className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
+          <span className="text-xs font-semibold">Termômetro de Capacidade</span>
+        </div>
+        {menu}
+      </div>
+      {sorted.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">Sem editores</p>
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 flex flex-col justify-center gap-1.5 px-3.5 py-2">
+          {sorted.map(e => {
+            const pct   = maxScore > 0 ? e.score / maxScore : 0;
+            const color = scoreColor(e.score);
+            return (
+              <div key={e.id} className="flex items-center gap-2 min-w-0">
+                <span className="text-[10px] font-medium w-14 truncate shrink-0 text-[hsl(var(--muted-foreground))]">
+                  {e.name.split(" ")[0]}
+                </span>
+                <div className="flex-1 h-3 rounded-full bg-[hsl(var(--muted))] overflow-hidden">
+                  <div className="h-3 rounded-full transition-all duration-500" style={{ width: `${pct * 100}%`, backgroundColor: color }} />
+                </div>
+                <span className="text-[10px] font-bold shrink-0 w-14 text-right tabular-nums" style={{ color }}>
+                  {scoreLabel(e.score)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ApprovalQueueCard({ allTasks, onOpenTask, menu }: {
+  allTasks: AllTask[]; onOpenTask: (id: number) => void; menu?: React.ReactNode;
+}) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const parse = (s: string | null | undefined) =>
+    s ? new Date(s.includes("T") ? s : s + "T00:00:00") : null;
+
+  const queue = [...allTasks]
+    .filter(t => t.status === "review")
+    .sort((a, b) => (a.dueDate ?? "9999") < (b.dueDate ?? "9999") ? -1 : 1)
+    .slice(0, 5);
+
+  return (
+    <div className="rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+      <div className="flex items-center gap-2 px-3.5 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+          <span className="text-xs font-semibold">Fila de Aprovação</span>
+        </div>
+        {queue.length > 0 && (
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 leading-none shrink-0">
+            {queue.length}
+          </span>
+        )}
+        {menu}
+      </div>
+      {queue.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-1.5 text-[hsl(var(--muted-foreground))]">
+          <CheckCircle2 className="h-8 w-8 opacity-15" />
+          <p className="text-xs">Nada para aprovar</p>
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 overflow-hidden divide-y divide-[hsl(var(--border))]/60">
+          {queue.map(t => {
+            const d = parse(t.dueDate);
+            const overdue = d !== null && d < today;
+            const label = t.title ?? t.client ?? "Tarefa";
+            const code  = t.taskNumber && t.taskYear
+              ? `${String(t.taskNumber).padStart(3, "0")}.${t.taskYear}`
+              : undefined;
+            return (
+              <button key={t.id} type="button" onClick={() => onOpenTask(t.id)}
+                className="w-full text-left flex items-center gap-2 px-3 py-2 hover:bg-amber-500/[0.04] transition-colors group min-w-0">
+                <div className="flex-1 min-w-0">
+                  {code && <span className="text-[8px] font-mono font-bold text-[hsl(var(--muted-foreground))]/40 block leading-none">{code}</span>}
+                  <p className="text-[11px] font-semibold truncate leading-tight group-hover:text-amber-600 transition-colors">{label}</p>
+                </div>
+                {d && (
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none shrink-0 ${overdue ? "bg-red-500/10 text-red-500" : "bg-amber-500/10 text-amber-600"}`}>
+                    {overdue ? "Atrasada" : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Alternative slot-3 cards (col-span-2) ────────────────────────────────────
+
+function ClientHealthCard({ allTasks, menu }: { allTasks: AllTask[]; menu?: React.ReactNode }) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const clientMap = new Map<string, { active: number; done: number; overdue: number }>();
+
+  for (const t of allTasks) {
+    const key = t.client ?? "Sem cliente";
+    if (!clientMap.has(key)) clientMap.set(key, { active: 0, done: 0, overdue: 0 });
+    const c = clientMap.get(key)!;
+    if (t.status === "completed") { c.done++; }
+    else {
+      c.active++;
+      if (t.dueDate) {
+        const d = new Date(t.dueDate.includes("T") ? t.dueDate : t.dueDate + "T00:00:00");
+        if (d < today) c.overdue++;
+      }
+    }
+  }
+
+  const clients = [...clientMap.entries()]
+    .map(([name, v]) => ({ name, ...v, total: v.active + v.done }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 6);
+
+  return (
+    <div className="col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <FolderOpen className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
+          <span className="text-xs font-semibold">Saúde por Cliente</span>
+        </div>
+        <span className="text-[11px] text-[hsl(var(--muted-foreground))] shrink-0">{clients.length} clientes</span>
+        {menu}
+      </div>
+      {clients.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">Sem dados</p>
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 flex flex-col justify-center gap-1.5 px-4 py-2">
+          {clients.map(c => {
+            const donePct = c.total > 0 ? Math.round(c.done / c.total * 100) : 0;
+            return (
+              <div key={c.name} className="flex items-center gap-2.5 min-w-0">
+                <div className="w-28 shrink-0">
+                  <p className="text-[10px] font-medium truncate text-[hsl(var(--muted-foreground))]">{c.name}</p>
+                </div>
+                <div className="flex-1 h-2.5 rounded-full bg-[hsl(var(--muted))] overflow-hidden">
+                  <div className="h-2.5 rounded-full bg-emerald-500 transition-all duration-500"
+                    style={{ width: `${donePct}%` }} />
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0 w-24 justify-end">
+                  <span className="text-[9px] tabular-nums text-emerald-600 font-bold">{donePct}%</span>
+                  {c.overdue > 0 && (
+                    <span className="text-[9px] font-bold tabular-nums text-red-500 bg-red-500/10 px-1 py-0.5 rounded">
+                      {c.overdue}↑
+                    </span>
+                  )}
+                  <span className="text-[9px] text-[hsl(var(--muted-foreground))]">{c.total}t</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const STATUS_COLS = [
+  { key: "pending",     label: "Pend.",  color: "#94a3b8" },
+  { key: "in_progress", label: "Edição", color: "#3b82f6" },
+  { key: "in_revision", label: "Revis.", color: "#f97316" },
+  { key: "review",      label: "Aprov.", color: "#f59e0b" },
+  { key: "completed",   label: "Feito",  color: "#22c55e" },
+];
+
+function ClientStatusCard({ allTasks, menu }: { allTasks: AllTask[]; menu?: React.ReactNode }) {
+  const clientMap = new Map<string, Record<string, number>>();
+  for (const t of allTasks) {
+    const key = t.client ?? "Sem cliente";
+    if (!clientMap.has(key)) clientMap.set(key, Object.fromEntries(STATUS_COLS.map(s => [s.key, 0])));
+    const row = clientMap.get(key)!;
+    if (row[t.status] !== undefined) row[t.status]++;
+  }
+  const clients = [...clientMap.entries()]
+    .map(([name, counts]) => ({ name, counts, total: Object.values(counts).reduce((a, b) => a + b, 0) }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 6);
+
+  return (
+    <div className="col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
+          <span className="text-xs font-semibold">Cliente × Status</span>
+        </div>
+        {menu}
+      </div>
+      {clients.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">Sem dados</p>
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden px-3 py-1.5 gap-0.5">
+          <div className="flex items-center shrink-0 pb-1">
+            <div className="w-28 shrink-0" />
+            {STATUS_COLS.map(s => (
+              <div key={s.key} className="flex-1 flex justify-center">
+                <span className="text-[8px] font-bold leading-none" style={{ color: s.color }}>{s.label}</span>
+              </div>
+            ))}
+          </div>
+          {clients.map(c => (
+            <div key={c.name} className="flex items-center gap-0 flex-1 min-h-0">
+              <div className="w-28 shrink-0 pr-2">
+                <p className="text-[10px] font-medium truncate text-[hsl(var(--muted-foreground))]">{c.name}</p>
+              </div>
+              {STATUS_COLS.map(s => {
+                const count = c.counts[s.key] ?? 0;
+                const intensity = c.total > 0 ? count / c.total : 0;
+                const alpha = count > 0 ? (0.18 + intensity * 0.72) : 0;
+                return (
+                  <div key={s.key} className="flex-1 flex items-center justify-center h-full min-h-[18px] max-h-[26px] rounded mx-0.5 transition-colors"
+                    style={{ backgroundColor: count > 0 ? s.color + Math.round(alpha * 255).toString(16).padStart(2, "0") : "transparent" }}>
+                    <span className="text-[9px] font-bold tabular-nums"
+                      style={{ color: count > 0 ? (intensity > 0.45 ? "#fff" : s.color) : "transparent" }}>
+                      {count > 0 ? count : ""}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Alternative slot-5 cards (coordinator bottom section) ────────────────────
+
+function HealthRadarCard({ allTasks, atRisk, workload, menu }: {
+  allTasks: AllTask[]; atRisk: AtRiskTask[]; workload: EditorWorkload[]; menu?: React.ReactNode;
+}) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const active     = allTasks.filter(t => !["completed","cancelled"].includes(t.status));
+  const completed  = allTasks.filter(t => t.status === "completed").length;
+  const total      = allTasks.length;
+  const reviewCnt  = active.filter(t => t.status === "review").length;
+  const inProgress = active.filter(t => t.status === "in_progress").length;
+
+  const pontualidade = active.length > 0 ? Math.round((1 - atRisk.length / active.length) * 100) : 100;
+  const fluxo        = active.length > 0 ? Math.min(100, Math.round((inProgress / active.length) * 200)) : 0;
+  const conclusao    = total > 0 ? Math.round(completed / total * 100) : 0;
+  const scores       = workload.map(e => e.score);
+  const avg          = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+  const variance     = scores.length > 0 ? scores.reduce((a, b) => a + (b - avg) ** 2, 0) / scores.length : 0;
+  const equilibrio   = Math.max(0, Math.min(100, Math.round(100 - Math.sqrt(variance) * 4)));
+  const aprovacao    = active.length > 0 ? Math.round((1 - reviewCnt / active.length) * 100) : 100;
+
+  const muted = isDark ? "rgba(148,163,184,0.45)" : "rgba(100,116,139,0.45)";
+  const chartOption = {
+    backgroundColor: "transparent",
+    animation: true,
+    animationDuration: 600,
+    radar: {
+      indicator: [
+        { name: "Pontualidade", max: 100 },
+        { name: "Fluxo",        max: 100 },
+        { name: "Conclusão",    max: 100 },
+        { name: "Equilíbrio",   max: 100 },
+        { name: "Aprovação",    max: 100 },
+      ],
+      radius: "68%",
+      center: ["50%", "55%"],
+      nameGap: 6,
+      name: { color: muted, fontSize: 9, fontFamily: "inherit" },
+      splitNumber: 4,
+      axisLine:  { lineStyle: { color: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)" } },
+      splitLine: { lineStyle: { color: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)" } },
+      splitArea: { show: false },
+    },
+    series: [{
+      type: "radar",
+      data: [{
+        value: [pontualidade, fluxo, conclusao, equilibrio, aprovacao],
+        areaStyle: { color: "rgba(99,102,241,0.14)" },
+        lineStyle:  { color: "#6366f1", width: 2 },
+        itemStyle:  { color: "#6366f1" },
+        symbol: "circle", symbolSize: 5,
+      }],
+    }],
+    tooltip: {
+      trigger: "item",
+      backgroundColor: isDark ? "#1e293b" : "#fff",
+      borderColor: isDark ? "#334155" : "#e2e8f0",
+      textStyle: { fontSize: 11, color: isDark ? "#e2e8f0" : "#1e293b", fontFamily: "inherit" },
+    },
+  };
+
+  return (
+    <div className="md:col-span-2 rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
+      <div className="flex items-center gap-2 px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <Activity className="h-4 w-4 text-[hsl(var(--primary))]" />
+        <span className="font-semibold text-sm">Radar de Saúde</span>
+        <div className="ml-auto">{menu}</div>
+      </div>
+      <ReactECharts
+        option={chartOption}
+        style={{ height: 248, width: "100%" }}
+        opts={{ renderer: "canvas", devicePixelRatio: window.devicePixelRatio || 1 }}
+        lazyUpdate
+      />
+    </div>
+  );
+}
+
+function KPIComparisonCard({ allTasks, history, menu }: {
+  allTasks: AllTask[]; history: StatusHistory | null; menu?: React.ReactNode;
+}) {
+  const active     = allTasks.filter(t => !["completed","cancelled"].includes(t.status));
+  const review     = active.filter(t => t.status === "review").length;
+  const inProgress = active.filter(t => t.status === "in_progress").length;
+  const pending    = active.filter(t => t.status === "pending").length;
+
+  const comp = history?.series["completed"] ?? [];
+  const len  = comp.length;
+  const thisWeek = len >= 1 ? Math.max(0, (comp[len - 1] ?? 0) - (comp[Math.max(0, len - 8)] ?? 0)) : 0;
+  const lastWeek = len >= 8 ? Math.max(0, (comp[Math.max(0, len - 8)] ?? 0) - (comp[Math.max(0, len - 15)] ?? 0)) : 0;
+
+  const kpis = [
+    { label: "Em edição",    value: inProgress, prev: null as number | null, color: "#3b82f6" },
+    { label: "Para aprovar", value: review,      prev: null as number | null, color: "#f59e0b" },
+    { label: "Pendentes",    value: pending,     prev: null as number | null, color: "#94a3b8" },
+    { label: "Concluídas/sem", value: thisWeek, prev: lastWeek,              color: "#22c55e" },
+  ];
+
+  return (
+    <div className="md:col-span-2 rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
+      <div className="flex items-center gap-2 px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <Zap className="h-4 w-4 text-[hsl(var(--primary))]" />
+        <span className="font-semibold text-sm">KPIs da Equipe</span>
+        <div className="ml-auto">{menu}</div>
+      </div>
+      <div className="flex-1 min-h-0 grid grid-cols-2 md:grid-cols-4 divide-x divide-y" style={{ minHeight: 248 }}>
+        {kpis.map(kpi => {
+          const diff = kpi.prev !== null ? kpi.value - kpi.prev : null;
+          return (
+            <div key={kpi.label} className="flex flex-col justify-center items-center gap-1.5 px-4 py-6">
+              <span className="text-3xl font-black tabular-nums leading-none"
+                style={{ color: kpi.value > 0 ? kpi.color : "hsl(var(--muted-foreground)/40%)" }}>
+                {kpi.value}
+              </span>
+              <span className="text-[10px] text-[hsl(var(--muted-foreground))] text-center leading-tight">{kpi.label}</span>
+              {diff !== null && (
+                <span className={`text-[9px] font-semibold ${diff > 0 ? "text-emerald-500" : diff < 0 ? "text-red-500" : "text-[hsl(var(--muted-foreground))]"}`}>
+                  {diff > 0 ? `+${diff}` : diff === 0 ? "= ant." : `${diff}`} vs semana ant.
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Delivery Projection Card ──────────────────────────────────────────────────
 
 function DeliveryProjectionCard({
   allTasks,
   history,
+  menu,
 }: {
   allTasks: AllTask[];
   history: StatusHistory | null;
+  menu?: React.ReactNode;
 }) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -289,6 +812,7 @@ function DeliveryProjectionCard({
           }
           <span className="text-[hsl(var(--muted-foreground))]"><strong className="text-emerald-500">{completionPct}%</strong> concluídas</span>
         </div>
+        {menu}
       </div>
 
       {/* Body */}
@@ -446,10 +970,11 @@ const STATUS_BAR: Record<string, string> = {
 
 // ── Command Panel Card (coordinator only) ────────────────────────────────────
 
-function CommandPanelCard({ tasks, allTasks, atRiskCount }: {
+function CommandPanelCard({ tasks, allTasks, atRiskCount, menu }: {
   tasks: Task[];
   allTasks: AllTask[];
   atRiskCount: number;
+  menu?: React.ReactNode;
 }) {
   const reviewCount    = tasks.filter(t => t.status === "review").length;
   const inRevisionCount = tasks.filter(t => t.status === "in_revision").length;
@@ -472,15 +997,16 @@ function CommandPanelCard({ tasks, allTasks, atRiskCount }: {
     <div className="rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
 
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2 px-3.5 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
           <Zap className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
           <span className="text-xs font-semibold">Painel de Comando</span>
         </div>
         {hasAlert
-          ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full leading-none bg-amber-500/10 text-amber-600">Ação</span>
-          : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full leading-none bg-green-500/10 text-green-600">Em dia</span>
+          ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full leading-none bg-amber-500/10 text-amber-600 shrink-0">Ação</span>
+          : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full leading-none bg-green-500/10 text-green-600 shrink-0">Em dia</span>
         }
+        {menu}
       </div>
 
       {/* 2×2 KPI grid */}
@@ -583,9 +1109,10 @@ interface GanttItem {
 
 const DAY_ABBR = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-function MiniGanttCard({ items, onOpenTask }: {
+function MiniGanttCard({ items, onOpenTask, menu }: {
   items: GanttItem[];
   onOpenTask: (id: number) => void;
+  menu?: React.ReactNode;
 }) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -616,14 +1143,15 @@ function MiniGanttCard({ items, onOpenTask }: {
     <div className="rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
 
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2 px-3.5 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
           <CalendarClock className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
           <span className="text-xs font-semibold">Próximas entregas</span>
         </div>
-        <span className={`text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-full leading-none ${due.length > 0 ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"}`}>
+        <span className={`text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-full leading-none shrink-0 ${due.length > 0 ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"}`}>
           {due.length} em 7 dias
         </span>
+        {menu}
       </div>
 
       {due.length === 0 ? (
@@ -849,9 +1377,10 @@ function OverdueCard({ items, onOpenTask, emptyStats }: {
 }
 
 /* ── Weekly Heatmap Card (opção J — Mapa de Calor Semanal) ─────── */
-function WeeklyHeatmapCard({ heatmapTasks, workload }: {
+function WeeklyHeatmapCard({ heatmapTasks, workload, menu }: {
   heatmapTasks: { assignedToId: number | null; dueDate: string | null; status: string }[];
   workload: EditorWorkload[];
+  menu?: React.ReactNode;
 }) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -904,17 +1433,18 @@ function WeeklyHeatmapCard({ heatmapTasks, workload }: {
     <div className="col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
 
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
           <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
           <span className="text-xs font-semibold">Mapa de Calor Semanal</span>
         </div>
-        <span className="text-[11px] text-[hsl(var(--muted-foreground))]">
+        <span className="text-[11px] text-[hsl(var(--muted-foreground))] shrink-0">
           {totalDue > 0
             ? <><strong className="text-[hsl(var(--foreground))]">{totalDue}</strong> entrega{totalDue !== 1 ? "s" : ""} esta semana</>
             : "Sem entregas nos próximos 7 dias"
           }
         </span>
+        {menu}
       </div>
 
       {editors.length === 0 ? (
@@ -1156,6 +1686,17 @@ export default function Dashboard() {
   const [allTasks, setAllTasks]         = useState<AllTask[]>([]);
   const [statusHistory, setStatusHistory] = useState<StatusHistory | null>(null);
   const [heatmapTasks, setHeatmapTasks] = useState<{ assignedToId: number | null; dueDate: string | null; status: string }[]>([]);
+  const [cardPrefs, setCardPrefs] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem("jobpro_dash_prefs") ?? "{}"); }
+    catch { return {}; }
+  });
+  const setCardPref = useCallback((slot: string, key: string) => {
+    setCardPrefs(prev => {
+      const next = { ...prev, [slot]: key };
+      localStorage.setItem("jobpro_dash_prefs", JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   const load = useCallback(() => {
     apiFetch<Task[]>("/api/my-tasks").then(setTasks).catch(() => {});
@@ -1269,7 +1810,7 @@ export default function Dashboard() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
 
-        {/* Card 1 — editor: ação pessoal | coordinator: painel de comando */}
+        {/* Card 1 — editor: ação pessoal | coordinator: personalizável (slot1) */}
         {isEditor ? (
           <ActionCard
             label="Para revisar / alterar"
@@ -1277,32 +1818,65 @@ export default function Dashboard() {
             total={tasks.length}
             rows={actionRows}
           />
-        ) : (
-          <CommandPanelCard
-            tasks={tasks}
-            allTasks={allTasks}
-            atRiskCount={atRisk.length}
+        ) : (() => {
+          const slot1 = cardPrefs.slot1 ?? "command_panel";
+          const menu1 = <CardMenu value={slot1} options={SLOT1_OPTIONS} onChange={v => setCardPref("slot1", v)} />;
+          if (slot1 === "health_score")
+            return <HealthScoreCard allTasks={allTasks} atRiskCount={atRisk.length} menu={menu1} />;
+          if (slot1 === "bottleneck")
+            return <BottleneckCard allTasks={allTasks} workload={workload} menu={menu1} />;
+          return <CommandPanelCard tasks={tasks} allTasks={allTasks} atRiskCount={atRisk.length} menu={menu1} />;
+        })()}
+
+        {/* Card 2 — editor: mini gantt | coordinator: personalizável (slot2) */}
+        {isEditor ? (
+          <MiniGanttCard
+            items={tasks.map(t => ({ id: t.id, title: t.title, status: t.status, dueDate: t.dueDate, color: t.color, client: t.client, taskCode: t.taskCode }))}
+            onOpenTask={goToTask}
           />
-        )}
+        ) : (() => {
+          const slot2 = cardPrefs.slot2 ?? "mini_gantt";
+          const menu2 = <CardMenu value={slot2} options={SLOT2_OPTIONS} onChange={v => setCardPref("slot2", v)} />;
+          if (slot2 === "capacity")
+            return <CapacityCard workload={workload} menu={menu2} />;
+          if (slot2 === "approval_queue")
+            return <ApprovalQueueCard allTasks={allTasks} onOpenTask={goToTask} menu={menu2} />;
+          return (
+            <MiniGanttCard
+              items={allTasks.map(t => ({ id: t.id, title: t.title, status: t.status, dueDate: t.dueDate, color: t.color, client: t.client, taskCode: t.taskNumber && t.taskYear ? `${String(t.taskNumber).padStart(3, "0")}.${t.taskYear}` : undefined }))}
+              onOpenTask={goToTask}
+              menu={menu2}
+            />
+          );
+        })()}
 
-        {/* Card 2 — mini gantt próximas entregas */}
-        <MiniGanttCard
-          items={isEditor
-            ? tasks.map(t => ({ id: t.id, title: t.title, status: t.status, dueDate: t.dueDate, color: t.color, client: t.client, taskCode: t.taskCode }))
-            : allTasks.map(t => ({ id: t.id, title: t.title, status: t.status, dueDate: t.dueDate, color: t.color, client: t.client, taskCode: t.taskNumber && t.taskYear ? `${String(t.taskNumber).padStart(3, "0")}.${t.taskYear}` : undefined }))
-          }
-          onOpenTask={goToTask}
-        />
-
-        {/* Card 3+4 — weekly heatmap col-span-2 */}
-        <WeeklyHeatmapCard heatmapTasks={heatmapTasks} workload={workload} />
+        {/* Card 3+4 — editor: heatmap fixo | coordinator: personalizável (slot3) */}
+        {isEditor ? (
+          <WeeklyHeatmapCard heatmapTasks={heatmapTasks} workload={workload} />
+        ) : (() => {
+          const slot3 = cardPrefs.slot3 ?? "heatmap";
+          const menu3 = <CardMenu value={slot3} options={SLOT3_OPTIONS} onChange={v => setCardPref("slot3", v)} />;
+          if (slot3 === "client_health")
+            return <ClientHealthCard allTasks={allTasks} menu={menu3} />;
+          if (slot3 === "client_status")
+            return <ClientStatusCard allTasks={allTasks} menu={menu3} />;
+          return <WeeklyHeatmapCard heatmapTasks={heatmapTasks} workload={workload} menu={menu3} />;
+        })()}
       </div>
 
       {/* ── COORDINATOR LAYOUT ──────────────────────────────────── */}
       {!isEditor && (
         <div className="grid gap-5 md:grid-cols-3">
 
-          <DeliveryProjectionCard allTasks={allTasks} history={statusHistory} />
+          {(() => {
+            const slot5 = cardPrefs.slot5 ?? "delivery_projection";
+            const menu5 = <CardMenu value={slot5} options={SLOT5_OPTIONS} onChange={v => setCardPref("slot5", v)} />;
+            if (slot5 === "health_radar")
+              return <HealthRadarCard allTasks={allTasks} atRisk={atRisk} workload={workload} menu={menu5} />;
+            if (slot5 === "kpi_comparison")
+              return <KPIComparisonCard allTasks={allTasks} history={statusHistory} menu={menu5} />;
+            return <DeliveryProjectionCard allTasks={allTasks} history={statusHistory} menu={menu5} />;
+          })()}
 
           {/* Workload — coluna direita */}
           <WorkloadCard workload={workload} />
