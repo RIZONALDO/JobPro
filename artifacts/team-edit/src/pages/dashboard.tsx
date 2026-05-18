@@ -900,6 +900,7 @@ function DeliveryProjectionCard({
 function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
   const sorted = [...workload].sort((a, b) => b.score - a.score);
   const maxScore = Math.max(...sorted.map(e => e.score), 1);
+  const [tip, setTip] = useState<{ x: number; y: number; editor: EditorWorkload } | null>(null);
 
   return (
     <div className="rounded-xl border bg-[hsl(var(--card))] card-float h-full flex flex-col">
@@ -922,13 +923,16 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
             const color = scoreColor(editor.score);
             const firstName = editor.name.split(" ")[0];
             return (
-              <div key={editor.id} className="group relative flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/30 transition-colors">
-                <AvatarDisplay
-                  name={editor.name}
-                  avatarUrl={editor.avatarUrl}
-                  size={36}
-                  fallbackColor={color}
-                />
+              <div
+                key={editor.id}
+                className="flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/30 transition-colors cursor-default"
+                onMouseEnter={e => {
+                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  setTip({ x: r.right, y: r.top + r.height / 2, editor });
+                }}
+                onMouseLeave={() => setTip(null)}
+              >
+                <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={36} fallbackColor={color} />
                 <span className="text-xs font-medium w-16 shrink-0 truncate">{firstName}</span>
                 <div className="flex-1 flex items-center">
                   <Battery score={editor.score} maxScore={maxScore} color={color} />
@@ -937,25 +941,31 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
                   style={{ backgroundColor: color + "22", color }}>
                   {scoreLabel(editor.score)}
                 </span>
-                <div className="pointer-events-none absolute left-4 top-full mt-1 z-[9999] hidden group-hover:block
-                  rounded-lg border bg-[hsl(var(--card))] shadow-lg p-3 text-xs space-y-1.5 min-w-[170px]">
-                  <p className="font-semibold">{editor.name}</p>
-                  <p className="text-[hsl(var(--muted-foreground))]">{editor.taskCount} tarefa(s) ativas</p>
-                  {((editor.byComplexity?.high   ?? 0) > 0) && <p className="text-red-600">{editor.byComplexity.high} complexa(s)</p>}
-                  {((editor.byComplexity?.medium ?? 0) > 0) && <p className="text-amber-600">{editor.byComplexity.medium} moderada(s)</p>}
-                  {((editor.byComplexity?.low    ?? 0) > 0) && <p className="text-green-600">{editor.byComplexity.low} simples</p>}
-                  {editor.taskCount === 0 && <p className="text-[hsl(var(--muted-foreground))]">Sem tarefas ativas</p>}
-                  <div className="border-t pt-1.5 space-y-0.5">
-                    {editor.byStatus.pending     > 0 && <p className="text-slate-500">{editor.byStatus.pending} pendente(s)</p>}
-                    {editor.byStatus.in_progress > 0 && <p className="text-blue-600">{editor.byStatus.in_progress} em edição</p>}
-                    {editor.byStatus.in_revision > 0 && <p className="text-orange-600">{editor.byStatus.in_revision} em alteração</p>}
-                    {editor.byStatus.review      > 0 && <p className="text-amber-600">{editor.byStatus.review} para aprovar</p>}
-                  </div>
-                </div>
               </div>
             );
           })}
         </div>
+      )}
+
+      {tip && createPortal(
+        <div
+          className="pointer-events-none fixed z-[99999] rounded-lg border bg-[hsl(var(--card))] shadow-xl p-3 text-xs space-y-1.5 min-w-[170px]"
+          style={{ left: tip.x + 8, top: tip.y, transform: "translateY(-50%)" }}
+        >
+          <p className="font-semibold">{tip.editor.name}</p>
+          <p className="text-[hsl(var(--muted-foreground))]">{tip.editor.taskCount} tarefa(s) ativas</p>
+          {((tip.editor.byComplexity?.high   ?? 0) > 0) && <p className="text-red-600">{tip.editor.byComplexity.high} complexa(s)</p>}
+          {((tip.editor.byComplexity?.medium ?? 0) > 0) && <p className="text-amber-600">{tip.editor.byComplexity.medium} moderada(s)</p>}
+          {((tip.editor.byComplexity?.low    ?? 0) > 0) && <p className="text-green-600">{tip.editor.byComplexity.low} simples</p>}
+          {tip.editor.taskCount === 0 && <p className="text-[hsl(var(--muted-foreground))]">Sem tarefas ativas</p>}
+          <div className="border-t pt-1.5 space-y-0.5">
+            {tip.editor.byStatus.pending     > 0 && <p className="text-slate-500">{tip.editor.byStatus.pending} pendente(s)</p>}
+            {tip.editor.byStatus.in_progress > 0 && <p className="text-blue-600">{tip.editor.byStatus.in_progress} em edição</p>}
+            {tip.editor.byStatus.in_revision > 0 && <p className="text-orange-600">{tip.editor.byStatus.in_revision} em alteração</p>}
+            {tip.editor.byStatus.review      > 0 && <p className="text-amber-600">{tip.editor.byStatus.review} para aprovar</p>}
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
