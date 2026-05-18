@@ -2151,7 +2151,7 @@ export default function Dashboard() {
           {/* Entregas da semana */}
           {(() => {
             const in7 = new Date(todayStart); in7.setDate(in7.getDate() + 7);
-            const weekTasks = allTasks
+            const weekTasks = tasks
               .filter(t => {
                 if (!t.dueDate || ["completed","cancelled","paused","rascunho"].includes(t.status)) return false;
                 const d = new Date(t.dueDate.includes("T") ? t.dueDate : t.dueDate + "T00:00:00");
@@ -2175,26 +2175,23 @@ export default function Dashboard() {
                 <div className="overflow-y-auto max-h-[280px] divide-y">
                   {weekTasks.length === 0 ? (
                     <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma entrega esta semana.</p>
-                  ) : weekTasks.map(t => {
-                    const fmtCode = (t.taskNumber && t.taskYear) ? `${String(t.taskNumber).padStart(3,"0")}.${t.taskYear}` : null;
-                    return (
-                      <div key={t.id} className="flex items-center gap-4 px-5 py-3 hover:bg-[hsl(var(--muted))]/20 transition-colors cursor-pointer"
-                        style={{ borderLeft: `4px solid ${t.color ?? "#6366f1"}88` }}
-                        onClick={() => goToTask(t.id)}>
-                        <div className="flex-1 min-w-0 pl-1">
-                          <div className="flex items-center gap-1.5">
-                            {fmtCode && <span className="text-xs font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">{fmtCode}</span>}
-                            <p className="text-sm font-medium truncate">{t.title}</p>
-                          </div>
-                          <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.client ?? ""}</p>
+                  ) : weekTasks.map(t => (
+                    <div key={t.id} className="flex items-center gap-4 px-5 py-3 hover:bg-[hsl(var(--muted))]/20 transition-colors cursor-pointer"
+                      style={{ borderLeft: `4px solid ${t.color ?? "#6366f1"}88` }}
+                      onClick={() => goToTask(t.id)}>
+                      <div className="flex-1 min-w-0 pl-1">
+                        <div className="flex items-center gap-1.5">
+                          {t.taskCode && <span className="text-xs font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">{t.taskCode}</span>}
+                          <p className="text-sm font-medium truncate">{t.title}</p>
                         </div>
-                        <div className="shrink-0 text-right">
-                          <p className="text-xs font-semibold text-blue-500">{fmtDateHuman(t.dueDate!)}</p>
-                          <p className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(t.dueDate!)}</p>
-                        </div>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.client ?? ""}</p>
                       </div>
-                    );
-                  })}
+                      <div className="shrink-0 text-right">
+                        <p className="text-xs font-semibold text-blue-500">{fmtDateHuman(t.dueDate!)}</p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(t.dueDate!)}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             );
