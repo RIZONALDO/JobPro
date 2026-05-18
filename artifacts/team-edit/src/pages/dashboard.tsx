@@ -1376,7 +1376,7 @@ function OverdueCard({ items, onOpenTask, emptyStats }: {
 
 /* ── Weekly Heatmap Card (opção J — Mapa de Calor Semanal) ─────── */
 function WeeklyHeatmapCard({ heatmapTasks, workload, menu }: {
-  heatmapTasks: { assignedToId: number | null; dueDate: string | null; status: string }[];
+  heatmapTasks: { assignedToId: number | null; dueDate: string | null; status: string; title: string; taskCode?: string | null; client?: string | null }[];
   workload: EditorWorkload[];
   menu?: React.ReactNode;
 }) {
@@ -1401,15 +1401,15 @@ function WeeklyHeatmapCard({ heatmapTasks, workload, menu }: {
 
   const heatmap = editors.map(editor => ({
     editor,
-    counts: days.map(d =>
+    cells: days.map(d =>
       activeTasks.filter(t =>
         t.assignedToId === editor.id &&
         t.dueDate?.split("T")[0] === dayKey(d)
-      ).length
+      )
     ),
   }));
 
-  const maxCount = Math.max(...heatmap.flatMap(r => r.counts), 1);
+  const maxCount = Math.max(...heatmap.flatMap(r => r.cells.map(c => c.length)), 1);
 
   const totalDue = activeTasks.filter(t => {
     if (!t.dueDate) return false;
@@ -1468,24 +1468,51 @@ function WeeklyHeatmapCard({ heatmapTasks, workload, menu }: {
           </div>
 
           {/* Editor rows */}
-          {heatmap.map(({ editor, counts }) => (
+          {heatmap.map(({ editor, cells }) => (
             <div key={editor.id} className="flex items-center gap-1 flex-1 min-h-0">
               <div className="w-16 shrink-0 pr-1.5">
                 <p className="text-[10px] font-medium truncate text-[hsl(var(--muted-foreground))]">
                   {editor.name.split(" ")[0]}
                 </p>
               </div>
-              {counts.map((count, i) => (
-                <div
-                  key={i}
-                  className="flex-1 h-full rounded flex items-center justify-center min-h-[18px] max-h-[26px] transition-colors"
-                  style={cellStyle(count)}
-                >
-                  <span className="text-[9px] font-bold tabular-nums" style={{ color: textColor(count) }}>
-                    {count > 0 ? count : ""}
-                  </span>
-                </div>
-              ))}
+              {cells.map((tasks, i) => {
+                const count = tasks.length;
+                return (
+                  <div
+                    key={i}
+                    className="relative group flex-1 h-full rounded flex items-center justify-center min-h-[18px] max-h-[26px] transition-colors cursor-default"
+                    style={cellStyle(count)}
+                  >
+                    <span className="text-[9px] font-bold tabular-nums" style={{ color: textColor(count) }}>
+                      {count > 0 ? count : ""}
+                    </span>
+                    {count > 0 && (
+                      <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-[9999] hidden group-hover:block w-max max-w-[200px]">
+                        <div className="rounded-lg border bg-[hsl(var(--card))] shadow-xl p-2.5 space-y-1.5">
+                          {tasks.map((t, ti) => (
+                            <div key={ti} className="flex flex-col gap-0.5">
+                              {t.taskCode && (
+                                <span className="text-[9px] font-mono font-bold text-[hsl(var(--muted-foreground))]/60 leading-none">
+                                  {t.taskCode}
+                                </span>
+                              )}
+                              <p className="text-[11px] font-semibold leading-snug text-[hsl(var(--foreground))]">
+                                {t.title}
+                              </p>
+                              {t.client && (
+                                <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-none">
+                                  {t.client}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="w-2 h-2 bg-[hsl(var(--card))] border-b border-r rotate-45 mx-auto -mt-1 border-[hsl(var(--border))]" />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ))}
         </div>
@@ -1683,7 +1710,7 @@ export default function Dashboard() {
   const [deadlineData, setDeadlineData] = useState<DeadlineOverview | null>(null);
   const [allTasks, setAllTasks]         = useState<AllTask[]>([]);
   const [statusHistory, setStatusHistory] = useState<StatusHistory | null>(null);
-  const [heatmapTasks, setHeatmapTasks] = useState<{ assignedToId: number | null; dueDate: string | null; status: string }[]>([]);
+  const [heatmapTasks, setHeatmapTasks] = useState<{ assignedToId: number | null; dueDate: string | null; status: string; title: string; taskCode?: string | null; client?: string | null }[]>([]);
   const [cardPrefs, setCardPrefs] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem("jobpro_dash_prefs") ?? "{}"); }
     catch { return {}; }
