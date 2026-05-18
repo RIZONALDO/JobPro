@@ -106,6 +106,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
   const save = async (publishStatus?: "rascunho" | "pending") => {
     if (!form.title.trim()) { toast.error("Título obrigatório"); return; }
+    if (publishStatus === "pending" && !form.dueDateTime) {
+      toast.error("Informe o prazo antes de publicar"); return;
+    }
     if (publishStatus === "pending" && selectedEditorIds.length === 0) {
       toast.error("Atribua ao menos um editor para publicar"); return;
     }
@@ -316,7 +319,10 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
                   {/* Previsão de entrega */}
                   <div className="col-span-2 space-y-1.5">
-                    <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Previsão de entrega</Label>
+                    <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                      Previsão de entrega
+                      <span className="text-destructive ml-0.5">*</span>
+                    </Label>
                     <DateTimePicker value={form.dueDateTime} onChange={v => f({ dueDateTime: v })} withTime min={new Date().toISOString().split("T")[0]} placeholder="Data e horário" />
                   </div>
 

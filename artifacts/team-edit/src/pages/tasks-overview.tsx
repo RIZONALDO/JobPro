@@ -608,7 +608,14 @@ export default function TasksOverview() {
                       </DropdownMenuItem>
                       {t.status === "rascunho" && (
                         <DropdownMenuItem
-                          onClick={() => apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(load)}
+                          onClick={() => {
+                            if (!t.dueDate) {
+                              toast.error("Defina o prazo antes de publicar");
+                              setEditTaskId(t.id); setFormOpen(true);
+                              return;
+                            }
+                            apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(load);
+                          }}
                           className="text-zinc-700 focus:text-zinc-700 font-medium">
                           <Send className="h-3.5 w-3.5" />Publicar
                         </DropdownMenuItem>

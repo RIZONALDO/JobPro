@@ -23,16 +23,12 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
   const { title, description, dueDate, priority, complexity, assignedToId, editorIds, folderUrl, client, color, status } = req.body ?? {};
   if (!title) { res.status(400).json({ error: "Título obrigatório" }); return; }
 
-  if (dueDate) {
-    const parsed = new Date(String(dueDate));
-    const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
-    if (parsed < todayMidnight) {
-      res.status(400).json({ error: "O prazo não pode ser uma data passada" }); return;
-    }
-  }
-
   const parsedAssignee = assignedToId ? parseInt(String(assignedToId), 10) : null;
   const initialStatus = status === "rascunho" ? "rascunho" : "pending";
+
+  if (initialStatus === "pending" && !dueDate) {
+    res.status(400).json({ error: "Informe o prazo antes de publicar a tarefa" }); return;
+  }
 
   const allEditorIdsCheck = new Set<number>();
   if (parsedAssignee) allEditorIdsCheck.add(parsedAssignee);
@@ -386,11 +382,19 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           createdById: userId,
         });
       } else if (s === "pending" && task.status === "cancelled") {
-        // Reativar tarefa cancelada
+        // Reativar tarefa cancelada — exige prazo
+        const dueDateAfterUpdate = update.dueDate !== undefined ? update.dueDate : task.dueDate;
+        if (!dueDateAfterUpdate) {
+          res.status(400).json({ error: "Informe um prazo para reativar a tarefa" }); return;
+        }
         update.status = "pending";
       } else if (s === "pending" && (task.status === "paused" || task.status === "rascunho")) {
         // Retomar pausada ou publicar rascunho
         if (task.status === "rascunho") {
+          const dueDateAfterUpdate = update.dueDate !== undefined ? update.dueDate : task.dueDate;
+          if (!dueDateAfterUpdate) {
+            res.status(400).json({ error: "Informe o prazo antes de publicar a tarefa" }); return;
+          }
           const existingEditors = await db.select({ id: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
           const { editorIds: newEditorIds } = req.body ?? {};
           const incomingEditorIds = Array.isArray(newEditorIds)
