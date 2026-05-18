@@ -41,6 +41,7 @@ interface AppNotification {
 const NOTIF_ICON: Record<string, React.ReactNode> = {
   task_assigned:    <UserPlus    className="h-4 w-4 text-blue-500" />,
   task_reassigned:  <UserCheck   className="h-4 w-4 text-blue-400" />,
+  task_started:     <Zap         className="h-4 w-4 text-blue-500" />,
   task_review:      <Eye         className="h-4 w-4 text-amber-500" />,
   task_approved:    <CheckCircle2 className="h-4 w-4 text-green-500" />,
   task_revision:    <AlertCircle  className="h-4 w-4 text-orange-500" />,
