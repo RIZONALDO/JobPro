@@ -249,14 +249,18 @@ export default function DutyPage() {
   }, [isAdmin]);
 
   // ── Non-admin data loading ───────────────────────────────────────────────────
-  useEffect(() => {
-    if (isAdmin) return;
+  const loadUpcoming = useCallback(() => {
     setUpcomingLoad(true);
     apiFetch<UpcomingData>("/api/duty/upcoming")
       .then(setUpcoming)
       .catch(() => toast.error("Erro ao carregar escala"))
       .finally(() => setUpcomingLoad(false));
-  }, [isAdmin]);
+  }, []);
+
+  useEffect(() => {
+    if (isAdmin) return;
+    loadUpcoming();
+  }, [isAdmin, loadUpcoming]);
 
   // ── Admin actions ────────────────────────────────────────────────────────────
   const toggleBulkEditor = (id: number) =>
@@ -334,9 +338,17 @@ export default function DutyPage() {
   if (!isAdmin) {
     return (
       <div className="flex flex-col h-full overflow-y-auto p-4 gap-5 bg-[hsl(var(--background))]">
-        <div className="flex items-center gap-2">
-          <Shield className="h-5 w-5 text-[hsl(var(--primary))]" />
-          <h1 className="text-lg font-bold">Escala de Plantões</h1>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-[hsl(var(--primary))]" />
+            <h1 className="text-lg font-bold">Escala de Plantões</h1>
+          </div>
+          <button
+            onClick={loadUpcoming}
+            disabled={upcomingLoad}
+            className="h-8 w-8 rounded-md border flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors disabled:opacity-50">
+            <RefreshCw className={`h-4 w-4 ${upcomingLoad ? "animate-spin" : ""}`} />
+          </button>
         </div>
 
         {upcomingLoad ? (
@@ -349,13 +361,13 @@ export default function DutyPage() {
             <WeekendCard variant="current" weekend={upcoming.thisWeekend} currentUserId={user?.id} />
             <WeekendCard variant="next"    weekend={upcoming.nextWeekend} currentUserId={user?.id} />
 
-            {upcoming.upcomingHolidays.length > 0 && (
+            {(upcoming.upcomingHolidays ?? []).length > 0 && (
               <div className="mt-1">
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))] mb-2 px-1">
                   Feriados / Dias especiais
                 </p>
                 <div className="rounded-2xl border border-amber-500/30 bg-amber-50/30 dark:bg-amber-900/10 overflow-hidden">
-                  {upcoming.upcomingHolidays.map((h, i) => {
+                  {(upcoming.upcomingHolidays ?? []).map((h, i) => {
                     const isOnDuty = h.editors.some(e => e.id === user?.id);
                     return (
                       <div
