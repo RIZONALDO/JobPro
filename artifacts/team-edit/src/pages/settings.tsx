@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ImagePlus, X, TriangleAlert, Settings as SettingsIcon } from "lucide-react";
+import { ImagePlus, X, TriangleAlert, Settings as SettingsIcon, FlaskConical, CheckCircle2 } from "lucide-react";
 import { usePageTitle } from "@/lib/use-page-title";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -26,6 +26,8 @@ export default function SettingsPage() {
   const [resetOpen, setResetOpen] = useState(false);
   const [resetConfirm, setResetConfirm] = useState("");
   const [resetting, setResetting] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+  const [seedDone, setSeedDone] = useState<number | null>(null);
 
   useEffect(() => {
     apiFetch<Record<string, string>>("/api/settings").then(d => {
@@ -53,6 +55,20 @@ export default function SettingsPage() {
       const b64 = await readBase64(file);
       setForm(f => ({ ...f, [field]: b64 }));
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Erro"); }
+  };
+
+  const doSeed = async () => {
+    setSeeding(true);
+    setSeedDone(null);
+    try {
+      const r = await apiPost<{ ok: boolean; created: number }>("/api/admin/seed", {});
+      setSeedDone(r.created);
+      toast.success(`${r.created} tarefas de exemplo criadas com sucesso.`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao gerar amostras");
+    } finally {
+      setSeeding(false);
+    }
   };
 
   const doReset = async () => {
@@ -167,6 +183,53 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between">
             <p className="text-sm text-[hsl(var(--muted-foreground))]">Revise as informações antes de salvar.</p>
             <Button onClick={save} disabled={saving}>{saving ? "Salvando..." : "Salvar configurações"}</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Dados de Demonstração */}
+      <Card className="border-blue-200 dark:border-blue-900">
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-blue-500" />
+            Dados de Demonstração
+          </CardTitle>
+          <CardDescription>
+            Popula o sistema com tarefas de exemplo cobrindo todos os status, prioridades e recursos dos cards do dashboard.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="rounded-lg border border-blue-100 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/20 p-4 space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-[hsl(var(--muted-foreground))]">
+              {[
+                { label: "Pendentes", n: 3 }, { label: "Em edição", n: 4 }, { label: "Em alteração", n: 2 },
+                { label: "Em aprovação", n: 3 }, { label: "Concluídas", n: 3 }, { label: "Pausada / Reaberta / Cancelada / Rascunho", n: 4 },
+              ].map(g => (
+                <div key={g.label} className="flex items-center gap-1.5">
+                  <div className="h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0" />
+                  <span>{g.n}× {g.label}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))]/70">
+              As tarefas são distribuídas entre os usuários existentes. Inclui histórico de revisões, eventos de status e prazos variados (atrasados, hoje, futuros).
+            </p>
+            <div className="flex items-center gap-3">
+              <Button
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={doSeed}
+                disabled={seeding}
+              >
+                <FlaskConical className="h-3.5 w-3.5 mr-1.5" />
+                {seeding ? "Gerando amostras…" : "Gerar tarefas de exemplo"}
+              </Button>
+              {seedDone !== null && (
+                <span className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
+                  <CheckCircle2 className="h-3.5 w-3.5" />{seedDone} tarefas criadas
+                </span>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
