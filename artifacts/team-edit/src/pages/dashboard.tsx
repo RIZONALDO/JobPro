@@ -159,9 +159,9 @@ function CardMenu({ value, options, onChange }: {
       <button
         type="button"
         onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
-        className="h-5 w-5 rounded flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--muted-foreground))]/50 hover:text-[hsl(var(--muted-foreground))]"
+        className="h-6 w-6 rounded flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--muted-foreground))]/50 hover:text-[hsl(var(--muted-foreground))]"
       >
-        <MoreHorizontal className="h-3.5 w-3.5" />
+        <MoreHorizontal className="h-4 w-4" />
       </button>
       {open && (
         <>
