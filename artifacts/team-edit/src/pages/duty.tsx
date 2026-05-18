@@ -480,7 +480,7 @@ export default function DutyPage() {
                   const day       = cellIdx - firstDayOffset + 1;
 
                   if (day < 1 || day > daysInMonth) {
-                    return <div key={`e-${cellIdx}`} className="min-h-[90px] rounded-xl" />;
+                    return <div key={`e-${cellIdx}`} className="min-h-[130px] rounded-xl" />;
                   }
 
                   const iso       = isoDay(day);
@@ -500,7 +500,7 @@ export default function DutyPage() {
                   return (
                     <div
                       key={iso}
-                      className={`rounded-xl border flex flex-col p-1.5 min-h-[90px] transition-colors ${
+                      className={`rounded-xl border flex flex-col p-1.5 min-h-[130px] transition-colors ${
                         isCurWknd
                           ? "border-[hsl(var(--primary))]/40 bg-[hsl(var(--primary))]/5"
                           : isWknd
