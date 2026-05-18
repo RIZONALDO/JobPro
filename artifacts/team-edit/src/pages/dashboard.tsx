@@ -2019,7 +2019,7 @@ export default function Dashboard() {
             return <ApprovalQueueCard allTasks={allTasks} onOpenTask={goToTask} menu={menu2} />;
           return (
             <MiniGanttCard
-              items={allTasks.map(t => ({ id: t.id, title: t.title, status: t.status, dueDate: t.dueDate, color: t.color, client: t.client, taskCode: t.taskNumber && t.taskYear ? `${String(t.taskNumber).padStart(3, "0")}.${t.taskYear}` : undefined }))}
+              items={tasks.map(t => ({ id: t.id, title: t.title, status: t.status, dueDate: t.dueDate, color: t.color, client: t.client, taskCode: t.taskCode }))}
               onOpenTask={goToTask}
               menu={menu2}
             />
