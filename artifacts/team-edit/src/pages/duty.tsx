@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/lib/use-page-title";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Trash2, Plus, RefreshCw, Shield, CalendarPlus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Shield, CalendarPlus, X } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -582,41 +582,65 @@ export default function DutyPage() {
                           )}
                         </div>
 
-                        {/* Editor chips */}
-                        <div className="flex flex-wrap gap-1">
+                        {/* Editor cards */}
+                        <div className="flex flex-wrap gap-1.5">
                           {slot.editors.map(ed => (
                             <div
                               key={ed.scheduleId}
-                              className="flex items-center gap-1 pl-1 pr-1.5 py-0.5 rounded-full bg-[hsl(var(--muted))]/50 border border-[hsl(var(--border))] text-[11px]">
-                              <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={14} />
-                              <span className="font-medium leading-none">{ed.name.split(" ")[0]}</span>
+                              className="relative flex flex-col items-center gap-1.5 px-3 pt-4 pb-2.5 rounded-xl
+                                bg-[hsl(var(--muted))]/40 border border-[hsl(var(--border))]
+                                min-w-[56px] hover:border-[hsl(var(--primary))]/40 transition-colors group">
                               <button
                                 onClick={() => removeEntry(ed.scheduleId)}
-                                className="ml-0.5 text-[hsl(var(--muted-foreground))] hover:text-destructive transition-colors">
-                                <Trash2 className="h-2.5 w-2.5" />
+                                className="absolute top-1.5 right-1.5 p-0.5 rounded-full opacity-0 group-hover:opacity-100
+                                  text-[hsl(var(--muted-foreground))] hover:text-destructive hover:bg-destructive/10 transition-all">
+                                <X className="h-3 w-3" />
                               </button>
+                              <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={30} />
+                              <span className="text-[11px] font-semibold leading-none text-center">
+                                {ed.name.split(" ")[0]}
+                              </span>
                             </div>
                           ))}
 
+                          {/* Add editor card */}
                           {avail.length > 0 && (
-                            <div className="flex items-center gap-1">
-                              <select
-                                value={addVal}
-                                onChange={e => setAdding(prev => ({ ...prev, [slot.weekendStart]: e.target.value }))}
-                                className="h-5 pl-1.5 pr-5 text-[11px] rounded border border-dashed border-[hsl(var(--border))]
-                                  bg-[hsl(var(--background))] appearance-none cursor-pointer
-                                  focus:outline-none focus:border-[hsl(var(--primary))]">
-                                <option value="">+ Add</option>
-                                {avail.map(e => (
-                                  <option key={e.id} value={e.id}>{e.name.split(" ")[0]}</option>
-                                ))}
-                              </select>
-                              {addVal && (
-                                <button
-                                  onClick={() => addEditor(slot.weekendStart)}
-                                  className="h-5 w-5 rounded bg-[hsl(var(--primary))] text-white flex items-center justify-center hover:opacity-90 transition-opacity">
-                                  <Plus className="h-2.5 w-2.5" />
-                                </button>
+                            <div className="relative flex flex-col items-center justify-center gap-1 px-2 pt-2 pb-2.5 rounded-xl
+                              border border-dashed border-[hsl(var(--border))] min-w-[56px] min-h-[68px]
+                              hover:border-[hsl(var(--primary))]/60 transition-colors">
+                              {!addVal ? (
+                                <>
+                                  <div className="w-[30px] h-[30px] rounded-full border-2 border-dashed border-[hsl(var(--border))]
+                                    flex items-center justify-center text-[hsl(var(--muted-foreground))]">
+                                    <Plus className="h-3.5 w-3.5" />
+                                  </div>
+                                  <span className="text-[10px] text-[hsl(var(--muted-foreground))] leading-none">add</span>
+                                  <select
+                                    value={addVal}
+                                    onChange={e => setAdding(prev => ({ ...prev, [slot.weekendStart]: e.target.value }))}
+                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+                                    <option value="">Selecionar…</option>
+                                    {avail.map(e => (
+                                      <option key={e.id} value={e.id}>{e.name}</option>
+                                    ))}
+                                  </select>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="text-[10px] text-[hsl(var(--muted-foreground))] leading-none text-center px-1 truncate max-w-[52px]">
+                                    {avail.find(e => String(e.id) === addVal)?.name.split(" ")[0]}
+                                  </span>
+                                  <button
+                                    onClick={() => addEditor(slot.weekendStart)}
+                                    className="h-6 px-2 rounded-lg bg-[hsl(var(--primary))] text-white text-[10px] font-semibold hover:opacity-90 transition-opacity">
+                                    ✓
+                                  </button>
+                                  <button
+                                    onClick={() => setAdding(prev => ({ ...prev, [slot.weekendStart]: "" }))}
+                                    className="text-[9px] text-[hsl(var(--muted-foreground))] hover:text-destructive">
+                                    cancelar
+                                  </button>
+                                </>
                               )}
                             </div>
                           )}
