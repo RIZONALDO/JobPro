@@ -170,25 +170,30 @@ function GanttGrid({ tasks, zoom, onOpen }: {
   const fill  = true;
   const today = today0();
 
-  // Dynamic window: covers all task dates + padding regardless of zoom
+  // Dynamic window: anchored to dueDate range so old createdAt values don't bloat the window
   const { wStart, DAYS } = useMemo(() => {
     const list = tasks.filter(t => t.dueDate);
     const defaultStart = windowStart(zoom);
     const forwardDays  = zoom === "week" ? 6 : zoom === "month" ? 25 : 83;
+    // Back-padding per zoom: how many days before the earliest dueDate to show
+    const backPad = zoom === "week" ? 3 : zoom === "month" ? 14 : 30;
 
     if (list.length === 0) {
       return { wStart: defaultStart, DAYS: ZOOM_CONFIG[zoom].days };
     }
 
-    const earliest = list.reduce<Date>((min, t) => {
-      const d = isoToDay(t.createdAt); return d < min ? d : min;
-    }, isoToDay(list[0].createdAt));
+    // Use dueDate range (not createdAt) so old tasks don't push the window far into the past
+    const earliestDue = list.reduce<Date>((min, t) => {
+      const d = isoToDay(t.dueDate!); return d < min ? d : min;
+    }, isoToDay(list[0].dueDate!));
     const latest = list.reduce<Date>((max, t) => {
       const d = isoToDay(t.dueDate!); return d > max ? d : max;
     }, isoToDay(list[0].dueDate!));
 
-    const start = new Date(Math.min(earliest.getTime(), defaultStart.getTime()));
-    start.setDate(start.getDate() - 2);
+    const paddedEarliest = new Date(earliestDue);
+    paddedEarliest.setDate(paddedEarliest.getDate() - backPad);
+
+    const start = new Date(Math.min(paddedEarliest.getTime(), defaultStart.getTime()));
 
     const end = new Date(today);
     end.setDate(end.getDate() + forwardDays);
@@ -294,11 +299,12 @@ function GanttGrid({ tasks, zoom, onOpen }: {
 
         {/* ── Rows ────────────────────────────────────────────────────── */}
         {list.map((t, rowIdx) => {
+          // Bar starts at createdAt OR window start (whichever is later), ends at dueDate
           const rawStart    = daysBetween(wStart, isoToDay(t.createdAt));
           const rawEnd      = daysBetween(wStart, isoToDay(t.dueDate!));
           const cStart      = Math.max(0, rawStart);
           const cEnd        = Math.min(DAYS - 1, rawEnd);
-          const barVisible  = cEnd >= cStart && rawEnd >= 0 && rawStart < DAYS;
+          const barVisible  = rawEnd >= 0 && rawEnd < DAYS;
           const barSpan     = Math.max(1, cEnd - cStart + 1);
           const barColor    = BAR_COLOR[t.status] ?? t.color ?? "#94a3b8";
           const isDone      = t.status === "completed";
@@ -397,7 +403,7 @@ function GanttGrid({ tasks, zoom, onOpen }: {
                     left: fill ? `calc(${cStart / DAYS * 100}% + 4px)` : cStart * PX + 4,
                     top: 10,
                     height: ROW_H - 20,
-                    width: fill ? `calc(${barSpan / DAYS * 100}% - 8px)` : barSpan * PX - 8,
+                    width: fill ? `max(12px, calc(${barSpan / DAYS * 100}% - 8px))` : Math.max(12, barSpan * PX - 8),
                     borderRadius: 6,
                     background: `color-mix(in oklab, ${barColor} 18%, transparent)`,
                     border: `1.5px solid color-mix(in oklab, ${barColor} 42%, transparent)`,
