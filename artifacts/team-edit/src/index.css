@@ -203,3 +203,23 @@ input, textarea, select {
 }
 .collapsible-content[data-state="open"]   { animation: collapsible-down 180ms ease-out; }
 .collapsible-content[data-state="closed"] { animation: collapsible-up   150ms ease-in;  }
+
+/* ── Barber-pole: Em edição ─────────────────────────────────────────────── */
+@keyframes barber-pole {
+  from { background-position: 0 0; }
+  to   { background-position: 20px 20px; }
+}
+.badge-in-progress {
+  background-color: #2563eb;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0px,
+    transparent 6px,
+    rgba(255, 255, 255, 0.15) 6px,
+    rgba(255, 255, 255, 0.15) 12px
+  );
+  background-size: 20px 20px;
+  animation: barber-pole 0.9s linear infinite;
+  color: white;
+  border-color: transparent;
+}

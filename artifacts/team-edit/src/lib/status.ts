@@ -32,7 +32,7 @@ export const STATUS_CLASS: Record<string, string> = {
   cancelled:   "bg-red-50 text-red-400 border-transparent",
 
   // Tier 1 — active, demand attention (solid fills)
-  in_progress: "bg-blue-600 text-white border-transparent",
+  in_progress: "badge-in-progress border-transparent",
   in_revision: "bg-orange-500 text-white border-transparent",
   review:      "bg-amber-500 text-white border-transparent",
   reopened:    "bg-rose-600 text-white border-transparent",
