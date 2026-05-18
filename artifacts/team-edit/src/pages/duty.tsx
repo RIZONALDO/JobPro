@@ -389,6 +389,7 @@ export default function DutyPage() {
   // ── Admin: calendar helpers ──────────────────────────────────────────────────
   const daysInMonth    = new Date(year, month + 1, 0).getDate();
   const firstDayOffset = (new Date(year, month, 1).getDay() + 6) % 7; // Mon=0 … Sun=6
+  const numWeeks       = Math.ceil((firstDayOffset + daysInMonth) / 7);
   const isoDay         = (day: number) =>
     `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
@@ -470,136 +471,138 @@ export default function DutyPage() {
             ))}
           </div>
 
-          {/* Day cells */}
-          <div className="grid grid-cols-7 gap-1">
-            {/* Leading empty cells */}
-            {Array.from({ length: firstDayOffset }).map((_, i) => (
-              <div key={`pad-${i}`} className="min-h-[90px]" />
-            ))}
+          {/* Week blocks — one card per week */}
+          <div className="flex flex-col gap-2">
+            {Array.from({ length: numWeeks }).map((_, weekIdx) => (
+              <div key={weekIdx} className="grid grid-cols-7 gap-1 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-1.5">
+                {Array.from({ length: 7 }).map((_, dayIdx) => {
+                  const cellIdx   = weekIdx * 7 + dayIdx;
+                  const day       = cellIdx - firstDayOffset + 1;
 
-            {/* One cell per day */}
-            {Array.from({ length: daysInMonth }).map((_, i) => {
-              const day       = i + 1;
-              const iso       = isoDay(day);
-              const d         = new Date(iso + "T12:00:00");
-              const dow       = d.getDay();          // 0=Sun, 6=Sat
-              const isSat     = dow === 6;
-              const isSun     = dow === 0;
-              const isWknd    = isSat || isSun;
-              const isTdy     = isToday(iso);
-              const isCurWknd = isSat && isCurrentWeekend(iso);
-              const slot      = getSlotOrEmpty(iso);
-              const avail     = editors.filter(e => !slot.editors.some(se => se.id === e.id));
-              const isAddOpen = iso in adding;
-              const addVal    = adding[iso] ?? "";
-              const addName   = addingName[iso] ?? "";
+                  if (day < 1 || day > daysInMonth) {
+                    return <div key={`e-${cellIdx}`} className="min-h-[90px] rounded-xl" />;
+                  }
 
-              return (
-                <div
-                  key={iso}
-                  className={`rounded-xl border flex flex-col p-1.5 min-h-[90px] transition-colors ${
-                    isCurWknd
-                      ? "border-[hsl(var(--primary))]/40 bg-[hsl(var(--primary))]/5"
-                      : isWknd
-                        ? "border-[hsl(var(--border))] bg-[hsl(var(--muted))]/25"
-                        : "border-[hsl(var(--border))] bg-[hsl(var(--card))]"
-                  }`}
-                >
-                  {/* Day number + add button */}
-                  <div className="flex items-start justify-between mb-1">
-                    <span className={`text-xs font-black tabular-nums leading-none ${
-                      isTdy
-                        ? "text-white bg-[hsl(var(--primary))] rounded-full w-5 h-5 flex items-center justify-center"
-                        : isCurWknd
-                          ? "text-[hsl(var(--primary))]"
+                  const iso       = isoDay(day);
+                  const d         = new Date(iso + "T12:00:00");
+                  const dow       = d.getDay();
+                  const isSat     = dow === 6;
+                  const isSun     = dow === 0;
+                  const isWknd    = isSat || isSun;
+                  const isTdy     = isToday(iso);
+                  const isCurWknd = isSat && isCurrentWeekend(iso);
+                  const slot      = getSlotOrEmpty(iso);
+                  const avail     = editors.filter(e => !slot.editors.some(se => se.id === e.id));
+                  const isAddOpen = iso in adding;
+                  const addVal    = adding[iso] ?? "";
+                  const addName   = addingName[iso] ?? "";
+
+                  return (
+                    <div
+                      key={iso}
+                      className={`rounded-xl border flex flex-col p-1.5 min-h-[90px] transition-colors ${
+                        isCurWknd
+                          ? "border-[hsl(var(--primary))]/40 bg-[hsl(var(--primary))]/5"
                           : isWknd
-                            ? "text-[hsl(var(--foreground))]"
-                            : "text-[hsl(var(--muted-foreground))]"
-                    }`}>
-                      {day}
-                    </span>
-                    {!isAddOpen && avail.length > 0 && (
-                      <button
-                        onClick={() => setAdding(prev => ({ ...prev, [iso]: "" }))}
-                        className={`h-4 w-4 rounded-full border border-dashed flex items-center justify-center transition-colors ${
-                          isWknd
-                            ? "border-[hsl(var(--primary))]/30 text-[hsl(var(--primary))]/50 hover:border-[hsl(var(--primary))] hover:text-[hsl(var(--primary))]"
-                            : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-amber-400 hover:text-amber-500"
+                            ? "border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40"
+                            : "border-[hsl(var(--border))] bg-[hsl(var(--background))]"
+                      }`}
+                    >
+                      {/* Day number + add button */}
+                      <div className="flex items-start justify-between mb-1">
+                        <span className={`text-xs font-black tabular-nums leading-none ${
+                          isTdy
+                            ? "text-white bg-[hsl(var(--primary))] rounded-full w-5 h-5 flex items-center justify-center"
+                            : isCurWknd
+                              ? "text-[hsl(var(--primary))]"
+                              : isWknd
+                                ? "text-[hsl(var(--foreground))]"
+                                : "text-[hsl(var(--muted-foreground))]"
                         }`}>
-                        <Plus className="h-2 w-2" />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Assigned editors */}
-                  <div className="flex flex-col gap-0.5 flex-1">
-                    {slot.editors.map(ed => (
-                      <div key={ed.scheduleId} className="flex items-center gap-1 group">
-                        <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={16} />
-                        <span className="text-[9px] font-semibold leading-none truncate flex-1">
-                          {ed.name.split(" ")[0]}
+                          {day}
                         </span>
-                        <button
-                          onClick={() => removeEntry(ed.scheduleId)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 text-[hsl(var(--muted-foreground))] hover:text-destructive">
-                          <X className="h-2.5 w-2.5" />
-                        </button>
+                        {!isAddOpen && avail.length > 0 && (
+                          <button
+                            onClick={() => setAdding(prev => ({ ...prev, [iso]: "" }))}
+                            className={`h-4 w-4 rounded-full border border-dashed flex items-center justify-center transition-colors ${
+                              isWknd
+                                ? "border-[hsl(var(--primary))]/30 text-[hsl(var(--primary))]/50 hover:border-[hsl(var(--primary))] hover:text-[hsl(var(--primary))]"
+                                : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-amber-400 hover:text-amber-500"
+                            }`}>
+                            <Plus className="h-2 w-2" />
+                          </button>
+                        )}
                       </div>
-                    ))}
-                    {slot.notes && (
-                      <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium leading-tight truncate">
-                        {slot.notes}
-                      </span>
-                    )}
-                  </div>
 
-                  {/* Inline add form */}
-                  {isAddOpen && (
-                    <div className="mt-1 flex flex-col gap-1">
-                      {!isWknd && (
-                        <input
-                          type="text"
-                          placeholder="Feriado…"
-                          value={addName}
-                          onChange={e => setAddingName(prev => ({ ...prev, [iso]: e.target.value }))}
-                          className="w-full h-5 px-1 text-[9px] rounded border border-amber-300 dark:border-amber-700
-                            bg-[hsl(var(--background))] focus:outline-none focus:border-amber-500"
-                        />
-                      )}
-                      <select
-                        value={addVal}
-                        onChange={e => setAdding(prev => ({ ...prev, [iso]: e.target.value }))}
-                        className="w-full h-5 pl-1 text-[9px] rounded border border-[hsl(var(--border))]
-                          bg-[hsl(var(--background))] appearance-none cursor-pointer focus:outline-none">
-                        <option value="">Editor…</option>
-                        {avail.map(e => <option key={e.id} value={e.id}>{e.name.split(" ")[0]}</option>)}
-                      </select>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => addEditor(iso)}
-                          disabled={!addVal}
-                          className={`flex-1 h-5 rounded text-[9px] font-bold text-white disabled:opacity-40 ${
-                            isWknd
-                              ? "bg-[hsl(var(--primary))] hover:opacity-90"
-                              : "bg-amber-500 hover:bg-amber-600"
-                          }`}>
-                          ✓
-                        </button>
-                        <button
-                          onClick={() => {
-                            setAdding(prev => { const n = { ...prev }; delete n[iso]; return n; });
-                            setAddingName(prev => { const n = { ...prev }; delete n[iso]; return n; });
-                          }}
-                          className="h-5 w-5 shrink-0 rounded flex items-center justify-center border border-[hsl(var(--border))]
-                            text-[hsl(var(--muted-foreground))] hover:text-destructive transition-colors">
-                          <X className="h-2.5 w-2.5" />
-                        </button>
+                      {/* Assigned editors */}
+                      <div className="flex flex-col gap-0.5 flex-1">
+                        {slot.editors.map(ed => (
+                          <div key={ed.scheduleId} className="flex items-center gap-1 group">
+                            <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={16} />
+                            <span className="text-[9px] font-semibold leading-none truncate flex-1">
+                              {ed.name.split(" ")[0]}
+                            </span>
+                            <button
+                              onClick={() => removeEntry(ed.scheduleId)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 text-[hsl(var(--muted-foreground))] hover:text-destructive">
+                              <X className="h-2.5 w-2.5" />
+                            </button>
+                          </div>
+                        ))}
+                        {slot.notes && (
+                          <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium leading-tight truncate">
+                            {slot.notes}
+                          </span>
+                        )}
                       </div>
+
+                      {/* Inline add form */}
+                      {isAddOpen && (
+                        <div className="mt-1 flex flex-col gap-1">
+                          {!isWknd && (
+                            <input
+                              type="text"
+                              placeholder="Feriado…"
+                              value={addName}
+                              onChange={e => setAddingName(prev => ({ ...prev, [iso]: e.target.value }))}
+                              className="w-full h-5 px-1 text-[9px] rounded border border-amber-300 dark:border-amber-700
+                                bg-[hsl(var(--background))] focus:outline-none focus:border-amber-500"
+                            />
+                          )}
+                          <select
+                            value={addVal}
+                            onChange={e => setAdding(prev => ({ ...prev, [iso]: e.target.value }))}
+                            className="w-full h-5 pl-1 text-[9px] rounded border border-[hsl(var(--border))]
+                              bg-[hsl(var(--background))] appearance-none cursor-pointer focus:outline-none">
+                            <option value="">Editor…</option>
+                            {avail.map(e => <option key={e.id} value={e.id}>{e.name.split(" ")[0]}</option>)}
+                          </select>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => addEditor(iso)}
+                              disabled={!addVal}
+                              className={`flex-1 h-5 rounded text-[9px] font-bold text-white disabled:opacity-40 ${
+                                isWknd ? "bg-[hsl(var(--primary))] hover:opacity-90" : "bg-amber-500 hover:bg-amber-600"
+                              }`}>
+                              ✓
+                            </button>
+                            <button
+                              onClick={() => {
+                                setAdding(prev => { const n = { ...prev }; delete n[iso]; return n; });
+                                setAddingName(prev => { const n = { ...prev }; delete n[iso]; return n; });
+                              }}
+                              className="h-5 w-5 shrink-0 rounded flex items-center justify-center border border-[hsl(var(--border))]
+                                text-[hsl(var(--muted-foreground))] hover:text-destructive transition-colors">
+                              <X className="h-2.5 w-2.5" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
       )}
