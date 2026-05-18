@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem, staggerRow } from "@/lib/motion";
 import { useEffect, useState, useCallback } from "react";
@@ -1502,8 +1503,8 @@ function WeeklyHeatmapCard({ heatmapTasks, workload, menu }: {
         </div>
       )}
 
-      {/* Fixed tooltip — escapes overflow/stacking context */}
-      {tip && (
+      {/* Portal tooltip — renders in document.body, immune to transform/overflow ancestors */}
+      {tip && createPortal(
         <div
           className="pointer-events-none fixed z-[99999] rounded-lg border bg-[hsl(var(--card))] shadow-xl p-2.5 space-y-1.5 w-max max-w-[200px]"
           style={{ left: tip.x, top: tip.y - 8, transform: "translate(-50%, -100%)" }}
@@ -1516,7 +1517,8 @@ function WeeklyHeatmapCard({ heatmapTasks, workload, menu }: {
               )}
             </div>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
