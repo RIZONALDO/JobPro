@@ -446,6 +446,14 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         { taskId: id }
       );
     }
+    if (newStatus === "in_progress" && task.createdById && task.createdById !== userId) {
+      const [editor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
+      await notify(task.createdById, "task_started",
+        "Tarefa em edição",
+        `${editor?.name ?? "Editor"} iniciou a edição de "${task.title}"`,
+        { taskId: id }
+      );
+    }
     if (newStatus === "in_revision" && task.assignedToId) {
       const comment = revisionComment ? String(revisionComment).trim() : "";
       await notify(task.assignedToId, "task_revision",
