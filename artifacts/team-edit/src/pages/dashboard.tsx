@@ -988,9 +988,8 @@ function CommandPanelCard({ tasks, allTasks, atRiskCount, menu }: {
   const reviewCount    = tasks.filter(t => t.status === "review").length;
   const inRevisionCount = tasks.filter(t => t.status === "in_revision").length;
   const inProgressCount = tasks.filter(t => t.status === "in_progress").length;
-  const totalAll       = allTasks.length;
-  const completedAll   = allTasks.filter(t => t.status === "completed").length;
-  const completionPct  = totalAll > 0 ? Math.round(completedAll / totalAll * 100) : 0;
+  const completedAll   = tasks.filter(t => t.status === "completed").length;
+  const completionPct  = tasks.length > 0 ? Math.round(completedAll / tasks.length * 100) : 0;
 
   const urgentCount = reviewCount + atRiskCount;
   const hasAlert    = urgentCount > 0;
