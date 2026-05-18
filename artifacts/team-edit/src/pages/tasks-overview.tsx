@@ -659,7 +659,7 @@ export default function TasksOverview() {
                   className="flex items-stretch px-4 hover:bg-[hsl(var(--muted))]/20 transition-all cursor-pointer"
                   onClick={() => (t.status === 'pending' || t.status === 'rascunho') && canActNow ? (setEditTaskId(t.id), setFormOpen(true)) : openTask(t.id)}
                   style={{
-                    borderLeft: `3px ${t.status === "rascunho" ? "dashed" : "solid"} ${t.status === "rascunho" ? "#a1a1aa" : (t.color ?? "#6366f1")}`,
+                    borderLeft: `3px ${t.status === "rascunho" ? "dashed" : "solid"} ${group.color}`,
                     opacity: t.status === "rascunho" ? 0.75 : 1,
                     backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.08)" : undefined,
                     boxShadow: isHighlighted ? "inset 0 0 0 1px hsl(var(--primary) / 0.25)" : undefined,
