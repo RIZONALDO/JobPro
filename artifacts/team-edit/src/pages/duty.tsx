@@ -29,30 +29,12 @@ const MON_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","A
 const MON_PT_SHORT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const DAY_PT = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
 
-function fmtWeekend(satIso: string): string {
-  const sat = new Date(satIso + "T12:00:00");
-  const sun = new Date(sat); sun.setDate(sun.getDate() + 1);
-  const fmt = (d: Date) => `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`;
-  return `${fmt(sat)} – ${fmt(sun)}`;
-}
-
 function fmtSingleDate(iso: string): string {
   const d = new Date(iso + "T12:00:00");
   const pad = (n: number) => String(n).padStart(2,"0");
   return `${DAY_PT[d.getDay()]} ${pad(d.getDate())}/${pad(d.getMonth()+1)}`;
 }
 
-function fmtDay(satIso: string): { satLabel: string; sunLabel: string; month: string; year: number } {
-  const sat = new Date(satIso + "T12:00:00");
-  const sun = new Date(sat); sun.setDate(sun.getDate() + 1);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return {
-    satLabel: `Sáb ${pad(sat.getDate())}`,
-    sunLabel: `Dom ${pad(sun.getDate())}`,
-    month: MON_PT_SHORT[sat.getMonth()],
-    year: sat.getFullYear(),
-  };
-}
 
 function monthOf(iso: string): number {
   return new Date(iso + "T12:00:00").getMonth();
@@ -201,6 +183,7 @@ export default function DutyPage() {
   const [holidayDate,     setHolidayDate]     = useState("");
   const [holidayName,     setHolidayName]     = useState("");
   const [holidayEditorId, setHolidayEditorId] = useState("");
+  const [addingName,      setAddingName]      = useState<Record<string, string>>({});
   const [addingHoliday,   setAddingHoliday]   = useState(false);
 
   // ── Non-admin state ──────────────────────────────────────────────────────────
@@ -283,12 +266,14 @@ export default function DutyPage() {
     }
   };
 
-  const addEditor = async (weekendStart: string) => {
-    const editorId = adding[weekendStart];
+  const addEditor = async (date: string) => {
+    const editorId = adding[date];
     if (!editorId) return;
+    const notes = addingName[date] || null;
     try {
-      await apiPost("/api/duty", { weekendStart, editorId: parseInt(editorId, 10) });
-      setAdding(prev => ({ ...prev, [weekendStart]: "" }));
+      await apiPost("/api/duty", { weekendStart: date, editorId: parseInt(editorId, 10), notes });
+      setAdding(prev => { const n = { ...prev }; delete n[date]; return n; });
+      setAddingName(prev => { const n = { ...prev }; delete n[date]; return n; });
       loadSchedule();
     } catch {
       toast.error("Erro ao adicionar editor");
@@ -302,9 +287,6 @@ export default function DutyPage() {
     if (!slotsByMonth.has(m)) slotsByMonth.set(m, []);
     slotsByMonth.get(m)!.push(slot);
   }
-
-  const availableEditors = (slot: WeekendSlot) =>
-    editors.filter(e => !slot.editors.some(se => se.id === e.id));
 
   // ── Non-admin view ───────────────────────────────────────────────────────────
   if (!isAdmin) {
@@ -389,18 +371,12 @@ export default function DutyPage() {
     );
   }
 
-  // ── Admin: group holidays into their week's Saturday ─────────────────────────
-  const monthSlots    = slotsByMonth.get(month) ?? [];
-  const satSlots      = monthSlots.filter(s =>  isSaturdayDate(s.weekendStart));
-  const holidaySlots  = monthSlots.filter(s => !isSaturdayDate(s.weekendStart));
-
-  const weekHolidays  = (satStr: string): WeekendSlot[] => {
-    const sat = new Date(satStr + "T12:00:00");
-    const mon = new Date(sat); mon.setDate(sat.getDate() - 5);
-    const fri = new Date(sat); fri.setDate(sat.getDate() - 1);
-    const [monStr, friStr] = [mon, fri].map(d => d.toISOString().split("T")[0]);
-    return holidaySlots.filter(h => h.weekendStart >= monStr && h.weekendStart <= friStr);
-  };
+  // ── Admin: slot lookups ─────────────────────────────────────────────────────
+  const monthSlots = slotsByMonth.get(month) ?? [];
+  const satSlots   = monthSlots.filter(s => isSaturdayDate(s.weekendStart));
+  const slotByDate = new Map(schedule.map(s => [s.weekendStart, s]));
+  const getSlotOrEmpty = (iso: string): WeekendSlot =>
+    slotByDate.get(iso) ?? { weekendStart: iso, editors: [], notes: null };
 
   // ── Admin: month navigation helpers ─────────────────────────────────────────
   const prevMonth = () => {
@@ -410,6 +386,63 @@ export default function DutyPage() {
   const nextMonth = () => {
     if (month === 11) { setMonth(0); setYear(y => y + 1); }
     else setMonth(m => m + 1);
+  };
+
+  // ── Admin: weekend day row renderer (Sat / Sun) ──────────────────────────────
+  const renderWeekendRow = (dayLabel: string, daySlot: WeekendSlot, iso: string) => {
+    const avail  = editors.filter(e => !daySlot.editors.some(se => se.id === e.id));
+    const addVal = adding[iso] ?? "";
+    return (
+      <div className="space-y-1.5">
+        <span className="text-[11px] font-black tracking-wide">{dayLabel}</span>
+        <div className="flex flex-wrap gap-1.5">
+          {daySlot.editors.map(ed => (
+            <div key={ed.scheduleId} className="relative flex flex-col items-center gap-1 px-2.5 pt-3 pb-2 rounded-xl
+              bg-[hsl(var(--muted))]/40 border border-[hsl(var(--border))] min-w-[52px]
+              hover:border-[hsl(var(--primary))]/40 transition-colors group">
+              <button onClick={() => removeEntry(ed.scheduleId)}
+                className="absolute top-1 right-1 p-0.5 rounded-full opacity-0 group-hover:opacity-100
+                  text-[hsl(var(--muted-foreground))] hover:text-destructive hover:bg-destructive/10 transition-all">
+                <X className="h-2.5 w-2.5" />
+              </button>
+              <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={28} />
+              <span className="text-[10px] font-semibold leading-none text-center">{ed.name.split(" ")[0]}</span>
+            </div>
+          ))}
+          {avail.length > 0 && (
+            <div className="relative flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl
+              border border-dashed border-[hsl(var(--border))] min-w-[52px] min-h-[60px]
+              hover:border-[hsl(var(--primary))]/60 transition-colors">
+              {!addVal ? (
+                <>
+                  <div className="w-7 h-7 rounded-full border-2 border-dashed border-[hsl(var(--border))]
+                    flex items-center justify-center text-[hsl(var(--muted-foreground))]">
+                    <Plus className="h-3 w-3" />
+                  </div>
+                  <span className="text-[9px] text-[hsl(var(--muted-foreground))] leading-none">add</span>
+                  <select value={addVal}
+                    onChange={e => setAdding(prev => ({ ...prev, [iso]: e.target.value }))}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+                    <option value="">Selecionar…</option>
+                    {avail.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </select>
+                </>
+              ) : (
+                <>
+                  <span className="text-[9px] text-[hsl(var(--muted-foreground))] leading-none text-center px-1 truncate max-w-[48px]">
+                    {avail.find(e => String(e.id) === addVal)?.name.split(" ")[0]}
+                  </span>
+                  <button onClick={() => addEditor(iso)}
+                    className="h-5 px-1.5 rounded-lg bg-[hsl(var(--primary))] text-white text-[9px] font-semibold hover:opacity-90">✓</button>
+                  <button onClick={() => setAdding(prev => ({ ...prev, [iso]: "" }))}
+                    className="text-[8px] text-[hsl(var(--muted-foreground))] hover:text-destructive">cancelar</button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   // ── Admin view ───────────────────────────────────────────────────────────────
@@ -422,18 +455,15 @@ export default function DutyPage() {
           <Shield className="h-5 w-5 text-[hsl(var(--primary))]" />
           <h1 className="text-lg font-bold">Escala de Plantões</h1>
         </div>
-        {/* Month + year selector */}
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={prevMonth}
+          <button onClick={prevMonth}
             className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors">
             <ChevronLeft className="h-4 w-4" />
           </button>
           <span className="text-sm font-semibold text-center w-32 tabular-nums">
             {MON_PT[month]} {year}
           </span>
-          <button
-            onClick={nextMonth}
+          <button onClick={nextMonth}
             className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors">
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -473,7 +503,7 @@ export default function DutyPage() {
         </div>
       </div>
 
-      {/* Feriado / dia especial */}
+      {/* Feriado / dia especial (fora do mês ou datas específicas) */}
       <div className="rounded-xl border border-amber-500/40 bg-amber-50/30 dark:bg-amber-900/10 p-3 space-y-2.5">
         <div className="flex items-center gap-1.5">
           <CalendarPlus className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
@@ -503,7 +533,7 @@ export default function DutyPage() {
         </div>
       </div>
 
-      {/* Month slots */}
+      {/* Week cards grid */}
       {loading ? (
         <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
           Carregando…
@@ -511,163 +541,138 @@ export default function DutyPage() {
       ) : (
         <div className="grid grid-cols-2 gap-3">
           {satSlots.map(slot => {
-            const sat      = new Date(slot.weekendStart + "T12:00:00");
-            const sun      = new Date(sat); sun.setDate(sun.getDate() + 1);
-            const pad      = (n: number) => String(n).padStart(2, "0");
+            const sat       = new Date(slot.weekendStart + "T12:00:00");
+            const sun       = new Date(sat); sun.setDate(sun.getDate() + 1);
+            const pad       = (n: number) => String(n).padStart(2, "0");
             const isCurrent = isCurrentWeekend(slot.weekendStart);
-            const avail    = availableEditors(slot);
-            const addVal   = adding[slot.weekendStart] ?? "";
-            const holidays = weekHolidays(slot.weekendStart);
-            const DAYS     = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+            const satIso    = slot.weekendStart;
+            const sunIso    = sun.toISOString().split("T")[0];
+            const sunSlot   = getSlotOrEmpty(sunIso);
+
+            // Mon(sat-5) … Fri(sat-1)
+            const weekdayDates = [-5, -4, -3, -2, -1].map(off => {
+              const d = new Date(sat); d.setDate(d.getDate() + off);
+              return d.toISOString().split("T")[0];
+            });
+            const monDate = new Date(weekdayDates[0] + "T12:00:00");
 
             return (
-              <div key={slot.weekendStart} className={`rounded-2xl border bg-[hsl(var(--card))] overflow-hidden ${
+              <div key={satIso} className={`rounded-2xl border bg-[hsl(var(--card))] overflow-hidden ${
                 isCurrent ? "border-[hsl(var(--primary))]/50" : "border-[hsl(var(--border))]"
               }`}>
                 {/* top strip */}
                 <div className={`h-0.5 ${isCurrent ? "bg-[hsl(var(--primary))]" : "bg-transparent"}`} />
 
-                {/* weekend date header */}
-                <div className="flex items-center gap-3 px-4 pt-3 pb-2.5">
-                  <div className="flex items-baseline gap-1">
-                    <span className={`text-3xl font-black tabular-nums leading-none ${isCurrent ? "text-[hsl(var(--primary))]" : ""}`}>
-                      {pad(sat.getDate())}
-                    </span>
-                    <span className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))]">Sáb</span>
-                  </div>
-                  <span className="text-[hsl(var(--muted-foreground))] font-light text-lg leading-none">—</span>
-                  <div className="flex items-baseline gap-1">
-                    <span className={`text-3xl font-black tabular-nums leading-none ${isCurrent ? "text-[hsl(var(--primary))]" : ""}`}>
-                      {pad(sun.getDate())}
-                    </span>
-                    <span className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))]">Dom</span>
-                  </div>
+                {/* Week header: "dd–dd Mês" */}
+                <div className="flex items-baseline gap-1.5 px-4 pt-3 pb-2.5">
+                  <span className={`text-2xl font-black tabular-nums leading-none ${isCurrent ? "text-[hsl(var(--primary))]" : ""}`}>
+                    {pad(monDate.getDate())}–{pad(sun.getDate())}
+                  </span>
+                  <span className="text-xs text-[hsl(var(--muted-foreground))] font-medium">
+                    {MON_PT_SHORT[sat.getMonth()]} {sat.getFullYear()}
+                  </span>
                   {isCurrent && (
                     <span className="ml-auto text-[10px] font-bold text-[hsl(var(--primary))] uppercase tracking-wide">agora</span>
                   )}
                 </div>
 
-                {/* weekend editors */}
-                <div className="px-4 pb-3">
-                  <div className="flex flex-wrap gap-1.5">
-                    {slot.editors.map(ed => (
-                      <div key={ed.scheduleId} className="relative flex flex-col items-center gap-1.5 px-3 pt-4 pb-2.5 rounded-xl
-                        bg-[hsl(var(--muted))]/40 border border-[hsl(var(--border))] min-w-[60px]
-                        hover:border-[hsl(var(--primary))]/40 transition-colors group">
-                        <button onClick={() => removeEntry(ed.scheduleId)}
-                          className="absolute top-1.5 right-1.5 p-0.5 rounded-full opacity-0 group-hover:opacity-100
-                            text-[hsl(var(--muted-foreground))] hover:text-destructive hover:bg-destructive/10 transition-all">
-                          <X className="h-3 w-3" />
-                        </button>
-                        <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={32} />
-                        <span className="text-[11px] font-semibold leading-none text-center">{ed.name.split(" ")[0]}</span>
-                      </div>
-                    ))}
-                    {avail.length > 0 && (
-                      <div className="relative flex flex-col items-center justify-center gap-1 px-2 pt-2 pb-2.5 rounded-xl
-                        border border-dashed border-[hsl(var(--border))] min-w-[60px] min-h-[72px]
-                        hover:border-[hsl(var(--primary))]/60 transition-colors">
-                        {!addVal ? (
-                          <>
-                            <div className="w-8 h-8 rounded-full border-2 border-dashed border-[hsl(var(--border))]
-                              flex items-center justify-center text-[hsl(var(--muted-foreground))]">
-                              <Plus className="h-3.5 w-3.5" />
-                            </div>
-                            <span className="text-[10px] text-[hsl(var(--muted-foreground))] leading-none">add</span>
-                            <select value={addVal}
-                              onChange={e => setAdding(prev => ({ ...prev, [slot.weekendStart]: e.target.value }))}
-                              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
-                              <option value="">Selecionar…</option>
-                              {avail.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                            </select>
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-[10px] text-[hsl(var(--muted-foreground))] leading-none text-center px-1 truncate max-w-[56px]">
-                              {avail.find(e => String(e.id) === addVal)?.name.split(" ")[0]}
-                            </span>
-                            <button onClick={() => addEditor(slot.weekendStart)}
-                              className="h-6 px-2 rounded-lg bg-[hsl(var(--primary))] text-white text-[10px] font-semibold hover:opacity-90">✓</button>
-                            <button onClick={() => setAdding(prev => ({ ...prev, [slot.weekendStart]: "" }))}
-                              className="text-[9px] text-[hsl(var(--muted-foreground))] hover:text-destructive">cancelar</button>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                {/* Weekday rows: Seg–Sex */}
+                <div className="px-3 pb-2 space-y-px">
+                  {weekdayDates.map(dateIso => {
+                    const d         = new Date(dateIso + "T12:00:00");
+                    const daySlot   = getSlotOrEmpty(dateIso);
+                    const isAddOpen = dateIso in adding;
+                    const addVal    = adding[dateIso] ?? "";
+                    const addName   = addingName[dateIso] ?? "";
+                    const avail     = editors.filter(e => !daySlot.editors.some(se => se.id === e.id));
+                    const dayLabel  = `${DAY_PT[d.getDay()]} ${pad(d.getDate())}`;
 
-                {/* ── Holidays embedded in this week ── */}
-                {holidays.map(h => {
-                  const hd     = new Date(h.weekendStart + "T12:00:00");
-                  const hAvail = availableEditors(h);
-                  const hAdd   = adding[h.weekendStart] ?? "";
-                  return (
-                    <div key={h.weekendStart} className="border-t border-amber-400/25 bg-amber-50/50 dark:bg-amber-900/10">
-                      {/* holiday date + name */}
-                      <div className="flex items-baseline gap-2 px-4 pt-2.5 pb-2">
-                        <span className="text-xl font-black tabular-nums leading-none text-amber-600 dark:text-amber-400">
-                          {pad(hd.getDate())}
+                    return (
+                      <div key={dateIso} className="flex items-center gap-2 py-1 min-h-[28px]">
+                        {/* Day label */}
+                        <span className="text-[10px] font-bold text-[hsl(var(--muted-foreground))] w-[52px] shrink-0 tabular-nums">
+                          {dayLabel}
                         </span>
-                        <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
-                          {DAYS[hd.getDay()]}
-                        </span>
-                        <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 truncate">
-                          {h.notes ?? "Feriado"}
-                        </span>
-                      </div>
-                      {/* holiday editors */}
-                      <div className="px-4 pb-3">
-                        <div className="flex flex-wrap gap-1.5">
-                          {h.editors.map(ed => (
-                            <div key={ed.scheduleId} className="relative flex flex-col items-center gap-1.5 px-3 pt-4 pb-2.5 rounded-xl
-                              bg-amber-100/70 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800
-                              min-w-[60px] hover:border-amber-400 transition-colors group">
-                              <button onClick={() => removeEntry(ed.scheduleId)}
-                                className="absolute top-1.5 right-1.5 p-0.5 rounded-full opacity-0 group-hover:opacity-100
-                                  text-amber-600 hover:text-destructive hover:bg-destructive/10 transition-all">
-                                <X className="h-3 w-3" />
-                              </button>
-                              <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={32} />
-                              <span className="text-[11px] font-semibold leading-none text-center">{ed.name.split(" ")[0]}</span>
-                            </div>
-                          ))}
-                          {hAvail.length > 0 && (
-                            <div className="relative flex flex-col items-center justify-center gap-1 px-2 pt-2 pb-2.5 rounded-xl
-                              border border-dashed border-amber-300 dark:border-amber-700 min-w-[60px] min-h-[72px]
-                              hover:border-amber-500 transition-colors">
-                              {!hAdd ? (
-                                <>
-                                  <div className="w-8 h-8 rounded-full border-2 border-dashed border-amber-300 dark:border-amber-700
-                                    flex items-center justify-center text-amber-500">
-                                    <Plus className="h-3.5 w-3.5" />
-                                  </div>
-                                  <span className="text-[10px] text-amber-500 leading-none">add</span>
-                                  <select value={hAdd}
-                                    onChange={e => setAdding(prev => ({ ...prev, [h.weekendStart]: e.target.value }))}
-                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
-                                    <option value="">Selecionar…</option>
-                                    {hAvail.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                                  </select>
-                                </>
-                              ) : (
-                                <>
-                                  <span className="text-[10px] text-amber-600 leading-none text-center px-1 truncate max-w-[56px]">
-                                    {hAvail.find(e => String(e.id) === hAdd)?.name.split(" ")[0]}
-                                  </span>
-                                  <button onClick={() => addEditor(h.weekendStart)}
-                                    className="h-6 px-2 rounded-lg bg-amber-500 text-white text-[10px] font-semibold hover:opacity-90">✓</button>
-                                  <button onClick={() => setAdding(prev => ({ ...prev, [h.weekendStart]: "" }))}
-                                    className="text-[9px] text-amber-600 hover:text-destructive">cancelar</button>
-                                </>
+
+                        {!isAddOpen ? (
+                          <>
+                            <div className="flex-1 flex items-center gap-1.5 overflow-hidden">
+                              {daySlot.editors.map(ed => (
+                                <div key={ed.scheduleId} className="relative group shrink-0">
+                                  <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={20} />
+                                  <button onClick={() => removeEntry(ed.scheduleId)}
+                                    className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-destructive/80 text-white
+                                      opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                    <X className="h-2 w-2" />
+                                  </button>
+                                </div>
+                              ))}
+                              {daySlot.notes && (
+                                <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium truncate">
+                                  {daySlot.notes}
+                                </span>
                               )}
                             </div>
-                          )}
-                        </div>
+                            {avail.length > 0 && (
+                              <button
+                                onClick={() => setAdding(prev => ({ ...prev, [dateIso]: "" }))}
+                                className="shrink-0 h-5 w-5 rounded-full border border-dashed border-[hsl(var(--border))]
+                                  flex items-center justify-center text-[hsl(var(--muted-foreground))]
+                                  hover:border-amber-400 hover:text-amber-500 transition-colors">
+                                <Plus className="h-2.5 w-2.5" />
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          /* Inline add form with holiday name */
+                          <div className="flex-1 flex items-center gap-1 overflow-hidden">
+                            <input
+                              type="text"
+                              placeholder="Feriado…"
+                              value={addName}
+                              onChange={e => setAddingName(prev => ({ ...prev, [dateIso]: e.target.value }))}
+                              className="h-6 px-1.5 text-[10px] rounded border border-amber-300 dark:border-amber-700
+                                bg-[hsl(var(--background))] focus:outline-none focus:border-amber-500 w-[72px] shrink-0"
+                            />
+                            <select
+                              value={addVal}
+                              onChange={e => setAdding(prev => ({ ...prev, [dateIso]: e.target.value }))}
+                              className="h-6 pl-1.5 pr-1 text-[10px] rounded border border-[hsl(var(--border))]
+                                bg-[hsl(var(--background))] appearance-none cursor-pointer focus:outline-none min-w-0 flex-1">
+                              <option value="">Editor…</option>
+                              {avail.map(e => <option key={e.id} value={e.id}>{e.name.split(" ")[0]}</option>)}
+                            </select>
+                            <button
+                              onClick={() => addEditor(dateIso)}
+                              disabled={!addVal}
+                              className="h-6 w-6 shrink-0 rounded bg-amber-500 text-white text-[10px] font-semibold
+                                disabled:opacity-40 hover:bg-amber-600 flex items-center justify-center">
+                              ✓
+                            </button>
+                            <button
+                              onClick={() => {
+                                setAdding(prev => { const n = { ...prev }; delete n[dateIso]; return n; });
+                                setAddingName(prev => { const n = { ...prev }; delete n[dateIso]; return n; });
+                              }}
+                              className="h-6 w-6 shrink-0 rounded flex items-center justify-center
+                                text-[hsl(var(--muted-foreground))] hover:text-destructive transition-colors">
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+
+                {/* Divider before weekend rows */}
+                <div className="h-px bg-[hsl(var(--border))] mx-3 mb-0.5" />
+
+                {/* Weekend rows: Sáb + Dom */}
+                <div className="px-3 pt-2.5 pb-3 space-y-3">
+                  {renderWeekendRow(`Sáb ${pad(sat.getDate())}`, slot, satIso)}
+                  {renderWeekendRow(`Dom ${pad(sun.getDate())}`, sunSlot, sunIso)}
+                </div>
               </div>
             );
           })}
