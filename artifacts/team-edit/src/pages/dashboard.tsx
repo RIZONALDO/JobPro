@@ -423,7 +423,7 @@ function ClientHealthCard({ allTasks, menu }: { allTasks: AllTask[]; menu?: Reac
     .slice(0, 6);
 
   return (
-    <div className="col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+    <div className="col-span-1 sm:col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
           <FolderOpen className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
@@ -489,7 +489,7 @@ function ClientStatusCard({ allTasks, menu }: { allTasks: AllTask[]; menu?: Reac
     .slice(0, 6);
 
   return (
-    <div className="col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+    <div className="col-span-1 sm:col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
           <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
@@ -834,8 +834,8 @@ function DeliveryProjectionCard({
           )}
         </div>
 
-        {/* Right panel */}
-        <div className="w-44 shrink-0 border-l flex flex-col">
+        {/* Right panel — hidden on mobile */}
+        <div className="hidden sm:flex w-44 shrink-0 border-l flex-col">
           <div className="px-4 py-4 flex flex-col gap-2.5 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 mb-0.5">
               Ritmo · 7 dias
@@ -1430,7 +1430,7 @@ function WeeklyHeatmapCard({ heatmapTasks, workload, menu }: {
     count === 0 ? "transparent" : count >= Math.ceil(maxCount * 0.6) ? "#fff" : isDark ? "#c7d2fe" : "#3730a3";
 
   return (
-    <div className="col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+    <div className="col-span-1 sm:col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
 
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
@@ -1518,7 +1518,7 @@ function TaskDeadlineCard({ data, onOpenJob }: {
   const hasUrgent = (data?.urgentCount ?? 0) > 0;
 
   return (
-    <div className="col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float px-4 pt-4 pb-3 flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+    <div className="col-span-1 sm:col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float px-4 pt-4 pb-3 flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
       <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <Clock className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
@@ -1650,7 +1650,7 @@ function WaffleCard({ tasks }: { tasks: Task[] }) {
   while (cells.length < 100) cells.push("hsl(var(--muted))");
 
   return (
-    <div className="col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float px-4 pt-4 pb-3 flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
+    <div className="col-span-1 sm:col-span-2 rounded-2xl border bg-[hsl(var(--card))] card-float px-4 pt-4 pb-3 flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
       <div className="flex items-center justify-between shrink-0">
         <p className="text-xs font-semibold text-[hsl(var(--foreground))]/80">Distribuição de tarefas</p>
         <span className="text-xs text-[hsl(var(--muted-foreground))]">{total} tarefas · 1 quadrado = 1%</span>
@@ -1808,7 +1808,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
 
         {/* Card 1 — editor: ação pessoal | coordinator: personalizável (slot1) */}
         {isEditor ? (
@@ -1868,15 +1868,18 @@ export default function Dashboard() {
       {!isEditor && (
         <div className="grid gap-5 md:grid-cols-3">
 
-          {(() => {
-            const slot5 = cardPrefs.slot5 ?? "delivery_projection";
-            const menu5 = <CardMenu value={slot5} options={SLOT5_OPTIONS} onChange={v => setCardPref("slot5", v)} />;
-            if (slot5 === "health_radar")
-              return <HealthRadarCard allTasks={allTasks} atRisk={atRisk} workload={workload} menu={menu5} />;
-            if (slot5 === "kpi_comparison")
-              return <KPIComparisonCard allTasks={allTasks} history={statusHistory} menu={menu5} />;
-            return <DeliveryProjectionCard allTasks={allTasks} history={statusHistory} menu={menu5} />;
-          })()}
+          {/* Slot 5 — order-last on mobile so tarefas appear first */}
+          <div className="order-last md:order-first md:col-span-2">
+            {(() => {
+              const slot5 = cardPrefs.slot5 ?? "delivery_projection";
+              const menu5 = <CardMenu value={slot5} options={SLOT5_OPTIONS} onChange={v => setCardPref("slot5", v)} />;
+              if (slot5 === "health_radar")
+                return <HealthRadarCard allTasks={allTasks} atRisk={atRisk} workload={workload} menu={menu5} />;
+              if (slot5 === "kpi_comparison")
+                return <KPIComparisonCard allTasks={allTasks} history={statusHistory} menu={menu5} />;
+              return <DeliveryProjectionCard allTasks={allTasks} history={statusHistory} menu={menu5} />;
+            })()}
+          </div>
 
           {/* Workload — coluna direita */}
           <WorkloadCard workload={workload} />
@@ -1915,11 +1918,13 @@ export default function Dashboard() {
                       </>;
                     })()}
                   </div>
-                  <div className="w-48 flex items-center justify-end gap-2 shrink-0">
-                    {t.assignedTo && (
-                      <AvatarDisplay name={t.assignedTo.name} avatarUrl={t.assignedTo.avatarUrl} size={30} />
-                    )}
-                    <PriorityBadge priority={t.priority} />
+                  <div className="flex items-center justify-end gap-1.5 shrink-0">
+                    <div className="hidden sm:flex items-center gap-2">
+                      {t.assignedTo && (
+                        <AvatarDisplay name={t.assignedTo.name} avatarUrl={t.assignedTo.avatarUrl} size={30} />
+                      )}
+                      <PriorityBadge priority={t.priority} />
+                    </div>
                     <Badge className={`text-[10px] px-1.5 py-0.5 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
@@ -1941,8 +1946,8 @@ export default function Dashboard() {
               ) : activity.map((e, idx) => (
                 <div key={e.id} role="button" onClick={() => goToTask(e.taskId)}
                   className="flex items-center gap-3 px-5 py-2 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
-                  <span className="text-xs text-[hsl(var(--muted-foreground))]/40 w-5 shrink-0 text-right select-none">{String(idx + 1).padStart(2, "0")}</span>
-                  <span className="text-xs text-[hsl(var(--muted-foreground))]/60 shrink-0 w-20">
+                  <span className="hidden sm:inline text-xs text-[hsl(var(--muted-foreground))]/40 w-5 shrink-0 text-right select-none">{String(idx + 1).padStart(2, "0")}</span>
+                  <span className="hidden sm:inline text-xs text-[hsl(var(--muted-foreground))]/60 shrink-0 w-20">
                     {fmtShort(e.createdAt)}
                   </span>
                   <span className="flex-1 text-xs truncate font-sans min-w-0">
@@ -2107,8 +2112,8 @@ export default function Dashboard() {
               ) : activity.map((e, idx) => (
                 <div key={e.id} role="button" onClick={() => goToTask(e.taskId)}
                   className="flex items-center gap-3 px-5 py-2 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
-                  <span className="text-xs text-[hsl(var(--muted-foreground))]/40 w-5 shrink-0 text-right select-none">{String(idx + 1).padStart(2, "0")}</span>
-                  <span className="text-xs text-[hsl(var(--muted-foreground))]/60 shrink-0 w-20">
+                  <span className="hidden sm:inline text-xs text-[hsl(var(--muted-foreground))]/40 w-5 shrink-0 text-right select-none">{String(idx + 1).padStart(2, "0")}</span>
+                  <span className="hidden sm:inline text-xs text-[hsl(var(--muted-foreground))]/60 shrink-0 w-20">
                     {fmtShort(e.createdAt)}
                   </span>
                   <span className="flex-1 text-xs truncate font-sans min-w-0">
