@@ -106,16 +106,21 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
   const save = async (publishStatus?: "rascunho" | "pending") => {
     if (!form.title.trim()) { toast.error("Título obrigatório"); return; }
-    if (publishStatus === "pending" && !form.dueDateTime) {
-      toast.error("Informe o prazo antes de publicar"); return;
+    const isPublishing = publishStatus === "pending" || (editMode && taskStatus !== "rascunho");
+    if (isPublishing && !form.dueDateTime) {
+      toast.error("Informe o prazo antes de salvar"); return;
     }
     if (publishStatus === "pending" && selectedEditorIds.length === 0) {
       toast.error("Atribua ao menos um editor para publicar"); return;
     }
+    // For active tasks, never send null dueDate — omit the field if unchanged/empty
+    const dueDatePayload = form.dueDateTime
+      ? form.dueDateTime
+      : (editMode && taskStatus !== "rascunho" ? undefined : null);
     const payload: Record<string, unknown> = {
       title:        form.title,
       description:  form.description || null,
-      dueDate:      form.dueDateTime || null,
+      dueDate:      dueDatePayload,
       priority:     form.priority,
       complexity:   form.complexity,
       assignedToId: selectedEditorIds[0] ?? null,

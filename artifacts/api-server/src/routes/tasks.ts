@@ -342,6 +342,10 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         }
         update.dueDate = parsed;
       } else {
+        // Only allow clearing dueDate on drafts; active tasks must always have a deadline
+        if (task.status !== "rascunho") {
+          res.status(400).json({ error: "Tarefas em andamento precisam ter um prazo definido" }); return;
+        }
         update.dueDate = null;
       }
     }
