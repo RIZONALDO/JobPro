@@ -3,7 +3,7 @@ import {
   LayoutDashboard, FolderOpen, ListTodo, Users, Settings, LogOut,
   CalendarDays, Menu, Bell, ChevronRight, X, UserCircle,
   CalendarRange, BarChart3, Zap, AtSign, ClipboardList,
-  CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2,
+  CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2, CalendarClock,
   Palette, Sun, Moon, ALargeSmall, Volume2, VolumeX,
 } from "lucide-react";
 import * as Collapsible from "@radix-ui/react-collapsible";
@@ -49,6 +49,7 @@ const NOTIF_ICON: Record<string, React.ReactNode> = {
   job_completed:    <Briefcase    className="h-4 w-4 text-indigo-500" />,
   project_completed:<FolderCheck  className="h-4 w-4 text-green-600" />,
   feed_mention:     <AtSign       className="h-4 w-4 text-violet-500" />,
+  due_date_changed: <CalendarClock className="h-4 w-4 text-sky-500" />,
 };
 
 function timeAgo(dateStr: string): string {

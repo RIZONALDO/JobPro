@@ -20,7 +20,7 @@ import {
   ClipboardList, MoreVertical,
   ArrowUpRight, X, PauseCircle, XCircle,
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
-  SlidersHorizontal, Check, Undo2, Search,
+  SlidersHorizontal, Check, Undo2, Search, CalendarClock,
 } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
@@ -149,6 +149,11 @@ export default function TasksOverview() {
   const [confirmTask, setConfirmTask] = useState<{ id: number; title: string; action: "cancel" | "pause" | "resume" | "reactivate" } | null>(null);
   const [confirmComment, setConfirmComment] = useState("");
   const [sendingConfirm, setSendingConfirm] = useState(false);
+
+  // Change due date dialog
+  const [changeDueDateTask,  setChangeDueDateTask]  = useState<OverviewTask | null>(null);
+  const [changeDueDateValue, setChangeDueDateValue] = useState("");
+  const [sendingDueDate,     setSendingDueDate]     = useState(false);
 
   // Mobile filter panel toggle
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
@@ -343,6 +348,24 @@ export default function TasksOverview() {
       toast.error(err instanceof Error ? err.message : "Erro");
     } finally {
       setSendingReopen(false);
+    }
+  };
+
+  const submitChangeDueDate = async () => {
+    if (!changeDueDateTask || !changeDueDateValue) {
+      toast.error("Selecione uma nova data");
+      return;
+    }
+    setSendingDueDate(true);
+    try {
+      await apiPut(`/api/tasks/${changeDueDateTask.id}`, { dueDate: changeDueDateValue });
+      toast.success("Prazo atualizado");
+      setChangeDueDateTask(null);
+      load(true);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar prazo");
+    } finally {
+      setSendingDueDate(false);
     }
   };
 
@@ -622,6 +645,14 @@ export default function TasksOverview() {
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "resume" })}>
                         <ArrowUpRight className="h-3.5 w-3.5" />Retomar tarefa
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {!["completed","cancelled","rascunho"].includes(t.status) && canActNow && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => { setChangeDueDateValue(t.dueDate ?? ""); setChangeDueDateTask(t); }}>
+                        <CalendarClock className="h-3.5 w-3.5" />Alterar prazo
                       </DropdownMenuItem>
                     </>
                   )}
@@ -979,6 +1010,39 @@ export default function TasksOverview() {
             <Button onClick={submitRevision} disabled={sendingRevision}
               className="bg-orange-600 hover:bg-orange-700">
               {sendingRevision ? "Enviando…" : "↩ Solicitar alteração"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Change due date dialog ───────────────────────────────────────── */}
+      <Dialog open={!!changeDueDateTask} onOpenChange={open => { if (!open) setChangeDueDateTask(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Alterar prazo</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {changeDueDateTask?.dueDate && (
+              <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-[hsl(var(--muted))]/40 text-sm">
+                <span className="text-[hsl(var(--muted-foreground))]">Prazo atual:</span>
+                <span className="font-semibold">{fmtDate(changeDueDateTask.dueDate)}</span>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>Novo prazo</Label>
+              <DateTimePicker
+                value={changeDueDateValue}
+                onChange={setChangeDueDateValue}
+                withTime
+                placeholder="Selecionar novo prazo…"
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChangeDueDateTask(null)}>Cancelar</Button>
+            <Button onClick={submitChangeDueDate} disabled={sendingDueDate || !changeDueDateValue}>
+              {sendingDueDate ? "Salvando…" : "Salvar prazo"}
             </Button>
           </DialogFooter>
         </DialogContent>

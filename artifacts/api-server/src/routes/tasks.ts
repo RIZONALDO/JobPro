@@ -341,9 +341,8 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     if (dueDate !== undefined) {
       if (dueDate) {
         const parsed = new Date(String(dueDate));
-        const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
-        if (parsed < todayMidnight) {
-          res.status(400).json({ error: "O prazo não pode ser uma data passada" }); return;
+        if (isNaN(parsed.getTime())) {
+          res.status(400).json({ error: "Data inválida" }); return;
         }
         update.dueDate = parsed;
       } else {
@@ -626,6 +625,25 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     if (oldEditor && oldEditor !== newEditor) {
       await db.delete(taskEditorsTable)
         .where(and(eq(taskEditorsTable.taskId, id), eq(taskEditorsTable.userId, oldEditor)));
+    }
+  }
+
+  if (update.dueDate !== undefined) {
+    const oldDate = task.dueDate ? (task.dueDate as Date).toISOString().split("T")[0] : null;
+    const newDate = update.dueDate ? (update.dueDate as Date).toISOString().split("T")[0] : null;
+    if (oldDate !== newDate) {
+      const fmtBR = (iso: string | null) => iso ? iso.split("-").reverse().join("/") : "—";
+      const recipients = new Set<number>();
+      if (task.assignedToId) recipients.add(task.assignedToId);
+      const extraEditors = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
+      extraEditors.forEach(e => recipients.add(e.userId));
+      for (const recipientId of recipients) {
+        await notify(recipientId, "due_date_changed",
+          "Prazo alterado",
+          `O prazo de "${task.title}" foi alterado para ${fmtBR(newDate)}`,
+          { taskId: id }
+        );
+      }
     }
   }
 
