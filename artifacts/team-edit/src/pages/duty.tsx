@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/lib/use-page-title";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Trash2, Plus, RefreshCw, Shield } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, Plus, RefreshCw, Shield, CalendarPlus } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -15,22 +15,31 @@ interface WeekendSlot { weekendStart: string; editors: ScheduleEditor[]; notes: 
 
 interface UpcomingEditor { id: number; name: string; avatarUrl: string | null; }
 interface UpcomingWeekend { weekendStart: string; editors: UpcomingEditor[]; }
+interface HolidayEntry { dutyDate: string; editors: UpcomingEditor[]; }
 interface UpcomingData {
   lastWeekend: UpcomingWeekend;
   thisWeekend: UpcomingWeekend;
   nextWeekend: UpcomingWeekend;
+  upcomingHolidays: HolidayEntry[];
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 const MON_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const MON_PT_SHORT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+const DAY_PT = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
 
 function fmtWeekend(satIso: string): string {
   const sat = new Date(satIso + "T12:00:00");
   const sun = new Date(sat); sun.setDate(sun.getDate() + 1);
   const fmt = (d: Date) => `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`;
   return `${fmt(sat)} – ${fmt(sun)}`;
+}
+
+function fmtSingleDate(iso: string): string {
+  const d = new Date(iso + "T12:00:00");
+  const pad = (n: number) => String(n).padStart(2,"0");
+  return `${DAY_PT[d.getDay()]} ${pad(d.getDate())}/${pad(d.getMonth()+1)}`;
 }
 
 function fmtDay(satIso: string): { satLabel: string; sunLabel: string; month: string; year: number } {
@@ -45,8 +54,12 @@ function fmtDay(satIso: string): { satLabel: string; sunLabel: string; month: st
   };
 }
 
-function monthOf(satIso: string): number {
-  return new Date(satIso + "T12:00:00").getMonth();
+function monthOf(iso: string): number {
+  return new Date(iso + "T12:00:00").getMonth();
+}
+
+function isSaturdayDate(iso: string): boolean {
+  return new Date(iso + "T12:00:00").getDay() === 6;
 }
 
 function isCurrentWeekend(satIso: string): boolean {
@@ -57,22 +70,22 @@ function isCurrentWeekend(satIso: string): boolean {
   return thisSat.toISOString().split("T")[0] === satIso;
 }
 
+function isToday(iso: string): boolean {
+  return new Date().toISOString().split("T")[0] === iso;
+}
+
 // ── Weekend Card (non-admin view) ──────────────────────────────────────────────
 
 type CardVariant = "past" | "current" | "next";
 
-function WeekendCard({
-  variant,
-  weekend,
-  currentUserId,
-}: {
+function WeekendCard({ variant, weekend, currentUserId }: {
   variant: CardVariant;
   weekend: UpcomingWeekend;
   currentUserId: number | undefined;
 }) {
   const { satLabel, sunLabel, month, year } = fmtDay(weekend.weekendStart);
   const isOnDuty = weekend.editors.some(e => e.id === currentUserId);
-  const isEmpty = weekend.editors.length === 0;
+  const isEmpty  = weekend.editors.length === 0;
 
   const labels: Record<CardVariant, string> = {
     past: "Último fim de semana",
@@ -111,28 +124,23 @@ function WeekendCard({
   if (variant === "current") {
     return (
       <div className="rounded-2xl border-2 border-[hsl(var(--primary))] bg-[hsl(var(--card))] p-6 shadow-lg relative overflow-hidden card-float">
-        {/* Accent strip */}
         <div className="absolute inset-x-0 top-0 h-1 bg-[hsl(var(--primary))] rounded-t-2xl" />
-
         <div className="flex items-start justify-between mb-4 mt-1">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[hsl(var(--primary))]">
             {labels.current}
           </p>
           {isOnDuty && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(var(--primary))] text-white text-[10px] font-bold uppercase tracking-wide">
-              <Shield className="h-3 w-3" />
-              Você está de plantão
+              <Shield className="h-3 w-3" /> Você está de plantão
             </span>
           )}
         </div>
-
         <div className="flex items-baseline gap-1.5 mb-6">
           <span className="text-3xl font-extrabold tabular-nums tracking-tight">{satLabel}</span>
           <span className="text-xl text-[hsl(var(--muted-foreground))]">–</span>
           <span className="text-3xl font-extrabold tabular-nums tracking-tight">{sunLabel}</span>
           <span className="text-base text-[hsl(var(--muted-foreground))] ml-1.5 font-medium">{month} {year}</span>
         </div>
-
         {isEmpty ? (
           <div className="rounded-xl bg-[hsl(var(--muted))]/40 px-4 py-3 text-sm text-[hsl(var(--muted-foreground))] text-center">
             Nenhum editor escalado
@@ -157,7 +165,6 @@ function WeekendCard({
     );
   }
 
-  // next
   return (
     <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5 card-float">
       <div className="flex items-start justify-between mb-3">
@@ -166,19 +173,16 @@ function WeekendCard({
         </p>
         {isOnDuty && (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] text-[10px] font-bold uppercase tracking-wide border border-[hsl(var(--primary))]/20">
-            <Shield className="h-3 w-3" />
-            Você está escalado
+            <Shield className="h-3 w-3" /> Você está escalado
           </span>
         )}
       </div>
-
       <div className="flex items-baseline gap-1.5 mb-4">
         <span className="text-2xl font-bold tabular-nums">{satLabel}</span>
         <span className="text-base text-[hsl(var(--muted-foreground))]">–</span>
         <span className="text-2xl font-bold tabular-nums">{sunLabel}</span>
         <span className="text-sm text-[hsl(var(--muted-foreground))] ml-1">{month} {year}</span>
       </div>
-
       {isEmpty ? (
         <p className="text-xs text-[hsl(var(--muted-foreground))]">Nenhum editor escalado ainda</p>
       ) : (
@@ -216,6 +220,11 @@ export default function DutyPage() {
   const [bulkEditorIds,   setBulkEditorIds]   = useState<number[]>([]);
   const [replaceExisting, setReplaceExisting] = useState(false);
   const [adding, setAdding] = useState<Record<string, string>>({});
+
+  // Admin holiday add form
+  const [holidayDate,     setHolidayDate]     = useState("");
+  const [holidayEditorId, setHolidayEditorId] = useState("");
+  const [addingHoliday,   setAddingHoliday]   = useState(false);
 
   // ── Non-admin state ──────────────────────────────────────────────────────────
   const [upcoming,     setUpcoming]     = useState<UpcomingData | null>(null);
@@ -290,6 +299,24 @@ export default function DutyPage() {
     }
   };
 
+  const addHolidayEntry = async () => {
+    if (!holidayDate || !holidayEditorId) {
+      toast.error("Selecione a data e o editor"); return;
+    }
+    setAddingHoliday(true);
+    try {
+      await apiPost("/api/duty", { weekendStart: holidayDate, editorId: parseInt(holidayEditorId, 10) });
+      toast.success("Editor adicionado ao plantão de feriado");
+      setHolidayDate("");
+      setHolidayEditorId("");
+      loadSchedule();
+    } catch {
+      toast.error("Erro ao adicionar feriado");
+    } finally {
+      setAddingHoliday(false);
+    }
+  };
+
   // ── Admin: group by month ────────────────────────────────────────────────────
   const byMonth: { month: number; slots: WeekendSlot[] }[] = [];
   for (const slot of schedule) {
@@ -321,6 +348,48 @@ export default function DutyPage() {
             <WeekendCard variant="past"    weekend={upcoming.lastWeekend} currentUserId={user?.id} />
             <WeekendCard variant="current" weekend={upcoming.thisWeekend} currentUserId={user?.id} />
             <WeekendCard variant="next"    weekend={upcoming.nextWeekend} currentUserId={user?.id} />
+
+            {upcoming.upcomingHolidays.length > 0 && (
+              <div className="mt-1">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))] mb-2 px-1">
+                  Feriados / Dias especiais
+                </p>
+                <div className="rounded-2xl border border-amber-500/30 bg-amber-50/30 dark:bg-amber-900/10 overflow-hidden">
+                  {upcoming.upcomingHolidays.map((h, i) => {
+                    const isOnDuty = h.editors.some(e => e.id === user?.id);
+                    return (
+                      <div
+                        key={h.dutyDate}
+                        className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? "border-t border-amber-500/20" : ""}`}>
+                        <div className="shrink-0">
+                          <span className="text-sm font-bold text-amber-700 dark:text-amber-400 tabular-nums">
+                            {fmtSingleDate(h.dutyDate)}
+                          </span>
+                          {isToday(h.dutyDate) && (
+                            <span className="ml-2 text-[10px] font-bold text-amber-600 uppercase tracking-wide">hoje</span>
+                          )}
+                        </div>
+                        <div className="flex-1 flex flex-wrap items-center gap-2">
+                          {h.editors.length === 0 ? (
+                            <span className="text-xs text-[hsl(var(--muted-foreground))]">Sem editor escalado</span>
+                          ) : h.editors.map(ed => (
+                            <div key={ed.id} className="flex items-center gap-1.5">
+                              <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={22} />
+                              <span className="text-sm font-medium">{ed.name.split(" ")[0]}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {isOnDuty && (
+                          <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px] font-bold uppercase tracking-wide border border-amber-500/20">
+                            <Shield className="h-3 w-3" /> você
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
@@ -395,7 +464,7 @@ export default function DutyPage() {
               onChange={e => setReplaceExisting(e.target.checked)}
               className="rounded"
             />
-            Substituir escala existente
+            Substituir fins de semana existentes
           </label>
           <Button
             onClick={generate}
@@ -403,6 +472,45 @@ export default function DutyPage() {
             className="h-8 text-xs gap-1.5">
             <RefreshCw className={`h-3.5 w-3.5 ${generating ? "animate-spin" : ""}`} />
             {generating ? "Gerando…" : "Gerar escala"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Holiday / special day panel */}
+      <div className="rounded-xl border border-amber-500/40 bg-amber-50/30 dark:bg-amber-900/10 p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <CalendarPlus className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <p className="text-sm font-semibold">Feriado / Dia especial</p>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))]">
+          Escale um editor em qualquer data — feriados ou dias avulsos durante a semana.
+        </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            type="date"
+            value={holidayDate}
+            onChange={e => setHolidayDate(e.target.value)}
+            className="h-8 px-2.5 text-xs rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]
+              focus:outline-none focus:border-amber-500 tabular-nums"
+          />
+          <select
+            value={holidayEditorId}
+            onChange={e => setHolidayEditorId(e.target.value)}
+            className="h-8 pl-2.5 pr-7 text-xs rounded-md border border-[hsl(var(--border))]
+              bg-[hsl(var(--background))] appearance-none cursor-pointer
+              focus:outline-none focus:border-amber-500">
+            <option value="">Selecionar editor…</option>
+            {editors.map(e => (
+              <option key={e.id} value={e.id}>{e.name}</option>
+            ))}
+          </select>
+          <Button
+            onClick={addHolidayEntry}
+            disabled={addingHoliday || !holidayDate || !holidayEditorId}
+            variant="outline"
+            className="h-8 text-xs gap-1.5 border-amber-500/50 hover:bg-amber-50 dark:hover:bg-amber-900/20">
+            <Plus className="h-3.5 w-3.5" />
+            {addingHoliday ? "Adicionando…" : "Adicionar"}
           </Button>
         </div>
       </div>
@@ -421,7 +529,8 @@ export default function DutyPage() {
               </p>
               <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] overflow-hidden card-float">
                 {slots.map((slot, i) => {
-                  const isCurrent = isCurrentWeekend(slot.weekendStart);
+                  const isSat     = isSaturdayDate(slot.weekendStart);
+                  const isCurrent = isSat ? isCurrentWeekend(slot.weekendStart) : isToday(slot.weekendStart);
                   const isEmpty   = slot.editors.length === 0;
                   const avail     = availableEditors(slot);
                   const addVal    = adding[slot.weekendStart] ?? "";
@@ -431,19 +540,27 @@ export default function DutyPage() {
                       key={slot.weekendStart}
                       className={`flex items-center gap-3 px-4 py-3 transition-colors ${
                         i > 0 ? "border-t border-[hsl(var(--border))]" : ""
-                      } ${isCurrent ? "bg-[hsl(var(--primary)/0.07)]" : ""}`}>
+                      } ${!isSat ? "bg-amber-50/40 dark:bg-amber-900/10" : ""}
+                      ${isCurrent ? "bg-[hsl(var(--primary)/0.07)]" : ""}`}>
 
-                      <div className="w-28 shrink-0">
+                      {/* Date */}
+                      <div className="w-36 shrink-0 flex items-center gap-1.5">
                         <span className={`text-sm tabular-nums ${isCurrent ? "font-bold text-[hsl(var(--primary))]" : "font-medium"}`}>
-                          {fmtWeekend(slot.weekendStart)}
+                          {isSat ? fmtWeekend(slot.weekendStart) : fmtSingleDate(slot.weekendStart)}
                         </span>
-                        {isCurrent && (
-                          <span className="ml-1.5 text-[10px] font-bold text-[hsl(var(--primary))] uppercase tracking-wide">
+                        {!isSat && (
+                          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-300/50 dark:border-amber-700/50">
+                            feriado
+                          </span>
+                        )}
+                        {isCurrent && isSat && (
+                          <span className="text-[10px] font-bold text-[hsl(var(--primary))] uppercase tracking-wide">
                             hoje
                           </span>
                         )}
                       </div>
 
+                      {/* Editors */}
                       <div className="flex-1 flex flex-wrap items-center gap-1.5">
                         {isEmpty && (
                           <span className="text-xs text-[hsl(var(--muted-foreground))]">Sem editor escalado</span>

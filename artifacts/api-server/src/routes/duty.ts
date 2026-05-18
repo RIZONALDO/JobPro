@@ -25,16 +25,19 @@ function getThisWeekendSaturday(from: Date = new Date()): Date {
   return d;
 }
 
-// GET /api/duty/upcoming — last + this + next weekend (for duty page and dashboard card)
+// GET /api/duty/upcoming — last + this + next weekend + upcoming holidays in the next ~30 days
 router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
   const thisSat = getThisWeekendSaturday();
 
   const lastSat = new Date(thisSat); lastSat.setDate(lastSat.getDate() - 7);
   const nextSat = new Date(thisSat); nextSat.setDate(nextSat.getDate() + 7);
+  const until   = new Date(thisSat); until.setDate(until.getDate() + 37);
 
   const lastSatStr = lastSat.toISOString().split("T")[0];
   const thisSatStr = thisSat.toISOString().split("T")[0];
   const nextSatStr = nextSat.toISOString().split("T")[0];
+  const untilStr   = until.toISOString().split("T")[0];
+  const todayStr   = new Date().toISOString().split("T")[0];
 
   const rows = await db
     .select({
@@ -46,7 +49,7 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
     })
     .from(dutySchedulesTable)
     .leftJoin(usersTable, eq(dutySchedulesTable.editorId, usersTable.id))
-    .where(inArray(dutySchedulesTable.weekendStart, [lastSatStr, thisSatStr, nextSatStr]));
+    .where(and(gte(dutySchedulesTable.weekendStart, lastSatStr), lte(dutySchedulesTable.weekendStart, untilStr)));
 
   const group = (satStr: string) => ({
     weekendStart: satStr,
@@ -55,14 +58,32 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
       .map(r => ({ id: r.editorId!, name: r.editorName!, avatarUrl: r.editorAvatarUrl ?? null })),
   });
 
+  // Non-Saturday entries from today onwards (holidays / special days)
+  const weekendDates = new Set([lastSatStr, thisSatStr, nextSatStr]);
+  const holidayByDate = new Map<string, { dutyDate: string; editors: { id: number; name: string; avatarUrl: string | null }[] }>();
+  for (const row of rows) {
+    const isSaturday = new Date(row.weekendStart + "T12:00:00").getDay() === 6;
+    if (!weekendDates.has(row.weekendStart) && !isSaturday && row.weekendStart >= todayStr) {
+      if (!holidayByDate.has(row.weekendStart)) {
+        holidayByDate.set(row.weekendStart, { dutyDate: row.weekendStart, editors: [] });
+      }
+      if (row.editorId) {
+        holidayByDate.get(row.weekendStart)!.editors.push({
+          id: row.editorId!, name: row.editorName!, avatarUrl: row.editorAvatarUrl ?? null,
+        });
+      }
+    }
+  }
+
   res.json({
-    lastWeekend: group(lastSatStr),
-    thisWeekend: group(thisSatStr),
-    nextWeekend: group(nextSatStr),
+    lastWeekend:      group(lastSatStr),
+    thisWeekend:      group(thisSatStr),
+    nextWeekend:      group(nextSatStr),
+    upcomingHolidays: Array.from(holidayByDate.values()),
   });
 });
 
-// GET /api/duty?year=2026 — all weekends for year (grouped)
+// GET /api/duty?year=2026 — all weekends + holiday entries for year
 router.get("/duty", requireAuth, async (req, res): Promise<void> => {
   const year = parseInt(String(req.query.year ?? new Date().getFullYear()), 10);
   const start = `${year}-01-01`;
@@ -82,18 +103,18 @@ router.get("/duty", requireAuth, async (req, res): Promise<void> => {
     .where(and(gte(dutySchedulesTable.weekendStart, start), lte(dutySchedulesTable.weekendStart, end)))
     .orderBy(dutySchedulesTable.weekendStart);
 
-  const byWeekend = new Map<string, {
+  const byDate = new Map<string, {
     weekendStart: string;
     editors: { id: number; name: string; avatarUrl: string | null; scheduleId: number }[];
     notes: string | null;
   }>();
 
   for (const row of rows) {
-    if (!byWeekend.has(row.weekendStart)) {
-      byWeekend.set(row.weekendStart, { weekendStart: row.weekendStart, editors: [], notes: row.notes });
+    if (!byDate.has(row.weekendStart)) {
+      byDate.set(row.weekendStart, { weekendStart: row.weekendStart, editors: [], notes: row.notes });
     }
     if (row.editorId) {
-      byWeekend.get(row.weekendStart)!.editors.push({
+      byDate.get(row.weekendStart)!.editors.push({
         id: row.editorId,
         name: row.editorName!,
         avatarUrl: row.editorAvatarUrl ?? null,
@@ -103,8 +124,13 @@ router.get("/duty", requireAuth, async (req, res): Promise<void> => {
   }
 
   const allSaturdays = getAllSaturdaysInYear(year);
-  const result = allSaturdays.map(sat =>
-    byWeekend.get(sat) ?? { weekendStart: sat, editors: [], notes: null }
+  const satSet = new Set(allSaturdays);
+  // Include non-Saturday dates (holidays/special days) that have entries
+  const extraDates = Array.from(byDate.keys()).filter(d => !satSet.has(d));
+  const allDates = [...allSaturdays, ...extraDates].sort();
+
+  const result = allDates.map(d =>
+    byDate.get(d) ?? { weekendStart: d, editors: [], notes: null }
   );
 
   res.json(result);
@@ -125,10 +151,18 @@ router.post("/duty/bulk", requireAuth, async (req, res): Promise<void> => {
   const saturdays     = getAllSaturdaysInYear(parsedYear);
 
   if (replaceExisting) {
-    await db.delete(dutySchedulesTable).where(
-      and(gte(dutySchedulesTable.weekendStart, `${parsedYear}-01-01`),
-          lte(dutySchedulesTable.weekendStart, `${parsedYear}-12-31`))
-    );
+    // Only delete Saturday entries; preserve manually added holidays
+    const satEntries = await db
+      .select({ id: dutySchedulesTable.id, weekendStart: dutySchedulesTable.weekendStart })
+      .from(dutySchedulesTable)
+      .where(and(gte(dutySchedulesTable.weekendStart, `${parsedYear}-01-01`),
+                 lte(dutySchedulesTable.weekendStart, `${parsedYear}-12-31`)));
+    const satIds = satEntries
+      .filter(r => new Date(r.weekendStart + "T12:00:00").getDay() === 6)
+      .map(r => r.id);
+    if (satIds.length > 0) {
+      await db.delete(dutySchedulesTable).where(inArray(dutySchedulesTable.id, satIds));
+    }
   }
 
   // One editor per weekend, rotating through the list
@@ -142,7 +176,7 @@ router.post("/duty/bulk", requireAuth, async (req, res): Promise<void> => {
   res.json({ weeks: saturdays.length, entries: inserts.length });
 });
 
-// POST /api/duty — add single editor to single weekend (admin)
+// POST /api/duty — add editor to any date (weekend or holiday) — admin only
 router.post("/duty", requireAuth, async (req, res): Promise<void> => {
   if (req.session.userRole !== "admin") { res.status(403).json({ error: "Sem permissão" }); return; }
   const { weekendStart, editorId, notes } = req.body ?? {};
