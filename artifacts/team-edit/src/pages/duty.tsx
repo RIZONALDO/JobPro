@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { apiFetch, apiPost, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/lib/use-page-title";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Plus, RefreshCw, Shield, CalendarPlus, X, Trophy, LayoutList } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Shield, CalendarPlus, X } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ function getISOWeek(iso: string): number {
   return Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
 }
 
-// ── Weekend Card — championship style (non-admin view) ─────────────────────────
+// ── Weekend Card — side-by-side layout (non-admin view) ───────────────────────
 
 type CardVariant = "past" | "current" | "next";
 
@@ -95,258 +95,104 @@ function WeekendCard({ variant, weekend, currentUserId }: {
   const isOnDuty = weekend.editors.some(e => e.id === currentUserId);
   const isEmpty  = weekend.editors.length === 0;
   const week     = getISOWeek(weekend.weekendStart);
-  const satDay   = pad(sat.getDate());
-  const sunDay   = pad(sun.getDate());
-  const monthYear = `${MON_PT[sat.getMonth()]} ${sat.getFullYear()}`;
-
-  const cfg = {
-    past: {
-      strip:      "bg-[hsl(var(--muted))]/60",
-      dot:        "bg-[hsl(var(--muted-foreground))]",
-      status:     "PASSADO",
-      statusCls:  "text-[hsl(var(--muted-foreground))]",
-      rdCls:      "text-[hsl(var(--muted-foreground))]",
-      wrapCls:    "border-[hsl(var(--border))] opacity-65",
-      dateSz:     "text-xl",
-      avatarSz:   28 as number,
-    },
-    current: {
-      strip:      "bg-[hsl(var(--primary))]",
-      dot:        "bg-green-500 animate-pulse",
-      status:     "AO VIVO",
-      statusCls:  "text-green-600 dark:text-green-400",
-      rdCls:      "text-[hsl(var(--primary))]",
-      wrapCls:    "border-[hsl(var(--primary))] border-2 shadow-lg",
-      dateSz:     "text-5xl",
-      avatarSz:   44 as number,
-    },
-    next: {
-      strip:      "bg-[hsl(var(--primary))]/30",
-      dot:        "bg-[hsl(var(--primary))]/70",
-      status:     "PRÓXIMO",
-      statusCls:  "text-[hsl(var(--primary))]",
-      rdCls:      "text-[hsl(var(--primary))]/80",
-      wrapCls:    "border-[hsl(var(--border))]",
-      dateSz:     "text-3xl",
-      avatarSz:   34 as number,
-    },
-  }[variant];
+  const c = variant === "current";
+  const p = variant === "past";
 
   return (
-    <div className={`rounded-2xl border overflow-hidden bg-[hsl(var(--card))] ${cfg.wrapCls}`}>
-      {/* accent strip */}
-      <div className={`h-1 ${cfg.strip}`} />
+    <div className={`rounded-2xl flex flex-col bg-[hsl(var(--card))] overflow-hidden ${
+      c ? "border-2 border-[hsl(var(--primary))] shadow-md"
+        : p ? "border border-[hsl(var(--border))] opacity-55"
+            : "border border-[hsl(var(--border))]"
+    }`}>
+      {/* top accent strip */}
+      <div className={`h-0.5 ${c ? "bg-[hsl(var(--primary))]" : "bg-transparent"}`} />
 
-      {/* status bar */}
-      <div className="flex items-center justify-between px-4 pt-3 pb-2">
-        <div className="flex items-center gap-2">
-          <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
-          <span className={`text-[10px] font-black uppercase tracking-[0.18em] ${cfg.statusCls}`}>
-            {cfg.status}
+      {/* status + round */}
+      <div className={`flex items-center justify-between pt-3 ${c ? "px-4" : "px-3"}`}>
+        <div className="flex items-center gap-1.5">
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+            c ? "bg-green-500 animate-pulse" : p ? "bg-[hsl(var(--muted-foreground))]" : "bg-[hsl(var(--primary))]/60"
+          }`} />
+          <span className={`text-[9px] font-black uppercase tracking-[0.16em] ${
+            c ? "text-green-600 dark:text-green-400"
+              : p ? "text-[hsl(var(--muted-foreground))]"
+                  : "text-[hsl(var(--primary))]"
+          }`}>
+            {c ? "Ao vivo" : p ? "Passado" : "Próximo"}
           </span>
         </div>
-        <span className={`text-[11px] font-black tabular-nums ${cfg.rdCls}`}>RD {week}</span>
+        <span className={`text-[10px] font-black tabular-nums ${
+          c ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--muted-foreground))]"
+        }`}>
+          RD {week}
+        </span>
       </div>
 
-      {/* date display */}
-      <div className="px-4 pb-3">
-        <div className="flex items-end gap-2.5">
+      {/* dates — hero */}
+      <div className={`${c ? "px-4 pt-2.5 pb-3" : "px-3 pt-2 pb-2.5"}`}>
+        <div className="flex flex-col gap-0.5">
           <div className="flex items-baseline gap-1">
-            <span className={`font-black tabular-nums tracking-tight leading-none ${cfg.dateSz}`}>{satDay}</span>
-            <span className="text-[11px] font-bold text-[hsl(var(--muted-foreground))] mb-0.5">Sáb</span>
+            <span className={`font-black tabular-nums tracking-tight leading-none ${c ? "text-4xl" : "text-2xl"}`}>
+              {pad(sat.getDate())}
+            </span>
+            <span className={`font-semibold text-[hsl(var(--muted-foreground))] ${c ? "text-[11px]" : "text-[9px]"}`}>
+              Sáb
+            </span>
           </div>
-          <span className={`text-[hsl(var(--muted-foreground))] font-bold leading-none mb-0.5 ${variant === "current" ? "text-2xl" : "text-sm"}`}>—</span>
           <div className="flex items-baseline gap-1">
-            <span className={`font-black tabular-nums tracking-tight leading-none ${cfg.dateSz}`}>{sunDay}</span>
-            <span className="text-[11px] font-bold text-[hsl(var(--muted-foreground))] mb-0.5">Dom</span>
+            <span className={`font-black tabular-nums tracking-tight leading-none ${c ? "text-4xl" : "text-2xl"}`}>
+              {pad(sun.getDate())}
+            </span>
+            <span className={`font-semibold text-[hsl(var(--muted-foreground))] ${c ? "text-[11px]" : "text-[9px]"}`}>
+              Dom
+            </span>
           </div>
+          <p className={`text-[hsl(var(--muted-foreground))] mt-0.5 ${c ? "text-xs font-medium" : "text-[9px]"}`}>
+            {MON_PT_SHORT[sat.getMonth()]} {sat.getFullYear()}
+          </p>
         </div>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] font-medium mt-1">{monthYear}</p>
       </div>
 
       {/* divider */}
-      <div className="mx-4 h-px bg-[hsl(var(--border))]" />
+      <div className={`h-px bg-[hsl(var(--border))] ${c ? "mx-4" : "mx-3"}`} />
 
-      {/* player section */}
-      <div className={`px-4 ${variant === "current" ? "pt-4 pb-3" : "pt-3 pb-3"}`}>
+      {/* editor */}
+      <div className={`flex-1 ${c ? "px-4 py-3" : "px-3 py-2.5"}`}>
         {isEmpty ? (
-          <p className="text-xs text-[hsl(var(--muted-foreground))] text-center py-2">
-            {variant === "past" ? "Sem editor escalado" : "Nenhum editor escalado ainda"}
+          <p className={`text-[hsl(var(--muted-foreground))] ${c ? "text-xs" : "text-[10px]"}`}>
+            {p ? "Sem editor" : "A definir"}
           </p>
         ) : (
-          <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col gap-2">
             {weekend.editors.map(ed => (
-              <div
-                key={ed.id}
-                className={`flex items-center gap-3 ${
-                  variant === "current"
-                    ? "rounded-xl bg-[hsl(var(--muted))]/30 px-3 py-2.5"
-                    : ""
-                }`}>
-                <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={cfg.avatarSz} />
-                <div className="flex-1 min-w-0">
-                  <p className={`font-semibold leading-tight truncate ${variant === "current" ? "text-sm" : "text-xs"}`}>
-                    {ed.name}
+              <div key={ed.id} className={`flex items-center ${c ? "gap-2.5" : "gap-1.5"}`}>
+                <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={c ? 36 : 24} />
+                <div className="min-w-0">
+                  <p className={`font-semibold leading-tight truncate ${c ? "text-sm" : "text-[11px]"}`}>
+                    {c ? ed.name : ed.name.split(" ")[0]}
                   </p>
-                  {variant === "current" && (
-                    <p className="text-[11px] text-[hsl(var(--muted-foreground))]">Editor de plantão</p>
+                  {c && <p className="text-[11px] text-[hsl(var(--muted-foreground))]">Editor de plantão</p>}
+                  {ed.id === currentUserId && (
+                    <p className={`font-black uppercase text-[hsl(var(--primary))] ${c ? "text-[10px]" : "text-[9px]"}`}>
+                      você
+                    </p>
                   )}
                 </div>
-                {ed.id === currentUserId && (
-                  <span className="shrink-0 text-[10px] font-black uppercase tracking-wide text-[hsl(var(--primary))]">
-                    VOCÊ
-                  </span>
-                )}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* "você está de plantão" banner — current only */}
-      {variant === "current" && isOnDuty && (
-        <div className="mx-4 mb-4 rounded-xl bg-[hsl(var(--primary))]/10 border border-[hsl(var(--primary))]/30 px-3 py-2 flex items-center gap-2">
-          <Shield className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
-          <span className="text-xs font-black uppercase tracking-wide text-[hsl(var(--primary))]">
+      {/* "você está de plantão" banner — current + on duty only */}
+      {c && isOnDuty && (
+        <div className="mx-4 mb-4 rounded-xl bg-[hsl(var(--primary))]/10 border border-[hsl(var(--primary))]/20 px-3 py-2 flex items-center gap-2">
+          <Shield className="h-3.5 w-3.5 text-[hsl(var(--primary))] shrink-0" />
+          <span className="text-[10px] font-black uppercase tracking-wide text-[hsl(var(--primary))]">
             Você está de plantão
           </span>
         </div>
       )}
-    </div>
-  );
-}
-
-// ── Scoreboard View ────────────────────────────────────────────────────────────
-
-function ScoreboardView({ currentUserId }: { currentUserId: number | undefined }) {
-  const year = new Date().getFullYear();
-  const [slots,   setSlots]   = useState<WeekendSlot[]>([]);
-  const [loading, setLoading] = useState(true);
-  const currentRowRef = useRef<HTMLDivElement>(null);
-
-  const thisSatStr = (() => {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const dow = today.getDay();
-    const sat = new Date(today); sat.setDate(sat.getDate() + (dow === 0 ? -1 : 6 - dow));
-    return sat.toISOString().split("T")[0];
-  })();
-
-  useEffect(() => {
-    apiFetch<WeekendSlot[]>(`/api/duty?year=${year}`)
-      .then(data => { setSlots(data); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, [year]);
-
-  useEffect(() => {
-    if (!loading) currentRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [loading]);
-
-  const nextSatStr = slots.find(s => s.weekendStart > thisSatStr && isSaturdayDate(s.weekendStart))?.weekendStart;
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
-        Carregando…
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] overflow-hidden">
-      {/* Table header */}
-      <div className="grid grid-cols-[2.5rem_1fr_1fr_5.5rem] px-4 py-2.5 bg-[hsl(var(--muted))]/40 border-b border-[hsl(var(--border))]">
-        {["RD", "Data", "Editor", "Status"].map((h, i) => (
-          <span key={h} className={`text-[9px] font-black uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))] ${i === 3 ? "text-right" : ""}`}>
-            {h}
-          </span>
-        ))}
-      </div>
-
-      {/* Rows */}
-      <div className="divide-y divide-[hsl(var(--border))]">
-        {slots.map(slot => {
-          const isCurrent = slot.weekendStart === thisSatStr;
-          const isNext    = slot.weekendStart === nextSatStr;
-          const isPast    = slot.weekendStart < thisSatStr;
-          const isSat     = isSaturdayDate(slot.weekendStart);
-          const week      = getISOWeek(slot.weekendStart);
-          const isOnDuty  = slot.editors.some(e => e.id === currentUserId);
-          const mainEd    = slot.editors[0];
-
-          return (
-            <div
-              key={slot.weekendStart}
-              ref={isCurrent ? currentRowRef : undefined}
-              className={`grid grid-cols-[2.5rem_1fr_1fr_5.5rem] items-center px-4 py-2.5 transition-colors ${
-                isCurrent
-                  ? "bg-[hsl(var(--primary))]/8 border-l-2 border-[hsl(var(--primary))]"
-                  : isPast
-                  ? "opacity-40"
-                  : !isSat
-                  ? "bg-amber-50/50 dark:bg-amber-900/10"
-                  : "hover:bg-[hsl(var(--muted))]/20"
-              }`}>
-
-              {/* Round */}
-              <span className={`text-xs font-black tabular-nums ${
-                isCurrent ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--muted-foreground))]"
-              }`}>
-                {isSat ? week : "★"}
-              </span>
-
-              {/* Date */}
-              <div className="min-w-0">
-                <span className={`text-xs tabular-nums ${isCurrent || isNext ? "font-bold" : "font-medium"}`}>
-                  {isSat ? fmtWeekend(slot.weekendStart) : fmtSingleDate(slot.weekendStart)}
-                </span>
-                {!isSat && (
-                  <span className="ml-1.5 text-[9px] font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 px-1 py-px rounded">
-                    feriado
-                  </span>
-                )}
-              </div>
-
-              {/* Editor */}
-              <div className="flex items-center gap-1.5 min-w-0">
-                {mainEd ? (
-                  <>
-                    <AvatarDisplay name={mainEd.name} avatarUrl={mainEd.avatarUrl} size={22} />
-                    <span className={`text-xs truncate ${
-                      mainEd.id === currentUserId ? "font-bold text-[hsl(var(--primary))]" : "font-medium"
-                    }`}>
-                      {mainEd.name.split(" ")[0]}
-                    </span>
-                    {slot.editors.length > 1 && (
-                      <span className="shrink-0 text-[10px] text-[hsl(var(--muted-foreground))]">
-                        +{slot.editors.length - 1}
-                      </span>
-                    )}
-                    {isOnDuty && (
-                      <span className="shrink-0 text-[9px] font-black uppercase text-[hsl(var(--primary))]">você</span>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-xs text-[hsl(var(--muted-foreground))]">—</span>
-                )}
-              </div>
-
-              {/* Status */}
-              <div className="flex justify-end">
-                {isCurrent ? (
-                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-green-600 dark:text-green-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
-                    AO VIVO
-                  </span>
-                ) : isPast ? (
-                  <span className="text-[9px] font-semibold uppercase text-[hsl(var(--muted-foreground))] tracking-wide">passado</span>
-                ) : isNext ? (
-                  <span className="text-[9px] font-black uppercase tracking-wide text-[hsl(var(--primary))]">próximo</span>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -376,7 +222,6 @@ export default function DutyPage() {
   // ── Non-admin state ──────────────────────────────────────────────────────────
   const [upcoming,     setUpcoming]     = useState<UpcomingData | null>(null);
   const [upcomingLoad, setUpcomingLoad] = useState(true);
-  const [layout,       setLayout]       = useState<"championship" | "scoreboard">("championship");
 
   // ── Admin data loading ───────────────────────────────────────────────────────
   const loadSchedule = useCallback(() => {
@@ -490,102 +335,74 @@ export default function DutyPage() {
             <Shield className="h-5 w-5 text-[hsl(var(--primary))]" />
             <h1 className="text-lg font-bold">Escala de Plantões</h1>
           </div>
-          <div className="flex items-center gap-1.5">
-            {/* Layout toggle */}
-            <button
-              onClick={() => setLayout("championship")}
-              title="Visão campeonato"
-              className={`h-8 w-8 rounded-md border flex items-center justify-center transition-colors ${
-                layout === "championship"
-                  ? "bg-[hsl(var(--primary))] text-white border-transparent"
-                  : "hover:bg-[hsl(var(--muted))] border-[hsl(var(--border))]"
-              }`}>
-              <Trophy className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setLayout("scoreboard")}
-              title="Visão placar"
-              className={`h-8 w-8 rounded-md border flex items-center justify-center transition-colors ${
-                layout === "scoreboard"
-                  ? "bg-[hsl(var(--primary))] text-white border-transparent"
-                  : "hover:bg-[hsl(var(--muted))] border-[hsl(var(--border))]"
-              }`}>
-              <LayoutList className="h-4 w-4" />
-            </button>
-            {/* Refresh — only for championship which uses `upcoming` */}
-            {layout === "championship" && (
-              <button
-                onClick={loadUpcoming}
-                disabled={upcomingLoad}
-                className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors disabled:opacity-50">
-                <RefreshCw className={`h-4 w-4 ${upcomingLoad ? "animate-spin" : ""}`} />
-              </button>
-            )}
-          </div>
+          <button
+            onClick={loadUpcoming}
+            disabled={upcomingLoad}
+            className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors disabled:opacity-50">
+            <RefreshCw className={`h-4 w-4 ${upcomingLoad ? "animate-spin" : ""}`} />
+          </button>
         </div>
 
-        {/* Scoreboard layout */}
-        {layout === "scoreboard" && <ScoreboardView currentUserId={user?.id} />}
-
-        {/* Championship layout */}
-        {layout === "championship" && (
-          upcomingLoad ? (
-            <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
-              Carregando…
-            </div>
-          ) : upcoming ? (
-            <div className="flex flex-col gap-4">
+        {upcomingLoad ? (
+          <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
+            Carregando…
+          </div>
+        ) : upcoming ? (
+          <div className="flex flex-col gap-4">
+            {/* Three cards side by side */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               <WeekendCard variant="past"    weekend={upcoming.lastWeekend} currentUserId={user?.id} />
               <WeekendCard variant="current" weekend={upcoming.thisWeekend} currentUserId={user?.id} />
               <WeekendCard variant="next"    weekend={upcoming.nextWeekend} currentUserId={user?.id} />
+            </div>
 
-              {(upcoming.upcomingHolidays ?? []).length > 0 && (
-                <div className="mt-1">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))] mb-2 px-1">
-                    Feriados / Dias especiais
-                  </p>
-                  <div className="rounded-2xl border border-amber-500/30 bg-amber-50/30 dark:bg-amber-900/10 overflow-hidden">
-                    {(upcoming.upcomingHolidays ?? []).map((h, i) => {
-                      const isOnDuty = h.editors.some(e => e.id === user?.id);
-                      return (
-                        <div
-                          key={h.dutyDate}
-                          className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? "border-t border-amber-500/20" : ""}`}>
-                          <div className="shrink-0">
-                            <span className="text-sm font-bold text-amber-700 dark:text-amber-400 tabular-nums">
-                              {fmtSingleDate(h.dutyDate)}
-                            </span>
-                            {isToday(h.dutyDate) && (
-                              <span className="ml-2 text-[10px] font-bold text-amber-600 uppercase tracking-wide">hoje</span>
-                            )}
-                          </div>
-                          <div className="flex-1 flex flex-wrap items-center gap-2">
-                            {h.editors.length === 0 ? (
-                              <span className="text-xs text-[hsl(var(--muted-foreground))]">Sem editor escalado</span>
-                            ) : h.editors.map(ed => (
-                              <div key={ed.id} className="flex items-center gap-1.5">
-                                <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={22} />
-                                <span className="text-sm font-medium">{ed.name.split(" ")[0]}</span>
-                              </div>
-                            ))}
-                          </div>
-                          {isOnDuty && (
-                            <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px] font-bold uppercase tracking-wide border border-amber-500/20">
-                              <Shield className="h-3 w-3" /> você
-                            </span>
+            {/* Upcoming holidays */}
+            {(upcoming.upcomingHolidays ?? []).length > 0 && (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))] mb-2 px-1">
+                  Feriados / Dias especiais
+                </p>
+                <div className="rounded-2xl border border-amber-500/30 bg-amber-50/30 dark:bg-amber-900/10 overflow-hidden">
+                  {(upcoming.upcomingHolidays ?? []).map((h, i) => {
+                    const isOnDuty = h.editors.some(e => e.id === user?.id);
+                    return (
+                      <div
+                        key={h.dutyDate}
+                        className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? "border-t border-amber-500/20" : ""}`}>
+                        <div className="shrink-0">
+                          <span className="text-sm font-bold text-amber-700 dark:text-amber-400 tabular-nums">
+                            {fmtSingleDate(h.dutyDate)}
+                          </span>
+                          {isToday(h.dutyDate) && (
+                            <span className="ml-2 text-[10px] font-bold text-amber-600 uppercase tracking-wide">hoje</span>
                           )}
                         </div>
-                      );
-                    })}
-                  </div>
+                        <div className="flex-1 flex flex-wrap items-center gap-2">
+                          {h.editors.length === 0 ? (
+                            <span className="text-xs text-[hsl(var(--muted-foreground))]">Sem editor escalado</span>
+                          ) : h.editors.map(ed => (
+                            <div key={ed.id} className="flex items-center gap-1.5">
+                              <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={22} />
+                              <span className="text-sm font-medium">{ed.name.split(" ")[0]}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {isOnDuty && (
+                          <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px] font-bold uppercase tracking-wide border border-amber-500/20">
+                            <Shield className="h-3 w-3" /> você
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
-              Não foi possível carregar a escala.
-            </div>
-          )
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
+            Não foi possível carregar a escala.
+          </div>
         )}
       </div>
     );
