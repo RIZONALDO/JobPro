@@ -474,7 +474,7 @@ export default function DutyPage() {
           {/* Week blocks — one card per week */}
           <div className="flex flex-col gap-2">
             {Array.from({ length: numWeeks }).map((_, weekIdx) => (
-              <div key={weekIdx} className="grid grid-cols-7 gap-1 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-1.5">
+              <div key={weekIdx} className="grid grid-cols-7 gap-1 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-1.5">
                 {Array.from({ length: 7 }).map((_, dayIdx) => {
                   const cellIdx   = weekIdx * 7 + dayIdx;
                   const day       = cellIdx - firstDayOffset + 1;
@@ -492,6 +492,7 @@ export default function DutyPage() {
                   const isTdy     = isToday(iso);
                   const isCurWknd = isSat && isCurrentWeekend(iso);
                   const slot      = getSlotOrEmpty(iso);
+                  const hasEditors = slot.editors.length > 0;
                   const avail     = editors.filter(e => !slot.editors.some(se => se.id === e.id));
                   const isAddOpen = iso in adding;
                   const addVal    = adding[iso] ?? "";
@@ -502,10 +503,10 @@ export default function DutyPage() {
                       key={iso}
                       className={`rounded-xl border flex flex-col p-1.5 min-h-[130px] transition-colors ${
                         isCurWknd
-                          ? "border-[hsl(var(--primary))]/40 bg-[hsl(var(--primary))]/5"
-                          : isWknd
-                            ? "border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40"
-                            : "border-[hsl(var(--border))] bg-[hsl(var(--background))]"
+                          ? "border-[hsl(var(--primary))]/40 bg-[hsl(var(--primary))]/8"
+                          : hasEditors
+                            ? "border-[hsl(var(--border))] bg-[hsl(var(--card))]"
+                            : "border-transparent bg-[hsl(var(--muted))]/60"
                       }`}
                     >
                       {/* Day number + add button */}
