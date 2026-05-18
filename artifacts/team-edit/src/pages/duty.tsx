@@ -199,6 +199,7 @@ export default function DutyPage() {
   const [bulkEditorIds,   setBulkEditorIds]   = useState<number[]>([]);
   const [replaceExisting, setReplaceExisting] = useState(false);
   const [holidayDate,     setHolidayDate]     = useState("");
+  const [holidayName,     setHolidayName]     = useState("");
   const [holidayEditorId, setHolidayEditorId] = useState("");
   const [addingHoliday,   setAddingHoliday]   = useState(false);
 
@@ -262,9 +263,9 @@ export default function DutyPage() {
     if (!holidayDate || !holidayEditorId) { toast.error("Selecione a data e o editor"); return; }
     setAddingHoliday(true);
     try {
-      await apiPost("/api/duty", { weekendStart: holidayDate, editorId: parseInt(holidayEditorId, 10) });
+      await apiPost("/api/duty", { weekendStart: holidayDate, editorId: parseInt(holidayEditorId, 10), notes: holidayName || null });
       toast.success("Feriado adicionado");
-      setHolidayDate(""); setHolidayEditorId("");
+      setHolidayDate(""); setHolidayName(""); setHolidayEditorId("");
       loadSchedule();
     } catch {
       toast.error("Erro ao adicionar feriado");
@@ -388,6 +389,19 @@ export default function DutyPage() {
     );
   }
 
+  // ── Admin: group holidays into their week's Saturday ─────────────────────────
+  const monthSlots    = slotsByMonth.get(month) ?? [];
+  const satSlots      = monthSlots.filter(s =>  isSaturdayDate(s.weekendStart));
+  const holidaySlots  = monthSlots.filter(s => !isSaturdayDate(s.weekendStart));
+
+  const weekHolidays  = (satStr: string): WeekendSlot[] => {
+    const sat = new Date(satStr + "T12:00:00");
+    const mon = new Date(sat); mon.setDate(sat.getDate() - 5);
+    const fri = new Date(sat); fri.setDate(sat.getDate() - 1);
+    const [monStr, friStr] = [mon, fri].map(d => d.toISOString().split("T")[0]);
+    return holidaySlots.filter(h => h.weekendStart >= monStr && h.weekendStart <= friStr);
+  };
+
   // ── Admin: month navigation helpers ─────────────────────────────────────────
   const prevMonth = () => {
     if (month === 0) { setMonth(11); setYear(y => y - 1); }
@@ -397,8 +411,6 @@ export default function DutyPage() {
     if (month === 11) { setMonth(0); setYear(y => y + 1); }
     else setMonth(m => m + 1);
   };
-
-  const monthSlots = slotsByMonth.get(month) ?? [];
 
   // ── Admin view ───────────────────────────────────────────────────────────────
   return (
@@ -471,6 +483,10 @@ export default function DutyPage() {
           <input type="date" value={holidayDate} onChange={e => setHolidayDate(e.target.value)}
             className="h-8 px-2.5 text-xs rounded-md border border-[hsl(var(--border))]
               bg-[hsl(var(--background))] focus:outline-none focus:border-amber-500 tabular-nums" />
+          <input type="text" placeholder="Nome do feriado" value={holidayName}
+            onChange={e => setHolidayName(e.target.value)}
+            className="h-8 px-2.5 text-xs rounded-md border border-[hsl(var(--border))]
+              bg-[hsl(var(--background))] focus:outline-none focus:border-amber-500 w-40" />
           <select value={holidayEditorId} onChange={e => setHolidayEditorId(e.target.value)}
             className="h-8 pl-2.5 pr-7 text-xs rounded-md border border-[hsl(var(--border))]
               bg-[hsl(var(--background))] appearance-none cursor-pointer focus:outline-none focus:border-amber-500">
@@ -492,96 +508,61 @@ export default function DutyPage() {
         <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
           Carregando…
         </div>
-      ) : monthSlots.length === 0 ? (
-        <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
-          Nenhum plantão em {MON_PT[month].toLowerCase()}.
-        </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          {monthSlots.map(slot => {
-            const sat       = new Date(slot.weekendStart + "T12:00:00");
-            const sun       = new Date(sat); sun.setDate(sun.getDate() + 1);
-            const pad       = (n: number) => String(n).padStart(2, "0");
-            const isSat     = isSaturdayDate(slot.weekendStart);
-            const isCurrent = isSat ? isCurrentWeekend(slot.weekendStart) : isToday(slot.weekendStart);
-            const avail     = availableEditors(slot);
-            const addVal    = adding[slot.weekendStart] ?? "";
+          {satSlots.map(slot => {
+            const sat      = new Date(slot.weekendStart + "T12:00:00");
+            const sun      = new Date(sat); sun.setDate(sun.getDate() + 1);
+            const pad      = (n: number) => String(n).padStart(2, "0");
+            const isCurrent = isCurrentWeekend(slot.weekendStart);
+            const avail    = availableEditors(slot);
+            const addVal   = adding[slot.weekendStart] ?? "";
+            const holidays = weekHolidays(slot.weekendStart);
+            const DAYS     = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
 
             return (
-              <div
-                key={slot.weekendStart}
-                className={`rounded-2xl border bg-[hsl(var(--card))] overflow-hidden ${
-                  isCurrent
-                    ? "border-[hsl(var(--primary))]/50"
-                    : !isSat
-                    ? "border-amber-500/30"
-                    : "border-[hsl(var(--border))]"
-                }`}>
+              <div key={slot.weekendStart} className={`rounded-2xl border bg-[hsl(var(--card))] overflow-hidden ${
+                isCurrent ? "border-[hsl(var(--primary))]/50" : "border-[hsl(var(--border))]"
+              }`}>
+                {/* top strip */}
+                <div className={`h-0.5 ${isCurrent ? "bg-[hsl(var(--primary))]" : "bg-transparent"}`} />
 
-                {/* Top strip */}
-                <div className={`h-0.5 ${isCurrent ? "bg-[hsl(var(--primary))]" : !isSat ? "bg-amber-400/50" : "bg-transparent"}`} />
-
-                {/* Date header */}
-                <div className={`flex items-center gap-4 px-4 pt-3 pb-2.5 ${!isSat ? "bg-amber-50/40 dark:bg-amber-900/10" : ""}`}>
-                  {isSat ? (
-                    <>
-                      <div className="flex items-baseline gap-1">
-                        <span className={`text-3xl font-black tabular-nums leading-none ${isCurrent ? "text-[hsl(var(--primary))]" : ""}`}>
-                          {pad(sat.getDate())}
-                        </span>
-                        <span className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))]">Sáb</span>
-                      </div>
-                      <span className="text-[hsl(var(--muted-foreground))] font-light text-lg leading-none">—</span>
-                      <div className="flex items-baseline gap-1">
-                        <span className={`text-3xl font-black tabular-nums leading-none ${isCurrent ? "text-[hsl(var(--primary))]" : ""}`}>
-                          {pad(sun.getDate())}
-                        </span>
-                        <span className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))]">Dom</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-3xl font-black tabular-nums leading-none text-amber-600 dark:text-amber-400">
-                        {pad(sat.getDate())}
-                      </span>
-                      <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                        {["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][sat.getDay()]}
-                      </span>
-                      <span className="ml-1 text-[10px] font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
-                        feriado
-                      </span>
-                    </div>
-                  )}
-                  {isCurrent && (
-                    <span className="ml-auto text-[10px] font-bold text-[hsl(var(--primary))] uppercase tracking-wide">
-                      este fim de semana
+                {/* weekend date header */}
+                <div className="flex items-center gap-3 px-4 pt-3 pb-2.5">
+                  <div className="flex items-baseline gap-1">
+                    <span className={`text-3xl font-black tabular-nums leading-none ${isCurrent ? "text-[hsl(var(--primary))]" : ""}`}>
+                      {pad(sat.getDate())}
                     </span>
+                    <span className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))]">Sáb</span>
+                  </div>
+                  <span className="text-[hsl(var(--muted-foreground))] font-light text-lg leading-none">—</span>
+                  <div className="flex items-baseline gap-1">
+                    <span className={`text-3xl font-black tabular-nums leading-none ${isCurrent ? "text-[hsl(var(--primary))]" : ""}`}>
+                      {pad(sun.getDate())}
+                    </span>
+                    <span className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))]">Dom</span>
+                  </div>
+                  {isCurrent && (
+                    <span className="ml-auto text-[10px] font-bold text-[hsl(var(--primary))] uppercase tracking-wide">agora</span>
                   )}
                 </div>
 
-                {/* Editor cards */}
-                <div className="px-4 pb-4">
+                {/* weekend editors */}
+                <div className="px-4 pb-3">
                   <div className="flex flex-wrap gap-1.5">
                     {slot.editors.map(ed => (
-                      <div
-                        key={ed.scheduleId}
-                        className="relative flex flex-col items-center gap-1.5 px-3 pt-4 pb-2.5 rounded-xl
-                          bg-[hsl(var(--muted))]/40 border border-[hsl(var(--border))]
-                          min-w-[60px] hover:border-[hsl(var(--primary))]/40 transition-colors group">
-                        <button
-                          onClick={() => removeEntry(ed.scheduleId)}
+                      <div key={ed.scheduleId} className="relative flex flex-col items-center gap-1.5 px-3 pt-4 pb-2.5 rounded-xl
+                        bg-[hsl(var(--muted))]/40 border border-[hsl(var(--border))] min-w-[60px]
+                        hover:border-[hsl(var(--primary))]/40 transition-colors group">
+                        <button onClick={() => removeEntry(ed.scheduleId)}
                           className="absolute top-1.5 right-1.5 p-0.5 rounded-full opacity-0 group-hover:opacity-100
                             text-[hsl(var(--muted-foreground))] hover:text-destructive hover:bg-destructive/10 transition-all">
                           <X className="h-3 w-3" />
                         </button>
                         <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={32} />
-                        <span className="text-[11px] font-semibold leading-none text-center">
-                          {ed.name.split(" ")[0]}
-                        </span>
+                        <span className="text-[11px] font-semibold leading-none text-center">{ed.name.split(" ")[0]}</span>
                       </div>
                     ))}
-
-                    {/* Add editor */}
                     {avail.length > 0 && (
                       <div className="relative flex flex-col items-center justify-center gap-1 px-2 pt-2 pb-2.5 rounded-xl
                         border border-dashed border-[hsl(var(--border))] min-w-[60px] min-h-[72px]
@@ -593,8 +574,7 @@ export default function DutyPage() {
                               <Plus className="h-3.5 w-3.5" />
                             </div>
                             <span className="text-[10px] text-[hsl(var(--muted-foreground))] leading-none">add</span>
-                            <select
-                              value={addVal}
+                            <select value={addVal}
                               onChange={e => setAdding(prev => ({ ...prev, [slot.weekendStart]: e.target.value }))}
                               className="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
                               <option value="">Selecionar…</option>
@@ -606,22 +586,88 @@ export default function DutyPage() {
                             <span className="text-[10px] text-[hsl(var(--muted-foreground))] leading-none text-center px-1 truncate max-w-[56px]">
                               {avail.find(e => String(e.id) === addVal)?.name.split(" ")[0]}
                             </span>
-                            <button
-                              onClick={() => addEditor(slot.weekendStart)}
-                              className="h-6 px-2 rounded-lg bg-[hsl(var(--primary))] text-white text-[10px] font-semibold hover:opacity-90">
-                              ✓
-                            </button>
-                            <button
-                              onClick={() => setAdding(prev => ({ ...prev, [slot.weekendStart]: "" }))}
-                              className="text-[9px] text-[hsl(var(--muted-foreground))] hover:text-destructive">
-                              cancelar
-                            </button>
+                            <button onClick={() => addEditor(slot.weekendStart)}
+                              className="h-6 px-2 rounded-lg bg-[hsl(var(--primary))] text-white text-[10px] font-semibold hover:opacity-90">✓</button>
+                            <button onClick={() => setAdding(prev => ({ ...prev, [slot.weekendStart]: "" }))}
+                              className="text-[9px] text-[hsl(var(--muted-foreground))] hover:text-destructive">cancelar</button>
                           </>
                         )}
                       </div>
                     )}
                   </div>
                 </div>
+
+                {/* ── Holidays embedded in this week ── */}
+                {holidays.map(h => {
+                  const hd     = new Date(h.weekendStart + "T12:00:00");
+                  const hAvail = availableEditors(h);
+                  const hAdd   = adding[h.weekendStart] ?? "";
+                  return (
+                    <div key={h.weekendStart} className="border-t border-amber-400/25 bg-amber-50/50 dark:bg-amber-900/10">
+                      {/* holiday date + name */}
+                      <div className="flex items-baseline gap-2 px-4 pt-2.5 pb-2">
+                        <span className="text-xl font-black tabular-nums leading-none text-amber-600 dark:text-amber-400">
+                          {pad(hd.getDate())}
+                        </span>
+                        <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                          {DAYS[hd.getDay()]}
+                        </span>
+                        <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 truncate">
+                          {h.notes ?? "Feriado"}
+                        </span>
+                      </div>
+                      {/* holiday editors */}
+                      <div className="px-4 pb-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          {h.editors.map(ed => (
+                            <div key={ed.scheduleId} className="relative flex flex-col items-center gap-1.5 px-3 pt-4 pb-2.5 rounded-xl
+                              bg-amber-100/70 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800
+                              min-w-[60px] hover:border-amber-400 transition-colors group">
+                              <button onClick={() => removeEntry(ed.scheduleId)}
+                                className="absolute top-1.5 right-1.5 p-0.5 rounded-full opacity-0 group-hover:opacity-100
+                                  text-amber-600 hover:text-destructive hover:bg-destructive/10 transition-all">
+                                <X className="h-3 w-3" />
+                              </button>
+                              <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={32} />
+                              <span className="text-[11px] font-semibold leading-none text-center">{ed.name.split(" ")[0]}</span>
+                            </div>
+                          ))}
+                          {hAvail.length > 0 && (
+                            <div className="relative flex flex-col items-center justify-center gap-1 px-2 pt-2 pb-2.5 rounded-xl
+                              border border-dashed border-amber-300 dark:border-amber-700 min-w-[60px] min-h-[72px]
+                              hover:border-amber-500 transition-colors">
+                              {!hAdd ? (
+                                <>
+                                  <div className="w-8 h-8 rounded-full border-2 border-dashed border-amber-300 dark:border-amber-700
+                                    flex items-center justify-center text-amber-500">
+                                    <Plus className="h-3.5 w-3.5" />
+                                  </div>
+                                  <span className="text-[10px] text-amber-500 leading-none">add</span>
+                                  <select value={hAdd}
+                                    onChange={e => setAdding(prev => ({ ...prev, [h.weekendStart]: e.target.value }))}
+                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+                                    <option value="">Selecionar…</option>
+                                    {hAvail.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                                  </select>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="text-[10px] text-amber-600 leading-none text-center px-1 truncate max-w-[56px]">
+                                    {hAvail.find(e => String(e.id) === hAdd)?.name.split(" ")[0]}
+                                  </span>
+                                  <button onClick={() => addEditor(h.weekendStart)}
+                                    className="h-6 px-2 rounded-lg bg-amber-500 text-white text-[10px] font-semibold hover:opacity-90">✓</button>
+                                  <button onClick={() => setAdding(prev => ({ ...prev, [h.weekendStart]: "" }))}
+                                    className="text-[9px] text-amber-600 hover:text-destructive">cancelar</button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
