@@ -201,7 +201,11 @@ export default function DutyPage() {
   // ── Admin data loading ───────────────────────────────────────────────────────
   const loadSchedule = useCallback((silent = false) => {
     if (!silent) setLoading(true);
-    apiFetch<WeekendSlot[]>(`/api/duty?year=${year}`)
+    // silent = post-mutation refresh → bust cache to always get fresh data
+    const url = silent
+      ? `/api/duty?year=${year}&_=${Date.now()}`
+      : `/api/duty?year=${year}`;
+    apiFetch<WeekendSlot[]>(url)
       .then(setSchedule)
       .catch(() => toast.error("Erro ao carregar escala"))
       .finally(() => { if (!silent) setLoading(false); });
