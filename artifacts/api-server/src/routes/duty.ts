@@ -153,26 +153,34 @@ router.post("/duty/bulk", requireAuth, async (req, res): Promise<void> => {
   const saturdays     = getAllSaturdaysInYear(parsedYear);
 
   if (replaceExisting) {
-    // Only delete Saturday entries; preserve manually added holidays
-    const satEntries = await db
+    // Delete Saturday + Sunday entries; preserve manually added weekday holidays
+    const allEntries = await db
       .select({ id: dutySchedulesTable.id, weekendStart: dutySchedulesTable.weekendStart })
       .from(dutySchedulesTable)
       .where(and(gte(dutySchedulesTable.weekendStart, `${parsedYear}-01-01`),
                  lte(dutySchedulesTable.weekendStart, `${parsedYear}-12-31`)));
-    const satIds = satEntries
-      .filter(r => new Date(r.weekendStart + "T12:00:00").getDay() === 6)
+    const weekendIds = allEntries
+      .filter(r => {
+        const dow = new Date(r.weekendStart + "T12:00:00").getDay();
+        return dow === 6 || dow === 0; // Saturday or Sunday
+      })
       .map(r => r.id);
-    if (satIds.length > 0) {
-      await db.delete(dutySchedulesTable).where(inArray(dutySchedulesTable.id, satIds));
+    if (weekendIds.length > 0) {
+      await db.delete(dutySchedulesTable).where(inArray(dutySchedulesTable.id, weekendIds));
     }
   }
 
-  // One editor per weekend, rotating through the list
-  const inserts = saturdays.map((sat, i) => ({
-    weekendStart: sat,
-    editorId: parsedEditors[i % parsedEditors.length],
-    createdById: req.session.userId,
-  }));
+  // One editor per weekend (Sat + Sun), rotating through the list
+  const inserts = saturdays.flatMap((sat, i) => {
+    const editorId = parsedEditors[i % parsedEditors.length];
+    const sun = new Date(sat + "T12:00:00");
+    sun.setDate(sun.getDate() + 1);
+    const sunStr = sun.toISOString().split("T")[0];
+    return [
+      { weekendStart: sat,    editorId, createdById: req.session.userId },
+      { weekendStart: sunStr, editorId, createdById: req.session.userId },
+    ];
+  });
 
   await db.insert(dutySchedulesTable).values(inserts).onConflictDoNothing();
   res.json({ weeks: saturdays.length, entries: inserts.length });
