@@ -344,17 +344,8 @@ export default function DutyPage() {
       return n;
     });
 
-  const generateReceipt = async () => {
+  const generateReceipt = async (weekStart: string, weekEnd: string) => {
     setShowMenu(false);
-    const today = new Date();
-    const dow = today.getDay();
-    const thisMonday = new Date(today);
-    thisMonday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
-    thisMonday.setHours(0, 0, 0, 0);
-    const lastMonday = new Date(thisMonday); lastMonday.setDate(thisMonday.getDate() - 7);
-    const lastSunday = new Date(lastMonday); lastSunday.setDate(lastMonday.getDate() + 6);
-    const weekStart  = lastMonday.toISOString().split("T")[0];
-    const weekEnd    = lastSunday.toISOString().split("T")[0];
     const pad = (n: number) => String(n).padStart(2, "0");
     const fmt = (iso: string) => {
       const d = new Date(iso + "T12:00:00");
@@ -684,23 +675,67 @@ export default function DutyPage() {
             <ChevronRight className="h-4 w-4" />
           </button>
           {/* 3-dot menu */}
-          <div className="relative">
-            <button
-              onClick={() => setShowMenu(v => !v)}
-              onBlur={() => setTimeout(() => setShowMenu(false), 150)}
-              className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors">
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
-            {showMenu && (
-              <div className="absolute right-0 top-full mt-1 w-60 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-lg z-50 overflow-hidden py-1">
+          {(() => {
+            const pad2 = (n: number) => String(n).padStart(2, "0");
+            const todayStr = new Date().toISOString().split("T")[0];
+            // Last completed week (Mon–Sun)
+            const _t = new Date(); const _dow = _t.getDay();
+            const _mon = new Date(_t); _mon.setDate(_t.getDate() - (_dow === 0 ? 6 : _dow - 1) - 7);
+            _mon.setHours(0,0,0,0);
+            const lastWeekStart = _mon.toISOString().split("T")[0];
+            const lastWeekEnd   = new Date(_mon.getTime() + 6 * 86400000).toISOString().split("T")[0];
+            // Weeks of displayed month
+            const monthWeeks = Array.from({ length: numWeeks }, (_, w) => {
+              const mon = new Date(year, month, 1 - firstDayOffset + w * 7);
+              const sun = new Date(mon.getTime() + 6 * 86400000);
+              const ws  = mon.toISOString().split("T")[0];
+              const we  = sun.toISOString().split("T")[0];
+              return {
+                weekStart: ws, weekEnd: we,
+                label: `${pad2(mon.getDate())}/${pad2(mon.getMonth()+1)} — ${pad2(sun.getDate())}/${pad2(sun.getMonth()+1)}`,
+                isLast: ws === lastWeekStart,
+                isPast: we < todayStr,
+              };
+            });
+            return (
+              <div className="relative">
                 <button
-                  onMouseDown={generateReceipt}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm hover:bg-[hsl(var(--muted))] transition-colors text-left">
-                  Orçamento — semana passada
+                  onClick={() => setShowMenu(v => !v)}
+                  onBlur={() => setTimeout(() => setShowMenu(false), 150)}
+                  className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors">
+                  <MoreHorizontal className="h-4 w-4" />
                 </button>
+                {showMenu && (
+                  <div className="absolute right-0 top-full mt-1 w-64 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-lg z-50 overflow-hidden">
+                    <p className="px-3 pt-2.5 pb-1 text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                      Gerar orçamento
+                    </p>
+                    {monthWeeks.map((wk, i) => (
+                      <button
+                        key={wk.weekStart}
+                        onMouseDown={() => generateReceipt(wk.weekStart, wk.weekEnd)}
+                        disabled={!wk.isPast}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-sm hover:bg-[hsl(var(--muted))] transition-colors text-left disabled:opacity-35 disabled:cursor-not-allowed">
+                        <span>Sem. {i + 1} · {wk.label}</span>
+                        {wk.isLast && (
+                          <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]">
+                            última
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                    <div className="h-px bg-[hsl(var(--border))] mx-3 my-1" />
+                    <button
+                      onMouseDown={() => generateReceipt(lastWeekStart, lastWeekEnd)}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-[hsl(var(--muted))] transition-colors text-left text-[hsl(var(--muted-foreground))]">
+                      Última semana concluída
+                    </button>
+                    <div className="pb-1" />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
         </div>
       </div>
 
