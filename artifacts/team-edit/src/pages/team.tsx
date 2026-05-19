@@ -113,8 +113,11 @@ export default function Team() {
   const [form, setForm] = useState({ name: "", login: "", password: "", role: "editor", status: "active", jobTitle: "" });
   const [saving, setSaving] = useState(false);
 
-  const isAdmin = user?.role === "admin";
+  const isAdmin      = user?.role === "admin";
+  const isSupervisor = user?.role === "supervisor";
+  const canManage    = isAdmin || isSupervisor;
   const isCoordinator = ["admin", "supervisor", "coordinator"].includes(user?.role ?? "");
+  const manageableRoles = isAdmin ? ROLE_OPTIONS : ROLE_OPTIONS.filter(o => ["coordinator", "editor"].includes(o.value));
 
   const load = () => {
     apiFetch<AppUser[]>("/api/users")
@@ -210,7 +213,7 @@ export default function Team() {
             <p className="text-xs text-[hsl(var(--muted-foreground))]">{users.length} {users.length === 1 ? "membro" : "membros"}</p>
           </div>
         </div>
-        {isAdmin && (
+        {canManage && (
           <Button onClick={openNew}>
             <Plus className="h-4 w-4 mr-2" />Novo usuário
           </Button>
@@ -282,8 +285,8 @@ export default function Team() {
                             : <ChevronRight className="h-4 w-4 text-[hsl(var(--muted-foreground))] shrink-0" />
                           }
 
-                          {/* Edit/Delete (admin only) — stop propagation */}
-                          {isAdmin && (
+                          {/* Edit/Delete — stop propagation */}
+                          {canManage && (
                             <div className="flex items-center gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
                               <Button variant="ghost" size="icon" className="h-7 w-7"
                                 onClick={() => openEdit(users.find(u => u.id === editor.id) ?? { id: editor.id, name: editor.name, login: editor.login, role: "editor", status: "active" })}>
@@ -366,6 +369,7 @@ export default function Team() {
                         {u.status !== "active" && <Badge variant="destructive" className="text-xs px-1.5">Inativo</Badge>}
                       </div>
                     </div>
+                    {canManage && (isAdmin || ["coordinator", "editor"].includes(u.role)) && (
                     <div className="flex items-center gap-1 shrink-0">
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(u)}>
                         <Pencil className="h-3 w-3" />
@@ -375,6 +379,7 @@ export default function Team() {
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -384,7 +389,7 @@ export default function Team() {
       )}
 
       {/* Dialog: criar/editar usuário */}
-      {isAdmin && (
+      {canManage && (
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
           <DialogContent>
             <DialogHeader><DialogTitle>{editing ? "Editar usuário" : "Novo usuário"}</DialogTitle></DialogHeader>
@@ -418,7 +423,7 @@ export default function Team() {
                   <Select value={form.role} onValueChange={v => setForm(f => ({ ...f, role: v }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {ROLE_OPTIONS.map(o => (
+                      {manageableRoles.map(o => (
                         <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                       ))}
                     </SelectContent>

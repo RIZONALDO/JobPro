@@ -167,7 +167,7 @@ function WeekendCard({ variant, weekend, currentUserId }: {
 export default function DutyPage() {
   usePageTitle("Plantões");
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = ["admin", "supervisor"].includes(user?.role ?? "");
 
   // ── Admin state ──────────────────────────────────────────────────────────────
   const [year,       setYear]       = useState(new Date().getFullYear());

@@ -2,7 +2,9 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { db, usersTable, tasksTable, taskRevisionsTable, taskEventsTable } from "@workspace/db";
 import { eq, and, ne, desc } from "drizzle-orm";
-import { requireAuth, requireAdmin, requireCoordinator } from "../lib/auth.js";
+import { requireAuth, requireAdmin, requireSupervisor, requireCoordinator } from "../lib/auth.js";
+
+const SUPERVISOR_MANAGED_ROLES = ["coordinator", "editor"];
 
 const router = Router();
 
@@ -20,8 +22,8 @@ router.get("/users", requireAuth, async (req, res): Promise<void> => {
     createdAt: usersTable.createdAt,
   }).from(usersTable).orderBy(usersTable.name);
 
-  // Coordinators see editors + other coordinators/supervisors, but not admin
-  if (role === "coordinator") {
+  // Non-admin roles don't see admin users
+  if (role !== "admin") {
     res.json(users.filter(u => u.role !== "admin"));
     return;
   }
@@ -56,10 +58,14 @@ router.get("/users/:id/tasks", requireCoordinator, async (req, res): Promise<voi
   res.json(tasks);
 });
 
-router.post("/users", requireAdmin, async (req, res): Promise<void> => {
+router.post("/users", requireSupervisor, async (req, res): Promise<void> => {
+  const callerRole = req.session.userRole!;
   const { name, login, password, role, jobTitle } = req.body ?? {};
   if (!name || !login || !password || !role) {
     res.status(400).json({ error: "name, login, password e role são obrigatórios" }); return;
+  }
+  if (callerRole === "supervisor" && !SUPERVISOR_MANAGED_ROLES.includes(String(role))) {
+    res.status(403).json({ error: "Supervisor só pode criar coordenadores ou editores" }); return;
   }
 
   const existing = await db.select().from(usersTable).where(eq(usersTable.login, String(login)));
@@ -67,22 +73,31 @@ router.post("/users", requireAdmin, async (req, res): Promise<void> => {
 
   const passwordHash = await bcrypt.hash(String(password), 10);
   const [user] = await db.insert(usersTable).values({
-    name: String(name),
-    login: String(login),
-    passwordHash,
-    role: String(role),
-    jobTitle: jobTitle ? String(jobTitle) : null,
+    name: String(name), login: String(login), passwordHash,
+    role: String(role), jobTitle: jobTitle ? String(jobTitle) : null,
     mustChangePassword: true,
   }).returning();
 
   res.status(201).json({ id: user.id, name: user.name, login: user.login, role: user.role, jobTitle: user.jobTitle, status: user.status });
 });
 
-router.put("/users/:id", requireAdmin, async (req, res): Promise<void> => {
+router.put("/users/:id", requireSupervisor, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
+  const callerRole = req.session.userRole!;
+  if (callerRole === "supervisor") {
+    const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
+    if (!target || !SUPERVISOR_MANAGED_ROLES.includes(target.role)) {
+      res.status(403).json({ error: "Supervisor só pode editar coordenadores ou editores" }); return;
+    }
+  }
+
   const { name, login, password, role, status, jobTitle } = req.body ?? {};
+  if (callerRole === "supervisor" && role && !SUPERVISOR_MANAGED_ROLES.includes(String(role))) {
+    res.status(403).json({ error: "Supervisor não pode atribuir este perfil" }); return;
+  }
+
   const update: Record<string, unknown> = {};
   if (name) update.name = String(name);
   if (login) {
@@ -100,10 +115,19 @@ router.put("/users/:id", requireAdmin, async (req, res): Promise<void> => {
   res.json({ id: user.id, name: user.name, login: user.login, role: user.role, jobTitle: user.jobTitle, status: user.status });
 });
 
-router.delete("/users/:id", requireAdmin, async (req, res): Promise<void> => {
+router.delete("/users/:id", requireSupervisor, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
   if (id === req.session.userId) { res.status(400).json({ error: "Não é possível remover a si mesmo" }); return; }
+
+  const callerRole = req.session.userRole!;
+  if (callerRole === "supervisor") {
+    const [target] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id));
+    if (!target || !SUPERVISOR_MANAGED_ROLES.includes(target.role)) {
+      res.status(403).json({ error: "Supervisor só pode remover coordenadores ou editores" }); return;
+    }
+  }
+
   await db.update(tasksTable).set({ assignedToId: null }).where(eq(tasksTable.assignedToId, id));
   await db.update(tasksTable).set({ createdById: null }).where(eq(tasksTable.createdById, id));
   await db.update(taskRevisionsTable).set({ createdById: null }).where(eq(taskRevisionsTable.createdById, id));

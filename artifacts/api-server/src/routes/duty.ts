@@ -141,7 +141,7 @@ router.get("/duty", requireAuth, async (req, res): Promise<void> => {
 // POST /api/duty/bulk — rotate editors across all weekends of a year (admin)
 // Round-robin: with editors [A, B], assigns A→wk1, B→wk2, A→wk3, B→wk4, …
 router.post("/duty/bulk", requireAuth, async (req, res): Promise<void> => {
-  if (req.session.userRole !== "admin") { res.status(403).json({ error: "Sem permissão" }); return; }
+  if (!["admin", "supervisor"].includes(req.session.userRole ?? "")) { res.status(403).json({ error: "Sem permissão" }); return; }
   const { year, editorIds, replaceExisting } = req.body ?? {};
 
   if (!year || !Array.isArray(editorIds) || editorIds.length === 0) {
@@ -188,7 +188,7 @@ router.post("/duty/bulk", requireAuth, async (req, res): Promise<void> => {
 
 // POST /api/duty — add editor to any date (weekend or holiday) — admin only
 router.post("/duty", requireAuth, async (req, res): Promise<void> => {
-  if (req.session.userRole !== "admin") { res.status(403).json({ error: "Sem permissão" }); return; }
+  if (!["admin", "supervisor"].includes(req.session.userRole ?? "")) { res.status(403).json({ error: "Sem permissão" }); return; }
   const { weekendStart, editorId, notes } = req.body ?? {};
   if (!weekendStart || !editorId) { res.status(400).json({ error: "Dados obrigatórios" }); return; }
 
@@ -204,14 +204,14 @@ router.post("/duty", requireAuth, async (req, res): Promise<void> => {
 
 // DELETE /api/duty/all — clear entire schedule (admin)
 router.delete("/duty/all", requireAuth, async (req, res): Promise<void> => {
-  if (req.session.userRole !== "admin") { res.status(403).json({ error: "Sem permissão" }); return; }
+  if (!["admin", "supervisor"].includes(req.session.userRole ?? "")) { res.status(403).json({ error: "Sem permissão" }); return; }
   await db.delete(dutySchedulesTable);
   res.json({ ok: true });
 });
 
 // DELETE /api/duty/:id — remove a single entry (admin)
 router.delete("/duty/:id", requireAuth, async (req, res): Promise<void> => {
-  if (req.session.userRole !== "admin") { res.status(403).json({ error: "Sem permissão" }); return; }
+  if (!["admin", "supervisor"].includes(req.session.userRole ?? "")) { res.status(403).json({ error: "Sem permissão" }); return; }
   const id = parseInt(req.params.id, 10);
   await db.delete(dutySchedulesTable).where(eq(dutySchedulesTable.id, id));
   res.json({ ok: true });

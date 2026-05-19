@@ -39,6 +39,18 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
   check();
 }
 
+export function requireSupervisor(req: Request, res: Response, next: NextFunction): void {
+  if (!req.session.userId) { res.status(401).json({ error: "Não autenticado" }); return; }
+  const check = () => {
+    if (!["admin", "supervisor"].includes(req.session.userRole ?? "")) {
+      res.status(403).json({ error: "Acesso negado" }); return;
+    }
+    next();
+  };
+  if (!req.session.userRole) { hydrateRole(req).then(check).catch(() => res.status(500).json({ error: "Erro interno" })); return; }
+  check();
+}
+
 export function requireCoordinator(req: Request, res: Response, next: NextFunction): void {
   if (!req.session.userId) { res.status(401).json({ error: "Não autenticado" }); return; }
   const check = () => {
