@@ -78,67 +78,67 @@ function WeekendCard({ variant, weekend, currentUserId }: {
   return (
     <div className={`rounded-2xl flex flex-col bg-[hsl(var(--card))] overflow-hidden ${
       c ? "border-2 border-[hsl(var(--primary))] shadow-md"
-        : "border border-[hsl(var(--border))] opacity-50"
+        : "border border-[hsl(var(--border))] opacity-35"
     }`}>
       {/* top strip */}
       <div className={`h-0.5 ${c ? "bg-[hsl(var(--primary))]" : "bg-transparent"}`} />
 
       {/* label */}
-      <div className={`${c ? "px-4 pt-3" : "px-3 pt-3"}`}>
+      <div className={c ? "px-4 pt-3" : "px-2 pt-2"}>
         <p className={`font-semibold leading-tight ${
-          c ? "text-[11px] text-[hsl(var(--primary))]" : "text-[10px] text-[hsl(var(--muted-foreground))]"
+          c ? "text-[11px] text-[hsl(var(--primary))]" : "text-[9px] text-[hsl(var(--muted-foreground))]"
         }`}>
           {label}
         </p>
       </div>
 
       {/* dates */}
-      <div className={`${c ? "px-4 pt-2.5 pb-3" : "px-3 pt-2 pb-2.5"}`}>
+      <div className={c ? "px-4 pt-2.5 pb-3" : "px-2 pt-1.5 pb-2"}>
         <div className="flex flex-col gap-0.5">
           <div className="flex items-baseline gap-1">
-            <span className={`font-black tabular-nums tracking-tight leading-none ${c ? "text-4xl" : "text-2xl"}`}>
+            <span className={`font-black tabular-nums tracking-tight leading-none ${c ? "text-4xl" : "text-lg"}`}>
               {pad(sat.getDate())}
             </span>
-            <span className={`font-semibold text-[hsl(var(--muted-foreground))] ${c ? "text-[11px]" : "text-[9px]"}`}>
+            <span className={`font-semibold text-[hsl(var(--muted-foreground))] ${c ? "text-[11px]" : "text-[8px]"}`}>
               Sáb
             </span>
           </div>
           <div className="flex items-baseline gap-1">
-            <span className={`font-black tabular-nums tracking-tight leading-none ${c ? "text-4xl" : "text-2xl"}`}>
+            <span className={`font-black tabular-nums tracking-tight leading-none ${c ? "text-4xl" : "text-lg"}`}>
               {pad(sun.getDate())}
             </span>
-            <span className={`font-semibold text-[hsl(var(--muted-foreground))] ${c ? "text-[11px]" : "text-[9px]"}`}>
+            <span className={`font-semibold text-[hsl(var(--muted-foreground))] ${c ? "text-[11px]" : "text-[8px]"}`}>
               Dom
             </span>
           </div>
-          <p className={`text-[hsl(var(--muted-foreground))] mt-0.5 ${c ? "text-xs font-medium" : "text-[9px]"}`}>
+          <p className={`text-[hsl(var(--muted-foreground))] mt-0.5 ${c ? "text-xs font-medium" : "text-[8px]"}`}>
             {MON_PT_SHORT[sat.getMonth()]} {sat.getFullYear()}
           </p>
         </div>
       </div>
 
       {/* divider */}
-      <div className={`h-px bg-[hsl(var(--border))] ${c ? "mx-4" : "mx-3"}`} />
+      <div className={`h-px bg-[hsl(var(--border))] ${c ? "mx-4" : "mx-2"}`} />
 
-      {/* editor — portrait, avatar centrado */}
-      <div className={`flex-1 flex flex-col items-center text-center ${c ? "px-3 py-4" : "px-2 py-3"}`}>
+      {/* editor */}
+      <div className={`flex-1 flex flex-col items-center text-center ${c ? "px-3 py-4" : "px-2 py-2"}`}>
         {isEmpty ? (
-          <p className={`text-[hsl(var(--muted-foreground))] ${c ? "text-xs" : "text-[10px]"}`}>
+          <p className={`text-[hsl(var(--muted-foreground))] ${c ? "text-xs" : "text-[9px]"}`}>
             {p ? "Sem editor" : "A definir"}
           </p>
         ) : (
-          <div className={`flex w-full justify-center ${c ? "flex-row gap-4" : "flex-col gap-2"}`}>
+          <div className={`flex w-full justify-center ${c ? "flex-row gap-4" : "flex-col gap-1.5"}`}>
             {weekend.editors.map(ed => (
-              <div key={ed.id} className="flex flex-col items-center gap-1.5">
+              <div key={ed.id} className="flex flex-col items-center gap-1">
                 <div className={c ? "ring-2 ring-[hsl(var(--primary))]/30 ring-offset-2 ring-offset-[hsl(var(--card))] rounded-full" : ""}>
-                  <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={c ? 64 : 36} />
+                  <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={c ? 64 : 24} />
                 </div>
                 <div>
-                  <p className={`font-semibold leading-tight ${c ? "text-sm" : "text-[11px]"}`}>
+                  <p className={`font-semibold leading-tight ${c ? "text-sm" : "text-[9px]"}`}>
                     {ed.name.split(" ")[0]}
                   </p>
                   {ed.id === currentUserId && (
-                    <p className={`font-bold text-[hsl(var(--primary))] ${c ? "text-[10px]" : "text-[9px]"}`}>
+                    <p className={`font-bold text-[hsl(var(--primary))] ${c ? "text-[10px]" : "text-[8px]"}`}>
                       você
                     </p>
                   )}
@@ -376,7 +376,7 @@ export default function DutyPage() {
         ) : upcoming ? (
           <div className="flex flex-col gap-4">
             {/* Three cards side by side */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="grid grid-cols-[1fr_2fr_1fr] gap-2 sm:gap-3">
               <WeekendCard variant="past"    weekend={upcoming.lastWeekend} currentUserId={user?.id} />
               <WeekendCard variant="current" weekend={upcoming.thisWeekend} currentUserId={user?.id} />
               <WeekendCard variant="next"    weekend={upcoming.nextWeekend} currentUserId={user?.id} />
