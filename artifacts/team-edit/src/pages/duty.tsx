@@ -481,34 +481,17 @@ export default function DutyPage() {
           <Shield className="h-5 w-5 text-[hsl(var(--primary))]" />
           <h1 className="text-lg font-bold">Escala de Plantões</h1>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Month navigation */}
-          <div className="flex items-center gap-1.5">
-            <button onClick={prevMonth}
-              className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors">
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="text-sm font-semibold text-center w-32 tabular-nums">
-              {MON_PT[month]} {year}
-            </span>
-            <button onClick={nextMonth}
-              className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors">
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-          {/* Reset button */}
-          <button
-            onClick={resetAll}
-            disabled={resetting}
-            onBlur={() => setConfirmReset(false)}
-            className={`h-8 px-3 rounded-md text-xs font-semibold border transition-colors ${
-              confirmReset
-                ? "bg-destructive text-white border-destructive hover:opacity-90"
-                : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-destructive hover:text-destructive"
-            }`}>
-            {resetting ? "…" : confirmReset ? "Confirmar reset?" : "Resetar tudo"}
-          </button>
-        </div>
+        <button
+          onClick={resetAll}
+          disabled={resetting}
+          onBlur={() => setConfirmReset(false)}
+          className={`h-8 px-3 rounded-md text-xs font-semibold border transition-colors ${
+            confirmReset
+              ? "bg-destructive text-white border-destructive hover:opacity-90"
+              : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-destructive hover:text-destructive"
+          }`}>
+          {resetting ? "…" : confirmReset ? "Confirmar reset?" : "Resetar tudo"}
+        </button>
       </div>
 
       {/* Auto-gerar escala */}
@@ -596,6 +579,29 @@ export default function DutyPage() {
             })}
           </div>
         )}
+      </div>
+
+      {/* Divider */}
+      <div className="h-px bg-[hsl(var(--border))]" />
+
+      {/* Month navigation */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+          Calendário de Plantões
+        </p>
+        <div className="flex items-center gap-1.5">
+          <button onClick={prevMonth}
+            className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors">
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="text-sm font-semibold text-center w-32 tabular-nums">
+            {MON_PT[month]} {year}
+          </span>
+          <button onClick={nextMonth}
+            className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors">
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Calendário */}
