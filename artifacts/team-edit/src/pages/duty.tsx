@@ -383,14 +383,25 @@ export default function DutyPage() {
               <WeekendCard variant="next"    weekend={upcoming.nextWeekend} currentUserId={user?.id} />
             </div>
 
-            {/* Upcoming holidays */}
-            {(upcoming.upcomingHolidays ?? []).length > 0 && (
+            {/* Upcoming holidays — only this week (Mon–Sun) */}
+            {(() => {
+              const _t = new Date();
+              const _dow = _t.getDay();
+              const _mon = new Date(_t); _mon.setDate(_t.getDate() + (_dow === 0 ? -6 : 1 - _dow));
+              const _sun = new Date(_mon); _sun.setDate(_mon.getDate() + 6);
+              const wkStart = _mon.toISOString().split("T")[0];
+              const wkEnd   = _sun.toISOString().split("T")[0];
+              const thisWeekHols = (upcoming.upcomingHolidays ?? []).filter(
+                h => h.dutyDate >= wkStart && h.dutyDate <= wkEnd
+              );
+              if (thisWeekHols.length === 0) return null;
+              return (
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))] mb-2 px-1">
                   Feriados / Dias especiais
                 </p>
                 <div className="rounded-2xl border border-amber-500/30 bg-amber-50/30 dark:bg-amber-900/10 overflow-hidden">
-                  {(upcoming.upcomingHolidays ?? []).map((h, i) => {
+                  {thisWeekHols.map((h, i) => {
                     const isOnDuty = h.editors.some(e => e.id === user?.id);
                     return (
                       <div
@@ -424,7 +435,8 @@ export default function DutyPage() {
                   })}
                 </div>
               </div>
-            )}
+              );
+            })()}
           </div>
         ) : (
           <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
