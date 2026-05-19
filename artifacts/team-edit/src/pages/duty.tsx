@@ -290,8 +290,9 @@ export default function DutyPage() {
     try {
       const res  = await fetch(`https://brasilapi.com.br/api/feriados/v1/${year}`);
       const data: { date: string; name: string }[] = await res.json();
-      setNationalHolidays(data);
-      setSelectedHolidayDates(new Set(data.map(h => h.date)));
+      const filtered = data.filter(h => new Date(h.date + "T12:00:00").getDay() !== 6);
+      setNationalHolidays(filtered);
+      setSelectedHolidayDates(new Set(filtered.map(h => h.date)));
     } catch {
       toast.error("Erro ao buscar feriados da BrasilAPI");
     } finally {
