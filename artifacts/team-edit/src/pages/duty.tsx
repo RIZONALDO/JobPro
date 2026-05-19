@@ -472,7 +472,7 @@ export default function DutyPage() {
           </div>
 
           {/* Week blocks — one card per week */}
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-4">
             {Array.from({ length: numWeeks }).map((_, weekIdx) => (
               <div key={weekIdx} className="grid grid-cols-7 gap-1 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-1.5">
                 {Array.from({ length: 7 }).map((_, dayIdx) => {
