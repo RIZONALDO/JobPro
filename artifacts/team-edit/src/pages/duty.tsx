@@ -192,11 +192,6 @@ export default function DutyPage() {
   const [resetting,            setResetting]            = useState(false);
   const [confirmReset,         setConfirmReset]         = useState(false);
   const [showMenu,             setShowMenu]             = useState(false);
-  const [showReceipt,          setShowReceipt]          = useState(false);
-  const [receiptData,          setReceiptData]          = useState<{
-    weekStart: string; weekEnd: string;
-    entries: { editor: { id: number; name: string; avatarUrl: string | null }; days: string[] }[];
-  } | null>(null);
 
   // ── Non-admin state ──────────────────────────────────────────────────────────
   const [upcoming,     setUpcoming]     = useState<UpcomingData | null>(null);
@@ -360,18 +355,70 @@ export default function DutyPage() {
     const lastSunday = new Date(lastMonday); lastSunday.setDate(lastMonday.getDate() + 6);
     const weekStart  = lastMonday.toISOString().split("T")[0];
     const weekEnd    = lastSunday.toISOString().split("T")[0];
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const fmt = (iso: string) => {
+      const d = new Date(iso + "T12:00:00");
+      return `${["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][d.getDay()]}, ${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
+    };
     try {
       const data = await apiFetch<WeekendSlot[]>(`/api/duty?year=${lastMonday.getFullYear()}`);
       const slots = data.filter(s => s.weekendStart >= weekStart && s.weekendStart <= weekEnd);
-      const editorMap = new Map<number, { editor: { id: number; name: string; avatarUrl: string | null }; days: string[] }>();
+      const editorMap = new Map<number, { name: string; days: string[] }>();
       for (const slot of slots) {
         for (const ed of slot.editors) {
-          if (!editorMap.has(ed.id)) editorMap.set(ed.id, { editor: { id: ed.id, name: ed.name, avatarUrl: ed.avatarUrl }, days: [] });
+          if (!editorMap.has(ed.id)) editorMap.set(ed.id, { name: ed.name, days: [] });
           editorMap.get(ed.id)!.days.push(slot.weekendStart);
         }
       }
-      setReceiptData({ weekStart, weekEnd, entries: Array.from(editorMap.values()) });
-      setShowReceipt(true);
+      const entries = Array.from(editorMap.values());
+      const total   = entries.reduce((s, e) => s + e.days.length, 0);
+      const rows    = entries.length === 0
+        ? `<tr><td colspan="3" style="padding:20px;text-align:center;color:#999;font-style:italic">Nenhum plantão registrado nesta semana</td></tr>`
+        : entries.map(({ name, days }) =>
+            `<tr>
+              <td>${name}</td>
+              <td style="text-align:center;font-weight:700">${days.length}</td>
+              <td style="color:#555;font-size:12px">${days.map(fmt).join("<br>")}</td>
+            </tr>`
+          ).join("");
+      const w = window.open("", "_blank");
+      if (!w) { toast.error("Popup bloqueado pelo navegador"); return; }
+      w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head>
+        <meta charset="utf-8">
+        <title>Orçamento de Plantões — ${fmt(weekStart).slice(4)} a ${fmt(weekEnd).slice(4)}</title>
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: 'Segoe UI', Arial, sans-serif; background: #fff; color: #111; padding: 48px 56px; max-width: 700px; margin: 0 auto; }
+          .logo { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #888; margin-bottom: 32px; }
+          h1 { font-size: 26px; font-weight: 900; letter-spacing: -.02em; }
+          .period { font-size: 13px; color: #555; margin-top: 6px; }
+          .divider { border: none; border-top: 2px solid #111; margin: 28px 0 20px; }
+          table { width: 100%; border-collapse: collapse; }
+          th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #888; padding: 0 0 10px; text-align: left; border-bottom: 1px solid #e5e5e5; }
+          th:nth-child(2) { text-align: center; }
+          td { padding: 14px 0; vertical-align: top; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+          td:nth-child(2) { text-align: center; font-size: 22px; font-weight: 900; color: #111; }
+          .total-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 24px; padding-top: 16px; border-top: 2px solid #111; }
+          .total-label { font-size: 13px; font-weight: 600; }
+          .total-value { font-size: 32px; font-weight: 900; }
+          .footer { margin-top: 48px; font-size: 11px; color: #bbb; text-align: center; }
+        </style>
+      </head><body>
+        <div class="logo">JobPro</div>
+        <h1>Orçamento de Plantões</h1>
+        <p class="period">Semana de ${fmt(weekStart)} a ${fmt(weekEnd)}</p>
+        <hr class="divider">
+        <table>
+          <thead><tr><th>Editor</th><th>Dias</th><th>Datas</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="total-row">
+          <span class="total-label">Total de plantões</span>
+          <span class="total-value">${total}</span>
+        </div>
+        <div class="footer">Gerado em ${new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"long", year:"numeric" })} — JobPro Escala de Plantões</div>
+      </body></html>`);
+      w.document.close();
     } catch {
       toast.error("Erro ao gerar orçamento");
     }
@@ -816,72 +863,6 @@ export default function DutyPage() {
         </div>
       )}
 
-      {/* Receipt modal */}
-      {showReceipt && receiptData && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowReceipt(false)}>
-          <div
-            className="bg-[hsl(var(--card))] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
-            onClick={e => e.stopPropagation()}>
-
-            {/* Header */}
-            <div className="bg-[hsl(var(--primary))] px-5 py-4 text-white flex items-start justify-between">
-              <div>
-                <h2 className="text-base font-black uppercase tracking-wide">Orçamento de Plantões</h2>
-                <p className="text-xs opacity-75 mt-0.5">
-                  {fmtSingleDate(receiptData.weekStart)} — {fmtSingleDate(receiptData.weekEnd)}
-                </p>
-              </div>
-              <button onClick={() => setShowReceipt(false)} className="opacity-70 hover:opacity-100 mt-0.5">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="p-5 space-y-3">
-              {receiptData.entries.length === 0 ? (
-                <p className="text-center text-sm text-[hsl(var(--muted-foreground))] py-6">
-                  Nenhum plantão registrado na semana passada.
-                </p>
-              ) : (
-                <div className="divide-y divide-[hsl(var(--border))]">
-                  {receiptData.entries.map(({ editor, days }) => (
-                    <div key={editor.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-                      <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={36} />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm leading-tight">{editor.name}</p>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {days.map(date => (
-                            <span key={date} className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]">
-                              {fmtSingleDate(date)}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <span className="text-2xl font-black tabular-nums leading-none">{days.length}</span>
-                        <p className="text-[10px] text-[hsl(var(--muted-foreground))]">dia{days.length !== 1 ? "s" : ""}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="h-px bg-[hsl(var(--border))]" />
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold">Total de plantões</span>
-                <span className="text-xl font-black tabular-nums">
-                  {receiptData.entries.reduce((s, e) => s + e.days.length, 0)}
-                </span>
-              </div>
-              <p className="text-[10px] text-center text-[hsl(var(--muted-foreground))]">
-                Gerado em {new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}
-              </p>
-            </div>
-
-          </div>
-        </div>
-      )}
     </div>
   );
 }
