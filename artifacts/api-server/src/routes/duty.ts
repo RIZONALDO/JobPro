@@ -43,6 +43,7 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
     .select({
       id: dutySchedulesTable.id,
       weekendStart: dutySchedulesTable.weekendStart,
+      notes: dutySchedulesTable.notes,
       editorId: usersTable.id,
       editorName: usersTable.name,
       editorAvatarUrl: usersTable.avatarUrl,
@@ -59,12 +60,12 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
   });
 
   // Weekday-only entries (holidays / special days) — exclude all Sat & Sun
-  const holidayByDate = new Map<string, { dutyDate: string; editors: { id: number; name: string; avatarUrl: string | null }[] }>();
+  const holidayByDate = new Map<string, { dutyDate: string; notes: string | null; editors: { id: number; name: string; avatarUrl: string | null }[] }>();
   for (const row of rows) {
     const dow = new Date(row.weekendStart + "T12:00:00").getDay();
     if (dow !== 6 && dow !== 0 && row.weekendStart >= lastSatStr) {
       if (!holidayByDate.has(row.weekendStart)) {
-        holidayByDate.set(row.weekendStart, { dutyDate: row.weekendStart, editors: [] });
+        holidayByDate.set(row.weekendStart, { dutyDate: row.weekendStart, notes: row.notes ?? null, editors: [] });
       }
       if (row.editorId) {
         holidayByDate.get(row.weekendStart)!.editors.push({

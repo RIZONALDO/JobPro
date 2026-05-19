@@ -15,7 +15,7 @@ interface WeekendSlot { weekendStart: string; editors: ScheduleEditor[]; notes: 
 
 interface UpcomingEditor { id: number; name: string; avatarUrl: string | null; }
 interface UpcomingWeekend { weekendStart: string; editors: UpcomingEditor[]; }
-interface HolidayEntry { dutyDate: string; editors: UpcomingEditor[]; }
+interface HolidayEntry { dutyDate: string; notes: string | null; editors: UpcomingEditor[]; }
 interface UpcomingData {
   lastWeekend: UpcomingWeekend;
   thisWeekend: UpcomingWeekend;
@@ -413,6 +413,9 @@ export default function DutyPage() {
                           </span>
                           {isToday(h.dutyDate) && (
                             <span className="ml-2 text-[10px] font-bold text-amber-600 uppercase tracking-wide">hoje</span>
+                          )}
+                          {h.notes && (
+                            <p className="text-[10px] text-amber-600/80 dark:text-amber-400/70 font-medium mt-0.5">{h.notes}</p>
                           )}
                         </div>
                         <div className="flex-1 flex flex-wrap items-center gap-2">
