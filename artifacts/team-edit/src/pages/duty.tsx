@@ -201,11 +201,7 @@ export default function DutyPage() {
   // ── Admin data loading ───────────────────────────────────────────────────────
   const loadSchedule = useCallback((silent = false) => {
     if (!silent) setLoading(true);
-    // silent = post-mutation refresh → bust cache to always get fresh data
-    const url = silent
-      ? `/api/duty?year=${year}&_=${Date.now()}`
-      : `/api/duty?year=${year}`;
-    apiFetch<WeekendSlot[]>(url)
+    apiFetch<WeekendSlot[]>(`/api/duty?year=${year}`)
       .then(setSchedule)
       .catch(() => toast.error("Erro ao carregar escala"))
       .finally(() => { if (!silent) setLoading(false); });
@@ -270,24 +266,65 @@ export default function DutyPage() {
   };
 
   const removeEntry = async (scheduleId: number) => {
+    const prev = schedule;
+    setSchedule(s => s.map(slot => ({
+      ...slot,
+      editors: slot.editors.filter(e => e.scheduleId !== scheduleId),
+    })));
     try {
       await apiDelete(`/api/duty/${scheduleId}`);
-      loadSchedule(true);
     } catch {
+      setSchedule(prev);
       toast.error("Erro ao remover");
     }
   };
 
   const addEditor = async (date: string) => {
-    const editorId = adding[date];
-    if (!editorId) return;
+    const editorIdStr = adding[date];
+    if (!editorIdStr) return;
+    const editorId = parseInt(editorIdStr, 10);
+    const editor = editors.find(e => e.id === editorId);
+    if (!editor) return;
     const notes = addingName[date] || null;
+
+    // Close the inline form immediately
+    setAdding(prev => { const n = { ...prev }; delete n[date]; return n; });
+    setAddingName(prev => { const n = { ...prev }; delete n[date]; return n; });
+
+    const TEMP_ID = -Date.now();
+    const newEntry: ScheduleEditor = { id: editorId, name: editor.name, avatarUrl: editor.avatarUrl, scheduleId: TEMP_ID };
+
+    setSchedule(s => {
+      const exists = s.some(slot => slot.weekendStart === date);
+      if (exists) {
+        return s.map(slot =>
+          slot.weekendStart === date
+            ? { ...slot, notes: notes ?? slot.notes, editors: [...slot.editors, newEntry] }
+            : slot
+        );
+      }
+      return [...s, { weekendStart: date, notes, editors: [newEntry] }];
+    });
+
     try {
-      await apiPost("/api/duty", { weekendStart: date, editorId: parseInt(editorId, 10), notes });
-      setAdding(prev => { const n = { ...prev }; delete n[date]; return n; });
-      setAddingName(prev => { const n = { ...prev }; delete n[date]; return n; });
-      loadSchedule(true);
+      const row = await apiPost<{ id: number } | null>("/api/duty", { weekendStart: date, editorId, notes });
+      if (!row) {
+        // Conflict — already scheduled
+        setSchedule(s => s.map(slot => ({
+          ...slot,
+          editors: slot.editors.filter(e => e.scheduleId !== TEMP_ID),
+        })));
+        return;
+      }
+      setSchedule(s => s.map(slot => ({
+        ...slot,
+        editors: slot.editors.map(e => e.scheduleId === TEMP_ID ? { ...e, scheduleId: row.id } : e),
+      })));
     } catch {
+      setSchedule(s => s.map(slot => ({
+        ...slot,
+        editors: slot.editors.filter(e => e.scheduleId !== TEMP_ID),
+      })));
       toast.error("Erro ao adicionar editor");
     }
   };

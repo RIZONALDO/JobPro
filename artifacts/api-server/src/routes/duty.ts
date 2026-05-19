@@ -75,7 +75,6 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
     }
   }
 
-  res.setHeader("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
   res.json({
     lastWeekend:      group(lastSatStr),
     thisWeekend:      group(thisSatStr),
@@ -134,7 +133,6 @@ router.get("/duty", requireAuth, async (req, res): Promise<void> => {
     byDate.get(d) ?? { weekendStart: d, editors: [], notes: null }
   );
 
-  res.setHeader("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
   res.json(result);
 });
 
