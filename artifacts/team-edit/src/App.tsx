@@ -72,7 +72,7 @@ function Router() {
     <TaskModalProvider>
     <Shell>
       <Switch>
-        <Route path="/">{["admin", "supervisor"].includes(user.role) ? <Redirect to="/team" /> : <Dashboard />}</Route>
+        <Route path="/">{user.role === "admin" ? <Redirect to="/team" /> : <Dashboard />}</Route>
         
         <Route path="/my-tasks"><Redirect to="/tasks?tab=lista" /></Route>
         <Route path="/calendar" component={CalendarPage} />
