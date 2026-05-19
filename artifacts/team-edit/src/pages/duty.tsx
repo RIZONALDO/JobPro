@@ -192,6 +192,7 @@ export default function DutyPage() {
   const [resetting,            setResetting]            = useState(false);
   const [confirmReset,         setConfirmReset]         = useState(false);
   const [showMenu,             setShowMenu]             = useState(false);
+  const [showTools,            setShowTools]            = useState(false);
 
   // ── Non-admin state ──────────────────────────────────────────────────────────
   const [upcoming,     setUpcoming]     = useState<UpcomingData | null>(null);
@@ -567,8 +568,24 @@ export default function DutyPage() {
         </button>
       </div>
 
+      {/* Tools toggle */}
+      <button
+        onClick={() => setShowTools(v => !v)}
+        className="flex items-center justify-between w-full group">
+        <span className="text-xs font-semibold text-[hsl(var(--muted-foreground))] group-hover:text-[hsl(var(--foreground))] transition-colors">
+          Auto gerar / Feriados
+        </span>
+        <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+          showTools ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted))]"
+        }`}>
+          <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+            showTools ? "translate-x-[18px]" : "translate-x-0.5"
+          }`} />
+        </div>
+      </button>
+
       {/* Auto-gerar escala */}
-      <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3 space-y-2.5">
+      {showTools && <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3 space-y-2.5">
         <p className="text-xs font-semibold">Auto gerar — {year}</p>
         <div className="flex flex-wrap gap-1.5">
           {editors.map(e => {
@@ -598,10 +615,10 @@ export default function DutyPage() {
             {generating ? "Gerando…" : "Gerar"}
           </Button>
         </div>
-      </div>
+      </div>}
 
       {/* Feriados Nacionais */}
-      <div className="rounded-xl border border-emerald-500/40 bg-emerald-50/30 dark:bg-emerald-900/10 p-3 space-y-2.5">
+      {showTools && <div className="rounded-xl border border-emerald-500/40 bg-emerald-50/30 dark:bg-emerald-900/10 p-3 space-y-2.5">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-1.5">
             <CalendarPlus className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -652,7 +669,7 @@ export default function DutyPage() {
             })}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* Divider */}
       <div className="h-px bg-[hsl(var(--border))]" />
