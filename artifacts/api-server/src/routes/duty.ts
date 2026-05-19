@@ -202,6 +202,13 @@ router.post("/duty", requireAuth, async (req, res): Promise<void> => {
   res.json(row ?? null);
 });
 
+// DELETE /api/duty/all — clear entire schedule (admin)
+router.delete("/duty/all", requireAuth, async (req, res): Promise<void> => {
+  if (req.session.userRole !== "admin") { res.status(403).json({ error: "Sem permissão" }); return; }
+  await db.delete(dutySchedulesTable);
+  res.json({ ok: true });
+});
+
 // DELETE /api/duty/:id — remove a single entry (admin)
 router.delete("/duty/:id", requireAuth, async (req, res): Promise<void> => {
   if (req.session.userRole !== "admin") { res.status(403).json({ error: "Sem permissão" }); return; }
