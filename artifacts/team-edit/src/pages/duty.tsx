@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/lib/use-page-title";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Plus, RefreshCw, Shield, CalendarPlus, X, MoreHorizontal, Printer } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Shield, CalendarPlus, X, MoreHorizontal } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -377,41 +377,6 @@ export default function DutyPage() {
     }
   };
 
-  const printReceipt = () => {
-    if (!receiptData) return;
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const fmt = (iso: string) => {
-      const d = new Date(iso + "T12:00:00");
-      return `${["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][d.getDay()]} ${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
-    };
-    const rows = receiptData.entries.map(({ editor, days }) =>
-      `<tr><td style="padding:8px 12px;border-bottom:1px solid #eee">${editor.name}</td>` +
-      `<td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">${days.length}</td>` +
-      `<td style="padding:8px 12px;border-bottom:1px solid #eee;font-size:11px;color:#666">${days.map(fmt).join(", ")}</td></tr>`
-    ).join("");
-    const total = receiptData.entries.reduce((s, e) => s + e.days.length, 0);
-    const w = window.open("", "_blank");
-    if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Orçamento de Plantões</title>
-    <style>body{font-family:sans-serif;max-width:560px;margin:40px auto;color:#111}
-    h1{font-size:20px;font-weight:900;margin:0}p{margin:4px 0;color:#555;font-size:13px}
-    table{width:100%;border-collapse:collapse;margin-top:20px}
-    th{background:#f4f4f4;padding:8px 12px;text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
-    .total{display:flex;justify-content:space-between;margin-top:16px;padding-top:12px;border-top:2px solid #111;font-weight:700}
-    .footer{margin-top:24px;font-size:11px;color:#aaa;text-align:center}
-    @media print{body{margin:20px}}</style></head><body>
-    <h1>Orçamento de Plantões</h1>
-    <p>Período: ${fmt(receiptData.weekStart)} — ${fmt(receiptData.weekEnd)}</p>
-    <p>Gerado em: ${new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"long", year:"numeric" })}</p>
-    <table><thead><tr><th>Editor</th><th style="text-align:center">Dias</th><th>Datas</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="3" style="padding:16px;text-align:center;color:#999">Nenhum plantão registrado</td></tr>'}</tbody></table>
-    <div class="total"><span>Total de plantões</span><span>${total}</span></div>
-    <div class="footer">JobPro — Escala de Plantões</div>
-    </body></html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 400);
-  };
 
   // ── Admin: index slots by month ──────────────────────────────────────────────
   const slotsByMonth = new Map<number, WeekendSlot[]>();
@@ -684,7 +649,6 @@ export default function DutyPage() {
                 <button
                   onMouseDown={generateReceipt}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm hover:bg-[hsl(var(--muted))] transition-colors text-left">
-                  <Printer className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
                   Orçamento — semana passada
                 </button>
               </div>
@@ -915,13 +879,6 @@ export default function DutyPage() {
               </p>
             </div>
 
-            {/* Footer */}
-            <div className="px-5 pb-5">
-              <Button onClick={printReceipt} className="w-full gap-2">
-                <Printer className="h-4 w-4" />
-                Imprimir / Exportar
-              </Button>
-            </div>
           </div>
         </div>
       )}
