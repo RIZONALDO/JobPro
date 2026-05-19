@@ -207,14 +207,14 @@ export default function DutyPage() {
       .finally(() => { if (!silent) setLoading(false); });
   }, [year]);
 
-  useEffect(() => { if (isAdmin) loadSchedule(); }, [isAdmin, loadSchedule]);
-
   useEffect(() => {
     if (!isAdmin) return;
+    // Fetch schedule and editors in parallel
+    loadSchedule();
     apiFetch<(Editor & { role: string; status: string })[]>("/api/users")
       .then(all => setEditors(all.filter(u => u.role === "editor" && u.status === "active")))
       .catch(() => {});
-  }, [isAdmin]);
+  }, [isAdmin, loadSchedule]);
 
   // ── Non-admin data loading ───────────────────────────────────────────────────
   const loadUpcoming = useCallback(() => {
