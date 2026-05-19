@@ -78,8 +78,7 @@ function WeekendCard({ variant, weekend, currentUserId }: {
   return (
     <div className={`rounded-2xl flex flex-col bg-[hsl(var(--card))] overflow-hidden ${
       c ? "border-2 border-[hsl(var(--primary))] shadow-md"
-        : p ? "border border-[hsl(var(--border))] opacity-55"
-            : "border border-[hsl(var(--border))]"
+        : "border border-[hsl(var(--border))] opacity-50"
     }`}>
       {/* top strip */}
       <div className={`h-0.5 ${c ? "bg-[hsl(var(--primary))]" : "bg-transparent"}`} />
