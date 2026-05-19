@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/lib/use-page-title";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Plus, RefreshCw, Shield, CalendarPlus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Shield, CalendarPlus, X, MoreHorizontal, Printer } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -191,6 +191,12 @@ export default function DutyPage() {
   const [importingNational,    setImportingNational]    = useState(false);
   const [resetting,            setResetting]            = useState(false);
   const [confirmReset,         setConfirmReset]         = useState(false);
+  const [showMenu,             setShowMenu]             = useState(false);
+  const [showReceipt,          setShowReceipt]          = useState(false);
+  const [receiptData,          setReceiptData]          = useState<{
+    weekStart: string; weekEnd: string;
+    entries: { editor: { id: number; name: string; avatarUrl: string | null }; days: string[] }[];
+  } | null>(null);
 
   // ── Non-admin state ──────────────────────────────────────────────────────────
   const [upcoming,     setUpcoming]     = useState<UpcomingData | null>(null);
@@ -342,6 +348,70 @@ export default function DutyPage() {
       n.has(date) ? n.delete(date) : n.add(date);
       return n;
     });
+
+  const generateReceipt = async () => {
+    setShowMenu(false);
+    const today = new Date();
+    const dow = today.getDay();
+    const thisMonday = new Date(today);
+    thisMonday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+    thisMonday.setHours(0, 0, 0, 0);
+    const lastMonday = new Date(thisMonday); lastMonday.setDate(thisMonday.getDate() - 7);
+    const lastSunday = new Date(lastMonday); lastSunday.setDate(lastMonday.getDate() + 6);
+    const weekStart  = lastMonday.toISOString().split("T")[0];
+    const weekEnd    = lastSunday.toISOString().split("T")[0];
+    try {
+      const data = await apiFetch<WeekendSlot[]>(`/api/duty?year=${lastMonday.getFullYear()}`);
+      const slots = data.filter(s => s.weekendStart >= weekStart && s.weekendStart <= weekEnd);
+      const editorMap = new Map<number, { editor: { id: number; name: string; avatarUrl: string | null }; days: string[] }>();
+      for (const slot of slots) {
+        for (const ed of slot.editors) {
+          if (!editorMap.has(ed.id)) editorMap.set(ed.id, { editor: { id: ed.id, name: ed.name, avatarUrl: ed.avatarUrl }, days: [] });
+          editorMap.get(ed.id)!.days.push(slot.weekendStart);
+        }
+      }
+      setReceiptData({ weekStart, weekEnd, entries: Array.from(editorMap.values()) });
+      setShowReceipt(true);
+    } catch {
+      toast.error("Erro ao gerar orçamento");
+    }
+  };
+
+  const printReceipt = () => {
+    if (!receiptData) return;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const fmt = (iso: string) => {
+      const d = new Date(iso + "T12:00:00");
+      return `${["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][d.getDay()]} ${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
+    };
+    const rows = receiptData.entries.map(({ editor, days }) =>
+      `<tr><td style="padding:8px 12px;border-bottom:1px solid #eee">${editor.name}</td>` +
+      `<td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">${days.length}</td>` +
+      `<td style="padding:8px 12px;border-bottom:1px solid #eee;font-size:11px;color:#666">${days.map(fmt).join(", ")}</td></tr>`
+    ).join("");
+    const total = receiptData.entries.reduce((s, e) => s + e.days.length, 0);
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Orçamento de Plantões</title>
+    <style>body{font-family:sans-serif;max-width:560px;margin:40px auto;color:#111}
+    h1{font-size:20px;font-weight:900;margin:0}p{margin:4px 0;color:#555;font-size:13px}
+    table{width:100%;border-collapse:collapse;margin-top:20px}
+    th{background:#f4f4f4;padding:8px 12px;text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+    .total{display:flex;justify-content:space-between;margin-top:16px;padding-top:12px;border-top:2px solid #111;font-weight:700}
+    .footer{margin-top:24px;font-size:11px;color:#aaa;text-align:center}
+    @media print{body{margin:20px}}</style></head><body>
+    <h1>Orçamento de Plantões</h1>
+    <p>Período: ${fmt(receiptData.weekStart)} — ${fmt(receiptData.weekEnd)}</p>
+    <p>Gerado em: ${new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"long", year:"numeric" })}</p>
+    <table><thead><tr><th>Editor</th><th style="text-align:center">Dias</th><th>Datas</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="3" style="padding:16px;text-align:center;color:#999">Nenhum plantão registrado</td></tr>'}</tbody></table>
+    <div class="total"><span>Total de plantões</span><span>${total}</span></div>
+    <div class="footer">JobPro — Escala de Plantões</div>
+    </body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 400);
+  };
 
   // ── Admin: index slots by month ──────────────────────────────────────────────
   const slotsByMonth = new Map<number, WeekendSlot[]>();
@@ -601,6 +671,25 @@ export default function DutyPage() {
             className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors">
             <ChevronRight className="h-4 w-4" />
           </button>
+          {/* 3-dot menu */}
+          <div className="relative">
+            <button
+              onClick={() => setShowMenu(v => !v)}
+              onBlur={() => setTimeout(() => setShowMenu(false), 150)}
+              className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors">
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+            {showMenu && (
+              <div className="absolute right-0 top-full mt-1 w-60 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-lg z-50 overflow-hidden py-1">
+                <button
+                  onMouseDown={generateReceipt}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm hover:bg-[hsl(var(--muted))] transition-colors text-left">
+                  <Printer className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
+                  Orçamento — semana passada
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -759,6 +848,80 @@ export default function DutyPage() {
                 })}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Receipt modal */}
+      {showReceipt && receiptData && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowReceipt(false)}>
+          <div
+            className="bg-[hsl(var(--card))] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div className="bg-[hsl(var(--primary))] px-5 py-4 text-white flex items-start justify-between">
+              <div>
+                <h2 className="text-base font-black uppercase tracking-wide">Orçamento de Plantões</h2>
+                <p className="text-xs opacity-75 mt-0.5">
+                  {fmtSingleDate(receiptData.weekStart)} — {fmtSingleDate(receiptData.weekEnd)}
+                </p>
+              </div>
+              <button onClick={() => setShowReceipt(false)} className="opacity-70 hover:opacity-100 mt-0.5">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-3">
+              {receiptData.entries.length === 0 ? (
+                <p className="text-center text-sm text-[hsl(var(--muted-foreground))] py-6">
+                  Nenhum plantão registrado na semana passada.
+                </p>
+              ) : (
+                <div className="divide-y divide-[hsl(var(--border))]">
+                  {receiptData.entries.map(({ editor, days }) => (
+                    <div key={editor.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+                      <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={36} />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm leading-tight">{editor.name}</p>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {days.map(date => (
+                            <span key={date} className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]">
+                              {fmtSingleDate(date)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-2xl font-black tabular-nums leading-none">{days.length}</span>
+                        <p className="text-[10px] text-[hsl(var(--muted-foreground))]">dia{days.length !== 1 ? "s" : ""}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="h-px bg-[hsl(var(--border))]" />
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold">Total de plantões</span>
+                <span className="text-xl font-black tabular-nums">
+                  {receiptData.entries.reduce((s, e) => s + e.days.length, 0)}
+                </span>
+              </div>
+              <p className="text-[10px] text-center text-[hsl(var(--muted-foreground))]">
+                Gerado em {new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 pb-5">
+              <Button onClick={printReceipt} className="w-full gap-2">
+                <Printer className="h-4 w-4" />
+                Imprimir / Exportar
+              </Button>
+            </div>
           </div>
         </div>
       )}
