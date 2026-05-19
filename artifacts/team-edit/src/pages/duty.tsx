@@ -266,7 +266,7 @@ export default function DutyPage() {
   };
 
   const removeEntry = async (scheduleId: number) => {
-    const prev = schedule;
+    const prevSchedule = schedule;
     setSchedule(s => s.map(slot => ({
       ...slot,
       editors: slot.editors.filter(e => e.scheduleId !== scheduleId),
@@ -274,7 +274,7 @@ export default function DutyPage() {
     try {
       await apiDelete(`/api/duty/${scheduleId}`);
     } catch {
-      setSchedule(prev);
+      setSchedule(prevSchedule);
       toast.error("Erro ao remover");
     }
   };
@@ -286,6 +286,8 @@ export default function DutyPage() {
     const editor = editors.find(e => e.id === editorId);
     if (!editor) return;
     const notes = addingName[date] || null;
+
+    const prevSchedule = schedule;
 
     // Close the inline form immediately
     setAdding(prev => { const n = { ...prev }; delete n[date]; return n; });
@@ -309,11 +311,8 @@ export default function DutyPage() {
     try {
       const row = await apiPost<{ id: number } | null>("/api/duty", { weekendStart: date, editorId, notes });
       if (!row) {
-        // Conflict — already scheduled
-        setSchedule(s => s.map(slot => ({
-          ...slot,
-          editors: slot.editors.filter(e => e.scheduleId !== TEMP_ID),
-        })));
+        // onConflictDoNothing fired — entry already in DB. Reload to sync state.
+        loadSchedule(true);
         return;
       }
       setSchedule(s => s.map(slot => ({
@@ -321,10 +320,7 @@ export default function DutyPage() {
         editors: slot.editors.map(e => e.scheduleId === TEMP_ID ? { ...e, scheduleId: row.id } : e),
       })));
     } catch {
-      setSchedule(s => s.map(slot => ({
-        ...slot,
-        editors: slot.editors.filter(e => e.scheduleId !== TEMP_ID),
-      })));
+      setSchedule(prevSchedule);
       toast.error("Erro ao adicionar editor");
     }
   };
