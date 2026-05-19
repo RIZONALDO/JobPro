@@ -84,11 +84,24 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
   });
 });
 
-// GET /api/duty?year=2026 — all weekends + holiday entries for year
+// GET /api/duty?year=2026&month=5 — entries for a specific month (or full year if month omitted)
+// Returns only dates that have entries; the frontend synthesises empty slots.
 router.get("/duty", requireAuth, async (req, res): Promise<void> => {
-  const year = parseInt(String(req.query.year ?? new Date().getFullYear()), 10);
-  const start = `${year}-01-01`;
-  const end   = `${year}-12-31`;
+  const year     = parseInt(String(req.query.year  ?? new Date().getFullYear()), 10);
+  const monthRaw = req.query.month !== undefined ? parseInt(String(req.query.month), 10) : null;
+
+  let start: string;
+  let end:   string;
+
+  if (monthRaw !== null && monthRaw >= 1 && monthRaw <= 12) {
+    const m       = String(monthRaw).padStart(2, "0");
+    const lastDay = new Date(year, monthRaw, 0).getDate();
+    start = `${year}-${m}-01`;
+    end   = `${year}-${m}-${String(lastDay).padStart(2, "0")}`;
+  } else {
+    start = `${year}-01-01`;
+    end   = `${year}-12-31`;
+  }
 
   const rows = await db
     .select({
@@ -124,18 +137,8 @@ router.get("/duty", requireAuth, async (req, res): Promise<void> => {
     }
   }
 
-  const allSaturdays = getAllSaturdaysInYear(year);
-  const satSet = new Set(allSaturdays);
-  // Include non-Saturday dates (holidays/special days) that have entries
-  const extraDates = Array.from(byDate.keys()).filter(d => !satSet.has(d));
-  const allDates = [...allSaturdays, ...extraDates].sort();
-
-  const result = allDates.map(d =>
-    byDate.get(d) ?? { weekendStart: d, editors: [], notes: null }
-  );
-
   res.setHeader("Cache-Control", "no-cache, no-store");
-  res.json(result);
+  res.json(Array.from(byDate.values()));
 });
 
 // POST /api/duty/bulk — rotate editors across all weekends of a year (admin)

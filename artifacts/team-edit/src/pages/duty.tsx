@@ -201,20 +201,25 @@ export default function DutyPage() {
   // ── Admin data loading ───────────────────────────────────────────────────────
   const loadSchedule = useCallback((silent = false) => {
     if (!silent) setLoading(true);
-    apiFetch<WeekendSlot[]>(`/api/duty?year=${year}`)
+    apiFetch<WeekendSlot[]>(`/api/duty?year=${year}&month=${month + 1}`)
       .then(setSchedule)
       .catch(() => toast.error("Erro ao carregar escala"))
       .finally(() => { if (!silent) setLoading(false); });
-  }, [year]);
+  }, [year, month]);
 
+  // Re-fetch schedule whenever month or year changes
   useEffect(() => {
     if (!isAdmin) return;
-    // Fetch schedule and editors in parallel
     loadSchedule();
+  }, [isAdmin, loadSchedule]);
+
+  // Fetch editors once on mount (role list doesn't change per month)
+  useEffect(() => {
+    if (!isAdmin) return;
     apiFetch<(Editor & { role: string; status: string })[]>("/api/users")
       .then(all => setEditors(all.filter(u => u.role === "editor" && u.status === "active")))
       .catch(() => {});
-  }, [isAdmin, loadSchedule]);
+  }, [isAdmin]);
 
   // ── Non-admin data loading ───────────────────────────────────────────────────
   const loadUpcoming = useCallback(() => {
