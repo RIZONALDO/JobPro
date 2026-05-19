@@ -183,8 +183,13 @@ export default function DutyPage() {
   const [holidayDate,     setHolidayDate]     = useState("");
   const [holidayName,     setHolidayName]     = useState("");
   const [holidayEditorId, setHolidayEditorId] = useState("");
-  const [addingName,      setAddingName]      = useState<Record<string, string>>({});
-  const [addingHoliday,   setAddingHoliday]   = useState(false);
+  const [addingName,           setAddingName]           = useState<Record<string, string>>({});
+  const [addingHoliday,        setAddingHoliday]        = useState(false);
+  const [nationalHolidays,     setNationalHolidays]     = useState<{ date: string; name: string }[]>([]);
+  const [selectedHolidayDates, setSelectedHolidayDates] = useState<Set<string>>(new Set());
+  const [nationalEditorId,     setNationalEditorId]     = useState("");
+  const [fetchingNational,     setFetchingNational]     = useState(false);
+  const [importingNational,    setImportingNational]    = useState(false);
 
   // ── Non-admin state ──────────────────────────────────────────────────────────
   const [upcoming,     setUpcoming]     = useState<UpcomingData | null>(null);
@@ -279,6 +284,47 @@ export default function DutyPage() {
       toast.error("Erro ao adicionar editor");
     }
   };
+
+  const fetchNationalHolidays = async () => {
+    setFetchingNational(true);
+    try {
+      const res  = await fetch(`https://brasilapi.com.br/api/feriados/v1/${year}`);
+      const data: { date: string; name: string }[] = await res.json();
+      setNationalHolidays(data);
+      setSelectedHolidayDates(new Set(data.map(h => h.date)));
+    } catch {
+      toast.error("Erro ao buscar feriados da BrasilAPI");
+    } finally {
+      setFetchingNational(false);
+    }
+  };
+
+  const importNationalHolidays = async () => {
+    if (!nationalEditorId) { toast.error("Selecione um editor"); return; }
+    const toImport = nationalHolidays.filter(h => selectedHolidayDates.has(h.date));
+    if (toImport.length === 0) { toast.error("Nenhum feriado selecionado"); return; }
+    setImportingNational(true);
+    try {
+      await Promise.all(toImport.map(h =>
+        apiPost("/api/duty", { weekendStart: h.date, editorId: parseInt(nationalEditorId, 10), notes: h.name })
+      ));
+      toast.success(`${toImport.length} feriado${toImport.length > 1 ? "s" : ""} importado${toImport.length > 1 ? "s" : ""}`);
+      setNationalHolidays([]);
+      setSelectedHolidayDates(new Set());
+      loadSchedule();
+    } catch {
+      toast.error("Erro ao importar feriados");
+    } finally {
+      setImportingNational(false);
+    }
+  };
+
+  const toggleHoliday = (date: string) =>
+    setSelectedHolidayDates(prev => {
+      const n = new Set(prev);
+      n.has(date) ? n.delete(date) : n.add(date);
+      return n;
+    });
 
   // ── Admin: index slots by month ──────────────────────────────────────────────
   const slotsByMonth = new Map<number, WeekendSlot[]>();
@@ -449,6 +495,60 @@ export default function DutyPage() {
             {generating ? "Gerando…" : "Gerar"}
           </Button>
         </div>
+      </div>
+
+      {/* Feriados Nacionais */}
+      <div className="rounded-xl border border-emerald-500/40 bg-emerald-50/30 dark:bg-emerald-900/10 p-3 space-y-2.5">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <CalendarPlus className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            <p className="text-xs font-semibold">Feriados Nacionais — {year}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select value={nationalEditorId} onChange={e => setNationalEditorId(e.target.value)}
+              className="h-8 pl-2.5 pr-7 text-xs rounded-md border border-[hsl(var(--border))]
+                bg-[hsl(var(--background))] appearance-none cursor-pointer focus:outline-none focus:border-emerald-500">
+              <option value="">Editor…</option>
+              {editors.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+            <Button onClick={fetchNationalHolidays} disabled={fetchingNational} variant="outline"
+              className="h-8 text-xs gap-1.5 border-emerald-500/50 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
+              <RefreshCw className={`h-3.5 w-3.5 ${fetchingNational ? "animate-spin" : ""}`} />
+              {fetchingNational ? "Buscando…" : "Buscar"}
+            </Button>
+            {nationalHolidays.length > 0 && (
+              <Button onClick={importNationalHolidays} disabled={importingNational || selectedHolidayDates.size === 0}
+                className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white">
+                <Plus className="h-3.5 w-3.5" />
+                {importingNational ? "Importando…" : `Importar ${selectedHolidayDates.size}`}
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {nationalHolidays.length > 0 && (
+          <div className="grid grid-cols-2 gap-1 max-h-48 overflow-y-auto pr-1">
+            {nationalHolidays.map(h => {
+              const d   = new Date(h.date + "T12:00:00");
+              const sel = selectedHolidayDates.has(h.date);
+              return (
+                <label key={h.date}
+                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer border transition-colors ${
+                    sel
+                      ? "border-emerald-400/50 bg-emerald-100/50 dark:bg-emerald-900/30"
+                      : "border-transparent bg-[hsl(var(--muted))]/30 opacity-50"
+                  }`}>
+                  <input type="checkbox" checked={sel} onChange={() => toggleHoliday(h.date)}
+                    className="accent-emerald-600 shrink-0" />
+                  <span className="text-[10px] font-bold tabular-nums text-emerald-700 dark:text-emerald-400 shrink-0">
+                    {String(d.getDate()).padStart(2,"0")}/{String(d.getMonth()+1).padStart(2,"0")}
+                  </span>
+                  <span className="text-[10px] font-medium truncate">{h.name}</span>
+                </label>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Calendário */}
