@@ -198,12 +198,12 @@ export default function DutyPage() {
   const [upcomingLoad, setUpcomingLoad] = useState(true);
 
   // ── Admin data loading ───────────────────────────────────────────────────────
-  const loadSchedule = useCallback(() => {
-    setLoading(true);
+  const loadSchedule = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
     apiFetch<WeekendSlot[]>(`/api/duty?year=${year}`)
       .then(setSchedule)
       .catch(() => toast.error("Erro ao carregar escala"))
-      .finally(() => setLoading(false));
+      .finally(() => { if (!silent) setLoading(false); });
   }, [year]);
 
   useEffect(() => { if (isAdmin) loadSchedule(); }, [isAdmin, loadSchedule]);
@@ -241,7 +241,7 @@ export default function DutyPage() {
         year, editorIds: bulkEditorIds, replaceExisting,
       });
       toast.success(`Escala gerada: ${weeks} fins de semana`);
-      loadSchedule();
+      loadSchedule(true);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao gerar escala");
     } finally {
@@ -256,7 +256,7 @@ export default function DutyPage() {
       await apiPost("/api/duty", { weekendStart: holidayDate, editorId: parseInt(holidayEditorId, 10), notes: holidayName || null });
       toast.success("Feriado adicionado");
       setHolidayDate(""); setHolidayName(""); setHolidayEditorId("");
-      loadSchedule();
+      loadSchedule(true);
     } catch {
       toast.error("Erro ao adicionar feriado");
     } finally {
@@ -267,7 +267,7 @@ export default function DutyPage() {
   const removeEntry = async (scheduleId: number) => {
     try {
       await apiDelete(`/api/duty/${scheduleId}`);
-      loadSchedule();
+      loadSchedule(true);
     } catch {
       toast.error("Erro ao remover");
     }
@@ -281,7 +281,7 @@ export default function DutyPage() {
       await apiPost("/api/duty", { weekendStart: date, editorId: parseInt(editorId, 10), notes });
       setAdding(prev => { const n = { ...prev }; delete n[date]; return n; });
       setAddingName(prev => { const n = { ...prev }; delete n[date]; return n; });
-      loadSchedule();
+      loadSchedule(true);
     } catch {
       toast.error("Erro ao adicionar editor");
     }
@@ -329,7 +329,7 @@ export default function DutyPage() {
       toast.success(`${toImport.length} feriado${toImport.length > 1 ? "s" : ""} importado${toImport.length > 1 ? "s" : ""}`);
       setNationalHolidays([]);
       setSelectedHolidayDates(new Set());
-      loadSchedule();
+      loadSchedule(true);
     } catch {
       toast.error("Erro ao importar feriados");
     } finally {
@@ -673,9 +673,9 @@ export default function DutyPage() {
                       {/* Assigned editors */}
                       <div className="flex flex-col gap-0.5 flex-1">
                         {slot.editors.map(ed => (
-                          <div key={ed.scheduleId} className="flex items-center gap-1 group">
-                            <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={16} />
-                            <span className="text-[9px] font-semibold leading-none truncate flex-1">
+                          <div key={ed.scheduleId} className="flex items-center gap-1.5 group">
+                            <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={24} />
+                            <span className="text-[11px] font-semibold leading-none truncate flex-1">
                               {ed.name.split(" ")[0]}
                             </span>
                             <button
