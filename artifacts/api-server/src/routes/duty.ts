@@ -58,12 +58,11 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
       .map(r => ({ id: r.editorId!, name: r.editorName!, avatarUrl: r.editorAvatarUrl ?? null })),
   });
 
-  // Non-Saturday entries from today onwards (holidays / special days)
-  const weekendDates = new Set([lastSatStr, thisSatStr, nextSatStr]);
+  // Weekday-only entries (holidays / special days) — exclude all Sat & Sun
   const holidayByDate = new Map<string, { dutyDate: string; editors: { id: number; name: string; avatarUrl: string | null }[] }>();
   for (const row of rows) {
-    const isSaturday = new Date(row.weekendStart + "T12:00:00").getDay() === 6;
-    if (!weekendDates.has(row.weekendStart) && !isSaturday && row.weekendStart >= lastSatStr) {
+    const dow = new Date(row.weekendStart + "T12:00:00").getDay();
+    if (dow !== 6 && dow !== 0 && row.weekendStart >= lastSatStr) {
       if (!holidayByDate.has(row.weekendStart)) {
         holidayByDate.set(row.weekendStart, { dutyDate: row.weekendStart, editors: [] });
       }
