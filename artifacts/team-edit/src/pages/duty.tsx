@@ -352,7 +352,7 @@ export default function DutyPage() {
       return `${["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][d.getDay()]}, ${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
     };
     try {
-      const data = await apiFetch<WeekendSlot[]>(`/api/duty?year=${lastMonday.getFullYear()}`);
+      const data = await apiFetch<WeekendSlot[]>(`/api/duty?year=${weekStart.slice(0, 4)}`);
       const slots = data.filter(s => s.weekendStart >= weekStart && s.weekendStart <= weekEnd);
       const editorMap = new Map<number, { name: string; days: string[] }>();
       for (const slot of slots) {
