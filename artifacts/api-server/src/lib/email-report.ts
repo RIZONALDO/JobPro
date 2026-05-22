@@ -84,24 +84,21 @@ function fmtDate(iso: string): string {
 }
 
 // ── Report HTML ──────────────────────────────────────────────────────────────
-function buildSection(entries: { name: string; days: string[] }[], emptyMsg: string): string {
+function buildEditorRows(entries: { name: string; days: { date: string; notes: string | null }[] }[]): string {
   if (entries.length === 0) {
-    return `<tr><td colspan="3" style="padding:12px 0;color:#bbb;font-size:12px;font-style:italic">${emptyMsg}</td></tr>`;
+    return `<tr><td colspan="3" style="padding:12px 0;color:#bbb;font-size:12px;font-style:italic">Nenhum editor escalado</td></tr>`;
   }
+  const badge = (label: string) =>
+    `<span style="display:inline-block;background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;margin-left:5px;vertical-align:middle">${label}</span>`;
   return entries.map(({ name, days }) =>
     `<tr>
       <td style="padding:10px 0;vertical-align:top;border-bottom:1px solid #f0f0f0;font-size:14px">${name}</td>
-      <td style="padding:10px 0;vertical-align:top;border-bottom:1px solid #f0f0f0;color:#666;font-size:12px;line-height:1.8">${days.map(fmtDate).join("<br>")}</td>
+      <td style="padding:10px 0;vertical-align:top;border-bottom:1px solid #f0f0f0;color:#666;font-size:12px;line-height:1.9">${days.map(({ date, notes }) =>
+        fmtDate(date) + (notes ? badge(notes) : "")
+      ).join("<br>")}</td>
       <td style="padding:10px 0;text-align:right;vertical-align:top;border-bottom:1px solid #f0f0f0;font-size:20px;font-weight:900;color:#111">${days.length}</td>
     </tr>`
   ).join("");
-}
-
-function buildSectionSubtotal(label: string, total: number): string {
-  return `<tr>
-    <td colspan="2" style="padding:10px 0 6px;font-size:12px;font-weight:600;color:#555">${label}</td>
-    <td style="padding:10px 0 6px;text-align:right;font-size:18px;font-weight:900;color:#555">${total}</td>
-  </tr>`;
 }
 
 export async function buildReportHtml(weekStart: string, weekEnd: string, senderName?: string, senderTitle?: string): Promise<string> {
@@ -124,30 +121,17 @@ export async function buildReportHtml(weekStart: string, weekEnd: string, sender
     .orderBy(dutySchedulesTable.weekendStart),
   ]);
 
-  // Group by event name (notes), fallback to slotType label when no event name
-  const eventGroups = new Map<string, { isExtra: boolean; editors: Map<number, { name: string; days: string[] }> }>();
+  // Group by editor — each editor accumulates all their dates with the event name
+  const editorMap = new Map<number, { name: string; days: { date: string; notes: string | null }[] }>();
 
   for (const row of rows) {
     if (!row.editorId || !row.editorName) continue;
-    const groupKey = row.notes?.trim() || (row.slotType === "extra" ? "Plantão Extra" : "Plantão Normal");
-    const isExtra  = row.slotType === "extra";
-    if (!eventGroups.has(groupKey)) eventGroups.set(groupKey, { isExtra, editors: new Map() });
-    const group = eventGroups.get(groupKey)!;
-    if (!group.editors.has(row.editorId)) group.editors.set(row.editorId, { name: row.editorName, days: [] });
-    group.editors.get(row.editorId)!.days.push(row.weekendStart);
+    if (!editorMap.has(row.editorId)) editorMap.set(row.editorId, { name: row.editorName, days: [] });
+    editorMap.get(row.editorId)!.days.push({ date: row.weekendStart, notes: row.notes?.trim() || null });
   }
 
-  // Normal groups first, then extra; alphabetical within each tier
-  const sortedGroups = Array.from(eventGroups.entries()).sort(([aKey, aVal], [bKey, bVal]) => {
-    if (aVal.isExtra !== bVal.isExtra) return Number(aVal.isExtra) - Number(bVal.isExtra);
-    return aKey.localeCompare(bKey, "pt-BR");
-  });
-
-  const sortEditors = (m: Map<number, { name: string; days: string[] }>) =>
-    Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-
-  const grandTotal = sortedGroups.reduce(
-    (s, [, { editors }]) => s + Array.from(editors.values()).reduce((ss, e) => ss + e.days.length, 0), 0);
+  const entries     = Array.from(editorMap.values()).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const grandTotal  = entries.reduce((s, e) => s + e.days.length, 0);
 
   const geradoEm  = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
   const assinante = senderName || appName;
@@ -156,21 +140,9 @@ export async function buildReportHtml(weekStart: string, weekEnd: string, sender
   const colHeader = (label: string, align = "left") =>
     `<th style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#aaa;padding:0 0 10px;text-align:${align};border-bottom:1px solid #e5e5e5">${label}</th>`;
 
-  const sectionHeader = (label: string, color: string) =>
-    `<tr><td colspan="3" style="padding:18px 0 6px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:${color}">${label}</td></tr>`;
-
-  const tableBody = sortedGroups.length === 0
+  const tableBody = entries.length === 0
     ? `<tr><td colspan="3" style="padding:20px;text-align:center;color:#999;font-style:italic">Nenhum plantão registrado neste período</td></tr>`
-    : sortedGroups.map(([label, { isExtra, editors }]) => {
-        const entries  = sortEditors(editors);
-        const subtotal = entries.reduce((s, e) => s + e.days.length, 0);
-        const color    = isExtra ? "#b45309" : "#111";
-        return `
-          ${sectionHeader(label, color)}
-          ${buildSection(entries, "")}
-          ${buildSectionSubtotal("Subtotal", subtotal)}
-        `;
-      }).join("");
+    : buildEditorRows(entries);
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
