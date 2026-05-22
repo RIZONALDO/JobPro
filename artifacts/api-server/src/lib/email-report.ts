@@ -126,6 +126,14 @@ export async function buildReportHtml(weekStart: string, weekEnd: string, sender
   type EditorEntry = { name: string; days: { date: string; notes: string | null }[] };
   type SlotGroup   = { normal: Map<number, EditorEntry>; extra: Map<number, EditorEntry> };
 
+  // Pre-aggregate notes per date from ALL rows (including event-only rows with editorId=null)
+  // This ensures the event badge is propagated even when the event name is stored only on
+  // the event-only row and the per-editor rows have null notes.
+  const notesPerDate = new Map<string, string>();
+  for (const row of rows) {
+    if (row.notes?.trim()) notesPerDate.set(row.weekendStart, row.notes.trim());
+  }
+
   const weekendGroup: SlotGroup = { normal: new Map(), extra: new Map() };
   const weekdayGroup: SlotGroup = { normal: new Map(), extra: new Map() };
 
@@ -135,7 +143,7 @@ export async function buildReportHtml(weekStart: string, weekEnd: string, sender
     const grp   = (dow === 0 || dow === 6) ? weekendGroup : weekdayGroup;
     const map   = row.slotType === "extra" ? grp.extra : grp.normal;
     if (!map.has(row.editorId)) map.set(row.editorId, { name: row.editorName, days: [] });
-    map.get(row.editorId)!.days.push({ date: row.weekendStart, notes: row.notes?.trim() || null });
+    map.get(row.editorId)!.days.push({ date: row.weekendStart, notes: notesPerDate.get(row.weekendStart) ?? null });
   }
 
   const sortMap = (m: Map<number, EditorEntry>) =>
