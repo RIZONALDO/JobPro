@@ -546,32 +546,38 @@ export default function DutyPage() {
       const slots = raw.filter(s => s.weekendStart >= weekStart && s.weekendStart <= weekEnd);
 
       // Grupo 1: Plantões Especiais (Sáb+Dom) | Grupo 2: Outros Plantões (Seg–Sex)
-      type RDay = { date: string; event: string | null };
-      const weekendMap = new Map<number, { name: string; days: RDay[] }>();
-      const weekdayMap = new Map<number, { name: string; days: RDay[] }>();
+      // Cada grupo subdividido em Normal + Extra
+      type RDay     = { date: string; event: string | null };
+      type REditors = Map<number, { name: string; days: RDay[] }>;
+      type RGroup   = { normal: REditors; extra: REditors };
+
+      const weekendGroup: RGroup = { normal: new Map(), extra: new Map() };
+      const weekdayGroup: RGroup = { normal: new Map(), extra: new Map() };
+
       for (const slot of slots) {
         const dow = new Date(slot.weekendStart + "T12:00:00").getDay();
-        const map = (dow === 0 || dow === 6) ? weekendMap : weekdayMap;
+        const grp = (dow === 0 || dow === 6) ? weekendGroup : weekdayGroup;
         for (const ed of (slot.editors ?? [])) {
+          const map = ed.slotType === "extra" ? grp.extra : grp.normal;
           if (!map.has(ed.id)) map.set(ed.id, { name: ed.name, days: [] });
           map.get(ed.id)!.days.push({ date: slot.weekendStart, event: slot.notes?.trim() || null });
         }
       }
 
-      const sortMap = (m: Map<number, { name: string; days: RDay[] }>) =>
+      const sortMap = (m: REditors) =>
         Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+      const countMap = (m: REditors) =>
+        Array.from(m.values()).reduce((s, e) => s + e.days.length, 0);
 
-      const weekendEntries = sortMap(weekendMap);
-      const weekdayEntries = sortMap(weekdayMap);
-      const totalWeekend   = weekendEntries.reduce((s, e) => s + e.days.length, 0);
-      const totalWeekday   = weekdayEntries.reduce((s, e) => s + e.days.length, 0);
-      const total          = totalWeekend + totalWeekday;
+      const totalWeekend = countMap(weekendGroup.normal) + countMap(weekendGroup.extra);
+      const totalWeekday = countMap(weekdayGroup.normal) + countMap(weekdayGroup.extra);
+      const total        = totalWeekend + totalWeekday;
 
       const badge = (label: string) =>
         `<span style="display:inline-block;background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;margin-left:5px;vertical-align:middle">${label}</span>`;
 
-      const buildGroup = (entries: { name: string; days: RDay[] }[]) =>
-        entries.map(({ name, days }) =>
+      const buildRows = (m: REditors) =>
+        sortMap(m).map(({ name, days }) =>
           `<tr>
             <td>${name}</td>
             <td style="color:#555;font-size:12px;line-height:1.9">${days.map(({ date, event }) =>
@@ -581,16 +587,28 @@ export default function DutyPage() {
           </tr>`
         ).join("");
 
-      const secHeader = (label: string) =>
+      const secHeader  = (label: string) =>
         `<tr><td colspan="3" style="padding:14px 0 4px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#111">${label}</td></tr>`;
+      const extraHeader = () =>
+        `<tr><td colspan="3" style="padding:10px 0 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#b45309">↳ Extra</td></tr>`;
       const subRow = (val: number) =>
         `<tr><td colspan="2" style="padding:6px 0 10px;font-size:11px;font-weight:600;color:#777">Subtotal</td><td style="padding:6px 0 10px;text-align:right;font-weight:700;color:#555">${val}</td></tr>`;
+
+      const buildGroup = (grp: RGroup, label: string, subtotal: number) => {
+        if (countMap(grp.normal) + countMap(grp.extra) === 0) return "";
+        return [
+          secHeader(label),
+          buildRows(grp.normal),
+          grp.extra.size > 0 ? extraHeader() + buildRows(grp.extra) : "",
+          subRow(subtotal),
+        ].join("");
+      };
 
       const rows = total === 0
         ? `<tr><td colspan="3" style="padding:20px;text-align:center;color:#999;font-style:italic">Nenhum plantão registrado nesta semana</td></tr>`
         : [
-            weekendEntries.length > 0 ? secHeader("Plantões Especiais") + buildGroup(weekendEntries) + subRow(totalWeekend) : "",
-            weekdayEntries.length > 0 ? secHeader("Outros Plantões")    + buildGroup(weekdayEntries) + subRow(totalWeekday)  : "",
+            buildGroup(weekendGroup, "Plantões Especiais", totalWeekend),
+            buildGroup(weekdayGroup, "Outros Plantões",    totalWeekday),
           ].join("");
 
       w.document.open();

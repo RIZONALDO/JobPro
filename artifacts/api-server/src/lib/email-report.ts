@@ -121,15 +121,19 @@ export async function buildReportHtml(weekStart: string, weekEnd: string, sender
     .orderBy(dutySchedulesTable.weekendStart),
   ]);
 
-  // Grupo 1: Plantões Especiais (Sáb + Dom) | Grupo 2: Outros Plantões (Seg–Sex)
+  // Grupo 1: Plantões Especiais (Sáb+Dom) | Grupo 2: Outros Plantões (Seg–Sex)
+  // Cada grupo é subdividido em Normal e Extra
   type EditorEntry = { name: string; days: { date: string; notes: string | null }[] };
-  const weekendMap = new Map<number, EditorEntry>();
-  const weekdayMap = new Map<number, EditorEntry>();
+  type SlotGroup   = { normal: Map<number, EditorEntry>; extra: Map<number, EditorEntry> };
+
+  const weekendGroup: SlotGroup = { normal: new Map(), extra: new Map() };
+  const weekdayGroup: SlotGroup = { normal: new Map(), extra: new Map() };
 
   for (const row of rows) {
     if (!row.editorId || !row.editorName) continue;
-    const dow = new Date(row.weekendStart + "T12:00:00").getDay();
-    const map = (dow === 0 || dow === 6) ? weekendMap : weekdayMap;
+    const dow   = new Date(row.weekendStart + "T12:00:00").getDay();
+    const grp   = (dow === 0 || dow === 6) ? weekendGroup : weekdayGroup;
+    const map   = row.slotType === "extra" ? grp.extra : grp.normal;
     if (!map.has(row.editorId)) map.set(row.editorId, { name: row.editorName, days: [] });
     map.get(row.editorId)!.days.push({ date: row.weekendStart, notes: row.notes?.trim() || null });
   }
@@ -137,11 +141,12 @@ export async function buildReportHtml(weekStart: string, weekEnd: string, sender
   const sortMap = (m: Map<number, EditorEntry>) =>
     Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 
-  const weekendEntries = sortMap(weekendMap);
-  const weekdayEntries = sortMap(weekdayMap);
-  const totalWeekend   = weekendEntries.reduce((s, e) => s + e.days.length, 0);
-  const totalWeekday   = weekdayEntries.reduce((s, e) => s + e.days.length, 0);
-  const grandTotal     = totalWeekend + totalWeekday;
+  const countMap = (m: Map<number, EditorEntry>) =>
+    Array.from(m.values()).reduce((s, e) => s + e.days.length, 0);
+
+  const totalWeekend = countMap(weekendGroup.normal) + countMap(weekendGroup.extra);
+  const totalWeekday = countMap(weekdayGroup.normal) + countMap(weekdayGroup.extra);
+  const grandTotal   = totalWeekend + totalWeekday;
 
   const geradoEm  = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
   const assinante = senderName || appName;
@@ -151,17 +156,32 @@ export async function buildReportHtml(weekStart: string, weekEnd: string, sender
     `<th style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#aaa;padding:0 0 10px;text-align:${align};border-bottom:1px solid #e5e5e5">${label}</th>`;
 
   const secHeader = (label: string) =>
-    `<tr><td colspan="3" style="padding:18px 0 6px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#111">${label}</td></tr>`;
+    `<tr><td colspan="3" style="padding:18px 0 4px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#111">${label}</td></tr>`;
+
+  const extraHeader = () =>
+    `<tr><td colspan="3" style="padding:12px 0 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#b45309">↳ Extra</td></tr>`;
 
   const secSubtotal = (val: number) =>
     `<tr><td colspan="2" style="padding:8px 0 6px;font-size:12px;font-weight:600;color:#555">Subtotal</td>
      <td style="padding:8px 0 6px;text-align:right;font-size:18px;font-weight:900;color:#555">${val}</td></tr>`;
 
+  const buildGroup = (grp: SlotGroup, label: string, total: number) => {
+    const normalEntries = sortMap(grp.normal);
+    const extraEntries  = sortMap(grp.extra);
+    if (normalEntries.length + extraEntries.length === 0) return "";
+    return [
+      secHeader(label),
+      buildEditorRows(normalEntries),
+      extraEntries.length > 0 ? extraHeader() + buildEditorRows(extraEntries) : "",
+      secSubtotal(total),
+    ].join("");
+  };
+
   const tableBody = grandTotal === 0
     ? `<tr><td colspan="3" style="padding:20px;text-align:center;color:#999;font-style:italic">Nenhum plantão registrado neste período</td></tr>`
     : [
-        weekendEntries.length > 0 ? secHeader("Plantões Especiais") + buildEditorRows(weekendEntries) + secSubtotal(totalWeekend) : "",
-        weekdayEntries.length > 0 ? secHeader("Outros Plantões")    + buildEditorRows(weekdayEntries) + secSubtotal(totalWeekday)  : "",
+        buildGroup(weekendGroup, "Plantões Especiais", totalWeekend),
+        buildGroup(weekdayGroup, "Outros Plantões",    totalWeekday),
       ].join("");
 
   return `<!DOCTYPE html>
