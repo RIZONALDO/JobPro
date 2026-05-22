@@ -243,7 +243,7 @@ export default function DutyPage() {
   const [confirmReset,         setConfirmReset]         = useState(false);
   const [showMenu,             setShowMenu]             = useState(false);
   const [showTools,            setShowTools]            = useState(false);
-  const [supervisorTab,        setSupervisorTab]        = useState<"manage" | "view" | "email">("manage");
+  const [supervisorTab,        setSupervisorTab]        = useState<"manage" | "sorteio" | "view" | "email">("manage");
   const [editingNotes,         setEditingNotes]         = useState<{ iso: string; value: string } | null>(null);
 
   // ── Email config state ───────────────────────────────────────────────────────
@@ -889,10 +889,10 @@ export default function DutyPage() {
 
           {/* Parent tab bar */}
           <div className="flex border-b border-[hsl(var(--border))]">
-            {(["manage","view","email"] as const).map(tab => (
+            {(["manage","sorteio","view","email"] as const).map(tab => (
               <button key={tab} onClick={() => setSupervisorTab(tab)}
                 className={`px-4 pb-2 text-sm font-medium border-b-2 transition-colors ${supervisorTab === tab ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]" : "border-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}>
-                {tab === "manage" ? "Gerenciar" : tab === "view" ? "Editores" : "E-mail"}
+                {tab === "manage" ? "Calendário" : tab === "sorteio" ? "Sorteio" : tab === "view" ? "Editores" : "E-mail"}
               </button>
             ))}
           </div>
@@ -1229,6 +1229,191 @@ export default function DutyPage() {
     );
   }
 
+  // ── Supervisor "Sorteio" tab ─────────────────────────────────────────────────
+  if (isSupervisor && supervisorTab === "sorteio") {
+    return (
+      <div className="flex flex-col h-full overflow-y-auto p-4 gap-5 bg-[hsl(var(--background))]">
+
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-[hsl(var(--primary))]" />
+            <h1 className="text-lg font-bold">Escala de Plantões</h1>
+          </div>
+        </div>
+
+        {/* Tab bar */}
+        <div className="flex border-b border-[hsl(var(--border))] -mt-2">
+          {(["manage","sorteio","view","email"] as const).map(tab => (
+            <button key={tab} onClick={() => setSupervisorTab(tab)}
+              className={`px-4 pb-2 text-sm font-medium border-b-2 transition-colors ${supervisorTab === tab ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]" : "border-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}>
+              {tab === "manage" ? "Calendário" : tab === "sorteio" ? "Sorteio" : tab === "view" ? "Editores" : "E-mail"}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Sorteio de Plantonistas ── */}
+        <div className="flex flex-col gap-2">
+          <div>
+            <h2 className="text-sm font-bold flex items-center gap-1.5">
+              <Shuffle className="h-4 w-4 text-[hsl(var(--primary))]" />
+              Sorteio de Plantonistas — {year}
+            </h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">
+              Selecione <strong>2 editores</strong>. Eles se alternarão: cada um ocupa sábado e domingo em semanas alternadas ao longo do ano.
+            </p>
+          </div>
+
+          {/* Editor chips */}
+          <div className="flex flex-wrap gap-1.5 mt-1">
+            {editors.map(e => {
+              const idx = sorteioEditorIds.indexOf(e.id);
+              const sel = idx !== -1;
+              const disabled = !sel && sorteioEditorIds.length >= 2;
+              return (
+                <button key={e.id}
+                  onClick={() => toggleSorteioEditor(e.id)}
+                  disabled={disabled}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors disabled:opacity-30 ${
+                    sel
+                      ? "bg-[hsl(var(--primary))] text-white border-transparent"
+                      : "bg-[hsl(var(--muted))]/40 border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/50"
+                  }`}>
+                  <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={18} />
+                  {e.name.split(" ")[0]}
+                  {sel && <span className="opacity-90 font-black text-[10px] tabular-nums">{idx + 1}°</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Preview da alternância */}
+          {sorteioEditorIds.length === 2 && (() => {
+            const edA = editors.find(e => e.id === sorteioEditorIds[0]);
+            const edB = editors.find(e => e.id === sorteioEditorIds[1]);
+            if (!edA || !edB) return null;
+            return (
+              <div className="rounded-lg bg-[hsl(var(--primary))]/5 border border-[hsl(var(--primary))]/15 px-3 py-2.5 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+                <span className="font-bold text-[hsl(var(--foreground))]">{edA.name.split(" ")[0]}</span>
+                {" "}&mdash; Sáb + Dom nas semanas 1, 3, 5…
+                <br />
+                <span className="font-bold text-[hsl(var(--foreground))]">{edB.name.split(" ")[0]}</span>
+                {" "}&mdash; Sáb + Dom nas semanas 2, 4, 6…
+              </div>
+            );
+          })()}
+
+          {/* Options + action */}
+          <div className="flex items-center gap-3 flex-wrap pt-1">
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+              <input type="checkbox" checked={replaceExistingSorteio}
+                onChange={e => setReplaceExistingSorteio(e.target.checked)} className="rounded" />
+              Substituir fins de semana existentes
+            </label>
+            <Button
+              onClick={sortear}
+              disabled={sorteando || sorteioEditorIds.length !== 2}
+              className="h-8 text-xs px-4 gap-1.5">
+              <Shuffle className={`h-3.5 w-3.5 ${sorteando ? "animate-spin" : ""}`} />
+              {sorteando ? "Sorteando…" : "Sortear"}
+            </Button>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="h-px bg-[hsl(var(--border))]" />
+
+        {/* ── Feriados Nacionais ── */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h2 className="text-sm font-bold flex items-center gap-1.5">
+              <CalendarPlus className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              Feriados Nacionais — {year}
+            </h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <select value={nationalEditorId} onChange={e => setNationalEditorId(e.target.value)}
+                className="h-8 pl-2.5 pr-7 text-xs rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] appearance-none cursor-pointer focus:outline-none focus:border-emerald-500">
+                <option value="">Editor…</option>
+                {editors.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+              <Button onClick={fetchNationalHolidays} disabled={fetchingNational} variant="outline"
+                className="h-8 text-xs gap-1.5 border-emerald-500/50 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
+                <RefreshCw className={`h-3.5 w-3.5 ${fetchingNational ? "animate-spin" : ""}`} />
+                {fetchingNational ? "Buscando…" : "Buscar feriados"}
+              </Button>
+              {nationalHolidays.length > 0 && selectedHolidayDates.size > 0 && (
+                <Button onClick={importNationalHolidays} disabled={importingNational}
+                  className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white">
+                  <Plus className="h-3.5 w-3.5" />
+                  {importingNational ? "Importando…" : `Importar ${selectedHolidayDates.size}`}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {nationalHolidays.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-64 overflow-y-auto pr-1">
+              {nationalHolidays.map(h => {
+                const d   = new Date(h.date + "T12:00:00");
+                const sel = selectedHolidayDates.has(h.date);
+                return (
+                  <label key={h.date}
+                    className={`flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer border transition-colors ${
+                      sel
+                        ? "border-emerald-400/50 bg-emerald-100/50 dark:bg-emerald-900/30"
+                        : "border-transparent bg-[hsl(var(--muted))]/30 opacity-50"
+                    }`}>
+                    <input type="checkbox" checked={sel} onChange={() => toggleHoliday(h.date)}
+                      className="accent-emerald-600 shrink-0" />
+                    <span className="text-[10px] font-bold tabular-nums text-emerald-700 dark:text-emerald-400 shrink-0">
+                      {String(d.getDate()).padStart(2,"0")}/{String(d.getMonth()+1).padStart(2,"0")}
+                    </span>
+                    <span className="text-[10px] font-medium truncate">{h.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Divider */}
+        <div className="h-px bg-[hsl(var(--border))]" />
+
+        {/* ── Adicionar feriado / dia especial manualmente ── */}
+        <div className="flex flex-col gap-2">
+          <h2 className="text-sm font-bold">Adicionar dia especial manualmente</h2>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Data</label>
+              <input type="date" value={holidayDate} onChange={e => setHolidayDate(e.target.value)}
+                className="h-8 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 text-xs focus:outline-none focus:border-[hsl(var(--primary))]" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Nome do evento</label>
+              <input type="text" value={holidayName} onChange={e => setHolidayName(e.target.value)}
+                placeholder="Ex: Feriado municipal"
+                className="h-8 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 text-xs focus:outline-none focus:border-[hsl(var(--primary))]" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Editor</label>
+              <select value={holidayEditorId} onChange={e => setHolidayEditorId(e.target.value)}
+                className="h-8 pl-2 pr-6 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-xs appearance-none cursor-pointer focus:outline-none focus:border-[hsl(var(--primary))]">
+                <option value="">Selecionar…</option>
+                {editors.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            </div>
+            <Button onClick={addHolidayEntry} disabled={addingHoliday || !holidayDate || !holidayEditorId}
+              variant="outline" className="h-8 text-xs gap-1.5">
+              <Plus className="h-3.5 w-3.5" />
+              {addingHoliday ? "Adicionando…" : "Adicionar"}
+            </Button>
+          </div>
+        </div>
+
+      </div>
+    );
+  }
+
   // ── Supervisor "Editores" tab ────────────────────────────────────────────────
   if (isSupervisor && supervisorTab === "view") {
     return (
@@ -1245,10 +1430,10 @@ export default function DutyPage() {
         </div>
 
         <div className="flex border-b border-[hsl(var(--border))] -mt-2">
-          {(["manage","view","email"] as const).map(tab => (
+          {(["manage","sorteio","view","email"] as const).map(tab => (
             <button key={tab} onClick={() => setSupervisorTab(tab)}
               className={`px-4 pb-2 text-sm font-medium border-b-2 transition-colors ${supervisorTab === tab ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]" : "border-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}>
-              {tab === "manage" ? "Gerenciar" : tab === "view" ? "Editores" : "E-mail"}
+              {tab === "manage" ? "Calendário" : tab === "sorteio" ? "Sorteio" : tab === "view" ? "Editores" : "E-mail"}
             </button>
           ))}
         </div>
@@ -1372,167 +1557,14 @@ export default function DutyPage() {
       {/* Supervisor tab bar */}
       {isSupervisor && (
         <div className="flex border-b border-[hsl(var(--border))] -mt-2">
-          {(["manage","view","email"] as const).map(tab => (
+          {(["manage","sorteio","view","email"] as const).map(tab => (
             <button key={tab} onClick={() => setSupervisorTab(tab)}
               className={`px-4 pb-2 text-sm font-medium border-b-2 transition-colors ${supervisorTab === tab ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]" : "border-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}>
-              {tab === "manage" ? "Gerenciar" : tab === "view" ? "Editores" : "E-mail"}
+              {tab === "manage" ? "Calendário" : tab === "sorteio" ? "Sorteio" : tab === "view" ? "Editores" : "E-mail"}
             </button>
           ))}
         </div>
       )}
-
-      {/* Tools toggle */}
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => setShowTools(v => !v)}
-        onKeyDown={e => e.key === "Enter" && setShowTools(v => !v)}
-        className="flex items-center justify-between cursor-pointer select-none group">
-        <span className="text-xs font-semibold text-[hsl(var(--muted-foreground))] group-hover:text-[hsl(var(--foreground))] transition-colors">
-          Sorteio / Feriados
-        </span>
-        <div className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ${
-          showTools ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted))]"
-        }`}>
-          <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-            showTools ? "translate-x-[18px]" : "translate-x-0.5"
-          }`} />
-        </div>
-      </div>
-
-      {/* Animated tools container */}
-      <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${showTools ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
-        <div className="overflow-hidden">
-          <div className="flex flex-col gap-5 pb-0">
-
-            {/* Sorteio de Plantonistas */}
-            <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3 space-y-2.5">
-              <div>
-                <p className="text-xs font-semibold flex items-center gap-1.5">
-                  <Shuffle className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
-                  Sorteio de Plantonistas — {year}
-                </p>
-                <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5">
-                  Selecione <strong>2 editores</strong>. Eles se alternarão: cada um ocupa sábado e domingo em semanas alternadas.
-                </p>
-              </div>
-
-              {/* Seleção de editores — máximo 2 */}
-              <div className="flex flex-wrap gap-1.5">
-                {editors.map(e => {
-                  const idx = sorteioEditorIds.indexOf(e.id);
-                  const sel = idx !== -1;
-                  const disabled = !sel && sorteioEditorIds.length >= 2;
-                  return (
-                    <button key={e.id}
-                      onClick={() => toggleSorteioEditor(e.id)}
-                      disabled={disabled}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors disabled:opacity-30 ${
-                        sel
-                          ? "bg-[hsl(var(--primary))] text-white border-transparent"
-                          : "bg-[hsl(var(--muted))]/40 border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/50"
-                      }`}>
-                      <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={16} />
-                      {e.name.split(" ")[0]}
-                      {sel && (
-                        <span className="opacity-90 font-black text-[10px] tabular-nums">{idx + 1}°</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Preview da alternância quando 2 selecionados */}
-              {sorteioEditorIds.length === 2 && (() => {
-                const edA = editors.find(e => e.id === sorteioEditorIds[0]);
-                const edB = editors.find(e => e.id === sorteioEditorIds[1]);
-                if (!edA || !edB) return null;
-                return (
-                  <div className="rounded-lg bg-[hsl(var(--primary))]/5 border border-[hsl(var(--primary))]/15 px-3 py-2 text-[10px] leading-relaxed text-[hsl(var(--muted-foreground))]">
-                    <span className="font-bold text-[hsl(var(--foreground))]">{edA.name.split(" ")[0]}</span>
-                    {" "}&mdash; Sáb + Dom nas semanas 1, 3, 5…
-                    <br />
-                    <span className="font-bold text-[hsl(var(--foreground))]">{edB.name.split(" ")[0]}</span>
-                    {" "}&mdash; Sáb + Dom nas semanas 2, 4, 6…
-                  </div>
-                );
-              })()}
-
-              <div className="flex items-center gap-3 flex-wrap">
-                <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
-                  <input type="checkbox" checked={replaceExistingSorteio}
-                    onChange={e => setReplaceExistingSorteio(e.target.checked)} className="rounded" />
-                  Substituir fins de semana existentes
-                </label>
-                <Button
-                  onClick={sortear}
-                  disabled={sorteando || sorteioEditorIds.length !== 2}
-                  className="h-7 text-xs px-3 gap-1.5">
-                  <Shuffle className={`h-3 w-3 ${sorteando ? "animate-spin" : ""}`} />
-                  {sorteando ? "Sorteando…" : "Sortear"}
-                </Button>
-              </div>
-            </div>
-
-            {/* Feriados Nacionais */}
-            <div className="rounded-xl border border-emerald-500/40 bg-emerald-50/30 dark:bg-emerald-900/10 p-3 space-y-2.5">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-1.5">
-                  <CalendarPlus className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <p className="text-xs font-semibold">Feriados Nacionais — {year}</p>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <select value={nationalEditorId} onChange={e => setNationalEditorId(e.target.value)}
-                    className="h-8 pl-2.5 pr-7 text-xs rounded-md border border-[hsl(var(--border))]
-                      bg-[hsl(var(--background))] appearance-none cursor-pointer focus:outline-none focus:border-emerald-500">
-                    <option value="">Editor…</option>
-                    {editors.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                  </select>
-                  <Button onClick={fetchNationalHolidays} disabled={fetchingNational} variant="outline"
-                    className="h-8 text-xs gap-1.5 border-emerald-500/50 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
-                    <RefreshCw className={`h-3.5 w-3.5 ${fetchingNational ? "animate-spin" : ""}`} />
-                    {fetchingNational ? "Buscando…" : "Buscar"}
-                  </Button>
-                  {nationalHolidays.length > 0 && (
-                    <Button onClick={importNationalHolidays} disabled={importingNational || selectedHolidayDates.size === 0}
-                      className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white">
-                      <Plus className="h-3.5 w-3.5" />
-                      {importingNational ? "Importando…" : `Importar ${selectedHolidayDates.size}`}
-                    </Button>
-                  )}
-                </div>
-              </div>
-              {nationalHolidays.length > 0 && (
-                <div className="grid grid-cols-2 gap-1 max-h-48 overflow-y-auto pr-1">
-                  {nationalHolidays.map(h => {
-                    const d   = new Date(h.date + "T12:00:00");
-                    const sel = selectedHolidayDates.has(h.date);
-                    return (
-                      <label key={h.date}
-                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer border transition-colors ${
-                          sel
-                            ? "border-emerald-400/50 bg-emerald-100/50 dark:bg-emerald-900/30"
-                            : "border-transparent bg-[hsl(var(--muted))]/30 opacity-50"
-                        }`}>
-                        <input type="checkbox" checked={sel} onChange={() => toggleHoliday(h.date)}
-                          className="accent-emerald-600 shrink-0" />
-                        <span className="text-[10px] font-bold tabular-nums text-emerald-700 dark:text-emerald-400 shrink-0">
-                          {String(d.getDate()).padStart(2,"0")}/{String(d.getMonth()+1).padStart(2,"0")}
-                        </span>
-                        <span className="text-[10px] font-medium truncate">{h.name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-      {/* Divider */}
-      <div className="h-px bg-[hsl(var(--border))]" />
 
       {/* Month navigation */}
       <div className="flex items-center justify-between">
