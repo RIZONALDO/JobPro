@@ -1536,22 +1536,9 @@ export default function DutyPage() {
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-5 bg-[hsl(var(--background))]">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Shield className="h-5 w-5 text-[hsl(var(--primary))]" />
-          <h1 className="text-lg font-bold">Escala de Plantões</h1>
-        </div>
-        <button
-          onClick={resetAll}
-          disabled={resetting}
-          onBlur={() => setConfirmReset(false)}
-          className={`h-8 px-3 rounded-md text-xs font-semibold border transition-colors ${
-            confirmReset
-              ? "bg-destructive text-white border-destructive hover:opacity-90"
-              : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-destructive hover:text-destructive"
-          }`}>
-          {resetting ? "…" : confirmReset ? "Confirmar reset?" : "Resetar tudo"}
-        </button>
+      <div className="flex items-center gap-2">
+        <Shield className="h-5 w-5 text-[hsl(var(--primary))]" />
+        <h1 className="text-lg font-bold">Escala de Plantões</h1>
       </div>
 
       {/* Supervisor tab bar */}
@@ -1572,6 +1559,17 @@ export default function DutyPage() {
           Calendário de Plantões
         </p>
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={resetAll}
+            disabled={resetting}
+            onBlur={() => setConfirmReset(false)}
+            className={`h-8 px-3 rounded-md text-xs font-semibold border transition-colors ${
+              confirmReset
+                ? "bg-destructive text-white border-destructive hover:opacity-90"
+                : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-destructive hover:text-destructive"
+            }`}>
+            {resetting ? "…" : confirmReset ? "Confirmar reset?" : "Resetar tudo"}
+          </button>
           <button onClick={prevMonth}
             className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors">
             <ChevronLeft className="h-4 w-4" />
