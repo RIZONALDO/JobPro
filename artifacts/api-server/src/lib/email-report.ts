@@ -84,14 +84,16 @@ function fmtDate(iso: string): string {
 }
 
 // ── Report HTML ──────────────────────────────────────────────────────────────
-function buildSection(entries: { name: string; days: string[] }[], emptyMsg: string): string {
+function buildSection(entries: { name: string; days: { date: string; notes: string | null }[] }[], emptyMsg: string): string {
   if (entries.length === 0) {
     return `<tr><td colspan="3" style="padding:12px 0;color:#bbb;font-size:12px;font-style:italic">${emptyMsg}</td></tr>`;
   }
   return entries.map(({ name, days }) =>
     `<tr>
       <td style="padding:10px 0;vertical-align:top;border-bottom:1px solid #f0f0f0;font-size:14px">${name}</td>
-      <td style="padding:10px 0;vertical-align:top;border-bottom:1px solid #f0f0f0;color:#666;font-size:12px;line-height:1.8">${days.map(fmtDate).join("<br>")}</td>
+      <td style="padding:10px 0;vertical-align:top;border-bottom:1px solid #f0f0f0;color:#666;font-size:12px;line-height:1.8">${days.map(({ date, notes }) =>
+        fmtDate(date) + (notes ? ` <span style="display:inline-block;background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;margin-left:5px;vertical-align:middle">${notes}</span>` : "")
+      ).join("<br>")}</td>
       <td style="padding:10px 0;text-align:right;vertical-align:top;border-bottom:1px solid #f0f0f0;font-size:20px;font-weight:900;color:#111">${days.length}</td>
     </tr>`
   ).join("");
@@ -111,6 +113,7 @@ export async function buildReportHtml(weekStart: string, weekEnd: string, sender
     .select({
       weekendStart: dutySchedulesTable.weekendStart,
       slotType:     dutySchedulesTable.slotType,
+      notes:        dutySchedulesTable.notes,
       editorId:     dutySchedulesTable.editorId,
       editorName:   usersTable.name,
     })
@@ -124,17 +127,17 @@ export async function buildReportHtml(weekStart: string, weekEnd: string, sender
   ]);
 
   // Group by editor+slotType: one editor can appear in both sections if they have entries of both types
-  const normalMap = new Map<number, { name: string; days: string[] }>();
-  const extraMap  = new Map<number, { name: string; days: string[] }>();
+  const normalMap = new Map<number, { name: string; days: { date: string; notes: string | null }[] }>();
+  const extraMap  = new Map<number, { name: string; days: { date: string; notes: string | null }[] }>();
 
   for (const row of rows) {
     if (!row.editorId || !row.editorName) continue;
     const map = row.slotType === "normal" ? normalMap : extraMap;
     if (!map.has(row.editorId)) map.set(row.editorId, { name: row.editorName, days: [] });
-    map.get(row.editorId)!.days.push(row.weekendStart);
+    map.get(row.editorId)!.days.push({ date: row.weekendStart, notes: row.notes ?? null });
   }
 
-  const sort = (m: Map<number, { name: string; days: string[] }>) =>
+  const sort = (m: Map<number, { name: string; days: { date: string; notes: string | null }[] }>) =>
     Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 
   const normais    = sort(normalMap);

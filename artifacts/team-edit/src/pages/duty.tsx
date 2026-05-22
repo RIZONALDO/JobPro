@@ -544,24 +544,43 @@ export default function DutyPage() {
       }
 
       const slots = raw.filter(s => s.weekendStart >= weekStart && s.weekendStart <= weekEnd);
-      const editorMap = new Map<number, { name: string; days: string[] }>();
+      const normalMap = new Map<number, { name: string; days: { date: string; eventName: string | null }[] }>();
+      const extraMap  = new Map<number, { name: string; days: { date: string; eventName: string | null }[] }>();
       for (const slot of slots) {
         for (const ed of (slot.editors ?? [])) {
-          if (!editorMap.has(ed.id)) editorMap.set(ed.id, { name: ed.name, days: [] });
-          editorMap.get(ed.id)!.days.push(slot.weekendStart);
+          const map = ed.slotType === "normal" ? normalMap : extraMap;
+          if (!map.has(ed.id)) map.set(ed.id, { name: ed.name, days: [] });
+          map.get(ed.id)!.days.push({ date: slot.weekendStart, eventName: slot.notes ?? null });
         }
       }
-      const entries = Array.from(editorMap.values());
-      const total   = entries.reduce((s, e) => s + e.days.length, 0);
-      const rows    = entries.length === 0
+      const buildRows = (entries: { name: string; days: { date: string; eventName: string | null }[] }[]) =>
+        entries.map(({ name, days }) =>
+          `<tr>
+            <td>${name}</td>
+            <td style="color:#555;font-size:12px;line-height:1.9">${days.map(({ date, eventName }) =>
+              fmt(date) + (eventName ? ` <span style="display:inline-block;background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;margin-left:4px;vertical-align:middle">${eventName}</span>` : "")
+            ).join("<br>")}</td>
+            <td style="text-align:right;font-weight:700">${days.length}</td>
+          </tr>`
+        ).join("");
+
+      const normais = Array.from(normalMap.values()).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+      const extras  = Array.from(extraMap.values()).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+      const totalNormal = normais.reduce((s, e) => s + e.days.length, 0);
+      const totalExtra  = extras.reduce((s, e) => s + e.days.length, 0);
+      const total = totalNormal + totalExtra;
+
+      const sectionHeader = (label: string, color: string) =>
+        `<tr><td colspan="3" style="padding:14px 0 4px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:${color}">${label}</td></tr>`;
+      const subtotal = (label: string, val: number) =>
+        `<tr><td colspan="2" style="padding:6px 0;font-size:11px;font-weight:600;color:#777">${label}</td><td style="padding:6px 0;text-align:right;font-weight:700;color:#555">${val}</td></tr>`;
+
+      const rows = (normais.length + extras.length) === 0
         ? `<tr><td colspan="3" style="padding:20px;text-align:center;color:#999;font-style:italic">Nenhum plantão registrado nesta semana</td></tr>`
-        : entries.map(({ name, days }) =>
-            `<tr>
-              <td>${name}</td>
-              <td style="color:#555;font-size:12px">${days.map(fmt).join("<br>")}</td>
-              <td style="text-align:right;font-weight:700">${days.length}</td>
-            </tr>`
-          ).join("");
+        : [
+            normais.length > 0 ? sectionHeader("Plantão Normal", "#111") + buildRows(normais) + subtotal("Subtotal", totalNormal) : "",
+            extras.length  > 0 ? sectionHeader("Plantão Extra",  "#b45309") + buildRows(extras)  + subtotal("Subtotal", totalExtra)  : "",
+          ].join("");
 
       w.document.open();
       w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head>
