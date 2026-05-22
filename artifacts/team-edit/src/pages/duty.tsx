@@ -1,11 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
-import { apiFetch, apiPost, apiPut, apiDelete } from "@/lib/api";
+import { apiFetch, apiPost, apiPut, apiPatch, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { usePageTitle } from "@/lib/use-page-title";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Plus, RefreshCw, Shield, CalendarPlus, X, MoreHorizontal, Mail, ChevronDown, Shuffle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Shield, CalendarPlus, X, MoreHorizontal, Mail, ChevronDown, Shuffle, Pencil } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -244,6 +244,7 @@ export default function DutyPage() {
   const [showMenu,             setShowMenu]             = useState(false);
   const [showTools,            setShowTools]            = useState(false);
   const [supervisorTab,        setSupervisorTab]        = useState<"manage" | "view" | "email">("manage");
+  const [editingNotes,         setEditingNotes]         = useState<{ iso: string; value: string } | null>(null);
 
   // ── Email config state ───────────────────────────────────────────────────────
   const [emailCfg,        setEmailCfg]        = useState<{ enabled: boolean; recipients: string[]; smtpHost: string; smtpPort: number; smtpUser: string; smtpPass: string; cronDay: number; cronHour: number; cronMinute: number } | null>(null);
@@ -414,6 +415,21 @@ export default function DutyPage() {
     } catch {
       setSchedule(prevSchedule);
       toast.error("Erro ao adicionar editor");
+    }
+  };
+
+  const updateEventNotes = async (iso: string, notes: string | null) => {
+    const cleanNotes = notes ? notes.trim() || null : null;
+    const prevSchedule = schedule;
+    setSchedule(s => s.map(slot =>
+      slot.weekendStart === iso ? { ...slot, notes: cleanNotes } : slot
+    ));
+    try {
+      await apiPatch("/api/duty/event-name", { weekendStart: iso, notes: cleanNotes });
+      loadSchedule(true);
+    } catch {
+      setSchedule(prevSchedule);
+      toast.error("Erro ao atualizar evento");
     }
   };
 
@@ -1386,10 +1402,10 @@ export default function DutyPage() {
                 return (
                   <div className="rounded-lg bg-[hsl(var(--primary))]/5 border border-[hsl(var(--primary))]/15 px-3 py-2 text-[10px] leading-relaxed text-[hsl(var(--muted-foreground))]">
                     <span className="font-bold text-[hsl(var(--foreground))]">{edA.name.split(" ")[0]}</span>
-                    {" "}&mdash; Sáb semanas 1, 3, 5… · Dom semanas 2, 4, 6…
+                    {" "}&mdash; Sáb + Dom nas semanas 1, 3, 5…
                     <br />
                     <span className="font-bold text-[hsl(var(--foreground))]">{edB.name.split(" ")[0]}</span>
-                    {" "}&mdash; Dom semanas 1, 3, 5… · Sáb semanas 2, 4, 6…
+                    {" "}&mdash; Sáb + Dom nas semanas 2, 4, 6…
                   </div>
                 );
               })()}
@@ -1677,11 +1693,37 @@ export default function DutyPage() {
                         )}
                       </div>
 
-                      {/* Event title */}
+                      {/* Event title — editable */}
                       {slot.notes && (
-                        <p className="text-[9px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide leading-tight truncate mb-1 px-0.5">
-                          {slot.notes}
-                        </p>
+                        editingNotes?.iso === iso ? (
+                          <input
+                            autoFocus
+                            value={editingNotes.value}
+                            onChange={e => setEditingNotes({ iso, value: e.target.value })}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") { updateEventNotes(iso, editingNotes.value); setEditingNotes(null); }
+                              if (e.key === "Escape") setEditingNotes(null);
+                            }}
+                            onBlur={() => { updateEventNotes(iso, editingNotes.value); setEditingNotes(null); }}
+                            className="w-full mb-1 text-[9px] font-bold uppercase tracking-wide bg-transparent border-b border-amber-400 outline-none text-amber-700 dark:text-amber-400 leading-tight px-0.5"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-0.5 mb-1 group/note">
+                            <p className="text-[9px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide leading-tight truncate flex-1 px-0.5">
+                              {slot.notes}
+                            </p>
+                            <button
+                              onClick={() => setEditingNotes({ iso, value: slot.notes! })}
+                              className="opacity-0 group-hover/note:opacity-100 transition-opacity text-amber-600 hover:text-amber-400 shrink-0 p-0.5">
+                              <Pencil className="h-2 w-2" />
+                            </button>
+                            <button
+                              onClick={() => updateEventNotes(iso, null)}
+                              className="opacity-0 group-hover/note:opacity-100 transition-opacity text-amber-600 hover:text-red-400 shrink-0 p-0.5">
+                              <X className="h-2 w-2" />
+                            </button>
+                          </div>
+                        )
                       )}
 
                       {/* Assigned editors */}

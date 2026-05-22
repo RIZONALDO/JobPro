@@ -27,6 +27,10 @@ export function apiPut<T>(path: string, body: unknown) {
   return apiFetch<T>(path, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 }
 
+export function apiPatch<T>(path: string, body: unknown) {
+  return apiFetch<T>(path, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
 export async function apiDelete(path: string): Promise<void> {
   const res = await fetch(path, { method: "DELETE", credentials: "include" });
   if (!res.ok) {

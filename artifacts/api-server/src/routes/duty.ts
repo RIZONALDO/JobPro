@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, dutySchedulesTable, usersTable } from "@workspace/db";
-import { eq, and, gte, lte, inArray, count } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, count, isNull } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
 
 const router = Router();
@@ -195,17 +195,17 @@ router.post("/duty/sorteio", requireAuth, async (req, res): Promise<void> => {
     }
   }
 
-  // Weekend i (0-indexed): Sáb → editors[i%2], Dom → editors[(i+1)%2]
+  // Weekend i (0-indexed): MESMO editor (editors[i%2]) cobre Sáb + Dom inteiro
   const editors = [idA, idB];
+  const DEFAULT_NOTES = "Plantão Especial";
   const inserts = saturdays.flatMap((sat, i) => {
-    const editorSat = editors[i % 2];
-    const editorSun = editors[(i + 1) % 2];
+    const editorId = editors[i % 2];
     const sun = new Date(sat + "T12:00:00");
     sun.setDate(sun.getDate() + 1);
     const sunStr = sun.toISOString().split("T")[0];
     return [
-      { weekendStart: sat,    editorId: editorSat, slotType: "normal", createdById: req.session.userId },
-      { weekendStart: sunStr, editorId: editorSun, slotType: "normal", createdById: req.session.userId },
+      { weekendStart: sat,    editorId, slotType: "normal", notes: DEFAULT_NOTES, createdById: req.session.userId },
+      { weekendStart: sunStr, editorId, slotType: "normal", notes: DEFAULT_NOTES, createdById: req.session.userId },
     ];
   });
 
@@ -260,6 +260,30 @@ router.post("/duty", requireAuth, async (req, res): Promise<void> => {
   }).onConflictDoNothing().returning();
 
   res.json(row ?? null);
+});
+
+// PATCH /api/duty/event-name — rename or clear the event label on a date (admin/supervisor)
+router.patch("/duty/event-name", requireAuth, async (req, res): Promise<void> => {
+  if (!["admin", "supervisor"].includes(req.session.userRole ?? "")) { res.status(403).json({ error: "Sem permissão" }); return; }
+  const { weekendStart, notes } = req.body as { weekendStart?: string; notes?: string | null };
+  if (!weekendStart) { res.status(400).json({ error: "weekendStart obrigatório" }); return; }
+
+  const dateStr  = String(weekendStart);
+  const newNotes = notes ? String(notes).trim() || null : null;
+
+  if (newNotes === null) {
+    // Limpa: zera notes em todas as linhas e remove linhas sem editor (evento puro)
+    await db.update(dutySchedulesTable).set({ notes: null }).where(eq(dutySchedulesTable.weekendStart, dateStr));
+    await db.delete(dutySchedulesTable).where(and(
+      eq(dutySchedulesTable.weekendStart, dateStr),
+      isNull(dutySchedulesTable.editorId),
+    ));
+  } else {
+    // Atualiza notes em todas as linhas daquela data
+    await db.update(dutySchedulesTable).set({ notes: newNotes }).where(eq(dutySchedulesTable.weekendStart, dateStr));
+  }
+
+  res.json({ ok: true });
 });
 
 // DELETE /api/duty/all — clear entire schedule (admin)
