@@ -179,8 +179,8 @@ export async function buildReportHtml(weekStart: string, weekEnd: string, sender
     if (normalEntries.length + extraEntries.length === 0) return "";
     return [
       secHeader(label),
-      buildEditorRows(normalEntries),
-      extraEntries.length > 0 ? extraHeader() + buildEditorRows(extraEntries) : "",
+      normalEntries.length > 0 ? buildEditorRows(normalEntries) : "",
+      extraEntries.length  > 0 ? extraHeader() + buildEditorRows(extraEntries) : "",
       secSubtotal(total),
     ].join("");
   };

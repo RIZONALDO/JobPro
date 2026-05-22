@@ -598,8 +598,8 @@ export default function DutyPage() {
         if (countMap(grp.normal) + countMap(grp.extra) === 0) return "";
         return [
           secHeader(label),
-          buildRows(grp.normal),
-          grp.extra.size > 0 ? extraHeader() + buildRows(grp.extra) : "",
+          grp.normal.size > 0 ? buildRows(grp.normal) : "",
+          grp.extra.size  > 0 ? extraHeader() + buildRows(grp.extra) : "",
           subRow(subtotal),
         ].join("");
       };
