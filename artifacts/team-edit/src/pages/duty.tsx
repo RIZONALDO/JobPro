@@ -1,20 +1,21 @@
 import { useEffect, useState, useCallback } from "react";
-import { apiFetch, apiPost, apiDelete } from "@/lib/api";
+import { apiFetch, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSettings } from "@/contexts/SettingsContext";
 import { usePageTitle } from "@/lib/use-page-title";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Plus, RefreshCw, Shield, CalendarPlus, X, MoreHorizontal } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Shield, CalendarPlus, X, MoreHorizontal, Mail, ChevronDown, Shuffle } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Editor { id: number; name: string; avatarUrl: string | null; login: string; }
-interface ScheduleEditor { id: number; name: string; avatarUrl: string | null; scheduleId: number; }
+interface ScheduleEditor { id: number; name: string; avatarUrl: string | null; scheduleId: number; slotType: string; }
 interface WeekendSlot { weekendStart: string; editors: ScheduleEditor[]; notes: string | null; }
 
 interface UpcomingEditor { id: number; name: string; avatarUrl: string | null; }
-interface UpcomingWeekend { weekendStart: string; editors: UpcomingEditor[]; }
+interface UpcomingWeekend { weekendStart: string; satEditors: UpcomingEditor[]; sunEditors: UpcomingEditor[]; }
 interface HolidayEntry { dutyDate: string; notes: string | null; editors: UpcomingEditor[]; }
 interface UpcomingData {
   lastWeekend: UpcomingWeekend;
@@ -68,8 +69,15 @@ function WeekendCard({ variant, weekend, currentUserId }: {
   const sat = new Date(weekend.weekendStart + "T12:00:00");
   const sun = new Date(sat); sun.setDate(sun.getDate() + 1);
   const pad = (n: number) => String(n).padStart(2, "0");
-  const isOnDuty = weekend.editors.some(e => e.id === currentUserId);
-  const isEmpty  = weekend.editors.length === 0;
+  const satEditors = weekend.satEditors ?? [];
+  const sunEditors = weekend.sunEditors ?? [];
+  const allEditors = [...satEditors, ...sunEditors];
+  const isOnDuty = allEditors.some(e => e.id === currentUserId);
+  const isEmpty   = satEditors.length === 0 && sunEditors.length === 0;
+  const sameEditors =
+    satEditors.length > 0 &&
+    satEditors.length === sunEditors.length &&
+    satEditors.every((e, i) => e.id === sunEditors[i]?.id);
   const c = variant === "current";
   const p = variant === "past";
 
@@ -126,9 +134,10 @@ function WeekendCard({ variant, weekend, currentUserId }: {
           <p className={`text-[hsl(var(--muted-foreground))] ${c ? "text-xs" : "text-[10px]"}`}>
             {p ? "Sem editor" : "A definir"}
           </p>
-        ) : (
+        ) : sameEditors ? (
+          /* Same editor(s) both days — combined view */
           <div className={`flex w-full justify-center ${c ? "flex-row gap-4" : "flex-col gap-2"}`}>
-            {weekend.editors.map(ed => (
+            {satEditors.map(ed => (
               <div key={ed.id} className="flex flex-col items-center gap-1.5">
                 <div className={c ? "ring-2 ring-[hsl(var(--primary))]/30 ring-offset-2 ring-offset-[hsl(var(--card))] rounded-full" : ""}>
                   <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={c ? 64 : 36} />
@@ -143,6 +152,39 @@ function WeekendCard({ variant, weekend, currentUserId }: {
                     </p>
                   )}
                 </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          /* Different editors per day — per-day rows */
+          <div className="flex flex-col gap-2 w-full">
+            {([
+              { label: "Sáb", editors: satEditors },
+              { label: "Dom", editors: sunEditors },
+            ] as const).map(({ label, editors: dayEditors }) => (
+              <div key={label} className="flex items-center gap-1.5">
+                <span className={`shrink-0 font-bold text-[hsl(var(--muted-foreground))] w-6 text-left ${c ? "text-[9px]" : "text-[8px]"}`}>
+                  {label}
+                </span>
+                {dayEditors.length === 0 ? (
+                  <span className={`text-[hsl(var(--muted-foreground))] ${c ? "text-[10px]" : "text-[9px]"}`}>
+                    A definir
+                  </span>
+                ) : dayEditors.map(ed => (
+                  <div key={ed.id} className="flex items-center gap-1">
+                    <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={c ? 26 : 20} />
+                    <div>
+                      <p className={`font-semibold leading-none ${c ? "text-[11px]" : "text-[10px]"}`}>
+                        {ed.name.split(" ")[0]}
+                      </p>
+                      {ed.id === currentUserId && (
+                        <p className={`font-bold text-[hsl(var(--primary))] ${c ? "text-[10px]" : "text-[9px]"}`}>
+                          você
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
@@ -167,7 +209,10 @@ function WeekendCard({ variant, weekend, currentUserId }: {
 export default function DutyPage() {
   usePageTitle("Plantões");
   const { user } = useAuth();
-  const isAdmin = ["admin", "supervisor"].includes(user?.role ?? "");
+  const { settings } = useSettings();
+  const appName = settings.company_name || "EditorPro";
+  const isAdmin      = ["admin", "supervisor"].includes(user?.role ?? "");
+  const isSupervisor = user?.role === "supervisor";
 
   // ── Admin state ──────────────────────────────────────────────────────────────
   const [year,       setYear]       = useState(new Date().getFullYear());
@@ -175,15 +220,20 @@ export default function DutyPage() {
   const [editors,    setEditors]    = useState<Editor[]>([]);
   const [loading,         setLoading]         = useState(true);
   const [month,           setMonth]           = useState(new Date().getMonth());
-  const [adding,          setAdding]          = useState<Record<string, string>>({});
-  const [generating,      setGenerating]      = useState(false);
-  const [bulkEditorIds,   setBulkEditorIds]   = useState<number[]>([]);
-  const [replaceExisting, setReplaceExisting] = useState(false);
+  const [sorteando,              setSorteando]              = useState(false);
+  const [sorteioEditorIds,       setSorteioEditorIds]       = useState<number[]>([]);
+  const [replaceExistingSorteio, setReplaceExistingSorteio] = useState(false);
   const [holidayDate,     setHolidayDate]     = useState("");
   const [holidayName,     setHolidayName]     = useState("");
   const [holidayEditorId, setHolidayEditorId] = useState("");
-  const [addingName,           setAddingName]           = useState<Record<string, string>>({});
   const [addingHoliday,        setAddingHoliday]        = useState(false);
+  const [addDropdown,    setAddDropdown]    = useState<string | null>(null);
+  const [addModal,         setAddModal]         = useState<{ iso: string } | null>(null);
+  const [addModalAdding,   setAddModalAdding]   = useState(false);
+  const [addModalSelected, setAddModalSelected] = useState<number | null>(null);
+  const [eventModal,     setEventModal]     = useState<{ iso: string } | null>(null);
+  const [eventModalName, setEventModalName] = useState("");
+  const [eventModalSaving, setEventModalSaving] = useState(false);
   const [nationalHolidays,     setNationalHolidays]     = useState<{ date: string; name: string }[]>([]);
   const [selectedHolidayDates, setSelectedHolidayDates] = useState<Set<string>>(new Set());
   const [nationalEditorId,     setNationalEditorId]     = useState("");
@@ -193,6 +243,27 @@ export default function DutyPage() {
   const [confirmReset,         setConfirmReset]         = useState(false);
   const [showMenu,             setShowMenu]             = useState(false);
   const [showTools,            setShowTools]            = useState(false);
+  const [supervisorTab,        setSupervisorTab]        = useState<"manage" | "view" | "email">("manage");
+
+  // ── Email config state ───────────────────────────────────────────────────────
+  const [emailCfg,        setEmailCfg]        = useState<{ enabled: boolean; recipients: string[]; smtpHost: string; smtpPort: number; smtpUser: string; smtpPass: string; cronDay: number; cronHour: number; cronMinute: number } | null>(null);
+  const [emailLoading,    setEmailLoading]    = useState(false);
+  const [emailSaving,     setEmailSaving]     = useState(false);
+  const [emailSending,    setEmailSending]    = useState(false);
+  const [emailPreviewing, setEmailPreviewing] = useState(false);
+  const [newEmail,        setNewEmail]        = useState("");
+  const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
+  const [emailSubTab,      setEmailSubTab]      = useState<"config" | "send" | "history">("config");
+  type LogEntry = { id: number; sentAt: string; weekStart: string; weekEnd: string; recipients: string[]; status: string; errorMessage: string | null; trigger: string; senderName: string | null };
+  const [logsData,         setLogsData]         = useState<{ logs: LogEntry[]; total: number } | null>(null);
+  const [logsLoading,      setLogsLoading]      = useState(false);
+  const [logsPage,         setLogsPage]         = useState(1);
+  const [logsStatus,       setLogsStatus]       = useState("");
+  const [logsTrigger,      setLogsTrigger]      = useState("");
+  const [logsClearing,     setLogsClearing]     = useState(false);
+  const [logsClearConfirm, setLogsClearConfirm] = useState(false);
+  const [smtpOpen,         setSmtpOpen]         = useState(false);
+  const [previewHtml,      setPreviewHtml]      = useState<string | null>(null);
 
   // ── Non-admin state ──────────────────────────────────────────────────────────
   const [upcoming,     setUpcoming]     = useState<UpcomingData | null>(null);
@@ -213,11 +284,14 @@ export default function DutyPage() {
     loadSchedule();
   }, [isAdmin, loadSchedule]);
 
-  // Fetch editors once on mount (role list doesn't change per month)
+  // Fetch editors once on mount
   useEffect(() => {
     if (!isAdmin) return;
     apiFetch<(Editor & { role: string; status: string })[]>("/api/users")
-      .then(all => setEditors(all.filter(u => u.role === "editor" && u.status === "active")))
+      .then(all => {
+        const active = all.filter(u => u.role === "editor" && u.status === "active");
+        setEditors(active);
+      })
       .catch(() => {});
   }, [isAdmin]);
 
@@ -231,27 +305,52 @@ export default function DutyPage() {
   }, []);
 
   useEffect(() => {
-    if (isAdmin) return;
+    if (isAdmin && !isSupervisor) return;
     loadUpcoming();
-  }, [isAdmin, loadUpcoming]);
+  }, [isAdmin, isSupervisor, loadUpcoming]);
+
+  // Refresh upcoming whenever supervisor switches to the "Editores" tab
+  useEffect(() => {
+    if (!isSupervisor || supervisorTab !== "view") return;
+    loadUpcoming();
+  }, [isSupervisor, supervisorTab, loadUpcoming]);
+
+  useEffect(() => {
+    if (!isSupervisor || supervisorTab !== "email" || emailSubTab !== "history" || logsData !== null || logsLoading) return;
+    setLogsLoading(true);
+    apiFetch<{ logs: LogEntry[]; total: number }>("/api/duty/email-logs?page=1&limit=20")
+      .then(setLogsData).catch(() => toast.error("Erro ao carregar histórico"))
+      .finally(() => setLogsLoading(false));
+  }, [isSupervisor, supervisorTab, emailSubTab, logsData, logsLoading]);
+
+  useEffect(() => {
+    if (!isSupervisor || supervisorTab !== "email" || emailCfg) return;
+    setEmailLoading(true);
+    apiFetch<{ enabled: boolean; recipients: string[]; smtpHost: string; smtpPort: number; smtpUser: string; smtpPass: string; cronDay: number; cronHour: number; cronMinute: number }>("/api/duty/email-config")
+      .then(setEmailCfg).catch(() => toast.error("Erro ao carregar config de email"))
+      .finally(() => setEmailLoading(false));
+  }, [isSupervisor, supervisorTab, emailCfg]);
 
   // ── Admin actions ────────────────────────────────────────────────────────────
-  const toggleBulkEditor = (id: number) =>
-    setBulkEditorIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleSorteioEditor = (id: number) =>
+    setSorteioEditorIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id)
+        : prev.length < 2 ? [...prev, id] : prev
+    );
 
-  const generate = async () => {
-    if (bulkEditorIds.length === 0) { toast.error("Selecione ao menos um editor"); return; }
-    setGenerating(true);
+  const sortear = async () => {
+    if (sorteioEditorIds.length !== 2) { toast.error("Selecione exatamente 2 editores"); return; }
+    setSorteando(true);
     try {
-      const { weeks } = await apiPost<{ weeks: number; entries: number }>("/api/duty/bulk", {
-        year, editorIds: bulkEditorIds, replaceExisting,
+      const { weeks } = await apiPost<{ weeks: number; entries: number }>("/api/duty/sorteio", {
+        year, editorIds: sorteioEditorIds, replaceExisting: replaceExistingSorteio,
       });
-      toast.success(`Escala gerada: ${weeks} fins de semana`);
+      toast.success(`Sorteio realizado: ${weeks} fins de semana escalados`);
       loadSchedule(true);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao gerar escala");
+      toast.error(err instanceof Error ? err.message : "Erro ao realizar sorteio");
     } finally {
-      setGenerating(false);
+      setSorteando(false);
     }
   };
 
@@ -284,42 +383,30 @@ export default function DutyPage() {
     }
   };
 
-  const addEditor = async (date: string) => {
-    const editorIdStr = adding[date];
-    if (!editorIdStr) return;
-    const editorId = parseInt(editorIdStr, 10);
+  const addEditor = async (iso: string, editorId: number, slotType: "normal" | "extra", notes: string | null = null) => {
     const editor = editors.find(e => e.id === editorId);
     if (!editor) return;
-    const notes = addingName[date] || null;
 
     const prevSchedule = schedule;
 
-    // Close the inline form immediately
-    setAdding(prev => { const n = { ...prev }; delete n[date]; return n; });
-    setAddingName(prev => { const n = { ...prev }; delete n[date]; return n; });
-
     const TEMP_ID = -Date.now();
-    const newEntry: ScheduleEditor = { id: editorId, name: editor.name, avatarUrl: editor.avatarUrl, scheduleId: TEMP_ID };
+    const newEntry: ScheduleEditor = { id: editorId, name: editor.name, avatarUrl: editor.avatarUrl, scheduleId: TEMP_ID, slotType };
 
     setSchedule(s => {
-      const exists = s.some(slot => slot.weekendStart === date);
+      const exists = s.some(slot => slot.weekendStart === iso);
       if (exists) {
         return s.map(slot =>
-          slot.weekendStart === date
+          slot.weekendStart === iso
             ? { ...slot, notes: notes ?? slot.notes, editors: [...slot.editors, newEntry] }
             : slot
         );
       }
-      return [...s, { weekendStart: date, notes, editors: [newEntry] }];
+      return [...s, { weekendStart: iso, notes, editors: [newEntry] }];
     });
 
     try {
-      const row = await apiPost<{ id: number } | null>("/api/duty", { weekendStart: date, editorId, notes });
-      if (!row) {
-        // onConflictDoNothing fired — entry already in DB. Reload to sync state.
-        loadSchedule(true);
-        return;
-      }
+      const row = await apiPost<{ id: number; slotType: string } | null>("/api/duty", { weekendStart: iso, editorId, slotType, notes });
+      if (!row) { loadSchedule(true); return; }
       setSchedule(s => s.map(slot => ({
         ...slot,
         editors: slot.editors.map(e => e.scheduleId === TEMP_ID ? { ...e, scheduleId: row.id } : e),
@@ -327,6 +414,24 @@ export default function DutyPage() {
     } catch {
       setSchedule(prevSchedule);
       toast.error("Erro ao adicionar editor");
+    }
+  };
+
+  const createEvent = async (iso: string, name: string) => {
+    const prevSchedule = schedule;
+    setEventModal(null);
+    setEventModalName("");
+    setSchedule(s => {
+      const exists = s.some(slot => slot.weekendStart === iso);
+      if (exists) return s.map(slot => slot.weekendStart === iso ? { ...slot, notes: name || null } : slot);
+      return [...s, { weekendStart: iso, notes: name || null, editors: [] }];
+    });
+    try {
+      await apiPost("/api/duty", { weekendStart: iso, notes: name || null });
+      loadSchedule(true);
+    } catch {
+      setSchedule(prevSchedule);
+      toast.error("Erro ao criar evento");
     }
   };
 
@@ -394,12 +499,38 @@ export default function DutyPage() {
       const d = new Date(iso + "T12:00:00");
       return `${["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][d.getDay()]}, ${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
     };
+
+    // Open popup immediately so browser doesn't block it, show loading state
+    const w = window.open("", "_blank");
+    if (!w) { toast.error("Popup bloqueado pelo navegador"); return; }
+    w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+      <title>Faturamento de Plantões da Edição</title>
+      <style>body{font-family:'Segoe UI',Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fff;color:#999;font-size:14px}</style>
+      </head><body>Gerando faturamento…</body></html>`);
+    w.document.close();
+
     try {
-      const data = await apiFetch<WeekendSlot[]>(`/api/duty?year=${weekStart.slice(0, 4)}`);
-      const slots = data.filter(s => s.weekendStart >= weekStart && s.weekendStart <= weekEnd);
+      // Fetch only the month(s) the week touches — not the entire year
+      const startY = parseInt(weekStart.slice(0, 4), 10);
+      const startM = parseInt(weekStart.slice(5, 7), 10);
+      const endY   = parseInt(weekEnd.slice(0, 4), 10);
+      const endM   = parseInt(weekEnd.slice(5, 7), 10);
+
+      let raw: WeekendSlot[];
+      if (startY === endY && startM === endM) {
+        raw = await apiFetch<WeekendSlot[]>(`/api/duty?year=${startY}&month=${startM}`);
+      } else {
+        const [d1, d2] = await Promise.all([
+          apiFetch<WeekendSlot[]>(`/api/duty?year=${startY}&month=${startM}`),
+          apiFetch<WeekendSlot[]>(`/api/duty?year=${endY}&month=${endM}`),
+        ]);
+        raw = [...d1, ...d2];
+      }
+
+      const slots = raw.filter(s => s.weekendStart >= weekStart && s.weekendStart <= weekEnd);
       const editorMap = new Map<number, { name: string; days: string[] }>();
       for (const slot of slots) {
-        for (const ed of slot.editors) {
+        for (const ed of (slot.editors ?? [])) {
           if (!editorMap.has(ed.id)) editorMap.set(ed.id, { name: ed.name, days: [] });
           editorMap.get(ed.id)!.days.push(slot.weekendStart);
         }
@@ -411,15 +542,15 @@ export default function DutyPage() {
         : entries.map(({ name, days }) =>
             `<tr>
               <td>${name}</td>
-              <td style="text-align:center;font-weight:700">${days.length}</td>
               <td style="color:#555;font-size:12px">${days.map(fmt).join("<br>")}</td>
+              <td style="text-align:right;font-weight:700">${days.length}</td>
             </tr>`
           ).join("");
-      const w = window.open("", "_blank");
-      if (!w) { toast.error("Popup bloqueado pelo navegador"); return; }
+
+      w.document.open();
       w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head>
         <meta charset="utf-8">
-        <title>Orçamento de Plantões — ${fmt(weekStart).slice(4)} a ${fmt(weekEnd).slice(4)}</title>
+        <title>${appName} — Faturamento de Plantões da Edição — ${fmt(weekStart).slice(4)} a ${fmt(weekEnd).slice(4)}</title>
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; }
           body { font-family: 'Segoe UI', Arial, sans-serif; background: #fff; color: #111; padding: 48px 56px; max-width: 700px; margin: 0 auto; }
@@ -438,23 +569,24 @@ export default function DutyPage() {
           .footer { margin-top: 48px; font-size: 11px; color: #bbb; text-align: center; }
         </style>
       </head><body>
-        <div class="logo">JobPro</div>
-        <h1>Orçamento de Plantões</h1>
+        <div class="logo">${appName}</div>
+        <h1>Faturamento de Plantões da Edição</h1>
         <p class="period">Semana de ${fmt(weekStart)} a ${fmt(weekEnd)}</p>
         <hr class="divider">
         <table>
-          <thead><tr><th>Editor</th><th>Dias</th><th>Datas</th></tr></thead>
+          <thead><tr><th>Editor</th><th>Datas</th><th style="text-align:right">Dias</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
         <div class="total-row">
           <span class="total-label">Total de plantões</span>
           <span class="total-value">${total}</span>
         </div>
-        <div class="footer">Gerado em ${new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"long", year:"numeric" })} — JobPro Escala de Plantões</div>
+        <div class="footer">Gerado em ${new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"long", year:"numeric" })} — ${appName} Escala de Plantões</div>
       </body></html>`);
       w.document.close();
     } catch {
-      toast.error("Erro ao gerar orçamento");
+      w.close();
+      toast.error("Erro ao gerar faturamento");
     }
   };
 
@@ -517,7 +649,8 @@ export default function DutyPage() {
                 </p>
                 <div className="rounded-2xl border border-amber-500/30 bg-amber-50/30 dark:bg-amber-900/10 overflow-hidden">
                   {thisWeekHols.map((h, i) => {
-                    const isOnDuty = h.editors.some(e => e.id === user?.id);
+                    const hEditors = h.editors ?? [];
+                    const isOnDuty = hEditors.some(e => e.id === user?.id);
                     return (
                       <div
                         key={h.dutyDate}
@@ -534,9 +667,9 @@ export default function DutyPage() {
                           )}
                         </div>
                         <div className="flex-1 flex flex-wrap items-center gap-2">
-                          {h.editors.length === 0 ? (
+                          {hEditors.length === 0 ? (
                             <span className="text-xs text-[hsl(var(--muted-foreground))]">Sem editor escalado</span>
-                          ) : h.editors.map(ed => (
+                          ) : hEditors.map(ed => (
                             <div key={ed.id} className="flex items-center gap-1.5">
                               <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={22} />
                               <span className="text-sm font-medium">{ed.name.split(" ")[0]}</span>
@@ -553,6 +686,568 @@ export default function DutyPage() {
                   })}
                 </div>
               </div>
+              );
+            })()}
+          </div>
+        ) : (
+          <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
+            Não foi possível carregar a escala.
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Supervisor "E-mail" tab ──────────────────────────────────────────────────
+  if (isSupervisor && supervisorTab === "email") {
+    const recentWeeks = (() => {
+      const t = new Date(); const dow = t.getDay();
+      const lastMon = new Date(t);
+      lastMon.setDate(t.getDate() - (dow === 0 ? 6 : dow - 1) - 7);
+      lastMon.setHours(0, 0, 0, 0);
+      const p2 = (n: number) => String(n).padStart(2, "0");
+      return Array.from({ length: 12 }, (_, i) => {
+        const mon = new Date(lastMon.getTime() - i * 7 * 86400000);
+        const sun = new Date(mon.getTime() + 6 * 86400000);
+        return {
+          weekStart: mon.toISOString().split("T")[0],
+          weekEnd:   sun.toISOString().split("T")[0],
+          label: `${p2(mon.getDate())}/${p2(mon.getMonth()+1)} — ${p2(sun.getDate())}/${p2(sun.getMonth()+1)}/${sun.getFullYear()}`,
+          isLast: i === 0,
+        };
+      });
+    })();
+    const selWeek = recentWeeks[selectedWeekIdx] ?? recentWeeks[0];
+    const DAYS_PT = ["Domingo","Segunda-feira","Terça-feira","Quarta-feira","Quinta-feira","Sexta-feira","Sábado"];
+
+    const autoSave = async (cfg: NonNullable<typeof emailCfg>) => {
+      setEmailSaving(true);
+      try {
+        const updated = await apiPut<typeof emailCfg>("/api/duty/email-config", cfg);
+        setEmailCfg(updated);
+      } catch { toast.error("Erro ao salvar configurações"); }
+      finally { setEmailSaving(false); }
+    };
+
+    const sendNow = async () => {
+      if (!selWeek) return;
+      setEmailSending(true);
+      try {
+        await apiPost("/api/duty/email-send", { weekStart: selWeek.weekStart, weekEnd: selWeek.weekEnd });
+        toast.success("Relatório enviado!");
+        setLogsData(null);
+      } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "Erro ao enviar"); }
+      finally { setEmailSending(false); }
+    };
+
+    const previewEmail = async () => {
+      if (!selWeek) return;
+      setEmailPreviewing(true);
+      try {
+        const res = await fetch("/api/duty/email-preview", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ weekStart: selWeek.weekStart, weekEnd: selWeek.weekEnd }),
+          credentials: "include",
+        });
+        const html = await res.text();
+        setPreviewHtml(html);
+      } catch { toast.error("Erro ao gerar prévia"); }
+      finally { setEmailPreviewing(false); }
+    };
+
+    const loadLogs = (page: number, status: string, trigger: string) => {
+      setLogsLoading(true);
+      const q = new URLSearchParams({ page: String(page), limit: "20" });
+      if (status)  q.set("status",  status);
+      if (trigger) q.set("trigger", trigger);
+      apiFetch<{ logs: LogEntry[]; total: number }>(`/api/duty/email-logs?${q}`)
+        .then(data => { setLogsData(data); setLogsPage(page); })
+        .catch(() => toast.error("Erro ao carregar histórico"))
+        .finally(() => setLogsLoading(false));
+    };
+
+    const clearLogs = async () => {
+      setLogsClearing(true);
+      try {
+        await apiDelete("/api/duty/email-logs");
+        setLogsData({ logs: [], total: 0 });
+        setLogsClearConfirm(false);
+        toast.success("Histórico limpo");
+      } catch { toast.error("Erro ao limpar histórico"); }
+      finally { setLogsClearing(false); }
+    };
+
+    const addEmail = () => {
+      const v = newEmail.trim().toLowerCase();
+      if (!v || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { toast.error("Email inválido"); return; }
+      if (!emailCfg || emailCfg.recipients.includes(v)) { toast.error("Email já cadastrado"); return; }
+      const next = { ...emailCfg, recipients: [...emailCfg.recipients, v] };
+      setEmailCfg(next);
+      setNewEmail("");
+      autoSave(next);
+    };
+
+    const inputCls = "h-9 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]";
+    const selectCls = "h-9 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] cursor-pointer";
+
+    const totalPages = logsData ? Math.max(1, Math.ceil(logsData.total / 20)) : 1;
+
+    return (
+      <div className="flex flex-col h-full overflow-y-auto bg-[hsl(var(--background))]">
+
+      {/* Email preview modal */}
+      {previewHtml !== null && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm" onClick={() => setPreviewHtml(null)}>
+          <div className="flex items-center justify-between px-4 py-2 bg-[hsl(var(--background))] border-b border-[hsl(var(--border))] shrink-0"
+            onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-semibold">Pré-visualização do e-mail</p>
+            <button onClick={() => setPreviewHtml(null)}
+              className="h-8 w-8 rounded-md flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden p-4" onClick={e => e.stopPropagation()}>
+            <iframe
+              srcDoc={previewHtml}
+              className="w-full h-full rounded-xl border border-[hsl(var(--border))] bg-white"
+              sandbox="allow-same-origin"
+              title="Pré-visualização do e-mail"
+            />
+          </div>
+        </div>
+      )}
+        {/* Header + tabs */}
+        <div className="px-4 pt-4 pb-0 flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-[hsl(var(--primary))]" />
+            <h1 className="text-lg font-bold">Escala de Plantões</h1>
+          </div>
+
+          {/* Parent tab bar */}
+          <div className="flex border-b border-[hsl(var(--border))]">
+            {(["manage","view","email"] as const).map(tab => (
+              <button key={tab} onClick={() => setSupervisorTab(tab)}
+                className={`px-4 pb-2 text-sm font-medium border-b-2 transition-colors ${supervisorTab === tab ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]" : "border-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}>
+                {tab === "manage" ? "Gerenciar" : tab === "view" ? "Editores" : "E-mail"}
+              </button>
+            ))}
+          </div>
+
+          {/* Sub-tab pill switcher */}
+          <div className="flex gap-0.5 p-1 bg-[hsl(var(--muted))] rounded-xl self-start mt-1">
+            {(["config","send","history"] as const).map(st => (
+              <button key={st} onClick={() => setEmailSubTab(st)}
+                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  emailSubTab === st
+                    ? "bg-[hsl(var(--background))] text-[hsl(var(--foreground))] shadow-sm"
+                    : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                }`}>
+                {st === "config" ? "Configurações" : st === "send" ? "Enviar" : "Histórico"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Sub-tab content */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {emailLoading ? (
+            <div className="flex items-center justify-center py-20 text-sm text-[hsl(var(--muted-foreground))]">Carregando…</div>
+          ) : emailSubTab === "config" ? (
+            emailCfg && (
+              <div className="flex flex-col gap-4 max-w-lg">
+
+                {/* Envio automático */}
+                <div className={`rounded-xl border bg-[hsl(var(--card))] p-4 flex flex-col gap-3 transition-colors ${emailCfg.enabled ? "border-[hsl(var(--primary))]/40" : "border-[hsl(var(--border))]"}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold">Envio automático</p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">Relatório da semana anterior enviado automaticamente</p>
+                    </div>
+                    <button onClick={() => { const next = { ...emailCfg, enabled: !emailCfg.enabled }; setEmailCfg(next); autoSave(next); }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors ${emailCfg.enabled ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted))]"}`}>
+                      <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${emailCfg.enabled ? "translate-x-5" : "translate-x-0"}`} />
+                    </button>
+                  </div>
+                  {emailCfg.enabled && (
+                    <div className="flex flex-col gap-2 pt-2 border-t border-[hsl(var(--border))]">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Agendamento · Brasília (UTC−3)</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <select value={emailCfg.cronDay}
+                          onChange={e => { const next = { ...emailCfg, cronDay: parseInt(e.target.value, 10) }; setEmailCfg(next); autoSave(next); }}
+                          className={selectCls}>
+                          {DAYS_PT.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                        </select>
+                        <span className="text-xs text-[hsl(var(--muted-foreground))]">às</span>
+                        <select value={emailCfg.cronHour}
+                          onChange={e => { const next = { ...emailCfg, cronHour: parseInt(e.target.value, 10) }; setEmailCfg(next); autoSave(next); }}
+                          className={`${selectCls} w-20`}>
+                          {Array.from({ length: 24 }, (_, h) => (
+                            <option key={h} value={h}>{String(h).padStart(2,"0")}h</option>
+                          ))}
+                        </select>
+                        <select value={emailCfg.cronMinute}
+                          onChange={e => { const next = { ...emailCfg, cronMinute: parseInt(e.target.value, 10) }; setEmailCfg(next); autoSave(next); }}
+                          className={`${selectCls} w-20`}>
+                          {Array.from({ length: 60 }, (_, m) => (
+                            <option key={m} value={m}>{String(m).padStart(2,"0")}min</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* SMTP */}
+                <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] overflow-hidden">
+                  <button onClick={() => setSmtpOpen(o => !o)}
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-[hsl(var(--muted))]/40 transition-colors">
+                    <div className="flex items-center gap-2">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Servidor de saída (SMTP)</p>
+                      {emailCfg.smtpUser && !smtpOpen && (
+                        <span className="text-[11px] text-[hsl(var(--muted-foreground))] font-normal normal-case tracking-normal">
+                          · {emailCfg.smtpUser}
+                        </span>
+                      )}
+                    </div>
+                    <ChevronDown className={`h-4 w-4 text-[hsl(var(--muted-foreground))] transition-transform ${smtpOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  {smtpOpen && (
+                    <div className="px-4 pb-4 flex flex-col gap-3 border-t border-[hsl(var(--border))]">
+                      <div className="flex gap-2 pt-3">
+                        <input value={emailCfg.smtpHost}
+                          onChange={e => setEmailCfg(c => c ? { ...c, smtpHost: e.target.value } : c)}
+                          onBlur={e => autoSave({ ...emailCfg, smtpHost: e.target.value })}
+                          placeholder="mail.seudominio.com.br"
+                          className={`${inputCls} flex-1`} />
+                        <input value={emailCfg.smtpPort}
+                          onChange={e => setEmailCfg(c => c ? { ...c, smtpPort: parseInt(e.target.value, 10) || 465 } : c)}
+                          onBlur={e => autoSave({ ...emailCfg, smtpPort: parseInt(e.target.value, 10) || 465 })}
+                          type="number" placeholder="465" className={`${inputCls} w-20`} />
+                      </div>
+                      <input value={emailCfg.smtpUser}
+                        onChange={e => setEmailCfg(c => c ? { ...c, smtpUser: e.target.value } : c)}
+                        onBlur={e => autoSave({ ...emailCfg, smtpUser: e.target.value })}
+                        placeholder="email@seudominio.com.br" className={`${inputCls} w-full`} />
+                      <input value={emailCfg.smtpPass}
+                        onChange={e => setEmailCfg(c => c ? { ...c, smtpPass: e.target.value } : c)}
+                        onBlur={e => autoSave({ ...emailCfg, smtpPass: e.target.value })}
+                        type="password" placeholder="Senha do e-mail" className={`${inputCls} w-full`} />
+                      <p className="text-[11px] text-[hsl(var(--muted-foreground))]">
+                        Porta <b>465</b> (SSL) ou <b>587</b> (TLS) — credenciais do cPanel
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Destinatários */}
+                <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Destinatários</p>
+                    {emailCfg.recipients.length > 0 && (
+                      <span className="text-[11px] tabular-nums text-[hsl(var(--muted-foreground))]">
+                        {emailCfg.recipients.length} cadastrado{emailCfg.recipients.length > 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input value={newEmail} onChange={e => setNewEmail(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && addEmail()}
+                      placeholder="email@exemplo.com" className={`${inputCls} flex-1`} />
+                    <button onClick={addEmail}
+                      className="h-9 px-3 rounded-lg bg-[hsl(var(--primary))] text-white hover:opacity-90 shrink-0">
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {emailCfg.recipients.length === 0 ? (
+                    <p className="text-xs text-[hsl(var(--muted-foreground))] italic text-center py-2">Nenhum destinatário cadastrado</p>
+                  ) : (
+                    <div className="flex flex-col divide-y divide-[hsl(var(--border))]">
+                      {emailCfg.recipients.map((r, i) => (
+                        <div key={r} className="flex items-center justify-between py-2">
+                          <div className="flex items-center gap-2.5">
+                            <div className="h-7 w-7 rounded-full bg-[hsl(var(--muted))] flex items-center justify-center shrink-0">
+                              <span className="text-[10px] font-bold uppercase text-[hsl(var(--muted-foreground))]">{r[0]}</span>
+                            </div>
+                            <span className="text-sm">{r}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {i === 0 && <span className="text-[9px] font-bold uppercase tracking-wide text-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10 px-1.5 py-0.5 rounded-full">principal</span>}
+                            <button onClick={() => { const next = { ...emailCfg, recipients: emailCfg.recipients.filter(x => x !== r) }; setEmailCfg(next); autoSave(next); }}
+                              className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] transition-colors p-1">
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {emailSaving && (
+                  <p className="text-[11px] text-[hsl(var(--muted-foreground))] text-center">Salvando…</p>
+                )}
+              </div>
+            )
+          ) : emailSubTab === "send" ? (
+            emailCfg && (
+              <div className="flex flex-col gap-4 max-w-lg">
+                <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 flex flex-col gap-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Período do faturamento</p>
+                  <select value={selectedWeekIdx}
+                    onChange={e => setSelectedWeekIdx(parseInt(e.target.value, 10))}
+                    className={`${selectCls} w-full`}>
+                    {recentWeeks.map((w, i) => (
+                      <option key={w.weekStart} value={i}>
+                        {w.label}{w.isLast ? " — semana passada" : ""}
+                      </option>
+                    ))}
+                  </select>
+
+                  {emailCfg.recipients.length === 0 ? (
+                    <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2.5">
+                      <p className="text-xs text-amber-600 font-medium">Nenhum destinatário cadastrado — configure na aba Configurações</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg bg-[hsl(var(--muted))]/50 px-3 py-2 flex items-center gap-2">
+                      <Mail className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" />
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
+                        {emailCfg.recipients.join(" · ")}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={previewEmail} disabled={emailPreviewing}
+                      className="flex-1 h-10 rounded-lg border border-[hsl(var(--border))] text-sm font-semibold hover:bg-[hsl(var(--muted))] disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                      {emailPreviewing ? "Gerando…" : "Pré-visualizar"}
+                    </button>
+                    <button onClick={sendNow} disabled={emailSending || emailCfg.recipients.length === 0}
+                      className="flex-1 h-10 rounded-lg bg-[hsl(var(--primary))] text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2">
+                      <Mail className="h-4 w-4" />
+                      {emailSending ? "Enviando…" : "Enviar agora"}
+                    </button>
+                  </div>
+                </div>
+
+                {emailCfg.enabled && (
+                  <div className="rounded-xl border border-[hsl(var(--border))]/60 bg-[hsl(var(--card))] px-4 py-3 flex items-center gap-3">
+                    <div className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                      Envio automático ativo — toda <b>{DAYS_PT[emailCfg.cronDay]}</b> às <b>{String(emailCfg.cronHour).padStart(2,"0")}:{String(emailCfg.cronMinute).padStart(2,"0")}</b>
+                    </p>
+                  </div>
+                )}
+              </div>
+            )
+          ) : (
+            /* ── Histórico ── */
+            <div className="flex flex-col gap-3 max-w-2xl">
+
+              {/* Filtros + ações */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <select value={logsStatus}
+                  onChange={e => { setLogsStatus(e.target.value); loadLogs(1, e.target.value, logsTrigger); }}
+                  className={`${selectCls} min-w-[120px]`}>
+                  <option value="">Todos status</option>
+                  <option value="sent">Enviado</option>
+                  <option value="failed">Falhou</option>
+                </select>
+                <select value={logsTrigger}
+                  onChange={e => { setLogsTrigger(e.target.value); loadLogs(1, logsStatus, e.target.value); }}
+                  className={`${selectCls} min-w-[130px]`}>
+                  <option value="">Todos os tipos</option>
+                  <option value="manual">Manual</option>
+                  <option value="auto">Automático</option>
+                </select>
+                <div className="flex-1" />
+                <button onClick={() => loadLogs(logsPage, logsStatus, logsTrigger)} disabled={logsLoading}
+                  className="h-9 px-3 rounded-lg border border-[hsl(var(--border))] text-xs font-medium hover:bg-[hsl(var(--muted))] disabled:opacity-50 flex items-center gap-1.5">
+                  <RefreshCw className={`h-3.5 w-3.5 ${logsLoading ? "animate-spin" : ""}`} />
+                  Atualizar
+                </button>
+                {!logsClearConfirm ? (
+                  <button onClick={() => setLogsClearConfirm(true)}
+                    className="h-9 px-3 rounded-lg border border-[hsl(var(--border))] text-xs font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] hover:border-[hsl(var(--destructive))]/40 transition-colors">
+                    Limpar tudo
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-[hsl(var(--muted-foreground))]">Confirmar?</span>
+                    <button onClick={clearLogs} disabled={logsClearing}
+                      className="h-9 px-3 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 disabled:opacity-50">
+                      {logsClearing ? "…" : "Sim"}
+                    </button>
+                    <button onClick={() => setLogsClearConfirm(false)}
+                      className="h-9 px-3 rounded-lg border border-[hsl(var(--border))] text-xs hover:bg-[hsl(var(--muted))]">
+                      Não
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Lista */}
+              {logsLoading ? (
+                <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">Carregando…</div>
+              ) : logsData === null ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-2 text-[hsl(var(--muted-foreground))]">
+                  <Mail className="h-8 w-8 opacity-20" />
+                  <p className="text-sm">Nenhum dado carregado</p>
+                </div>
+              ) : logsData.logs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-2 text-[hsl(var(--muted-foreground))]">
+                  <Mail className="h-8 w-8 opacity-20" />
+                  <p className="text-sm">Nenhum envio registrado</p>
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] divide-y divide-[hsl(var(--border))] overflow-hidden">
+                    {logsData.logs.map(log => {
+                      const d = new Date(log.sentAt);
+                      const p2 = (n: number) => String(n).padStart(2, "0");
+                      const dateFmt = `${p2(d.getDate())}/${p2(d.getMonth()+1)}/${d.getFullYear()} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+                      const s = new Date(log.weekStart + "T12:00:00");
+                      const e = new Date(log.weekEnd   + "T12:00:00");
+                      const weekFmt = `${p2(s.getDate())}/${p2(s.getMonth()+1)} — ${p2(e.getDate())}/${p2(e.getMonth()+1)}/${e.getFullYear()}`;
+                      return (
+                        <div key={log.id} className="px-4 py-3 flex items-start gap-3 hover:bg-[hsl(var(--muted))]/30 transition-colors">
+                          <div className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${log.status === "sent" ? "bg-emerald-500" : "bg-red-500"}`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-semibold tabular-nums">{dateFmt}</span>
+                              <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full ${
+                                log.status === "sent" ? "bg-emerald-500/10 text-emerald-600" : "bg-red-500/10 text-red-600"
+                              }`}>
+                                {log.status === "sent" ? "Enviado" : "Falhou"}
+                              </span>
+                              <span className="text-[10px] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/60 px-1.5 py-0.5 rounded-full">
+                                {log.trigger === "auto" ? "automático" : "manual"}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-[hsl(var(--muted-foreground))] mt-0.5">
+                              Semana {weekFmt}{log.senderName ? ` · ${log.senderName}` : ""}
+                            </p>
+                            <p className="text-[11px] text-[hsl(var(--muted-foreground))] truncate">
+                              {(log.recipients ?? []).join(", ")}
+                            </p>
+                            {log.errorMessage && (
+                              <p className="text-[11px] text-red-500 mt-1 break-words leading-relaxed">{log.errorMessage}</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Paginação */}
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-[hsl(var(--muted-foreground))] tabular-nums">
+                      {logsData.total} registro{logsData.total !== 1 ? "s" : ""} · página {logsPage} de {totalPages}
+                    </p>
+                    <div className="flex gap-1">
+                      <button onClick={() => loadLogs(logsPage - 1, logsStatus, logsTrigger)}
+                        disabled={logsPage <= 1 || logsLoading}
+                        className="h-8 w-8 rounded-lg border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] disabled:opacity-40 transition-colors">
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => loadLogs(logsPage + 1, logsStatus, logsTrigger)}
+                        disabled={logsPage >= totalPages || logsLoading}
+                        className="h-8 w-8 rounded-lg border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] disabled:opacity-40 transition-colors">
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Supervisor "Editores" tab ────────────────────────────────────────────────
+  if (isSupervisor && supervisorTab === "view") {
+    return (
+      <div className="flex flex-col h-full overflow-y-auto p-4 gap-5 bg-[hsl(var(--background))]">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-[hsl(var(--primary))]" />
+            <h1 className="text-lg font-bold">Escala de Plantões</h1>
+          </div>
+          <button onClick={loadUpcoming} disabled={upcomingLoad}
+            className="h-8 w-8 rounded-md border border-[hsl(var(--border))] flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors disabled:opacity-50">
+            <RefreshCw className={`h-4 w-4 ${upcomingLoad ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+
+        <div className="flex border-b border-[hsl(var(--border))] -mt-2">
+          {(["manage","view","email"] as const).map(tab => (
+            <button key={tab} onClick={() => setSupervisorTab(tab)}
+              className={`px-4 pb-2 text-sm font-medium border-b-2 transition-colors ${supervisorTab === tab ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]" : "border-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}>
+              {tab === "manage" ? "Gerenciar" : tab === "view" ? "Editores" : "E-mail"}
+            </button>
+          ))}
+        </div>
+
+        {upcomingLoad ? (
+          <div className="flex items-center justify-center py-16 text-sm text-[hsl(var(--muted-foreground))]">
+            Carregando…
+          </div>
+        ) : upcoming ? (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+              <WeekendCard variant="past"    weekend={upcoming.lastWeekend} currentUserId={user?.id} />
+              <WeekendCard variant="current" weekend={upcoming.thisWeekend} currentUserId={user?.id} />
+              <WeekendCard variant="next"    weekend={upcoming.nextWeekend} currentUserId={user?.id} />
+            </div>
+            {(() => {
+              const _t = new Date();
+              const _dow = _t.getDay();
+              const _mon = new Date(_t); _mon.setDate(_t.getDate() + (_dow === 0 ? -6 : 1 - _dow));
+              const _sun = new Date(_mon); _sun.setDate(_mon.getDate() + 6);
+              const wkStart = _mon.toISOString().split("T")[0];
+              const wkEnd   = _sun.toISOString().split("T")[0];
+              const thisWeekHols = (upcoming.upcomingHolidays ?? []).filter(
+                h => h.dutyDate >= wkStart && h.dutyDate <= wkEnd
+              );
+              if (thisWeekHols.length === 0) return null;
+              return (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))] mb-2 px-1">
+                    Feriados / Dias especiais
+                  </p>
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-50/30 dark:bg-amber-900/10 overflow-hidden">
+                    {thisWeekHols.map((h, i) => {
+                      const hEditors = h.editors ?? [];
+                      return (
+                      <div key={h.dutyDate}
+                        className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? "border-t border-amber-500/20" : ""}`}>
+                        <div className="shrink-0">
+                          <span className="text-sm font-bold text-amber-700 dark:text-amber-400 tabular-nums">
+                            {fmtSingleDate(h.dutyDate)}
+                          </span>
+                          {isToday(h.dutyDate) && (
+                            <span className="ml-2 text-[10px] font-bold text-amber-600 uppercase tracking-wide">hoje</span>
+                          )}
+                          {h.notes && (
+                            <p className="text-[10px] text-amber-600/80 dark:text-amber-400/70 font-medium mt-0.5">{h.notes}</p>
+                          )}
+                        </div>
+                        <div className="flex-1 flex flex-wrap items-center gap-2">
+                          {hEditors.length === 0 ? (
+                            <span className="text-xs text-[hsl(var(--muted-foreground))]">Sem editor escalado</span>
+                          ) : hEditors.map(ed => (
+                            <div key={ed.id} className="flex items-center gap-1.5">
+                              <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={22} />
+                              <span className="text-sm font-medium">{ed.name.split(" ")[0]}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })()}
           </div>
@@ -610,6 +1305,18 @@ export default function DutyPage() {
         </button>
       </div>
 
+      {/* Supervisor tab bar */}
+      {isSupervisor && (
+        <div className="flex border-b border-[hsl(var(--border))] -mt-2">
+          {(["manage","view","email"] as const).map(tab => (
+            <button key={tab} onClick={() => setSupervisorTab(tab)}
+              className={`px-4 pb-2 text-sm font-medium border-b-2 transition-colors ${supervisorTab === tab ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]" : "border-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}>
+              {tab === "manage" ? "Gerenciar" : tab === "view" ? "Editores" : "E-mail"}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Tools toggle */}
       <div
         role="button"
@@ -618,7 +1325,7 @@ export default function DutyPage() {
         onKeyDown={e => e.key === "Enter" && setShowTools(v => !v)}
         className="flex items-center justify-between cursor-pointer select-none group">
         <span className="text-xs font-semibold text-[hsl(var(--muted-foreground))] group-hover:text-[hsl(var(--foreground))] transition-colors">
-          Auto gerar / Feriados
+          Sorteio / Feriados
         </span>
         <div className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ${
           showTools ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted))]"
@@ -634,35 +1341,71 @@ export default function DutyPage() {
         <div className="overflow-hidden">
           <div className="flex flex-col gap-5 pb-0">
 
-            {/* Auto-gerar escala */}
+            {/* Sorteio de Plantonistas */}
             <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3 space-y-2.5">
-              <p className="text-xs font-semibold">Auto gerar — {year}</p>
+              <div>
+                <p className="text-xs font-semibold flex items-center gap-1.5">
+                  <Shuffle className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
+                  Sorteio de Plantonistas — {year}
+                </p>
+                <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5">
+                  Selecione <strong>2 editores</strong>. Eles se alternarão: cada um ocupa sábado e domingo em semanas alternadas.
+                </p>
+              </div>
+
+              {/* Seleção de editores — máximo 2 */}
               <div className="flex flex-wrap gap-1.5">
                 {editors.map(e => {
-                  const sel = bulkEditorIds.includes(e.id);
+                  const idx = sorteioEditorIds.indexOf(e.id);
+                  const sel = idx !== -1;
+                  const disabled = !sel && sorteioEditorIds.length >= 2;
                   return (
-                    <button key={e.id} onClick={() => toggleBulkEditor(e.id)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                        sel ? "bg-[hsl(var(--primary))] text-white border-transparent"
-                            : "bg-[hsl(var(--muted))]/40 border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/50"
+                    <button key={e.id}
+                      onClick={() => toggleSorteioEditor(e.id)}
+                      disabled={disabled}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors disabled:opacity-30 ${
+                        sel
+                          ? "bg-[hsl(var(--primary))] text-white border-transparent"
+                          : "bg-[hsl(var(--muted))]/40 border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/50"
                       }`}>
                       <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={16} />
                       {e.name.split(" ")[0]}
-                      {sel && <span className="opacity-80">✓</span>}
+                      {sel && (
+                        <span className="opacity-90 font-black text-[10px] tabular-nums">{idx + 1}°</span>
+                      )}
                     </button>
                   );
                 })}
               </div>
+
+              {/* Preview da alternância quando 2 selecionados */}
+              {sorteioEditorIds.length === 2 && (() => {
+                const edA = editors.find(e => e.id === sorteioEditorIds[0]);
+                const edB = editors.find(e => e.id === sorteioEditorIds[1]);
+                if (!edA || !edB) return null;
+                return (
+                  <div className="rounded-lg bg-[hsl(var(--primary))]/5 border border-[hsl(var(--primary))]/15 px-3 py-2 text-[10px] leading-relaxed text-[hsl(var(--muted-foreground))]">
+                    <span className="font-bold text-[hsl(var(--foreground))]">{edA.name.split(" ")[0]}</span>
+                    {" "}&mdash; Sáb semanas 1, 3, 5… · Dom semanas 2, 4, 6…
+                    <br />
+                    <span className="font-bold text-[hsl(var(--foreground))]">{edB.name.split(" ")[0]}</span>
+                    {" "}&mdash; Dom semanas 1, 3, 5… · Sáb semanas 2, 4, 6…
+                  </div>
+                );
+              })()}
+
               <div className="flex items-center gap-3 flex-wrap">
                 <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
-                  <input type="checkbox" checked={replaceExisting}
-                    onChange={e => setReplaceExisting(e.target.checked)} className="rounded" />
-                  Substituir existentes
+                  <input type="checkbox" checked={replaceExistingSorteio}
+                    onChange={e => setReplaceExistingSorteio(e.target.checked)} className="rounded" />
+                  Substituir fins de semana existentes
                 </label>
-                <Button onClick={generate} disabled={generating || bulkEditorIds.length === 0}
+                <Button
+                  onClick={sortear}
+                  disabled={sorteando || sorteioEditorIds.length !== 2}
                   className="h-7 text-xs px-3 gap-1.5">
-                  <RefreshCw className={`h-3 w-3 ${generating ? "animate-spin" : ""}`} />
-                  {generating ? "Gerando…" : "Gerar"}
+                  <Shuffle className={`h-3 w-3 ${sorteando ? "animate-spin" : ""}`} />
+                  {sorteando ? "Sorteando…" : "Sortear"}
                 </Button>
               </div>
             </div>
@@ -778,7 +1521,7 @@ export default function DutyPage() {
                 {showMenu && (
                   <div className="absolute right-0 top-full mt-1 w-64 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-lg z-50 overflow-hidden">
                     <p className="px-3 pt-2.5 pb-1 text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
-                      Gerar orçamento
+                      Gerar faturamento
                     </p>
                     {monthWeeks.map((wk, i) => (
                       <button
@@ -850,11 +1593,12 @@ export default function DutyPage() {
                   const isTdy     = isToday(iso);
                   const isCurWknd = isSat && isCurrentWeekend(iso);
                   const slot      = getSlotOrEmpty(iso);
-                  const hasEditors = slot.editors.length > 0;
-                  const avail     = editors.filter(e => !slot.editors.some(se => se.id === e.id));
-                  const isAddOpen = iso in adding;
-                  const addVal    = adding[iso] ?? "";
-                  const addName   = addingName[iso] ?? "";
+                  const slotEditors = slot.editors ?? [];
+                  const hasEditors      = slotEditors.length > 0;
+                  const avail           = editors.filter(e => !slotEditors.some(se => se.id === e.id));
+                  const hasWeekendEntry = slotEditors.some(ed => ed.slotType === "normal");
+                  const hasHolidayNote  = !!slot.notes;
+                  const isEmpty         = slotEditors.length === 0 && !hasHolidayNote;
 
                   return (
                     <div
@@ -870,7 +1614,7 @@ export default function DutyPage() {
                       }`}
                     >
                       {/* Day number + add button */}
-                      <div className="flex items-start justify-between mb-1">
+                      <div className="flex items-start justify-between mb-0.5">
                         <span className={`text-xs font-black tabular-nums leading-none ${
                           isTdy
                             ? "text-white bg-[hsl(var(--primary))] rounded-full w-5 h-5 flex items-center justify-center"
@@ -882,26 +1626,78 @@ export default function DutyPage() {
                         }`}>
                           {day}
                         </span>
-                        {!isAddOpen && avail.length > 0 && (
-                          <button
-                            onClick={() => setAdding(prev => ({ ...prev, [iso]: "" }))}
-                            className={`h-4 w-4 rounded-full border border-dashed flex items-center justify-center transition-colors ${
-                              isWknd
-                                ? "border-[hsl(var(--primary))]/30 text-[hsl(var(--primary))]/50 hover:border-[hsl(var(--primary))] hover:text-[hsl(var(--primary))]"
-                                : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-amber-400 hover:text-amber-500"
-                            }`}>
-                            <Plus className="h-2 w-2" />
-                          </button>
+                        {(isEmpty || hasHolidayNote || hasEditors) && (avail.length > 0 || isEmpty) && (
+                          <div className="relative">
+                            <button
+                              onClick={() => setAddDropdown(addDropdown === iso ? null : iso)}
+                              className={`h-4 w-4 rounded-full border border-dashed flex items-center justify-center transition-colors ${
+                                isWknd
+                                  ? "border-[hsl(var(--primary))]/30 text-[hsl(var(--primary))]/50 hover:border-[hsl(var(--primary))] hover:text-[hsl(var(--primary))]"
+                                  : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-amber-400 hover:text-amber-500"
+                              }`}>
+                              <Plus className="h-2 w-2" />
+                            </button>
+                            {addDropdown === iso && (
+                              <>
+                                <div className="fixed inset-0 z-40" onClick={() => setAddDropdown(null)} />
+                                <div className="absolute right-0 top-6 z-50 w-44 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--popover))] shadow-md py-1 text-sm">
+                                  {isEmpty && (
+                                    <button
+                                      onClick={() => { setAddDropdown(null); setEventModal({ iso }); }}
+                                      className="w-full text-left px-3 py-1.5 hover:bg-[hsl(var(--accent))] transition-colors">
+                                      Adicionar Evento
+                                    </button>
+                                  )}
+                                  {!isEmpty && !hasHolidayNote && avail.length > 0 && (
+                                    <>
+                                      <button
+                                        onClick={() => { setAddDropdown(null); setEventModal({ iso }); }}
+                                        className="w-full text-left px-3 py-1.5 hover:bg-[hsl(var(--accent))] transition-colors">
+                                        Adicionar Evento
+                                      </button>
+                                      <div className="h-px bg-[hsl(var(--border))] my-1" />
+                                      <button
+                                        onClick={() => { setAddDropdown(null); setAddModal({ iso }); }}
+                                        className="w-full text-left px-3 py-1.5 hover:bg-[hsl(var(--accent))] transition-colors">
+                                        Adicionar Plantão
+                                      </button>
+                                    </>
+                                  )}
+                                  {hasHolidayNote && avail.length > 0 && (
+                                    <button
+                                      onClick={() => { setAddDropdown(null); setAddModal({ iso }); }}
+                                      className="w-full text-left px-3 py-1.5 hover:bg-[hsl(var(--accent))] transition-colors">
+                                      Adicionar Plantão
+                                    </button>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </div>
                         )}
                       </div>
 
+                      {/* Event title */}
+                      {slot.notes && (
+                        <p className="text-[9px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide leading-tight truncate mb-1 px-0.5">
+                          {slot.notes}
+                        </p>
+                      )}
+
                       {/* Assigned editors */}
                       <div className="flex flex-col gap-0.5 flex-1">
-                        {slot.editors.map(ed => (
+                        {slotEditors.map(ed => (
                           <div key={ed.scheduleId} className="flex items-center gap-1.5 group">
                             <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={24} />
                             <span className="text-[11px] font-semibold leading-none truncate flex-1">
                               {ed.name.split(" ")[0]}
+                            </span>
+                            <span className={`shrink-0 text-[8px] font-bold leading-none px-1 py-0.5 rounded group-hover:hidden ${
+                              ed.slotType === "normal"
+                                ? "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]"
+                                : "bg-amber-400/15 text-amber-600 dark:text-amber-400"
+                            }`}>
+                              {ed.slotType === "normal" ? "N" : "E"}
                             </span>
                             <button
                               onClick={() => removeEntry(ed.scheduleId)}
@@ -910,55 +1706,8 @@ export default function DutyPage() {
                             </button>
                           </div>
                         ))}
-                        {slot.notes && (
-                          <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium leading-tight truncate">
-                            {slot.notes}
-                          </span>
-                        )}
                       </div>
 
-                      {/* Inline add form */}
-                      {isAddOpen && (
-                        <div className="mt-1 flex flex-col gap-1">
-                          {!isWknd && (
-                            <input
-                              type="text"
-                              placeholder="Feriado…"
-                              value={addName}
-                              onChange={e => setAddingName(prev => ({ ...prev, [iso]: e.target.value }))}
-                              className="w-full h-5 px-1 text-[9px] rounded border border-amber-300 dark:border-amber-700
-                                bg-[hsl(var(--background))] focus:outline-none focus:border-amber-500"
-                            />
-                          )}
-                          <select
-                            value={addVal}
-                            onChange={e => setAdding(prev => ({ ...prev, [iso]: e.target.value }))}
-                            className="w-full h-5 pl-1 text-[9px] rounded border border-[hsl(var(--border))]
-                              bg-[hsl(var(--background))] appearance-none cursor-pointer focus:outline-none">
-                            <option value="">Editor…</option>
-                            {avail.map(e => <option key={e.id} value={e.id}>{e.name.split(" ")[0]}</option>)}
-                          </select>
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => addEditor(iso)}
-                              disabled={!addVal}
-                              className={`flex-1 h-5 rounded text-[9px] font-bold text-white disabled:opacity-40 ${
-                                isWknd ? "bg-[hsl(var(--primary))] hover:opacity-90" : "bg-amber-500 hover:bg-amber-600"
-                              }`}>
-                              ✓
-                            </button>
-                            <button
-                              onClick={() => {
-                                setAdding(prev => { const n = { ...prev }; delete n[iso]; return n; });
-                                setAddingName(prev => { const n = { ...prev }; delete n[iso]; return n; });
-                              }}
-                              className="h-5 w-5 shrink-0 rounded flex items-center justify-center border border-[hsl(var(--border))]
-                                text-[hsl(var(--muted-foreground))] hover:text-destructive transition-colors">
-                              <X className="h-2.5 w-2.5" />
-                            </button>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -967,6 +1716,138 @@ export default function DutyPage() {
           </div>
         </div>
       )}
+
+      {/* ── Evento modal ──────────────────────────────────────────────────── */}
+      {eventModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => { setEventModal(null); setEventModalName(""); }} />
+          <div className="relative bg-[hsl(var(--card))] rounded-2xl shadow-2xl w-full max-w-xs flex flex-col overflow-hidden">
+            <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
+              <p className="text-xs font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Evento</p>
+              <p className="text-sm font-semibold mt-0.5">{fmtSingleDate(eventModal.iso)}</p>
+            </div>
+            <div className="px-5 py-4">
+              <input
+                type="text"
+                placeholder="Nome do evento…"
+                value={eventModalName}
+                onChange={e => setEventModalName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && !eventModalSaving && createEvent(eventModal.iso, eventModalName)}
+                autoFocus
+                className="w-full h-9 px-3 text-sm rounded-lg border border-[hsl(var(--border))]
+                  bg-[hsl(var(--background))] focus:outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
+              />
+            </div>
+            <div className="px-5 pb-4 flex justify-end gap-2">
+              <button
+                onClick={() => { setEventModal(null); setEventModalName(""); }}
+                className="h-8 px-4 text-xs font-semibold rounded-lg border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))] transition-colors">
+                Cancelar
+              </button>
+              <button
+                disabled={eventModalSaving}
+                onClick={async () => { setEventModalSaving(true); await createEvent(eventModal.iso, eventModalName); setEventModalSaving(false); }}
+                className="h-8 px-4 text-xs font-semibold rounded-lg bg-[hsl(var(--primary))] text-white hover:opacity-90 transition-opacity disabled:opacity-50">
+                {eventModalSaving ? "…" : "Criar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Adicionar Plantão modal ────────────────────────────────────────── */}
+      {addModal && (() => {
+        const modalSlot      = getSlotOrEmpty(addModal.iso);
+        const modalAvail     = editors.filter(e => !modalSlot.editors.some(se => se.id === e.id));
+        const modalDow       = new Date(addModal.iso + "T12:00:00").getDay();
+        const modalIsWknd    = modalDow === 6 || modalDow === 0;
+        const canAddNormal = true;
+        const close          = () => { setAddModal(null); setAddModalSelected(null); };
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40" onClick={close} />
+            <div className="relative bg-[hsl(var(--card))] rounded-2xl shadow-2xl w-full max-w-sm flex flex-col max-h-[85vh]">
+
+              <div className="px-5 pt-5 pb-4 shrink-0">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                  Adicionar Plantão
+                </p>
+                <p className="text-base font-semibold mt-0.5">{fmtSingleDate(addModal.iso)}</p>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-2 flex flex-col gap-1.5">
+                {modalAvail.length === 0 ? (
+                  <p className="text-sm text-center py-8 italic text-[hsl(var(--muted-foreground))]">
+                    Todos os editores já escalados.
+                  </p>
+                ) : modalAvail.map(e => {
+                  const sel = addModalSelected === e.id;
+                  return (
+                    <div key={e.id} className={`rounded-xl border overflow-hidden transition-colors duration-150 ${
+                      sel ? "border-[hsl(var(--primary))]/30" : "border-[hsl(var(--border))]"
+                    }`}>
+                      {/* Editor row — click to select/deselect */}
+                      <button
+                        className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                          sel ? "bg-[hsl(var(--primary))]/6" : "hover:bg-[hsl(var(--muted))]/40"
+                        }`}
+                        onClick={() => setAddModalSelected(sel ? null : e.id)}>
+                        <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={36} />
+                        <span className="text-sm font-medium flex-1">{e.name}</span>
+                        <ChevronDown className={`h-4 w-4 text-[hsl(var(--muted-foreground))] transition-transform duration-200 ${sel ? "rotate-180" : ""}`} />
+                      </button>
+
+                      {/* Type picker — revealed on selection */}
+                      {sel && (
+                        <div className="flex border-t border-[hsl(var(--primary))]/15">
+                          {canAddNormal && (
+                            <button
+                              disabled={addModalAdding}
+                              onClick={async () => {
+                                setAddModalAdding(true);
+                                await addEditor(addModal.iso, e.id, "normal", null);
+                                setAddModalSelected(null);
+                                setAddModalAdding(false);
+                              }}
+                              className="flex-1 py-3 text-[11px] font-bold tracking-wide
+                                text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/8
+                                border-r border-[hsl(var(--primary))]/15 transition-colors disabled:opacity-40">
+                              Plantão Normal
+                            </button>
+                          )}
+                          <button
+                            disabled={addModalAdding}
+                            onClick={async () => {
+                              setAddModalAdding(true);
+                              await addEditor(addModal.iso, e.id, "extra", null);
+                              setAddModalSelected(null);
+                              setAddModalAdding(false);
+                            }}
+                            className={`py-3 text-[11px] font-bold tracking-wide
+                              text-amber-600 dark:text-amber-400 hover:bg-amber-400/8
+                              transition-colors disabled:opacity-40
+                              ${canAddNormal ? "flex-1" : "w-full"}`}>
+                            Plantão Extra
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="px-4 py-4 shrink-0">
+                <button
+                  onClick={close}
+                  className="w-full h-9 text-sm font-medium rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))] transition-colors">
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );

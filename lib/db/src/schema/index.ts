@@ -13,3 +13,4 @@ export * from "./direct_messages";
 export * from "./task_editors";
 export * from "./clients";
 export * from "./duty_schedules";
+export * from "./email_logs";

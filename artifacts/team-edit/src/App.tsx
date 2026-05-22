@@ -22,6 +22,7 @@ import FeedPage from "@/pages/feed";
 import TasksOverview from "@/pages/tasks-overview";
 import TasksHub      from "@/pages/tasks-hub";
 import DutyPage      from "@/pages/duty";
+import FaviconDebugPage from "@/pages/favicon-debug";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } });
 
@@ -63,6 +64,7 @@ function Router() {
     );
   }
 
+  if (window.location.pathname === "/debug-favicon") return <FaviconDebugPage />;
   if (!user) return <LoginPage />;
   if (user.mustChangePassword) return <ChangePasswordPage />;
 

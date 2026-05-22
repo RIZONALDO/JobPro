@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, dutySchedulesTable, usersTable } from "@workspace/db";
-import { eq, and, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, count } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
 
 const router = Router();
@@ -43,6 +43,7 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
     .select({
       id: dutySchedulesTable.id,
       weekendStart: dutySchedulesTable.weekendStart,
+      slotType: dutySchedulesTable.slotType,
       notes: dutySchedulesTable.notes,
       editorId: usersTable.id,
       editorName: usersTable.name,
@@ -52,11 +53,21 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
     .leftJoin(usersTable, eq(dutySchedulesTable.editorId, usersTable.id))
     .where(and(gte(dutySchedulesTable.weekendStart, lastSatStr), lte(dutySchedulesTable.weekendStart, untilStr)));
 
+  const sunOf = (satStr: string) => {
+    const d = new Date(satStr + "T12:00:00");
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split("T")[0];
+  };
+
+  const editorsByDate = (dateStr: string) =>
+    rows
+      .filter(r => r.weekendStart === dateStr && r.editorId)
+      .map(r => ({ id: r.editorId!, name: r.editorName!, avatarUrl: r.editorAvatarUrl ?? null, slotType: r.slotType }));
+
   const group = (satStr: string) => ({
     weekendStart: satStr,
-    editors: rows
-      .filter(r => r.weekendStart === satStr && r.editorId)
-      .map(r => ({ id: r.editorId!, name: r.editorName!, avatarUrl: r.editorAvatarUrl ?? null })),
+    satEditors: editorsByDate(satStr),
+    sunEditors: editorsByDate(sunOf(satStr)),
   });
 
   // Weekday-only entries (holidays / special days) — exclude all Sat & Sun
@@ -107,6 +118,7 @@ router.get("/duty", requireAuth, async (req, res): Promise<void> => {
     .select({
       id: dutySchedulesTable.id,
       weekendStart: dutySchedulesTable.weekendStart,
+      slotType: dutySchedulesTable.slotType,
       notes: dutySchedulesTable.notes,
       editorId: usersTable.id,
       editorName: usersTable.name,
@@ -119,20 +131,23 @@ router.get("/duty", requireAuth, async (req, res): Promise<void> => {
 
   const byDate = new Map<string, {
     weekendStart: string;
-    editors: { id: number; name: string; avatarUrl: string | null; scheduleId: number }[];
+    editors: { id: number; name: string; avatarUrl: string | null; scheduleId: number; slotType: string }[];
     notes: string | null;
   }>();
 
   for (const row of rows) {
     if (!byDate.has(row.weekendStart)) {
-      byDate.set(row.weekendStart, { weekendStart: row.weekendStart, editors: [], notes: row.notes });
+      byDate.set(row.weekendStart, { weekendStart: row.weekendStart, editors: [], notes: null });
     }
+    const entry = byDate.get(row.weekendStart)!;
+    if (row.notes) entry.notes = row.notes;
     if (row.editorId) {
-      byDate.get(row.weekendStart)!.editors.push({
+      entry.editors.push({
         id: row.editorId,
         name: row.editorName!,
         avatarUrl: row.editorAvatarUrl ?? null,
         scheduleId: row.id,
+        slotType: row.slotType,
       });
     }
   }
@@ -141,22 +156,29 @@ router.get("/duty", requireAuth, async (req, res): Promise<void> => {
   res.json(Array.from(byDate.values()));
 });
 
-// POST /api/duty/bulk — rotate editors across all weekends of a year (admin)
-// Round-robin: with editors [A, B], assigns A→wk1, B→wk2, A→wk3, B→wk4, …
-router.post("/duty/bulk", requireAuth, async (req, res): Promise<void> => {
+// POST /api/duty/sorteio — annual draw for exactly 2 editors (admin/supervisor)
+// Algorithm: editors alternate Sat/Sun each weekend.
+//   Weekend 0: editorA → Sat, editorB → Sun
+//   Weekend 1: editorB → Sat, editorA → Sun  … and so on
+router.post("/duty/sorteio", requireAuth, async (req, res): Promise<void> => {
   if (!["admin", "supervisor"].includes(req.session.userRole ?? "")) { res.status(403).json({ error: "Sem permissão" }); return; }
   const { year, editorIds, replaceExisting } = req.body ?? {};
 
-  if (!year || !Array.isArray(editorIds) || editorIds.length === 0) {
-    res.status(400).json({ error: "Informe o ano e ao menos um editor" }); return;
+  if (!year || !Array.isArray(editorIds) || editorIds.length !== 2) {
+    res.status(400).json({ error: "Informe o ano e exatamente 2 editores" }); return;
   }
 
-  const parsedYear    = parseInt(String(year), 10);
-  const parsedEditors = (editorIds as unknown[]).map(Number).filter(n => !isNaN(n) && n > 0);
-  const saturdays     = getAllSaturdaysInYear(parsedYear);
+  const parsedYear = parseInt(String(year), 10);
+  const [idA, idB] = (editorIds as unknown[]).map(Number);
+
+  if (isNaN(idA) || isNaN(idB) || idA <= 0 || idB <= 0 || idA === idB) {
+    res.status(400).json({ error: "Informe 2 editores distintos e válidos" }); return;
+  }
+
+  const saturdays = getAllSaturdaysInYear(parsedYear);
 
   if (replaceExisting) {
-    // Delete Saturday + Sunday entries; preserve manually added weekday holidays
+    // Remove Sáb + Dom; preserva feriados em dias úteis
     const allEntries = await db
       .select({ id: dutySchedulesTable.id, weekendStart: dutySchedulesTable.weekendStart })
       .from(dutySchedulesTable)
@@ -165,7 +187,7 @@ router.post("/duty/bulk", requireAuth, async (req, res): Promise<void> => {
     const weekendIds = allEntries
       .filter(r => {
         const dow = new Date(r.weekendStart + "T12:00:00").getDay();
-        return dow === 6 || dow === 0; // Saturday or Sunday
+        return dow === 6 || dow === 0;
       })
       .map(r => r.id);
     if (weekendIds.length > 0) {
@@ -173,15 +195,17 @@ router.post("/duty/bulk", requireAuth, async (req, res): Promise<void> => {
     }
   }
 
-  // One editor per weekend (Sat + Sun), rotating through the list
+  // Weekend i (0-indexed): Sáb → editors[i%2], Dom → editors[(i+1)%2]
+  const editors = [idA, idB];
   const inserts = saturdays.flatMap((sat, i) => {
-    const editorId = parsedEditors[i % parsedEditors.length];
+    const editorSat = editors[i % 2];
+    const editorSun = editors[(i + 1) % 2];
     const sun = new Date(sat + "T12:00:00");
     sun.setDate(sun.getDate() + 1);
     const sunStr = sun.toISOString().split("T")[0];
     return [
-      { weekendStart: sat,    editorId, createdById: req.session.userId },
-      { weekendStart: sunStr, editorId, createdById: req.session.userId },
+      { weekendStart: sat,    editorId: editorSat, slotType: "normal", createdById: req.session.userId },
+      { weekendStart: sunStr, editorId: editorSun, slotType: "normal", createdById: req.session.userId },
     ];
   });
 
@@ -189,15 +213,48 @@ router.post("/duty/bulk", requireAuth, async (req, res): Promise<void> => {
   res.json({ weeks: saturdays.length, entries: inserts.length });
 });
 
-// POST /api/duty — add editor to any date (weekend or holiday) — admin only
+// POST /api/duty — add editor or create event on any date
+// editorId may be omitted when creating a named event (notes required in that case)
 router.post("/duty", requireAuth, async (req, res): Promise<void> => {
   if (!["admin", "supervisor"].includes(req.session.userRole ?? "")) { res.status(403).json({ error: "Sem permissão" }); return; }
-  const { weekendStart, editorId, notes } = req.body ?? {};
-  if (!weekendStart || !editorId) { res.status(400).json({ error: "Dados obrigatórios" }); return; }
+  const { weekendStart, editorId, notes, slotType: bodySlotType } = req.body ?? {};
+  if (!weekendStart) { res.status(400).json({ error: "Data obrigatória" }); return; }
+  if (!editorId && !notes) { res.status(400).json({ error: "Informe o editor ou o nome do evento" }); return; }
+
+  const dateStr  = String(weekendStart);
+  const parsedId = editorId ? parseInt(String(editorId), 10) : null;
+
+  // Event-only row (no editor)
+  if (!parsedId) {
+    const [row] = await db.insert(dutySchedulesTable).values({
+      weekendStart: dateStr,
+      editorId: null as unknown as number,
+      slotType: "extra",
+      notes: String(notes),
+      createdById: req.session.userId,
+    }).onConflictDoNothing().returning();
+    res.json(row ?? null);
+    return;
+  }
+
+  const dow    = new Date(dateStr + "T12:00:00").getDay();
+  const isWknd = dow === 6 || dow === 0;
+
+  let slotType = "extra";
+  if (bodySlotType && ["normal", "extra"].includes(String(bodySlotType))) {
+    slotType = String(bodySlotType);
+  } else if (isWknd) {
+    const [{ existing }] = await db
+      .select({ existing: count() })
+      .from(dutySchedulesTable)
+      .where(eq(dutySchedulesTable.weekendStart, dateStr));
+    slotType = Number(existing) === 0 ? "normal" : "extra";
+  }
 
   const [row] = await db.insert(dutySchedulesTable).values({
-    weekendStart: String(weekendStart),
-    editorId: parseInt(String(editorId), 10),
+    weekendStart: dateStr,
+    editorId: parsedId,
+    slotType,
     notes: notes ? String(notes) : null,
     createdById: req.session.userId,
   }).onConflictDoNothing().returning();

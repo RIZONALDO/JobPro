@@ -87,10 +87,17 @@ export default function SettingsPage() {
 
   const save = async () => {
     setSaving(true);
+    const prevFavicon = (await apiFetch<Record<string, string>>("/api/settings"))["favicon_url"] ?? "";
+    const faviconChanged = form.favicon_url !== prevFavicon;
     try {
       await apiPut("/api/settings", form);
       await refreshSettings();
-      toast.success("Configurações salvas");
+      if (faviconChanged) {
+        toast.success("Configurações salvas — recarregando para aplicar o favicon…");
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        toast.success("Configurações salvas");
+      }
     } catch { toast.error("Erro ao salvar"); }
     finally { setSaving(false); }
   };

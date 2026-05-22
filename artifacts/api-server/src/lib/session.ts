@@ -6,7 +6,7 @@ const PgSession = ConnectPgSimple(session);
 
 export const sessionMiddleware = session({
   store: new PgSession({ pool, createTableIfMissing: false }),
-  secret: process.env.SESSION_SECRET ?? "teamedit-dev-secret",
+  secret: process.env.SESSION_SECRET ?? "jobpro-dev-secret",
   resave: false,
   saveUninitialized: false,
   cookie: { secure: false, httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: "lax" },

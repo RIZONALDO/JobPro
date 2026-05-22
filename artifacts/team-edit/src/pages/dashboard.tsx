@@ -1875,8 +1875,9 @@ export default function Dashboard() {
   const [statusHistory, setStatusHistory] = useState<StatusHistory | null>(null);
   const [heatmapTasks, setHeatmapTasks] = useState<{ assignedToId: number | null; dueDate: string | null; status: string; title: string; client?: string | null }[]>([]);
   const [dutyData, setDutyData] = useState<{
-    thisWeekend: { weekendStart: string; editors: { id: number; name: string; avatarUrl: string | null }[] };
-    nextWeekend: { weekendStart: string; editors: { id: number; name: string; avatarUrl: string | null }[] };
+    lastWeekend: { weekendStart: string; satEditors: { id: number; name: string; avatarUrl: string | null }[]; sunEditors: { id: number; name: string; avatarUrl: string | null }[] };
+    thisWeekend: { weekendStart: string; satEditors: { id: number; name: string; avatarUrl: string | null }[]; sunEditors: { id: number; name: string; avatarUrl: string | null }[] };
+    nextWeekend: { weekendStart: string; satEditors: { id: number; name: string; avatarUrl: string | null }[]; sunEditors: { id: number; name: string; avatarUrl: string | null }[] };
   } | null>(null);
   const [cardPrefs, setCardPrefs] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem("jobpro_dash_prefs") ?? "{}"); }
@@ -2358,23 +2359,25 @@ export default function Dashboard() {
           <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-[hsl(var(--border))]">
             {([
               { label: "Este fim de semana", data: dutyData.thisWeekend },
-              { label: "Próximo fim de semana", data: dutyData.nextWeekend },
+              { label: "Próximo",            data: dutyData.nextWeekend },
             ] as const).map(({ label, data }) => {
               const sat = new Date(data.weekendStart + "T12:00:00");
               const sun = new Date(sat); sun.setDate(sun.getDate() + 1);
               const fmt = (d: Date) => `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`;
-              const isOnDuty = data.editors.some(e => e.id === user?.id);
+              const allEditors = [...(data.satEditors ?? []), ...(data.sunEditors ?? [])];
+              const uniqueEditors = allEditors.filter((e, i) => allEditors.findIndex(x => x.id === e.id) === i);
+              const isOnDuty = uniqueEditors.some(e => e.id === user?.id);
               return (
                 <div key={data.weekendStart} className="px-5 py-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">{label}</p>
                     <span className="text-xs text-[hsl(var(--muted-foreground))] tabular-nums">{fmt(sat)} – {fmt(sun)}</span>
                   </div>
-                  {data.editors.length === 0 ? (
+                  {uniqueEditors.length === 0 ? (
                     <p className="text-xs text-[hsl(var(--muted-foreground))]">Sem editor escalado</p>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-                      {data.editors.map(e => (
+                      {uniqueEditors.map(e => (
                         <div key={e.id} className="flex items-center gap-1.5">
                           <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={24} />
                           <span className="text-sm font-medium">{e.name.split(" ")[0]}</span>
@@ -2382,7 +2385,7 @@ export default function Dashboard() {
                       ))}
                     </div>
                   )}
-                  {isOnDuty && (
+                  {isOnDuty && label === "Este fim de semana" && (
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))] uppercase tracking-wide">
                       <Shield className="h-2.5 w-2.5" /> Você está de plantão
                     </span>

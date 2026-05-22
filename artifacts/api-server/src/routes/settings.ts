@@ -4,8 +4,79 @@ import { eq, or, sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth.js";
 import { pool } from "@workspace/db";
 import { broadcastTaskChange } from "../lib/broadcast.js";
+import { execFile } from "node:child_process";
+import { writeFile, readFile, unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomBytes } from "node:crypto";
+
+const STATIC_DIR = "/var/www/jobpro-public";
 
 const router = Router();
+
+// 32x32 indigo square — default favicon when no custom one is configured
+const DEFAULT_FAVICON = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR4nGNITvtIU8QwasGoBaMWjFowasGoBaMWjFowasGoBaMWDBULAMgi6FsP9QbPAAAAAElFTkSuQmCC",
+  "base64"
+);
+
+async function resizeTo32(input: Buffer, bgColor = "#6366f1"): Promise<Buffer> {
+  const id  = randomBytes(8).toString("hex");
+  const inP = join(tmpdir(), `fav_in_${id}.png`);
+  const outP = join(tmpdir(), `fav_out_${id}.png`);
+  try {
+    await writeFile(inP, input);
+    await new Promise<void>((resolve, reject) =>
+      execFile("convert", [inP, "-background", bgColor, "-flatten", "-resize", "32x32!", outP], (err) =>
+        err ? reject(err) : resolve()
+      )
+    );
+    return await readFile(outP);
+  } finally {
+    await unlink(inP).catch(() => {});
+    await unlink(outP).catch(() => {});
+  }
+}
+
+// Writes favicon.png to the static public directory so browsers get a real file (not a proxied API)
+export async function updateStaticFavicon(faviconDataUrl: string, primaryColor: string): Promise<void> {
+  try {
+    const commaIdx = faviconDataUrl.indexOf(",");
+    const raw = Buffer.from(faviconDataUrl.slice(commaIdx + 1), "base64");
+    const resized = await resizeTo32(raw, primaryColor);
+    await writeFile(join(STATIC_DIR, "favicon.png"), resized);
+  } catch { /* non-fatal */ }
+}
+
+// Called once at startup to hydrate favicon.png from DB
+export async function initStaticFavicon(): Promise<void> {
+  try {
+    const rows = await db.select().from(appSettingsTable)
+      .where(or(eq(appSettingsTable.key, "favicon_url"), eq(appSettingsTable.key, "primary_color")));
+    const byKey = Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
+    const faviconUrl  = byKey["favicon_url"]  ?? "";
+    const primaryColor = byKey["primary_color"] ?? "#6366f1";
+    if (faviconUrl.startsWith("data:")) {
+      await updateStaticFavicon(faviconUrl, primaryColor);
+    } else {
+      await writeFile(join(STATIC_DIR, "favicon.png"), DEFAULT_FAVICON);
+    }
+  } catch { /* non-fatal */ }
+}
+
+// GET /api/favicon — kept for compatibility (SettingsContext cache-bust still calls this)
+router.get("/favicon", async (_req, res): Promise<void> => {
+  try {
+    const png = await readFile(join(STATIC_DIR, "favicon.png"));
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "no-cache, must-revalidate");
+    res.send(png);
+  } catch {
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "no-cache, must-revalidate");
+    res.send(DEFAULT_FAVICON);
+  }
+});
 
 router.get("/settings", async (_req, res): Promise<void> => {
   const rows = await db.select().from(appSettingsTable);
@@ -26,6 +97,14 @@ router.put("/settings", requireAdmin, async (req, res): Promise<void> => {
   const rows = await db.select().from(appSettingsTable);
   const settings: Record<string, string | null> = {};
   for (const row of rows) settings[row.key] = row.value ?? null;
+
+  // Regenerate static favicon.png whenever favicon or primary color changes
+  const faviconUrl  = settings["favicon_url"]  ?? "";
+  const primaryColor = settings["primary_color"] ?? "#6366f1";
+  if (faviconUrl.startsWith("data:")) {
+    void updateStaticFavicon(faviconUrl, primaryColor);
+  }
+
   res.json(settings);
 });
 

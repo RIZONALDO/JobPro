@@ -361,7 +361,7 @@ export default function Team() {
                         <span className="text-xs text-[hsl(var(--muted-foreground))] font-mono">@{u.login}</span>
                         {u.id === user?.id && <Badge variant="outline" className="text-xs px-1.5">você</Badge>}
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <Badge variant={u.role === "admin" ? "default" : "secondary"} className="text-xs px-1.5">
                           {ROLE_LABEL[u.role] ?? u.role}
                         </Badge>

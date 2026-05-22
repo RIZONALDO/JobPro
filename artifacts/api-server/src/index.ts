@@ -1,4 +1,6 @@
 import { createServer } from "http";
+import { initStaticFavicon } from "./routes/settings.js";
+import { startDutyCron } from "./lib/email-report.js";
 import { Server } from "socket.io";
 import app from "./app.js";
 import { logger } from "./lib/logger.js";
@@ -66,5 +68,7 @@ io.on("connection", (socket) => {
 });
 
 httpServer.listen(port, "0.0.0.0", () => {
-  logger.info({ port }, "TeamEdit API server started");
+  logger.info({ port }, "JobPro API server started");
+  void initStaticFavicon();
+  startDutyCron();
 });

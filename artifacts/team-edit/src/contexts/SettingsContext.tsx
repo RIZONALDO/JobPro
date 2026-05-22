@@ -60,10 +60,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       document.documentElement.style.setProperty("--primary", p);
       document.documentElement.style.setProperty("--ring", p);
     }
-    if (next.favicon_url) {
-      const link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
-      if (link) link.href = next.favicon_url;
-    }
+    // Safari ignores href changes on existing <link> elements — must remove + re-add
+    document.querySelectorAll('link[rel*="icon"]').forEach(el => el.remove());
+    const v = Date.now();
+    [
+      { rel: "icon", type: "image/png", sizes: "32x32", id: "favicon-main" },
+      { rel: "apple-touch-icon", sizes: "180x180" },
+    ].forEach(attrs => {
+      const l = document.createElement("link");
+      Object.assign(l, attrs);
+      l.href = `/api/favicon?v=${v}`;
+      document.head.appendChild(l);
+    });
   }, []);
 
   const refreshSettings = useCallback(async () => {

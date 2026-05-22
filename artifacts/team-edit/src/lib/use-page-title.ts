@@ -3,7 +3,7 @@ import { useSettings } from "@/contexts/SettingsContext";
 
 export function usePageTitle(title: string) {
   const { settings } = useSettings();
-  const appName = settings.company_name || settings.system_name || "App";
+  const appName = settings.company_name || settings.system_name || "JobPro";
 
   useEffect(() => {
     document.title = title ? `${title} – ${appName}` : appName;
