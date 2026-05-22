@@ -121,17 +121,27 @@ export async function buildReportHtml(weekStart: string, weekEnd: string, sender
     .orderBy(dutySchedulesTable.weekendStart),
   ]);
 
-  // Group by editor — each editor accumulates all their dates with the event name
-  const editorMap = new Map<number, { name: string; days: { date: string; notes: string | null }[] }>();
+  // Grupo 1: Plantões Especiais (Sáb + Dom) | Grupo 2: Outros Plantões (Seg–Sex)
+  type EditorEntry = { name: string; days: { date: string; notes: string | null }[] };
+  const weekendMap = new Map<number, EditorEntry>();
+  const weekdayMap = new Map<number, EditorEntry>();
 
   for (const row of rows) {
     if (!row.editorId || !row.editorName) continue;
-    if (!editorMap.has(row.editorId)) editorMap.set(row.editorId, { name: row.editorName, days: [] });
-    editorMap.get(row.editorId)!.days.push({ date: row.weekendStart, notes: row.notes?.trim() || null });
+    const dow = new Date(row.weekendStart + "T12:00:00").getDay();
+    const map = (dow === 0 || dow === 6) ? weekendMap : weekdayMap;
+    if (!map.has(row.editorId)) map.set(row.editorId, { name: row.editorName, days: [] });
+    map.get(row.editorId)!.days.push({ date: row.weekendStart, notes: row.notes?.trim() || null });
   }
 
-  const entries     = Array.from(editorMap.values()).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-  const grandTotal  = entries.reduce((s, e) => s + e.days.length, 0);
+  const sortMap = (m: Map<number, EditorEntry>) =>
+    Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+
+  const weekendEntries = sortMap(weekendMap);
+  const weekdayEntries = sortMap(weekdayMap);
+  const totalWeekend   = weekendEntries.reduce((s, e) => s + e.days.length, 0);
+  const totalWeekday   = weekdayEntries.reduce((s, e) => s + e.days.length, 0);
+  const grandTotal     = totalWeekend + totalWeekday;
 
   const geradoEm  = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
   const assinante = senderName || appName;
@@ -140,9 +150,19 @@ export async function buildReportHtml(weekStart: string, weekEnd: string, sender
   const colHeader = (label: string, align = "left") =>
     `<th style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#aaa;padding:0 0 10px;text-align:${align};border-bottom:1px solid #e5e5e5">${label}</th>`;
 
-  const tableBody = entries.length === 0
+  const secHeader = (label: string) =>
+    `<tr><td colspan="3" style="padding:18px 0 6px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#111">${label}</td></tr>`;
+
+  const secSubtotal = (val: number) =>
+    `<tr><td colspan="2" style="padding:8px 0 6px;font-size:12px;font-weight:600;color:#555">Subtotal</td>
+     <td style="padding:8px 0 6px;text-align:right;font-size:18px;font-weight:900;color:#555">${val}</td></tr>`;
+
+  const tableBody = grandTotal === 0
     ? `<tr><td colspan="3" style="padding:20px;text-align:center;color:#999;font-style:italic">Nenhum plantão registrado neste período</td></tr>`
-    : buildEditorRows(entries);
+    : [
+        weekendEntries.length > 0 ? secHeader("Plantões Especiais") + buildEditorRows(weekendEntries) + secSubtotal(totalWeekend) : "",
+        weekdayEntries.length > 0 ? secHeader("Outros Plantões")    + buildEditorRows(weekdayEntries) + secSubtotal(totalWeekday)  : "",
+      ].join("");
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
