@@ -1882,31 +1882,34 @@ export default function DutyPage() {
         const close      = () => { setAddModal(null); setAddModalSelected(null); };
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-5">
-            <div className="absolute inset-0 bg-black/50" onClick={close} />
-            <div className="relative bg-[hsl(var(--card))] rounded-2xl shadow-2xl w-full max-w-xs flex flex-col max-h-[70vh] overflow-hidden">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40" onClick={close} />
+            <div className="relative bg-[hsl(var(--card))] rounded-2xl shadow-xl w-full max-w-xs overflow-hidden">
 
-              {/* Colored header band */}
-              <div className="bg-[hsl(var(--primary))] px-4 py-4 shrink-0 flex items-start justify-between">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 pt-4 pb-3">
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">Plantonista</p>
-                  <p className="text-sm font-bold text-white mt-0.5">{fmtSingleDate(addModal.iso)}</p>
+                  <p className="text-[11px] font-medium text-[hsl(var(--muted-foreground))]">Adicionar plantonista</p>
+                  <p className="text-sm font-semibold mt-0.5">{fmtSingleDate(addModal.iso)}</p>
                 </div>
-                <button onClick={close} className="h-6 w-6 rounded-full bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center mt-0.5">
-                  <X className="h-3.5 w-3.5 text-white" />
+                <button onClick={close}
+                  className="h-7 w-7 rounded-full bg-[hsl(var(--muted))] flex items-center justify-center hover:bg-[hsl(var(--border))] transition-colors">
+                  <X className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
                 </button>
               </div>
 
+              <div className="h-px bg-[hsl(var(--border))]" />
+
               {/* Editor list */}
-              <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-[hsl(var(--border))]/60">
+              <div className="overflow-y-auto max-h-72">
                 {modalAvail.length === 0 ? (
-                  <p className="text-sm text-center py-10 italic text-[hsl(var(--muted-foreground))]">
-                    Todos os editores já escalados.
+                  <p className="text-sm text-center py-8 text-[hsl(var(--muted-foreground))]">
+                    Todos já escalados.
                   </p>
-                ) : modalAvail.map(e => (
-                  <div key={e.id} className="flex items-center gap-3 px-4 py-3">
+                ) : modalAvail.map((e, i) => (
+                  <div key={e.id} className={`flex items-center gap-3 px-4 py-2.5 ${i > 0 ? "border-t border-[hsl(var(--border))]/50" : ""}`}>
                     <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={32} />
-                    <span className="text-sm font-medium flex-1 truncate">{e.name}</span>
+                    <span className="text-sm flex-1 truncate">{e.name}</span>
                     <div className="flex gap-1.5 shrink-0">
                       <button
                         disabled={addModalAdding}
@@ -1914,10 +1917,11 @@ export default function DutyPage() {
                           setAddModalAdding(true);
                           await addEditor(addModal.iso, e.id, "normal", null);
                           setAddModalAdding(false);
+                          close();
                         }}
-                        className="h-6 px-2.5 rounded-md text-[10px] font-bold
-                          bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]
-                          hover:bg-[hsl(var(--primary))]/20 transition-colors disabled:opacity-40">
+                        className="h-6 px-2.5 rounded-md text-[10px] font-semibold
+                          bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400
+                          hover:bg-blue-100 dark:hover:bg-blue-500/25 transition-colors disabled:opacity-40">
                         Normal
                       </button>
                       <button
@@ -1926,10 +1930,11 @@ export default function DutyPage() {
                           setAddModalAdding(true);
                           await addEditor(addModal.iso, e.id, "extra", null);
                           setAddModalAdding(false);
+                          close();
                         }}
-                        className="h-6 px-2.5 rounded-md text-[10px] font-bold
-                          bg-amber-400/10 text-amber-600 dark:text-amber-400
-                          hover:bg-amber-400/20 transition-colors disabled:opacity-40">
+                        className="h-6 px-2.5 rounded-md text-[10px] font-semibold
+                          bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400
+                          hover:bg-amber-100 dark:hover:bg-amber-500/25 transition-colors disabled:opacity-40">
                         Extra
                       </button>
                     </div>
