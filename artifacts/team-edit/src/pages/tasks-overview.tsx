@@ -241,7 +241,28 @@ export default function TasksOverview() {
 
   useEffect(() => { load(); }, [load]);
 
-  useRealtime({ onTasksChanged: () => load(true) });
+  // Keep a ref that always reflects the current expandedIds set (to avoid stale closure in the realtime callback)
+  const expandedIdsRef = useRef<Set<number>>(expandedIds);
+  useEffect(() => { expandedIdsRef.current = expandedIds; }, [expandedIds]);
+
+  useRealtime({
+    onTasksChanged: () => load(true),
+    onMultitaskProgress: (event) => {
+      const { parentTaskId, progress } = event;
+      // 1. Update progress counter on the parent task card immediately
+      setTasks(prev => prev.map(t =>
+        t.id === parentTaskId
+          ? { ...t, subtaskProgress: { total: progress.total, completed: progress.completed, percentage: progress.percentage } }
+          : t
+      ));
+      // 2. If the panel for this parent is expanded, refresh subtask rows too
+      if (expandedIdsRef.current.has(parentTaskId)) {
+        apiFetch<SubtaskDetail[]>(`/api/tasks/${parentTaskId}/subtasks`)
+          .then(subs => setSubtasksMap(p => new Map(p).set(parentTaskId, subs)))
+          .catch(() => {});
+      }
+    },
+  });
 
   const editors = useMemo(() => {
     const map = new Map<number, Person>();
@@ -812,18 +833,23 @@ export default function TasksOverview() {
                         )}
                       </div>
 
-                      {/* Row 1b: multi-task badge + progress */}
-                      {t.taskType === "multi_task" && (
-                        <div className="mt-1 space-y-1">
+                      {/* Row 1b: multi-task compact progress chip */}
+                      {t.taskType === "multi_task" && t.subtaskProgress && t.subtaskProgress.total > 0 && (
+                        <div className="mt-1 flex items-center gap-1.5">
                           <MultiTaskBadge taskType="multi_task" />
-                          {t.subtaskProgress && (
-                            <SubtaskProgressBar
-                              total={t.subtaskProgress.total}
-                              completed={t.subtaskProgress.completed}
-                              percentage={t.subtaskProgress.percentage}
-                              showLabel={false}
+                          <span className="text-[11px] tabular-nums text-[hsl(var(--muted-foreground))]/70 font-medium">
+                            {t.subtaskProgress.completed}/{t.subtaskProgress.total}
+                          </span>
+                          <div className="h-1 w-12 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${
+                                t.subtaskProgress.percentage === 100 ? "bg-green-500" :
+                                t.subtaskProgress.percentage >= 66 ? "bg-blue-500" :
+                                t.subtaskProgress.percentage >= 33 ? "bg-indigo-400" : "bg-slate-400"
+                              }`}
+                              style={{ width: `${t.subtaskProgress.percentage}%` }}
                             />
-                          )}
+                          </div>
                         </div>
                       )}
 
@@ -930,27 +956,36 @@ export default function TasksOverview() {
                         </span>
                       )}
                     </div>
-                    {t.taskType === "multi_task" && t.subtaskProgress && (
-                      <div className="mt-1">
-                        <SubtaskProgressBar
-                          total={t.subtaskProgress.total}
-                          completed={t.subtaskProgress.completed}
-                          percentage={t.subtaskProgress.percentage}
-                          showLabel={false}
-                        />
-                      </div>
-                    )}
                     {t.client && (
                       <p className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</p>
                     )}
                   </div>
 
                   {/* Status */}
-                  <div className="hidden md:flex w-32 shrink-0 items-center gap-1.5 flex-wrap">
-                    <Badge className={`text-[11px] px-2 py-0.5 font-medium ${STATUS_CLASS[t.status] ?? ""}`}>
-                      {STATUS_LABEL[t.status] ?? t.status}
-                    </Badge>
-                    <MultiTaskBadge taskType={t.taskType ?? "task"} />
+                  <div className="hidden md:flex w-36 shrink-0 flex-col gap-1 justify-center">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Badge className={`text-[11px] px-2 py-0.5 font-medium ${STATUS_CLASS[t.status] ?? ""}`}>
+                        {STATUS_LABEL[t.status] ?? t.status}
+                      </Badge>
+                      <MultiTaskBadge taskType={t.taskType ?? "task"} />
+                    </div>
+                    {t.taskType === "multi_task" && t.subtaskProgress && t.subtaskProgress.total > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] tabular-nums text-[hsl(var(--muted-foreground))]/70 font-medium leading-none">
+                          {t.subtaskProgress.completed}/{t.subtaskProgress.total}
+                        </span>
+                        <div className="h-1 flex-1 max-w-[48px] rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              t.subtaskProgress.percentage === 100 ? "bg-green-500" :
+                              t.subtaskProgress.percentage >= 66 ? "bg-blue-500" :
+                              t.subtaskProgress.percentage >= 33 ? "bg-indigo-400" : "bg-slate-400"
+                            }`}
+                            style={{ width: `${t.subtaskProgress.percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Prioridade — only on lg+ */}

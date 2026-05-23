@@ -4,7 +4,7 @@ import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { Badge } from "@/components/ui/badge";
 import {
   Play, Pencil, Send, MessageSquare, CheckCircle2, Clock,
-  ArrowRight, Tag, X, ExternalLink, PauseCircle, XCircle, RotateCcw,
+  ArrowRight, Tag, X, ExternalLink, PauseCircle, XCircle, RotateCcw, Layers,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -26,6 +26,8 @@ interface LifecycleTask {
   id: number; title: string; status: string; priority: string;
   complexity: string; dueDate: string | null; color: string;
   client: string | null; revisionCount: number;
+  taskType?: string;
+  subtaskProgress?: { total: number; completed: number; percentage: number } | null;
   assignee: Person | null; coordinator: Person | null;
 }
 
@@ -200,7 +202,14 @@ export function LifecycleFlow({
         <div className="flex items-center gap-3 px-5 py-3.5 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 shrink-0">
           <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: task.color }} />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold truncate leading-tight">{task.title}</p>
+            <div className="flex items-center gap-1.5">
+              {task.taskType === "multi_task" && (
+                <span title="Multi-tarefa" className="inline-flex shrink-0">
+                  <Layers className="h-3.5 w-3.5 text-indigo-500" />
+                </span>
+              )}
+              <p className="text-sm font-semibold truncate leading-tight">{task.title}</p>
+            </div>
             {task.client && (
               <p className="text-[11px] text-[hsl(var(--muted-foreground))]/70 flex items-center gap-1 mt-0.5">
                 <Tag className="h-2.5 w-2.5 shrink-0" />{task.client}
@@ -230,7 +239,31 @@ export function LifecycleFlow({
         {/* ── Meta grid ─────────────────────────────────────────────── */}
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-x-4 gap-y-3 px-5 py-3 border-b border-[hsl(var(--border))] shrink-0">
           <MetaItem label="Coordenador" value={task.coordinator?.name?.split(" ")[0] ?? "—"} />
-          <MetaItem label="Editor" value={task.assignee?.name?.split(" ")[0] ?? "—"} />
+          {task.taskType === "multi_task" && task.subtaskProgress ? (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 font-medium">Subtarefas</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold tabular-nums">
+                  {task.subtaskProgress.completed}/{task.subtaskProgress.total}
+                </span>
+                <div className="h-1.5 w-14 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      task.subtaskProgress.percentage === 100 ? "bg-green-500" :
+                      task.subtaskProgress.percentage >= 66 ? "bg-blue-500" :
+                      task.subtaskProgress.percentage >= 33 ? "bg-indigo-400" : "bg-slate-400"
+                    }`}
+                    style={{ width: `${task.subtaskProgress.percentage}%` }}
+                  />
+                </div>
+                <span className="text-[10px] text-[hsl(var(--muted-foreground))]/60 tabular-nums">
+                  {task.subtaskProgress.percentage}%
+                </span>
+              </div>
+            </div>
+          ) : (
+            <MetaItem label="Editor" value={task.assignee?.name?.split(" ")[0] ?? "—"} />
+          )}
           <MetaItem label="Prioridade" value={PRIORITY_LABEL[task.priority] ?? task.priority} />
           <MetaItem label="Complexidade" value={COMPLEXITY_LABEL[task.complexity] ?? task.complexity} />
           <MetaItem

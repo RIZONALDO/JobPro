@@ -10,14 +10,8 @@ interface MultiTaskBadgeProps {
 export function MultiTaskBadge({ taskType, parentTitle, className }: MultiTaskBadgeProps) {
   if (taskType === "multi_task") {
     return (
-      <span
-        className={cn(
-          "inline-flex items-center gap-1 rounded-full border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950 dark:text-indigo-300",
-          className
-        )}
-      >
-        <Layers className="h-3 w-3" />
-        Multi-tarefa
+      <span title="Multi-tarefa" className={cn("inline-flex shrink-0", className)}>
+        <Layers className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />
       </span>
     );
   }

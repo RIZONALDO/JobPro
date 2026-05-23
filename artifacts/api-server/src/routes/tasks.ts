@@ -1790,6 +1790,11 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
     steps.push(step);
   }
 
+  // For multi_task, attach subtask progress
+  const subtaskProgress = task.taskType === "multi_task"
+    ? ((await getSubtaskProgressMap([task.id])).get(task.id) ?? null)
+    : null;
+
   res.json({
     task: {
       id: task.id,
@@ -1804,6 +1809,7 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
       revisionCount: task.revisionCount ?? 0,
       taskType: task.taskType,
       parentTaskId: task.parentTaskId,
+      subtaskProgress,
       assignee: task.assignedToId ? (personMap.get(task.assignedToId) ?? null) : null,
       coordinator: task.createdById ? (personMap.get(task.createdById) ?? null) : null,
     },

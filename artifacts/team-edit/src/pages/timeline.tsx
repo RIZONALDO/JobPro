@@ -7,8 +7,8 @@ import { toast } from "sonner";
 import { usePageTitle } from "@/lib/use-page-title";
 import { Input } from "@/components/ui/input";
 import { STATUS_LABEL } from "@/lib/status";
-import { Search, X, CalendarDays, Calendar, CalendarRange, SlidersHorizontal, ChevronDown } from "lucide-react";
-import { LifecycleFlow, LifecycleData } from "@/components/LifecycleFlow";
+import { Search, X, CalendarDays, Calendar, CalendarRange, SlidersHorizontal, ChevronDown, Layers } from "lucide-react";
+import { LifecycleFlow, type LifecycleData } from "@/components/LifecycleFlow";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,6 +26,8 @@ interface TimelineTask {
   createdAt: string;
   assignee: Person | null;
   coordinator: Person | null;
+  taskType?: string;
+  subtaskProgress?: { total: number; completed: number; percentage: number } | null;
 }
 
 type ZoomMode = "week" | "month" | "year";
@@ -310,6 +312,7 @@ function GanttGrid({ tasks, zoom, onOpen }: {
           const isDone      = t.status === "completed";
           const isCancel    = t.status === "cancelled";
           const isPaused    = t.status === "paused";
+          const isMulti     = t.taskType === "multi_task";
           const overdue     = !isDone && !isCancel && !isPaused
             && t.dueDate && isoToDay(t.dueDate) < today;
           const rowBg       = rowIdx % 2 === 0 ? "transparent" : "hsl(var(--muted)/0.12)";
@@ -342,14 +345,17 @@ function GanttGrid({ tasks, zoom, onOpen }: {
                   background: barColor,
                 }} />
                 <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 5, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+                    {isMulti && (
+                      <Layers style={{ width: 11, height: 11, flexShrink: 0, color: "#6366f1", opacity: 0.8 }} />
+                    )}
                     {t.taskCode && (
-                      <span style={{ fontSize: 14, fontFamily: "ui-monospace, monospace", fontWeight: 700, color: "hsl(var(--muted-foreground))", flexShrink: 0 }}>
+                      <span style={{ fontSize: 11, fontFamily: "ui-monospace, monospace", fontWeight: 700, color: "hsl(var(--muted-foreground))", flexShrink: 0 }}>
                         {t.taskCode}
                       </span>
                     )}
                     <span style={{
-                      fontSize: 14, fontWeight: 500, lineHeight: 1.2,
+                      fontSize: 13, fontWeight: 500, lineHeight: 1.2,
                       color: isDone || isCancel ? "hsl(var(--muted-foreground))" : "hsl(var(--foreground))",
                       textDecoration: isDone || isCancel ? "line-through" : "none",
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
@@ -360,10 +366,10 @@ function GanttGrid({ tasks, zoom, onOpen }: {
                   <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
                     {t.client && (
                       <span style={{
-                        fontSize: 14, fontWeight: 500,
+                        fontSize: 11, fontWeight: 500,
                         color: "hsl(var(--muted-foreground))",
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                        maxWidth: 130,
+                        maxWidth: 110,
                       }}>
                         {t.client}
                       </span>
@@ -375,6 +381,16 @@ function GanttGrid({ tasks, zoom, onOpen }: {
                         padding: "0 5px", borderRadius: 99,
                       }}>
                         atrasada
+                      </span>
+                    )}
+                    {isMulti && t.subtaskProgress && t.subtaskProgress.total > 0 && (
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, flexShrink: 0,
+                        color: "#6366f1", background: "#eef2ff",
+                        padding: "1px 5px", borderRadius: 99,
+                        fontVariantNumeric: "tabular-nums",
+                      }}>
+                        {t.subtaskProgress.completed}/{t.subtaskProgress.total}
                       </span>
                     )}
                   </div>
@@ -405,8 +421,12 @@ function GanttGrid({ tasks, zoom, onOpen }: {
                     height: ROW_H - 20,
                     width: fill ? `max(12px, calc(${barSpan / DAYS * 100}% - 8px))` : Math.max(12, barSpan * PX - 8),
                     borderRadius: 6,
-                    background: `color-mix(in oklab, ${barColor} 18%, transparent)`,
-                    border: `1.5px solid color-mix(in oklab, ${barColor} 42%, transparent)`,
+                    background: isMulti
+                      ? `color-mix(in oklab, ${barColor} 10%, transparent)`
+                      : `color-mix(in oklab, ${barColor} 18%, transparent)`,
+                    border: isMulti
+                      ? `1.5px dashed color-mix(in oklab, ${barColor} 55%, transparent)`
+                      : `1.5px solid color-mix(in oklab, ${barColor} 42%, transparent)`,
                     display: "flex", alignItems: "center",
                     padding: "0 8px", gap: 5, overflow: "hidden",
                   }}>
@@ -416,10 +436,13 @@ function GanttGrid({ tasks, zoom, onOpen }: {
                     }} />
                     {PX >= 30 && (
                       <span style={{
-                        fontSize: 13, color: "hsl(var(--foreground)/0.6)",
+                        fontSize: 12, color: "hsl(var(--foreground)/0.6)",
                         whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                       }}>
-                        {t.title}
+                        {isMulti && t.subtaskProgress && t.subtaskProgress.total > 0
+                          ? `${t.subtaskProgress.completed}/${t.subtaskProgress.total} subtarefas`
+                          : t.title
+                        }
                       </span>
                     )}
                   </div>
@@ -486,7 +509,7 @@ export default function Timeline() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-  useRealtime(load);
+  useRealtime({ onTasksChanged: load });
 
   // Build dropdown options from data
   const statusOpts = useMemo(() =>
