@@ -1882,77 +1882,60 @@ export default function DutyPage() {
         const close      = () => { setAddModal(null); setAddModalSelected(null); };
 
         return (
-          <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-5">
             <div className="absolute inset-0 bg-black/50" onClick={close} />
-            <div className="relative bg-[hsl(var(--card))] rounded-t-3xl shadow-2xl w-full max-w-sm flex flex-col max-h-[78vh]">
+            <div className="relative bg-[hsl(var(--card))] rounded-2xl shadow-2xl w-full max-w-xs flex flex-col max-h-[70vh] overflow-hidden">
 
-              {/* Handle */}
-              <div className="flex justify-center pt-3 pb-1 shrink-0">
-                <div className="w-9 h-1 rounded-full bg-[hsl(var(--border))]" />
-              </div>
-
-              {/* Header */}
-              <div className="flex items-center justify-between px-5 py-3 shrink-0">
+              {/* Colored header band */}
+              <div className="bg-[hsl(var(--primary))] px-4 py-4 shrink-0 flex items-start justify-between">
                 <div>
-                  <p className="text-base font-semibold leading-tight">{fmtSingleDate(addModal.iso)}</p>
-                  <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">Adicionar plantonista</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">Plantonista</p>
+                  <p className="text-sm font-bold text-white mt-0.5">{fmtSingleDate(addModal.iso)}</p>
                 </div>
-                <button
-                  onClick={close}
-                  className="h-8 w-8 rounded-full bg-[hsl(var(--muted))] flex items-center justify-center hover:bg-[hsl(var(--muted-foreground))]/20 transition-colors">
-                  <X className="h-4 w-4" />
+                <button onClick={close} className="h-6 w-6 rounded-full bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center mt-0.5">
+                  <X className="h-3.5 w-3.5 text-white" />
                 </button>
               </div>
 
-              <div className="h-px bg-[hsl(var(--border))] mx-5 shrink-0" />
-
               {/* Editor list */}
-              <div className="flex-1 min-h-0 overflow-y-auto py-1">
+              <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-[hsl(var(--border))]/60">
                 {modalAvail.length === 0 ? (
                   <p className="text-sm text-center py-10 italic text-[hsl(var(--muted-foreground))]">
                     Todos os editores já escalados.
                   </p>
-                ) : modalAvail.map((e, i) => (
-                  <div key={e.id}>
-                    <div className="flex items-center gap-3 px-5 py-3">
-                      <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={34} />
-                      <span className="text-sm font-medium flex-1 truncate">{e.name}</span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          disabled={addModalAdding}
-                          onClick={async () => {
-                            setAddModalAdding(true);
-                            await addEditor(addModal.iso, e.id, "normal", null);
-                            setAddModalAdding(false);
-                          }}
-                          className="h-7 px-3 rounded-full text-[11px] font-bold border
-                            border-[hsl(var(--primary))]/40 text-[hsl(var(--primary))]
-                            hover:bg-[hsl(var(--primary))]/10 transition-colors disabled:opacity-40">
-                          Normal
-                        </button>
-                        <button
-                          disabled={addModalAdding}
-                          onClick={async () => {
-                            setAddModalAdding(true);
-                            await addEditor(addModal.iso, e.id, "extra", null);
-                            setAddModalAdding(false);
-                          }}
-                          className="h-7 px-3 rounded-full text-[11px] font-bold border
-                            border-amber-400/50 text-amber-600 dark:text-amber-400
-                            hover:bg-amber-400/10 transition-colors disabled:opacity-40">
-                          Extra
-                        </button>
-                      </div>
+                ) : modalAvail.map(e => (
+                  <div key={e.id} className="flex items-center gap-3 px-4 py-3">
+                    <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={32} />
+                    <span className="text-sm font-medium flex-1 truncate">{e.name}</span>
+                    <div className="flex gap-1.5 shrink-0">
+                      <button
+                        disabled={addModalAdding}
+                        onClick={async () => {
+                          setAddModalAdding(true);
+                          await addEditor(addModal.iso, e.id, "normal", null);
+                          setAddModalAdding(false);
+                        }}
+                        className="h-6 px-2.5 rounded-md text-[10px] font-bold
+                          bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]
+                          hover:bg-[hsl(var(--primary))]/20 transition-colors disabled:opacity-40">
+                        Normal
+                      </button>
+                      <button
+                        disabled={addModalAdding}
+                        onClick={async () => {
+                          setAddModalAdding(true);
+                          await addEditor(addModal.iso, e.id, "extra", null);
+                          setAddModalAdding(false);
+                        }}
+                        className="h-6 px-2.5 rounded-md text-[10px] font-bold
+                          bg-amber-400/10 text-amber-600 dark:text-amber-400
+                          hover:bg-amber-400/20 transition-colors disabled:opacity-40">
+                        Extra
+                      </button>
                     </div>
-                    {i < modalAvail.length - 1 && (
-                      <div className="h-px bg-[hsl(var(--border))]/60 mx-5" />
-                    )}
                   </div>
                 ))}
               </div>
-
-              {/* Safe-area spacer */}
-              <div className="pb-6 shrink-0" />
             </div>
           </div>
         );
