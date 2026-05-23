@@ -98,8 +98,8 @@ async function recalculateParentStatus(parentId: number, changedById: number): P
 }
 
 // ── Helper: get subtask progress for a list of parent task IDs ───────────────
-async function getSubtaskProgressMap(parentIds: number[]): Promise<Map<number, { total: number; completed: number; inProgress: number; pending: number }>> {
-  const map = new Map<number, { total: number; completed: number; inProgress: number; pending: number }>();
+async function getSubtaskProgressMap(parentIds: number[]): Promise<Map<number, { total: number; completed: number; inProgress: number; pending: number; percentage: number }>> {
+  const map = new Map<number, { total: number; completed: number; inProgress: number; pending: number; percentage: number }>();
   if (parentIds.length === 0) return map;
 
   const rows = await db
@@ -109,13 +109,19 @@ async function getSubtaskProgressMap(parentIds: number[]): Promise<Map<number, {
 
   for (const row of rows) {
     const pid = row.parentTaskId!;
-    if (!map.has(pid)) map.set(pid, { total: 0, completed: 0, inProgress: 0, pending: 0 });
+    if (!map.has(pid)) map.set(pid, { total: 0, completed: 0, inProgress: 0, pending: 0, percentage: 0 });
     const entry = map.get(pid)!;
     entry.total++;
     if (row.status === "completed") entry.completed++;
     else if (["in_progress", "review", "in_revision", "reopened"].includes(row.status)) entry.inProgress++;
     else if (row.status === "pending") entry.pending++;
   }
+
+  // Compute percentage after all rows processed
+  for (const [, entry] of map) {
+    entry.percentage = entry.total > 0 ? Math.round((entry.completed / entry.total) * 100) : 0;
+  }
+
   return map;
 }
 

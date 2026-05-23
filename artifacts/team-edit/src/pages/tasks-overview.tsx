@@ -247,15 +247,27 @@ export default function TasksOverview() {
 
   useRealtime({
     onTasksChanged: () => load(true),
+
+    // Fired by subtask:changed — refresh ALL currently expanded panels immediately,
+    // without waiting for the debounced load(true). This is the primary real-time
+    // mechanism for keeping coordinator panels in sync.
+    onSubtaskChanged: () => {
+      expandedIdsRef.current.forEach(parentId => {
+        apiFetch<SubtaskDetail[]>(`/api/tasks/${parentId}/subtasks`)
+          .then(subs => setSubtasksMap(p => new Map(p).set(parentId, subs)))
+          .catch(() => {});
+      });
+    },
+
+    // Fired by multitask:progress — updates the progress chip on the parent row
+    // and refreshes the expanded panel for that specific parent.
     onMultitaskProgress: (event) => {
       const { parentTaskId, progress } = event;
-      // 1. Update progress counter on the parent task card immediately
       setTasks(prev => prev.map(t =>
         t.id === parentTaskId
           ? { ...t, subtaskProgress: { total: progress.total, completed: progress.completed, percentage: progress.percentage } }
           : t
       ));
-      // 2. If the panel for this parent is expanded, refresh subtask rows too
       if (expandedIdsRef.current.has(parentTaskId)) {
         apiFetch<SubtaskDetail[]>(`/api/tasks/${parentTaskId}/subtasks`)
           .then(subs => setSubtasksMap(p => new Map(p).set(parentTaskId, subs)))
@@ -784,9 +796,17 @@ export default function TasksOverview() {
                 </DropdownMenuContent>
               );
 
-              const isExpanded   = expandedIds.has(t.id);
-              const subList      = subtasksMap.get(t.id) ?? [];
+              const isExpanded    = expandedIds.has(t.id);
+              const subList       = subtasksMap.get(t.id) ?? [];
               const isLoadingSubs = loadingSubtasks.has(t.id);
+              // Safe percentage — computed from completed/total as fallback if API didn't include it
+              const subPct = t.subtaskProgress
+                ? (t.subtaskProgress.percentage ?? (
+                    t.subtaskProgress.total > 0
+                      ? Math.round((t.subtaskProgress.completed / t.subtaskProgress.total) * 100)
+                      : 0
+                  ))
+                : 0;
 
               return (
                 <Fragment key={t.id}>
@@ -843,11 +863,11 @@ export default function TasksOverview() {
                           <div className="h-1 w-12 rounded-full bg-muted overflow-hidden">
                             <div
                               className={`h-full rounded-full transition-all duration-500 ${
-                                t.subtaskProgress.percentage === 100 ? "bg-green-500" :
-                                t.subtaskProgress.percentage >= 66 ? "bg-blue-500" :
-                                t.subtaskProgress.percentage >= 33 ? "bg-indigo-400" : "bg-slate-400"
+                                subPct === 100 ? "bg-green-500" :
+                                subPct >= 66 ? "bg-blue-500" :
+                                subPct >= 33 ? "bg-indigo-400" : "bg-slate-400"
                               }`}
-                              style={{ width: `${t.subtaskProgress.percentage}%` }}
+                              style={{ width: `${subPct}%` }}
                             />
                           </div>
                         </div>
@@ -977,11 +997,11 @@ export default function TasksOverview() {
                         <div className="h-1 flex-1 max-w-[48px] rounded-full bg-muted overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all duration-500 ${
-                              t.subtaskProgress.percentage === 100 ? "bg-green-500" :
-                              t.subtaskProgress.percentage >= 66 ? "bg-blue-500" :
-                              t.subtaskProgress.percentage >= 33 ? "bg-indigo-400" : "bg-slate-400"
+                              subPct === 100 ? "bg-green-500" :
+                              subPct >= 66 ? "bg-blue-500" :
+                              subPct >= 33 ? "bg-indigo-400" : "bg-slate-400"
                             }`}
-                            style={{ width: `${t.subtaskProgress.percentage}%` }}
+                            style={{ width: `${subPct}%` }}
                           />
                         </div>
                       </div>
