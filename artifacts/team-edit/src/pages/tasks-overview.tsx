@@ -958,33 +958,41 @@ export default function TasksOverview() {
                     <PriorityBadge priority={t.priority} />
                   </div>
 
-                  {/* Editor */}
+                  {/* Editor — empilhado para multi_task, normal para simples */}
                   <div className="hidden md:flex w-32 shrink-0 items-center gap-1.5">
-                    {isUnassigned ? (
+                    {isUnassigned && t.taskType !== "multi_task" ? (
                       <span className="text-xs text-slate-400">sem editor</span>
                     ) : t.editors && t.editors.length > 0 ? (
                       <>
                         <div className="flex items-center" style={{ gap: 0 }}>
-                          {t.editors.slice(0, 3).map((e, i) => (
+                          {t.editors.slice(0, 4).map((e, i) => (
                             <div key={e.id} style={{ marginLeft: i === 0 ? 0 : -8, zIndex: t.editors.length - i }}>
                               <ChatAvatarButton
                                 userId={e.id}
                                 name={e.name}
                                 avatarUrl={e.avatarUrl}
-                                size={28}
+                                size={26}
                                 taskId={t.id}
                                 taskCode={t.taskCode}
                                 taskTitle={t.title}
                               />
                             </div>
                           ))}
+                          {t.editors.length > 4 && (
+                            <div style={{ marginLeft: -8, zIndex: 0 }}
+                              className="h-[26px] w-[26px] rounded-full bg-[hsl(var(--muted))] border-2 border-[hsl(var(--background))] flex items-center justify-center text-[10px] font-bold text-[hsl(var(--muted-foreground))]">
+                              +{t.editors.length - 4}
+                            </div>
+                          )}
                         </div>
                         {t.editors.length === 1 && (
                           <span className="text-[11px] font-medium truncate">{t.editors[0].name.split(" ")[0]}</span>
                         )}
                       </>
                     ) : (
-                      <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30">—</span>
+                      <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30">
+                        {t.taskType === "multi_task" ? "sem subtarefas" : "—"}
+                      </span>
                     )}
                   </div>
 

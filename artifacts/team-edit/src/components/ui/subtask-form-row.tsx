@@ -4,10 +4,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 
 export interface SubtaskRow {
-  id: string; // local key
+  id: string;
   title: string;
-  editorId: string; // "" means unassigned
-  dueDate: string;
+  editorId: string;
+  dueDate: string; // kept in interface for compat but not shown in UI (parent dueDate applies)
 }
 
 interface Editor {
@@ -26,30 +26,31 @@ interface SubtaskFormRowProps {
 
 export function SubtaskFormRow({ row, index, editors, onChange, onRemove }: SubtaskFormRowProps) {
   return (
-    <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center py-2 px-3 rounded-lg border bg-background">
-      <div className="flex flex-col gap-1">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Subtarefa {index + 1}
-        </span>
-        <Input
-          value={row.title}
-          onChange={e => onChange({ title: e.target.value })}
-          placeholder="Título da subtarefa"
-          className="text-sm h-8"
-        />
-      </div>
+    <div className="flex items-center gap-2">
+      {/* Index pill */}
+      <span className="h-5 w-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground shrink-0">
+        {index + 1}
+      </span>
 
-      {/* Editor */}
-      <div className="w-40">
+      {/* Título — flex-1 */}
+      <Input
+        value={row.title}
+        onChange={e => onChange({ title: e.target.value })}
+        placeholder={`Subtarefa ${index + 1}…`}
+        className="flex-1 text-sm h-8 min-w-0"
+      />
+
+      {/* Editor — largura fixa */}
+      <div className="w-36 shrink-0">
         <Select value={row.editorId || "none"} onValueChange={v => onChange({ editorId: v === "none" ? "" : v })}>
-          <SelectTrigger className="text-xs h-8">
+          <SelectTrigger className="text-xs h-8 w-full">
             {row.editorId ? (
               (() => {
                 const e = editors.find(x => String(x.id) === row.editorId);
                 return e ? (
-                  <span className="flex items-center gap-1.5">
-                    <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} style={{ width: 18, height: 18, fontSize: 7, flexShrink: 0 }} />
-                    <span className="truncate">{e.name}</span>
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} style={{ width: 16, height: 16, fontSize: 6, flexShrink: 0 }} />
+                    <span className="truncate">{e.name.split(" ")[0]}</span>
                   </span>
                 ) : <SelectValue />;
               })()
@@ -62,7 +63,7 @@ export function SubtaskFormRow({ row, index, editors, onChange, onRemove }: Subt
             {editors.map(e => (
               <SelectItem key={e.id} value={String(e.id)}>
                 <span className="flex items-center gap-1.5">
-                  <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} style={{ width: 18, height: 18, fontSize: 7, flexShrink: 0 }} />
+                  <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} style={{ width: 16, height: 16, fontSize: 6, flexShrink: 0 }} />
                   {e.name}
                 </span>
               </SelectItem>
@@ -71,23 +72,11 @@ export function SubtaskFormRow({ row, index, editors, onChange, onRemove }: Subt
         </Select>
       </div>
 
-      {/* Prazo */}
-      <div className="w-36">
-        <Input
-          type="date"
-          value={row.dueDate}
-          onChange={e => onChange({ dueDate: e.target.value })}
-          className="text-xs h-8"
-          title="Prazo da subtarefa"
-        />
-      </div>
-
       {/* Remover */}
       <button
         type="button"
         onClick={onRemove}
-        className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-muted text-muted-foreground hover:text-red-600 transition-colors"
-        title="Remover subtarefa"
+        className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors shrink-0"
       >
         <X className="h-3.5 w-3.5" />
       </button>

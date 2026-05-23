@@ -320,6 +320,38 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
   // Get subtask progress for multi_tasks
   const progressMap = await getSubtaskProgressMap(multiTaskIds);
 
+  // Fetch editors from subtasks for multi_task parents (item 8)
+  const subtaskEditorRows = multiTaskIds.length
+    ? await db
+        .select({
+          parentTaskId: tasksTable.parentTaskId,
+          assignedToId: tasksTable.assignedToId,
+        })
+        .from(tasksTable)
+        .where(and(inArray(tasksTable.parentTaskId, multiTaskIds), isNotNull(tasksTable.assignedToId)))
+    : [];
+
+  const subtaskAssigneeIds = [...new Set(subtaskEditorRows.map(r => r.assignedToId).filter(Boolean))] as number[];
+  const subtaskAssignees = subtaskAssigneeIds.length
+    ? await db
+        .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+        .from(usersTable)
+        .where(inArray(usersTable.id, subtaskAssigneeIds))
+    : [];
+  const subtaskAssigneeMap = new Map(subtaskAssignees.map(u => [u.id, u]));
+
+  // Build map: parentTaskId -> unique editors from subtasks
+  const subtaskEditorsMap = new Map<number, { id: number; name: string; avatarUrl: string | null }[]>();
+  for (const row of subtaskEditorRows) {
+    const pid = row.parentTaskId!;
+    const uid = row.assignedToId!;
+    if (!subtaskEditorsMap.has(pid)) subtaskEditorsMap.set(pid, []);
+    const person = subtaskAssigneeMap.get(uid);
+    if (person && !subtaskEditorsMap.get(pid)!.some(e => e.id === uid)) {
+      subtaskEditorsMap.get(pid)!.push({ id: person.id, name: person.name, avatarUrl: person.avatarUrl });
+    }
+  }
+
   res.json(rows.map(r => ({
     id: r.id,
     taskCode: fmtCode(r.taskNumber, r.taskYear),
@@ -332,11 +364,12 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     folderUrl: r.folderUrl,
     revisionCount: r.revisionCount ?? 0,
     client: r.client,
-    color: r.color,
     taskType: r.taskType,
     parentTaskId: r.parentTaskId,
     assignee: r.assignedToId ? (personMap.get(r.assignedToId) ?? null) : null,
-    editors: editorsMap.get(r.id) ?? [],
+    editors: r.taskType === "multi_task"
+      ? subtaskEditorsMap.get(r.id) ?? []
+      : editorsMap.get(r.id) ?? [],
     coordinator: r.createdById ? (personMap.get(r.createdById) ?? null) : null,
     isOwn: r.createdById === userId,
     updatedAt: r.updatedAt,
@@ -966,8 +999,9 @@ router.get("/tasks/:id/subtasks", requireAuth, async (req, res): Promise<void> =
   const parentId = parseInt(req.params.id, 10);
   if (isNaN(parentId)) { res.status(400).json({ error: "ID inválido" }); return; }
 
-  const [parent] = await db.select({ id: tasksTable.id, taskType: tasksTable.taskType }).from(tasksTable).where(eq(tasksTable.id, parentId));
+  const [parent] = await db.select({ id: tasksTable.id, taskType: tasksTable.taskType, taskNumber: tasksTable.taskNumber, taskYear: tasksTable.taskYear }).from(tasksTable).where(eq(tasksTable.id, parentId));
   if (!parent) { res.status(404).json({ error: "Tarefa não encontrada" }); return; }
+  const parentCode = fmtCode(parent.taskNumber, parent.taskYear);
 
   const subRows = await db
     .select()
@@ -998,9 +1032,9 @@ router.get("/tasks/:id/subtasks", requireAuth, async (req, res): Promise<void> =
     assignees.forEach(a => assigneeMap.set(a.id, a));
   }
 
-  res.json(subRows.map(s => ({
+  res.json(subRows.map((s, i) => ({
     id: s.id,
-    taskCode: fmtCode(s.taskNumber, s.taskYear),
+    taskCode: `${parentCode}.${(s.subtaskOrder ?? i) + 1}`,
     title: s.title,
     description: s.description,
     status: s.status,
