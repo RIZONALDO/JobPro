@@ -1877,93 +1877,82 @@ export default function DutyPage() {
 
       {/* ── Adicionar Plantão modal ────────────────────────────────────────── */}
       {addModal && (() => {
-        const modalSlot      = getSlotOrEmpty(addModal.iso);
-        const modalAvail     = editors.filter(e => !modalSlot.editors.some(se => se.id === e.id));
-        const modalDow       = new Date(addModal.iso + "T12:00:00").getDay();
-        const modalIsWknd    = modalDow === 6 || modalDow === 0;
-        const canAddNormal = true;
-        const close          = () => { setAddModal(null); setAddModalSelected(null); };
+        const modalSlot  = getSlotOrEmpty(addModal.iso);
+        const modalAvail = editors.filter(e => !modalSlot.editors.some(se => se.id === e.id));
+        const close      = () => { setAddModal(null); setAddModalSelected(null); };
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/40" onClick={close} />
-            <div className="relative bg-[hsl(var(--card))] rounded-2xl shadow-2xl w-full max-w-sm flex flex-col max-h-[85vh]">
+          <div className="fixed inset-0 z-50 flex items-end justify-center">
+            <div className="absolute inset-0 bg-black/50" onClick={close} />
+            <div className="relative bg-[hsl(var(--card))] rounded-t-3xl shadow-2xl w-full max-w-sm flex flex-col max-h-[78vh]">
 
-              <div className="px-5 pt-5 pb-4 shrink-0">
-                <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
-                  Adicionar Plantão
-                </p>
-                <p className="text-base font-semibold mt-0.5">{fmtSingleDate(addModal.iso)}</p>
+              {/* Handle */}
+              <div className="flex justify-center pt-3 pb-1 shrink-0">
+                <div className="w-9 h-1 rounded-full bg-[hsl(var(--border))]" />
               </div>
 
-              <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-2 flex flex-col gap-1.5">
-                {modalAvail.length === 0 ? (
-                  <p className="text-sm text-center py-8 italic text-[hsl(var(--muted-foreground))]">
-                    Todos os editores já escalados.
-                  </p>
-                ) : modalAvail.map(e => {
-                  const sel = addModalSelected === e.id;
-                  return (
-                    <div key={e.id} className={`rounded-xl border overflow-hidden transition-colors duration-150 ${
-                      sel ? "border-[hsl(var(--primary))]/30" : "border-[hsl(var(--border))]"
-                    }`}>
-                      {/* Editor row — click to select/deselect */}
-                      <button
-                        className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
-                          sel ? "bg-[hsl(var(--primary))]/6" : "hover:bg-[hsl(var(--muted))]/40"
-                        }`}
-                        onClick={() => setAddModalSelected(sel ? null : e.id)}>
-                        <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={36} />
-                        <span className="text-sm font-medium flex-1">{e.name}</span>
-                        <ChevronDown className={`h-4 w-4 text-[hsl(var(--muted-foreground))] transition-transform duration-200 ${sel ? "rotate-180" : ""}`} />
-                      </button>
-
-                      {/* Type picker — revealed on selection */}
-                      {sel && (
-                        <div className="flex border-t border-[hsl(var(--primary))]/15">
-                          {canAddNormal && (
-                            <button
-                              disabled={addModalAdding}
-                              onClick={async () => {
-                                setAddModalAdding(true);
-                                await addEditor(addModal.iso, e.id, "normal", null);
-                                setAddModalSelected(null);
-                                setAddModalAdding(false);
-                              }}
-                              className="flex-1 py-3 text-[11px] font-bold tracking-wide
-                                text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/8
-                                border-r border-[hsl(var(--primary))]/15 transition-colors disabled:opacity-40">
-                              Plantão Normal
-                            </button>
-                          )}
-                          <button
-                            disabled={addModalAdding}
-                            onClick={async () => {
-                              setAddModalAdding(true);
-                              await addEditor(addModal.iso, e.id, "extra", null);
-                              setAddModalSelected(null);
-                              setAddModalAdding(false);
-                            }}
-                            className={`py-3 text-[11px] font-bold tracking-wide
-                              text-amber-600 dark:text-amber-400 hover:bg-amber-400/8
-                              transition-colors disabled:opacity-40
-                              ${canAddNormal ? "flex-1" : "w-full"}`}>
-                            Plantão Extra
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="px-4 py-4 shrink-0">
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-3 shrink-0">
+                <div>
+                  <p className="text-base font-semibold leading-tight">{fmtSingleDate(addModal.iso)}</p>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">Adicionar plantonista</p>
+                </div>
                 <button
                   onClick={close}
-                  className="w-full h-9 text-sm font-medium rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))] transition-colors">
-                  Fechar
+                  className="h-8 w-8 rounded-full bg-[hsl(var(--muted))] flex items-center justify-center hover:bg-[hsl(var(--muted-foreground))]/20 transition-colors">
+                  <X className="h-4 w-4" />
                 </button>
               </div>
+
+              <div className="h-px bg-[hsl(var(--border))] mx-5 shrink-0" />
+
+              {/* Editor list */}
+              <div className="flex-1 min-h-0 overflow-y-auto py-1">
+                {modalAvail.length === 0 ? (
+                  <p className="text-sm text-center py-10 italic text-[hsl(var(--muted-foreground))]">
+                    Todos os editores já escalados.
+                  </p>
+                ) : modalAvail.map((e, i) => (
+                  <div key={e.id}>
+                    <div className="flex items-center gap-3 px-5 py-3">
+                      <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={34} />
+                      <span className="text-sm font-medium flex-1 truncate">{e.name}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          disabled={addModalAdding}
+                          onClick={async () => {
+                            setAddModalAdding(true);
+                            await addEditor(addModal.iso, e.id, "normal", null);
+                            setAddModalAdding(false);
+                          }}
+                          className="h-7 px-3 rounded-full text-[11px] font-bold border
+                            border-[hsl(var(--primary))]/40 text-[hsl(var(--primary))]
+                            hover:bg-[hsl(var(--primary))]/10 transition-colors disabled:opacity-40">
+                          Normal
+                        </button>
+                        <button
+                          disabled={addModalAdding}
+                          onClick={async () => {
+                            setAddModalAdding(true);
+                            await addEditor(addModal.iso, e.id, "extra", null);
+                            setAddModalAdding(false);
+                          }}
+                          className="h-7 px-3 rounded-full text-[11px] font-bold border
+                            border-amber-400/50 text-amber-600 dark:text-amber-400
+                            hover:bg-amber-400/10 transition-colors disabled:opacity-40">
+                          Extra
+                        </button>
+                      </div>
+                    </div>
+                    {i < modalAvail.length - 1 && (
+                      <div className="h-px bg-[hsl(var(--border))]/60 mx-5" />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Safe-area spacer */}
+              <div className="pb-6 shrink-0" />
             </div>
           </div>
         );
