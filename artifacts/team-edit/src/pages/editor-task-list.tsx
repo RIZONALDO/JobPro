@@ -24,6 +24,8 @@ import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
 import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
+import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
+import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
 
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
 interface Task {
@@ -40,6 +42,9 @@ interface Task {
   createdBy: { id: number; name: string; avatarUrl?: string | null } | null;
   revisions: Revision[];
   updatedAt: string;
+  // multi-task
+  taskType?: string;
+  parentTask?: { id: number; title: string; taskCode?: string } | null;
 }
 
 
@@ -308,6 +313,17 @@ export default function EditorTaskList() {
                     )}
                   </div>
 
+                  {/* subtarefa breadcrumb */}
+                  {t.taskType === "subtask" && t.parentTask && (
+                    <div className="mt-1">
+                      <ParentTaskBreadcrumb parentTask={t.parentTask} />
+                    </div>
+                  )}
+                  {/* multi-task badge */}
+                  {t.taskType === "multi_task" && (
+                    <div className="mt-1"><MultiTaskBadge taskType="multi_task" /></div>
+                  )}
+
                   {/* client */}
                   {t.client && (
                     <p className="text-xs text-[hsl(var(--muted-foreground))]/60 truncate mt-1 leading-snug">
@@ -374,16 +390,22 @@ export default function EditorTaskList() {
                     </span>
                   )}
                 </div>
+                {t.taskType === "subtask" && t.parentTask && (
+                  <div className="mt-0.5">
+                    <ParentTaskBreadcrumb parentTask={t.parentTask} />
+                  </div>
+                )}
                 {t.client && (
                   <span className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</span>
                 )}
               </div>
 
               {/* Status */}
-              <div className="hidden md:flex w-36 shrink-0 items-center px-2">
+              <div className="hidden md:flex w-36 shrink-0 items-center gap-1.5 flex-wrap px-2">
                 <Badge className={`${STATUS_CLASS[t.status] ?? ""} text-[11px] px-2 py-0.5 font-medium whitespace-nowrap shrink-0`}>
                   {STATUS_LABEL[t.status] ?? t.status}
                 </Badge>
+                <MultiTaskBadge taskType={t.taskType ?? "task"} />
               </div>
 
               {/* Priority */}

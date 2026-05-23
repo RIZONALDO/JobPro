@@ -28,6 +28,8 @@ import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
 import { TaskFormModal } from "@/components/task-form-modal";
 import { ReassignEditorModal } from "@/components/reassign-editor-modal";
+import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
+import { SubtaskProgressBar } from "@/components/ui/subtask-progress-bar";
 import { RefreshCw, UserPlus, RotateCcw } from "lucide-react";
 import { fmtClosedCycle, fmtPrazoWeek, fmtDate } from "@/lib/utils";
 import { PrazoCell } from "@/components/prazo-cell";
@@ -55,6 +57,9 @@ interface OverviewTask {
   coordinator: Person | null;
   isOwn: boolean;
   updatedAt: string;
+  // multi-task
+  taskType?: string;
+  subtaskProgress?: { total: number; completed: number; percentage: number };
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -727,6 +732,21 @@ export default function TasksOverview() {
                         )}
                       </div>
 
+                      {/* Row 1b: multi-task badge + progress */}
+                      {t.taskType === "multi_task" && (
+                        <div className="mt-1 space-y-1">
+                          <MultiTaskBadge taskType="multi_task" />
+                          {t.subtaskProgress && (
+                            <SubtaskProgressBar
+                              total={t.subtaskProgress.total}
+                              completed={t.subtaskProgress.completed}
+                              percentage={t.subtaskProgress.percentage}
+                              showLabel={false}
+                            />
+                          )}
+                        </div>
+                      )}
+
                       {/* Row 2: client */}
                       {t.client && (
                         <p className="text-xs text-[hsl(var(--muted-foreground))]/60 truncate mt-1 leading-snug">
@@ -821,16 +841,27 @@ export default function TasksOverview() {
                         </span>
                       )}
                     </div>
+                    {t.taskType === "multi_task" && t.subtaskProgress && (
+                      <div className="mt-1">
+                        <SubtaskProgressBar
+                          total={t.subtaskProgress.total}
+                          completed={t.subtaskProgress.completed}
+                          percentage={t.subtaskProgress.percentage}
+                          showLabel={false}
+                        />
+                      </div>
+                    )}
                     {t.client && (
                       <p className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</p>
                     )}
                   </div>
 
                   {/* Status */}
-                  <div className="hidden md:flex w-32 shrink-0 items-center">
+                  <div className="hidden md:flex w-32 shrink-0 items-center gap-1.5 flex-wrap">
                     <Badge className={`text-[11px] px-2 py-0.5 font-medium ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
+                    <MultiTaskBadge taskType={t.taskType ?? "task"} />
                   </div>
 
                   {/* Prioridade — only on lg+ */}

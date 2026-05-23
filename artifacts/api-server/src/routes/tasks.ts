@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { db, tasksTable, usersTable, taskRevisionsTable, taskEventsTable, taskEditorsTable } from "@workspace/db";
-import { eq, ne, desc, asc, and, or, gte, lte, isNotNull, lt, inArray, sql } from "drizzle-orm";
+import { eq, ne, desc, asc, and, or, gte, lte, isNotNull, lt, inArray, isNull, sql } from "drizzle-orm";
 import { requireAuth, requireCoordinator } from "../lib/auth.js";
 import { notify } from "../lib/notify.js";
-import { broadcastTaskChange } from "../lib/broadcast.js";
+import { broadcastTaskChange, broadcastSubtaskProgress, broadcastSubtaskChanged } from "../lib/broadcast.js";
 import { createFeedItem } from "../lib/feed.js";
 
 const router = Router();
@@ -18,23 +18,137 @@ const dueDateKey = (d: Date | string | null | undefined): string => {
   return d.toISOString().slice(0, 10);
 };
 
+// ── Utility: recalculate parent multi_task status based on subtasks ──────────
+async function recalculateParentStatus(parentId: number, changedById: number): Promise<void> {
+  try {
+    const subtasks = await db
+      .select({ status: tasksTable.status })
+      .from(tasksTable)
+      .where(eq(tasksTable.parentTaskId, parentId));
+
+    if (subtasks.length === 0) return;
+
+    const [parent] = await db
+      .select()
+      .from(tasksTable)
+      .where(eq(tasksTable.id, parentId));
+    if (!parent) return;
+
+    const allCompleted   = subtasks.every(s => s.status === "completed");
+    const allCancelled   = subtasks.every(s => s.status === "cancelled");
+    const anyActive      = subtasks.some(s => ["in_progress", "review", "in_revision", "reopened"].includes(s.status));
+    const anyPending     = subtasks.some(s => s.status === "pending");
+
+    let newStatus: string | null = null;
+
+    if (allCompleted && parent.status !== "completed") {
+      newStatus = "completed";
+    } else if (allCancelled && parent.status !== "cancelled") {
+      newStatus = "cancelled";
+    } else if (anyActive && parent.status === "pending") {
+      newStatus = "in_progress";
+    } else if (!anyActive && anyPending && parent.status === "in_progress") {
+      newStatus = "pending";
+    }
+
+    if (!newStatus) return;
+
+    await db
+      .update(tasksTable)
+      .set({ status: newStatus })
+      .where(eq(tasksTable.id, parentId));
+
+    await db.insert(taskEventsTable).values({
+      taskId: parentId,
+      fromStatus: parent.status,
+      toStatus: newStatus,
+      changedById,
+    });
+
+    // Notify coordinator when multi_task auto-completes
+    if (newStatus === "completed" && parent.createdById) {
+      await notify(
+        parent.createdById,
+        "task_approved",
+        "Multi-tarefa concluída",
+        `Todas as subtarefas de "${parent.title}" foram concluídas`,
+        { taskId: parentId }
+      );
+      await createFeedItem({
+        type: "task_completed",
+        title: `Multi-tarefa concluída: "${parent.title}"`,
+        actorId: changedById,
+        entityId: parentId,
+        entityType: "task",
+      }).catch(() => {});
+    }
+
+    // Broadcast progress update
+    const completed = subtasks.filter(s => s.status === "completed").length;
+    broadcastSubtaskProgress(parentId, {
+      total: subtasks.length,
+      completed,
+      percentage: Math.round((completed / subtasks.length) * 100),
+    });
+
+    broadcastTaskChange();
+  } catch (err) {
+    console.error("[recalculateParentStatus] error:", err);
+  }
+}
+
+// ── Helper: get subtask progress for a list of parent task IDs ───────────────
+async function getSubtaskProgressMap(parentIds: number[]): Promise<Map<number, { total: number; completed: number; inProgress: number; pending: number }>> {
+  const map = new Map<number, { total: number; completed: number; inProgress: number; pending: number }>();
+  if (parentIds.length === 0) return map;
+
+  const rows = await db
+    .select({ parentTaskId: tasksTable.parentTaskId, status: tasksTable.status })
+    .from(tasksTable)
+    .where(inArray(tasksTable.parentTaskId, parentIds));
+
+  for (const row of rows) {
+    const pid = row.parentTaskId!;
+    if (!map.has(pid)) map.set(pid, { total: 0, completed: 0, inProgress: 0, pending: 0 });
+    const entry = map.get(pid)!;
+    entry.total++;
+    if (row.status === "completed") entry.completed++;
+    else if (["in_progress", "review", "in_revision", "reopened"].includes(row.status)) entry.inProgress++;
+    else if (row.status === "pending") entry.pending++;
+  }
+  return map;
+}
+
 // ── Create task ──────────────────────────────────────────────────────────────
 router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
-  const { title, description, dueDate, priority, complexity, assignedToId, editorIds, folderUrl, client, color, status } = req.body ?? {};
+  const { title, description, dueDate, priority, complexity, assignedToId, editorIds,
+          folderUrl, client, color, status, taskType, parentTaskId, subtasks } = req.body ?? {};
+
   if (!title) { res.status(400).json({ error: "Título obrigatório" }); return; }
 
+  const resolvedType: string = taskType === "multi_task" ? "multi_task" : "task";
   const parsedAssignee = assignedToId ? parseInt(String(assignedToId), 10) : null;
   const initialStatus = status === "rascunho" ? "rascunho" : "pending";
 
-  if (initialStatus === "pending" && !dueDate) {
-    res.status(400).json({ error: "Informe o prazo antes de publicar a tarefa" }); return;
+  // Multi-task doesn't require editor or dueDate at the parent level
+  if (resolvedType !== "multi_task") {
+    if (initialStatus === "pending" && !dueDate) {
+      res.status(400).json({ error: "Informe o prazo antes de publicar a tarefa" }); return;
+    }
+    const allEditorIdsCheck = new Set<number>();
+    if (parsedAssignee) allEditorIdsCheck.add(parsedAssignee);
+    if (Array.isArray(editorIds)) editorIds.map(Number).filter(n => !isNaN(n) && n > 0).forEach(n => allEditorIdsCheck.add(n));
+    if (initialStatus === "pending" && allEditorIdsCheck.size === 0) {
+      res.status(400).json({ error: "Atribua ao menos um editor para publicar a tarefa" }); return;
+    }
   }
 
-  const allEditorIdsCheck = new Set<number>();
-  if (parsedAssignee) allEditorIdsCheck.add(parsedAssignee);
-  if (Array.isArray(editorIds)) editorIds.map(Number).filter(n => !isNaN(n) && n > 0).forEach(n => allEditorIdsCheck.add(n));
-  if (initialStatus === "pending" && allEditorIdsCheck.size === 0) {
-    res.status(400).json({ error: "Atribua ao menos um editor para publicar a tarefa" }); return;
+  // Multi-task must have at least one subtask to be published
+  if (resolvedType === "multi_task" && initialStatus === "pending") {
+    const incomingSubtasks = Array.isArray(subtasks) ? subtasks : [];
+    if (incomingSubtasks.length === 0) {
+      res.status(400).json({ error: "Adicione ao menos uma subtarefa antes de publicar a multi-tarefa" }); return;
+    }
   }
 
   const seqResult = await db.execute<{ nextval: string }>(sql`SELECT nextval('te_task_number_seq') AS nextval`);
@@ -52,31 +166,78 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
     priority: priority ?? "medium",
     complexity: complexity ?? "medium",
     status: initialStatus,
-    assignedToId: parsedAssignee,
+    assignedToId: resolvedType === "multi_task" ? null : parsedAssignee,
     folderUrl: folderUrl ? String(folderUrl) : null,
     createdById: req.session.userId,
+    taskType: resolvedType,
   }).returning();
 
-  // Collect all editor IDs (primary + additional), deduplicated
-  const allEditorIds = new Set<number>();
-  if (parsedAssignee) allEditorIds.add(parsedAssignee);
-  if (Array.isArray(editorIds)) {
-    editorIds.map(Number).filter(n => !isNaN(n) && n > 0).forEach(n => allEditorIds.add(n));
+  // For regular tasks: add editors to junction table
+  if (resolvedType !== "multi_task") {
+    const allEditorIds = new Set<number>();
+    if (parsedAssignee) allEditorIds.add(parsedAssignee);
+    if (Array.isArray(editorIds)) {
+      editorIds.map(Number).filter(n => !isNaN(n) && n > 0).forEach(n => allEditorIds.add(n));
+    }
+    for (const editorId of allEditorIds) {
+      await db.insert(taskEditorsTable).values({
+        taskId: task.id,
+        userId: editorId,
+        assignedById: req.session.userId,
+      }).onConflictDoNothing();
+      if (initialStatus !== "rascunho") {
+        await notify(editorId, "task_assigned",
+          "Nova tarefa atribuída",
+          `A tarefa "${task.title}" foi atribuída a você`,
+          { taskId: task.id }
+        );
+      }
+    }
   }
 
-  // Insert into junction table — notify only if published
-  for (const editorId of allEditorIds) {
-    await db.insert(taskEditorsTable).values({
-      taskId: task.id,
-      userId: editorId,
-      assignedById: req.session.userId,
-    }).onConflictDoNothing();
-    if (initialStatus !== "rascunho") {
-      await notify(editorId, "task_assigned",
-        "Nova tarefa atribuída",
-        `A tarefa "${task.title}" foi atribuída a você`,
-        { taskId: task.id }
-      );
+  // For multi_task: create subtasks from the subtasks array
+  if (resolvedType === "multi_task" && Array.isArray(subtasks)) {
+    for (let i = 0; i < subtasks.length; i++) {
+      const sub = subtasks[i];
+      if (!sub?.title) continue;
+
+      const subAssigneeId = sub.editorId ? parseInt(String(sub.editorId), 10) : null;
+      const subSeq = await db.execute<{ nextval: string }>(sql`SELECT nextval('te_task_number_seq') AS nextval`);
+      const subNumber = Number((subSeq.rows ?? subSeq)[0].nextval);
+
+      const [subtask] = await db.insert(tasksTable).values({
+        taskNumber: subNumber,
+        taskYear,
+        title: String(sub.title),
+        description: sub.description ? String(sub.description) : null,
+        client: client ? String(client) : null,
+        color: color ? String(color) : "#6366f1",
+        dueDate: sub.dueDate ? new Date(String(sub.dueDate)) : (dueDate ? new Date(String(dueDate)) : null),
+        priority: sub.priority ?? priority ?? "medium",
+        complexity: sub.complexity ?? complexity ?? "medium",
+        status: initialStatus === "rascunho" ? "rascunho" : "pending",
+        assignedToId: subAssigneeId,
+        folderUrl: null,
+        createdById: req.session.userId,
+        taskType: "subtask",
+        parentTaskId: task.id,
+        subtaskOrder: i,
+      }).returning();
+
+      if (subAssigneeId) {
+        await db.insert(taskEditorsTable).values({
+          taskId: subtask.id,
+          userId: subAssigneeId,
+          assignedById: req.session.userId,
+        }).onConflictDoNothing();
+        if (initialStatus !== "rascunho") {
+          await notify(subAssigneeId, "task_assigned",
+            "Nova subtarefa atribuída",
+            `Você foi atribuído à subtarefa "${subtask.title}" da multi-tarefa "${task.title}"`,
+            { taskId: subtask.id }
+          );
+        }
+      }
     }
   }
 
@@ -88,10 +249,7 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
 router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void> => {
   const { status, assignedToId, createdById } = req.query;
   const userId = req.session.userId!;
-  const role   = req.session.userRole!;
 
-  // All coordinator/supervisor/admin roles see all coordinator tasks;
-  // client-side filterCoord handles "Minhas" vs "Geral" per user preference.
   const coordUsers = await db
     .select({ id: usersTable.id })
     .from(usersTable)
@@ -100,14 +258,18 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
   if (coordIds.length === 0) { res.json([]); return; }
   const ownerCondition = inArray(tasksTable.createdById, coordIds);
 
-  const conditions: any[] = [ownerCondition];
+  const conditions: any[] = [
+    ownerCondition,
+    // Only show root tasks (multi_tasks and regular tasks), not subtasks
+    isNull(tasksTable.parentTaskId),
+  ];
+
   if (status === "active") {
     conditions.push(ne(tasksTable.status, "completed"));
     conditions.push(ne(tasksTable.status, "cancelled"));
   } else if (status && status !== "all") {
     conditions.push(eq(tasksTable.status, String(status)));
   } else if (!status) {
-    // default: active only
     conditions.push(ne(tasksTable.status, "completed"));
     conditions.push(ne(tasksTable.status, "cancelled"));
   }
@@ -121,6 +283,7 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     .orderBy(desc(tasksTable.createdAt));
 
   const taskIds = rows.map(r => r.id);
+  const multiTaskIds = rows.filter(r => r.taskType === "multi_task").map(r => r.id);
 
   const personIds = [...new Set([
     ...rows.map(r => r.assignedToId),
@@ -135,7 +298,6 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     : [];
   const personMap = new Map(persons.map(p => [p.id, p]));
 
-  // Fetch all editors for these tasks in one query
   const editorRows = taskIds.length
     ? await db
         .select({
@@ -155,6 +317,9 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     editorsMap.get(e.taskId)!.push({ id: e.userId, name: e.name, avatarUrl: e.avatarUrl });
   }
 
+  // Get subtask progress for multi_tasks
+  const progressMap = await getSubtaskProgressMap(multiTaskIds);
+
   res.json(rows.map(r => ({
     id: r.id,
     taskCode: fmtCode(r.taskNumber, r.taskYear),
@@ -168,11 +333,14 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     revisionCount: r.revisionCount ?? 0,
     client: r.client,
     color: r.color,
+    taskType: r.taskType,
+    parentTaskId: r.parentTaskId,
     assignee: r.assignedToId ? (personMap.get(r.assignedToId) ?? null) : null,
     editors: editorsMap.get(r.id) ?? [],
     coordinator: r.createdById ? (personMap.get(r.createdById) ?? null) : null,
     isOwn: r.createdById === userId,
     updatedAt: r.updatedAt,
+    subtaskProgress: r.taskType === "multi_task" ? (progressMap.get(r.id) ?? { total: 0, completed: 0, inProgress: 0, pending: 0 }) : null,
   })));
 });
 
@@ -191,11 +359,14 @@ router.get("/tasks/status-history", requireAuth, async (req, res): Promise<void>
 
   const userId = req.session.userId!;
   const role   = req.session.userRole!;
+
+  // Exclude subtasks from status history chart to avoid double-counting
+  const baseFilter = isNull(tasksTable.parentTaskId);
   const taskFilter = role === "editor"
-    ? eq(tasksTable.assignedToId, userId)
+    ? and(baseFilter, eq(tasksTable.assignedToId, userId))
     : (role === "coordinator" || role === "supervisor")
-      ? eq(tasksTable.createdById, userId)
-      : undefined;
+      ? and(baseFilter, eq(tasksTable.createdById, userId))
+      : baseFilter;
 
   const allTasks = await db
     .select({ id: tasksTable.id, createdAt: tasksTable.createdAt })
@@ -260,6 +431,7 @@ router.get("/tasks/heatmap", requireCoordinator, async (_req, res): Promise<void
         ne(tasksTable.status, "rascunho"),
         isNotNull(tasksTable.dueDate),
         isNotNull(tasksTable.assignedToId),
+        ne(tasksTable.taskType, "multi_task"), // exclude parent multi_tasks (no direct assignee)
       )
     );
   res.json(tasks);
@@ -289,7 +461,88 @@ router.get("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     .innerJoin(usersTable, eq(taskEditorsTable.userId, usersTable.id))
     .where(eq(taskEditorsTable.taskId, id));
 
-  res.json({ ...task, taskCode: fmtCode(task.taskNumber, task.taskYear), createdBy: createdBy ?? null, assignedTo: assignedTo ?? null, revisions, editors: editorRows });
+  // If multi_task: fetch subtasks with their editors
+  let subtasks: object[] = [];
+  let subtaskProgress: { total: number; completed: number; inProgress: number; pending: number } | null = null;
+
+  if (task.taskType === "multi_task") {
+    const subRows = await db
+      .select()
+      .from(tasksTable)
+      .where(eq(tasksTable.parentTaskId, id))
+      .orderBy(asc(tasksTable.subtaskOrder), asc(tasksTable.createdAt));
+
+    const subIds = subRows.map(s => s.id);
+    const subEditorRows = subIds.length
+      ? await db
+          .select({ taskId: taskEditorsTable.taskId, id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+          .from(taskEditorsTable)
+          .innerJoin(usersTable, eq(taskEditorsTable.userId, usersTable.id))
+          .where(inArray(taskEditorsTable.taskId, subIds))
+      : [];
+
+    const subEditorsMap = new Map<number, { id: number; name: string; avatarUrl: string | null }[]>();
+    for (const e of subEditorRows) {
+      if (!subEditorsMap.has(e.taskId)) subEditorsMap.set(e.taskId, []);
+      subEditorsMap.get(e.taskId)!.push({ id: e.id, name: e.name, avatarUrl: e.avatarUrl });
+    }
+
+    const assigneePersonIds = [...new Set(subRows.map(s => s.assignedToId).filter(Boolean))] as number[];
+    const assigneeMap = new Map<number, { id: number; name: string; avatarUrl: string | null }>();
+    if (assigneePersonIds.length > 0) {
+      const assignees = await db
+        .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+        .from(usersTable)
+        .where(inArray(usersTable.id, assigneePersonIds));
+      assignees.forEach(a => assigneeMap.set(a.id, a));
+    }
+
+    subtasks = subRows.map(s => ({
+      id: s.id,
+      taskCode: fmtCode(s.taskNumber, s.taskYear),
+      title: s.title,
+      description: s.description,
+      status: s.status,
+      priority: s.priority,
+      complexity: s.complexity,
+      dueDate: s.dueDate,
+      subtaskOrder: s.subtaskOrder,
+      assignedToId: s.assignedToId,
+      assignedTo: s.assignedToId ? (assigneeMap.get(s.assignedToId) ?? null) : null,
+      editors: subEditorsMap.get(s.id) ?? [],
+      revisionCount: s.revisionCount ?? 0,
+    }));
+
+    const totalSub = subRows.length;
+    const completedSub = subRows.filter(s => s.status === "completed").length;
+    const inProgressSub = subRows.filter(s => ["in_progress", "review", "in_revision", "reopened"].includes(s.status)).length;
+    const pendingSub = subRows.filter(s => s.status === "pending").length;
+    subtaskProgress = { total: totalSub, completed: completedSub, inProgress: inProgressSub, pending: pendingSub };
+  }
+
+  // If subtask: fetch parent info
+  let parentTask: { id: number; taskCode: string; title: string; status: string } | null = null;
+  if (task.taskType === "subtask" && task.parentTaskId) {
+    const [parent] = await db
+      .select({ id: tasksTable.id, taskNumber: tasksTable.taskNumber, taskYear: tasksTable.taskYear, title: tasksTable.title, status: tasksTable.status })
+      .from(tasksTable)
+      .where(eq(tasksTable.id, task.parentTaskId));
+    if (parent) {
+      parentTask = { id: parent.id, taskCode: fmtCode(parent.taskNumber, parent.taskYear), title: parent.title, status: parent.status };
+    }
+  }
+
+  res.json({
+    ...task,
+    taskCode: fmtCode(task.taskNumber, task.taskYear),
+    createdBy: createdBy ?? null,
+    assignedTo: assignedTo ?? null,
+    revisions,
+    editors: editorRows,
+    subtasks,
+    subtaskProgress,
+    parentTask,
+  });
 });
 
 // ── Update task ──────────────────────────────────────────────────────────────
@@ -328,7 +581,15 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     if (folderUrl !== undefined) update.folderUrl = folderUrl ? String(folderUrl) : null;
   } else {
     if (role === "coordinator" && task.createdById !== userId) {
-      res.status(403).json({ error: "Sem permissão para editar esta tarefa. Apenas o criador ou um Supervisor pode fazer isso." }); return;
+      // For subtasks, check if coordinator owns the parent task
+      if (task.taskType === "subtask" && task.parentTaskId) {
+        const [parent] = await db.select({ createdById: tasksTable.createdById }).from(tasksTable).where(eq(tasksTable.id, task.parentTaskId));
+        if (!parent || parent.createdById !== userId) {
+          res.status(403).json({ error: "Sem permissão para editar esta subtarefa. Apenas o criador da multi-tarefa pode fazer isso." }); return;
+        }
+      } else {
+        res.status(403).json({ error: "Sem permissão para editar esta tarefa. Apenas o criador ou um Supervisor pode fazer isso." }); return;
+      }
     }
     if (title) update.title = String(title);
     if (description !== undefined) update.description = description ? String(description) : null;
@@ -342,7 +603,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         }
         update.dueDate = parsed;
       } else {
-        // Only allow clearing dueDate on drafts; active tasks must always have a deadline
         if (task.status !== "rascunho") {
           res.status(400).json({ error: "Tarefas em andamento precisam ter um prazo definido" }); return;
         }
@@ -351,14 +611,19 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     }
     if (priority) update.priority = String(priority);
     if (complexity) update.complexity = String(complexity);
-    if (assignedToId !== undefined) update.assignedToId = assignedToId ? parseInt(String(assignedToId), 10) : null;
+    if (assignedToId !== undefined && task.taskType !== "multi_task") {
+      update.assignedToId = assignedToId ? parseInt(String(assignedToId), 10) : null;
+    }
     if (folderUrl !== undefined) update.folderUrl = folderUrl ? String(folderUrl) : null;
     if (status) {
       const s = String(status);
-      // Only truly closed states that cannot be acted upon further
       const TERMINAL = ["completed", "cancelled"];
 
-      // Cancelar ou pausar: permitido de qualquer status ativo (não-terminal)
+      // Multi_task cannot be manually set to completed — it's derived from subtasks
+      if (task.taskType === "multi_task" && s === "completed") {
+        res.status(400).json({ error: "Multi-tarefas são concluídas automaticamente quando todas as subtarefas são finalizadas" }); return;
+      }
+
       if (s === "cancelled" || s === "paused") {
         if (TERMINAL.includes(task.status)) {
           res.status(400).json({ error: "Não é possível alterar uma tarefa já finalizada ou cancelada" }); return;
@@ -369,8 +634,29 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         }
         eventComment = actionComment;
         update.status = s;
+
+        // If cancelling/pausing a multi_task, propagate to active subtasks
+        if (task.taskType === "multi_task") {
+          const activeSubtasks = await db
+            .select({ id: tasksTable.id, assignedToId: tasksTable.assignedToId })
+            .from(tasksTable)
+            .where(and(
+              eq(tasksTable.parentTaskId, id),
+              ne(tasksTable.status, "completed"),
+              ne(tasksTable.status, "cancelled"),
+            ));
+          for (const sub of activeSubtasks) {
+            await db.update(tasksTable).set({ status: s }).where(eq(tasksTable.id, sub.id));
+            if (sub.assignedToId) {
+              await notify(sub.assignedToId, s === "cancelled" ? "task_cancelled" : "task_paused",
+                s === "cancelled" ? "Subtarefa cancelada" : "Subtarefa pausada",
+                `A subtarefa foi ${s === "cancelled" ? "cancelada" : "pausada"} junto com a multi-tarefa "${task.title}"${actionComment ? `: ${actionComment}` : ""}`,
+                { taskId: sub.id }
+              );
+            }
+          }
+        }
       } else if (s === "reopened") {
-        // Reabrir tarefa aprovada: apenas coordinator/supervisor/admin, somente de "completed"
         if (task.status !== "completed") {
           res.status(400).json({ error: "Só é possível reabrir tarefas aprovadas" }); return;
         }
@@ -386,32 +672,41 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           createdById: userId,
         });
       } else if (s === "pending" && task.status === "cancelled") {
-        // Reativar tarefa cancelada — exige prazo
         const dueDateAfterUpdate = update.dueDate !== undefined ? update.dueDate : task.dueDate;
-        if (!dueDateAfterUpdate) {
+        if (!dueDateAfterUpdate && task.taskType !== "multi_task") {
           res.status(400).json({ error: "Informe um prazo para reativar a tarefa" }); return;
         }
         update.status = "pending";
       } else if (s === "pending" && (task.status === "paused" || task.status === "rascunho")) {
-        // Retomar pausada ou publicar rascunho
         if (task.status === "rascunho") {
           const dueDateAfterUpdate = update.dueDate !== undefined ? update.dueDate : task.dueDate;
-          if (!dueDateAfterUpdate) {
+          if (!dueDateAfterUpdate && task.taskType !== "multi_task") {
             res.status(400).json({ error: "Informe o prazo antes de publicar a tarefa" }); return;
           }
-          const existingEditors = await db.select({ id: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
-          const { editorIds: newEditorIds } = req.body ?? {};
-          const incomingEditorIds = Array.isArray(newEditorIds)
-            ? (newEditorIds as unknown[]).map(Number).filter(n => !isNaN(n) && n > 0)
-            : [];
-          const hasEditors = existingEditors.length > 0 || task.assignedToId || update.assignedToId || incomingEditorIds.length > 0;
-          if (!hasEditors) {
-            res.status(400).json({ error: "Atribua ao menos um editor para publicar a tarefa" }); return;
+          if (task.taskType === "multi_task") {
+            // Check at least one subtask exists
+            const [subCount] = await db
+              .select({ count: sql<number>`count(*)` })
+              .from(tasksTable)
+              .where(eq(tasksTable.parentTaskId, id));
+            if (Number(subCount?.count ?? 0) === 0) {
+              res.status(400).json({ error: "Adicione ao menos uma subtarefa antes de publicar a multi-tarefa" }); return;
+            }
+          } else {
+            const existingEditors = await db.select({ id: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
+            const { editorIds: newEditorIds } = req.body ?? {};
+            const incomingEditorIds = Array.isArray(newEditorIds)
+              ? (newEditorIds as unknown[]).map(Number).filter(n => !isNaN(n) && n > 0)
+              : [];
+            const hasEditors = existingEditors.length > 0 || task.assignedToId || update.assignedToId || incomingEditorIds.length > 0;
+            if (!hasEditors) {
+              res.status(400).json({ error: "Atribua ao menos um editor para publicar a tarefa" }); return;
+            }
           }
         }
         update.status = "pending";
       } else {
-        // Fluxo normal de aprovação/revisão (task.status deve ser "review")
+        // Normal approval flow (task must be in "review")
         if (task.status !== "review") { res.status(400).json({ error: `Coordenador só pode avaliar tarefas em revisão (status atual: ${task.status})` }); return; }
         if (!["completed", "in_progress"].includes(s)) { res.status(400).json({ error: "Transição inválida" }); return; }
         update.status = s === "in_progress" ? "in_revision" : s;
@@ -447,8 +742,9 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   if (newStatus && newStatus !== task.status) {
     if (newStatus === "review" && task.createdById) {
       const [editor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
+      const parentLabel = task.taskType === "subtask" ? "Subtarefa" : "Tarefa";
       await notify(task.createdById, "task_review",
-        "Tarefa enviada para aprovação",
+        `${parentLabel} enviada para aprovação`,
         `${editor?.name ?? "Editor"} enviou "${task.title}" para aprovação`,
         { taskId: id }
       );
@@ -461,13 +757,20 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         { taskId: id }
       );
     }
-    if (newStatus === "in_revision" && task.assignedToId) {
+    if (newStatus === "in_revision") {
+      // Notify assignedToId or all editors of subtask
       const comment = revisionComment ? String(revisionComment).trim() : "";
-      await notify(task.assignedToId, "task_revision",
-        "Alteração solicitada",
-        `Alteração solicitada em "${task.title}"${comment ? `: ${comment}` : ""}`,
-        { taskId: id }
-      );
+      const recipients = new Set<number>();
+      if (task.assignedToId) recipients.add(task.assignedToId);
+      const extraEditors = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
+      extraEditors.forEach(e => recipients.add(e.userId));
+      for (const rid of recipients) {
+        await notify(rid, "task_revision",
+          "Alteração solicitada",
+          `Alteração solicitada em "${task.title}"${comment ? `: ${comment}` : ""}`,
+          { taskId: id }
+        );
+      }
     }
     if (newStatus === "cancelled") {
       const comment = eventComment ?? "";
@@ -548,7 +851,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
       }).catch(() => {});
     }
     if (newStatus === "pending" && task.status === "rascunho") {
-      // Notify all assigned editors when draft is published
       const editorRows = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
       for (const { userId: editorId } of editorRows) {
         await notify(editorId, "task_assigned",
@@ -558,7 +860,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         );
       }
     }
-    if (newStatus === "completed" && task.assignedToId) {
+    if (newStatus === "completed" && task.assignedToId && task.taskType !== "multi_task") {
       await notify(task.assignedToId, "task_approved",
         "Tarefa aprovada",
         `Sua tarefa "${task.title}" foi aprovada`,
@@ -574,7 +876,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     }
     if (newStatus === "reopened") {
       const comment = revisionComment ? String(revisionComment).trim() : "";
-      // Notify the assigned editor
       if (task.assignedToId) {
         await notify(task.assignedToId, "task_reopened",
           "Tarefa reaberta",
@@ -582,7 +883,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           { taskId: id }
         );
       }
-      // Also notify all additional editors in junction table
       const editorRows = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
       for (const { userId: editorId } of editorRows) {
         if (editorId !== task.assignedToId) {
@@ -601,13 +901,18 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         entityType: "task",
       }).catch(() => {});
     }
+
+    // If this is a subtask and status changed, recalculate parent status
+    if (task.taskType === "subtask" && task.parentTaskId) {
+      await recalculateParentStatus(task.parentTaskId, userId);
+      broadcastSubtaskChanged(id, task.parentTaskId);
+    }
   }
 
   if (update.assignedToId !== undefined && update.assignedToId !== task.assignedToId) {
     const newEditor = update.assignedToId as number | null;
     const oldEditor = task.assignedToId;
 
-    // Notify old editor they were removed
     if (oldEditor) {
       await notify(oldEditor, "task_reassigned",
         "Tarefa reatribuída",
@@ -615,21 +920,16 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         { taskId: id }
       );
     }
-
-    // Notify new editor they received the task
     if (newEditor) {
       await notify(newEditor, "task_assigned",
         "Nova tarefa atribuída",
         `A tarefa "${task.title}" foi atribuída a você`,
         { taskId: id }
       );
-      // Keep junction table in sync
       await db.insert(taskEditorsTable).values({
         taskId: id, userId: newEditor, assignedById: req.session.userId,
       }).onConflictDoNothing();
     }
-
-    // Remove old editor from junction table if not reassigned
     if (oldEditor && oldEditor !== newEditor) {
       await db.delete(taskEditorsTable)
         .where(and(eq(taskEditorsTable.taskId, id), eq(taskEditorsTable.userId, oldEditor)));
@@ -657,6 +957,162 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
 
   broadcastTaskChange();
   res.json(updated);
+});
+
+// ── Subtask routes ────────────────────────────────────────────────────────────
+
+// Get subtasks of a multi_task
+router.get("/tasks/:id/subtasks", requireAuth, async (req, res): Promise<void> => {
+  const parentId = parseInt(req.params.id, 10);
+  if (isNaN(parentId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const [parent] = await db.select({ id: tasksTable.id, taskType: tasksTable.taskType }).from(tasksTable).where(eq(tasksTable.id, parentId));
+  if (!parent) { res.status(404).json({ error: "Tarefa não encontrada" }); return; }
+
+  const subRows = await db
+    .select()
+    .from(tasksTable)
+    .where(eq(tasksTable.parentTaskId, parentId))
+    .orderBy(asc(tasksTable.subtaskOrder), asc(tasksTable.createdAt));
+
+  const subIds = subRows.map(s => s.id);
+  const subEditorRows = subIds.length
+    ? await db
+        .select({ taskId: taskEditorsTable.taskId, id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+        .from(taskEditorsTable)
+        .innerJoin(usersTable, eq(taskEditorsTable.userId, usersTable.id))
+        .where(inArray(taskEditorsTable.taskId, subIds))
+    : [];
+
+  const subEditorsMap = new Map<number, { id: number; name: string; avatarUrl: string | null }[]>();
+  for (const e of subEditorRows) {
+    if (!subEditorsMap.has(e.taskId)) subEditorsMap.set(e.taskId, []);
+    subEditorsMap.get(e.taskId)!.push({ id: e.id, name: e.name, avatarUrl: e.avatarUrl });
+  }
+
+  const assigneeIds = [...new Set(subRows.map(s => s.assignedToId).filter(Boolean))] as number[];
+  const assigneeMap = new Map<number, { id: number; name: string; avatarUrl: string | null }>();
+  if (assigneeIds.length > 0) {
+    const assignees = await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+      .from(usersTable).where(inArray(usersTable.id, assigneeIds));
+    assignees.forEach(a => assigneeMap.set(a.id, a));
+  }
+
+  res.json(subRows.map(s => ({
+    id: s.id,
+    taskCode: fmtCode(s.taskNumber, s.taskYear),
+    title: s.title,
+    description: s.description,
+    status: s.status,
+    priority: s.priority,
+    complexity: s.complexity,
+    dueDate: s.dueDate,
+    subtaskOrder: s.subtaskOrder,
+    assignedToId: s.assignedToId,
+    assignedTo: s.assignedToId ? (assigneeMap.get(s.assignedToId) ?? null) : null,
+    editors: subEditorsMap.get(s.id) ?? [],
+    revisionCount: s.revisionCount ?? 0,
+    folderUrl: s.folderUrl,
+  })));
+});
+
+// Create a subtask inside a multi_task
+router.post("/tasks/:id/subtasks", requireCoordinator, async (req, res): Promise<void> => {
+  const parentId = parseInt(req.params.id, 10);
+  if (isNaN(parentId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const [parent] = await db.select().from(tasksTable).where(eq(tasksTable.id, parentId));
+  if (!parent) { res.status(404).json({ error: "Tarefa pai não encontrada" }); return; }
+  if (parent.taskType !== "multi_task") {
+    res.status(400).json({ error: "Só é possível criar subtarefas dentro de multi-tarefas" }); return;
+  }
+
+  if (req.session.userRole === "coordinator" && parent.createdById !== req.session.userId) {
+    res.status(403).json({ error: "Sem permissão para adicionar subtarefas a esta multi-tarefa" }); return;
+  }
+
+  const { title, description, dueDate, priority, complexity, editorId } = req.body ?? {};
+  if (!title) { res.status(400).json({ error: "Título obrigatório" }); return; }
+
+  const subAssigneeId = editorId ? parseInt(String(editorId), 10) : null;
+
+  // Get current max subtask order
+  const [maxOrder] = await db
+    .select({ maxOrder: sql<number>`COALESCE(MAX(subtask_order), -1)` })
+    .from(tasksTable)
+    .where(eq(tasksTable.parentTaskId, parentId));
+
+  const taskYear = new Date().getFullYear() % 100;
+  const seqResult = await db.execute<{ nextval: string }>(sql`SELECT nextval('te_task_number_seq') AS nextval`);
+  const taskNumber = Number((seqResult.rows ?? seqResult)[0].nextval);
+
+  const [subtask] = await db.insert(tasksTable).values({
+    taskNumber,
+    taskYear,
+    title: String(title),
+    description: description ? String(description) : null,
+    client: parent.client,
+    color: parent.color,
+    dueDate: dueDate ? new Date(String(dueDate)) : parent.dueDate,
+    priority: priority ?? parent.priority ?? "medium",
+    complexity: complexity ?? parent.complexity ?? "medium",
+    status: parent.status === "rascunho" ? "rascunho" : "pending",
+    assignedToId: subAssigneeId,
+    createdById: req.session.userId,
+    taskType: "subtask",
+    parentTaskId: parentId,
+    subtaskOrder: (Number(maxOrder?.maxOrder ?? -1)) + 1,
+  }).returning();
+
+  if (subAssigneeId) {
+    await db.insert(taskEditorsTable).values({
+      taskId: subtask.id,
+      userId: subAssigneeId,
+      assignedById: req.session.userId,
+    }).onConflictDoNothing();
+
+    if (parent.status !== "rascunho") {
+      await notify(subAssigneeId, "task_assigned",
+        "Nova subtarefa atribuída",
+        `Você foi atribuído à subtarefa "${subtask.title}" da multi-tarefa "${parent.title}"`,
+        { taskId: subtask.id }
+      );
+    }
+  }
+
+  // If multi_task was pending/in_progress, recalculate
+  if (parent.status !== "rascunho") {
+    await recalculateParentStatus(parentId, req.session.userId!);
+  }
+
+  broadcastTaskChange();
+  res.status(201).json(subtask);
+});
+
+// Get progress of a multi_task
+router.get("/tasks/:id/progress", requireAuth, async (req, res): Promise<void> => {
+  const parentId = parseInt(req.params.id, 10);
+  if (isNaN(parentId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const subtasks = await db
+    .select({ status: tasksTable.status })
+    .from(tasksTable)
+    .where(eq(tasksTable.parentTaskId, parentId));
+
+  const total = subtasks.length;
+  const completed = subtasks.filter(s => s.status === "completed").length;
+  const inProgress = subtasks.filter(s => ["in_progress", "review", "in_revision", "reopened"].includes(s.status)).length;
+  const pending = subtasks.filter(s => s.status === "pending").length;
+  const cancelled = subtasks.filter(s => s.status === "cancelled").length;
+
+  res.json({
+    total,
+    completed,
+    inProgress,
+    pending,
+    cancelled,
+    percentage: total > 0 ? Math.round((completed / total) * 100) : 0,
+  });
 });
 
 // ── Return task (editor gives back) ─────────────────────────────────────────
@@ -688,21 +1144,22 @@ router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> =>
     .where(eq(tasksTable.id, id))
     .returning();
 
-  // Remove the returning editor from the junction table so coordinator reassigns from scratch
   await db.delete(taskEditorsTable)
     .where(and(eq(taskEditorsTable.taskId, id), eq(taskEditorsTable.userId, userId)));
 
   await db.insert(taskEventsTable).values({
     taskId: id, fromStatus: prevStatus, toStatus: "pending", changedById: userId,
-    revisionComment: returnComment,
   });
 
   const [editor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
   const editorName = editor?.name ?? "Editor";
 
-  if (task.createdById) {
-    await notify(task.createdById, "task_returned",
-      "Tarefa devolvida",
+  // Notify the task owner (for subtask, notify the parent's creator)
+  const notifyOwnerId = task.createdById;
+  if (notifyOwnerId) {
+    const label = task.taskType === "subtask" ? "subtarefa" : "tarefa";
+    await notify(notifyOwnerId, "task_returned",
+      `${label.charAt(0).toUpperCase() + label.slice(1)} devolvida`,
       `${editorName} devolveu "${task.title}": ${returnComment}`,
       { taskId: id },
     );
@@ -716,6 +1173,11 @@ router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> =>
     entityType: "task",
   }).catch(() => {});
 
+  // If subtask: recalculate parent
+  if (task.taskType === "subtask" && task.parentTaskId) {
+    await recalculateParentStatus(task.parentTaskId, userId);
+  }
+
   broadcastTaskChange();
   res.json(updated);
 });
@@ -726,7 +1188,8 @@ router.delete("/tasks/:id", requireCoordinator, async (req, res): Promise<void> 
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
   const [task] = await db
-    .select({ id: tasksTable.id, status: tasksTable.status, assignedToId: tasksTable.assignedToId, createdById: tasksTable.createdById })
+    .select({ id: tasksTable.id, status: tasksTable.status, assignedToId: tasksTable.assignedToId,
+              createdById: tasksTable.createdById, title: tasksTable.title, taskType: tasksTable.taskType })
     .from(tasksTable).where(eq(tasksTable.id, id));
 
   if (!task) { res.sendStatus(204); return; }
@@ -734,12 +1197,44 @@ router.delete("/tasks/:id", requireCoordinator, async (req, res): Promise<void> 
   if (req.session.userRole === "coordinator" && task.createdById !== req.session.userId) {
     res.status(403).json({ error: "Sem permissão para excluir esta tarefa." }); return;
   }
-  if (task.assignedToId !== null && (task.status === "in_progress" || task.status === "in_revision")) {
+
+  // For regular tasks: block if in-progress
+  if (task.taskType !== "multi_task" && task.assignedToId !== null && (task.status === "in_progress" || task.status === "in_revision")) {
     res.status(409).json({ error: "Esta tarefa está atribuída e em edição. Remova a atribuição antes de excluir.", blocked: true });
     return;
   }
 
-  await db.delete(tasksTable).where(eq(tasksTable.id, id));
+  // For multi_task: notify editors of active subtasks before cascade delete
+  if (task.taskType === "multi_task") {
+    const activeSubtasks = await db
+      .select({ id: tasksTable.id, assignedToId: tasksTable.assignedToId, title: tasksTable.title })
+      .from(tasksTable)
+      .where(and(
+        eq(tasksTable.parentTaskId, id),
+        ne(tasksTable.status, "completed"),
+        ne(tasksTable.status, "cancelled"),
+        ne(tasksTable.status, "rascunho"),
+      ));
+
+    for (const sub of activeSubtasks) {
+      const subEditors = await db
+        .select({ userId: taskEditorsTable.userId })
+        .from(taskEditorsTable)
+        .where(eq(taskEditorsTable.taskId, sub.id));
+      const recipients = new Set<number>(subEditors.map(e => e.userId));
+      if (sub.assignedToId) recipients.add(sub.assignedToId);
+
+      for (const recipientId of recipients) {
+        await notify(recipientId, "task_cancelled",
+          "Multi-tarefa excluída",
+          `A multi-tarefa "${task.title}" e sua subtarefa "${sub.title}" foram excluídas`,
+          { taskId: id }
+        );
+      }
+    }
+  }
+
+  await db.delete(tasksTable).where(eq(tasksTable.id, id)); // CASCADE deletes subtasks
   broadcastTaskChange();
   res.sendStatus(204);
 });
@@ -751,7 +1246,6 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
 
   let tasks: (typeof tasksTable.$inferSelect)[];
   if (role === "editor") {
-    // Include tasks where user is primary assignee OR in the editors junction table — exclude drafts
     const [primary, secondary] = await Promise.all([
       db.select().from(tasksTable).where(and(eq(tasksTable.assignedToId, userId), ne(tasksTable.status, "rascunho"))),
       db.select({ taskId: taskEditorsTable.taskId }).from(taskEditorsTable)
@@ -766,7 +1260,8 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
     tasks = [...primary, ...extra].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   } else {
     tasks = await db.select().from(tasksTable)
-      .where(eq(tasksTable.createdById, userId)).orderBy(desc(tasksTable.createdAt));
+      .where(and(eq(tasksTable.createdById, userId), isNull(tasksTable.parentTaskId)))
+      .orderBy(desc(tasksTable.createdAt));
   }
 
   const taskNumMap = new Map<number, number>();
@@ -783,6 +1278,22 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
     if (!editorsMap.has(e.taskId)) editorsMap.set(e.taskId, []);
     editorsMap.get(e.taskId)!.push({ id: e.userId, name: e.name, avatarUrl: e.avatarUrl });
   }
+
+  // Fetch parent task info for subtasks
+  const subtaskTasks = tasks.filter(t => t.taskType === "subtask" && t.parentTaskId);
+  const parentIds = [...new Set(subtaskTasks.map(t => t.parentTaskId!))];
+  const parentMap = new Map<number, { id: number; taskCode: string; title: string }>();
+  if (parentIds.length > 0) {
+    const parents = await db
+      .select({ id: tasksTable.id, taskNumber: tasksTable.taskNumber, taskYear: tasksTable.taskYear, title: tasksTable.title })
+      .from(tasksTable)
+      .where(inArray(tasksTable.id, parentIds));
+    parents.forEach(p => parentMap.set(p.id, { id: p.id, taskCode: fmtCode(p.taskNumber, p.taskYear), title: p.title }));
+  }
+
+  // Multi-task progress
+  const multiTaskIds = tasks.filter(t => t.taskType === "multi_task").map(t => t.id);
+  const progressMap = await getSubtaskProgressMap(multiTaskIds);
 
   const tasksWithDetails = await Promise.all(tasks.map(async (t) => {
     const [createdBy] = t.createdById
@@ -805,6 +1316,8 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
       editors: editorsMap.get(t.id) ?? [],
       revisions,
       number: taskNumMap.get(t.id) ?? 0,
+      parentTask: t.parentTaskId ? (parentMap.get(t.parentTaskId) ?? null) : null,
+      subtaskProgress: t.taskType === "multi_task" ? (progressMap.get(t.id) ?? null) : null,
     };
   }));
 
@@ -829,6 +1342,8 @@ router.get("/activity", requireAuth, async (req, res): Promise<void> => {
       taskNumber: tasksTable.taskNumber,
       taskYear: tasksTable.taskYear,
       taskStatus: tasksTable.status,
+      taskType: tasksTable.taskType,
+      parentTaskId: tasksTable.parentTaskId,
     })
     .from(taskEventsTable)
     .innerJoin(tasksTable, eq(taskEventsTable.taskId, tasksTable.id))
@@ -843,7 +1358,11 @@ router.get("/activity", requireAuth, async (req, res): Promise<void> => {
     if (u) changers[u.id] = u.name;
   }));
 
-  res.json(events.map(e => ({ ...e, taskCode: fmtCode(e.taskNumber, e.taskYear), changedByName: e.changedById ? changers[e.changedById] ?? null : null })));
+  res.json(events.map(e => ({
+    ...e,
+    taskCode: fmtCode(e.taskNumber, e.taskYear),
+    changedByName: e.changedById ? changers[e.changedById] ?? null : null,
+  })));
 });
 
 // ── Calendar ──────────────────────────────────────────────────────────────────
@@ -886,7 +1405,7 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
 
   const roleFilter = role === "editor"
     ? or(eq(tasksTable.assignedToId, userId), inArray(tasksTable.id, editorJunctionSubq))
-    : ne(tasksTable.status, "rascunho");
+    : and(ne(tasksTable.status, "rascunho"), ne(tasksTable.taskType, "multi_task")); // coordinators: exclude multi_task parents (show subtasks instead)
 
   const rows = await db
     .select({
@@ -899,6 +1418,8 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
       client: tasksTable.client,
       assignedToId: tasksTable.assignedToId,
       createdById: tasksTable.createdById,
+      taskType: tasksTable.taskType,
+      parentTaskId: tasksTable.parentTaskId,
     })
     .from(tasksTable)
     .where(and(
@@ -945,6 +1466,7 @@ router.get("/workload", requireCoordinator, async (_req, res): Promise<void> => 
       ne(tasksTable.status, "cancelled"),
       ne(tasksTable.status, "paused"),
       ne(tasksTable.status, "rascunho"),
+      ne(tasksTable.taskType, "multi_task"), // exclude parent tasks
       isNotNull(tasksTable.assignedToId),
     ));
 
@@ -979,10 +1501,10 @@ router.get("/dashboard-extras", requireAuth, async (_req, res): Promise<void> =>
     ne(tasksTable.status, "completed"),
     ne(tasksTable.status, "cancelled"),
     ne(tasksTable.status, "paused"),
+    ne(tasksTable.taskType, "multi_task"),
     isNotNull(tasksTable.dueDate),
     sql`${tasksTable.dueDate} < ${todayStr}`,
   );
-  const overdueWhere = baseOverdue;
 
   const overdueRows = await db
     .select({
@@ -997,7 +1519,7 @@ router.get("/dashboard-extras", requireAuth, async (_req, res): Promise<void> =>
       taskYear: tasksTable.taskYear,
     })
     .from(tasksTable)
-    .where(overdueWhere);
+    .where(baseOverdue);
 
   const assigneeIds = [...new Set(overdueRows.map(t => t.assignedToId).filter(Boolean))] as number[];
   const assigneeMap = new Map<number, { id: number; name: string; avatarUrl: string | null }>();
@@ -1036,7 +1558,13 @@ router.get("/deadline-overview", requireAuth, async (req, res): Promise<void> =>
     { key: "later",   label: "+7 dias",   color: "#94a3b8" },
   ];
 
-  const baseWhere = and(ne(tasksTable.status, "completed"), ne(tasksTable.status, "cancelled"), ne(tasksTable.status, "paused"), isNotNull(tasksTable.dueDate));
+  const baseWhere = and(
+    ne(tasksTable.status, "completed"),
+    ne(tasksTable.status, "cancelled"),
+    ne(tasksTable.status, "paused"),
+    ne(tasksTable.taskType, "multi_task"),
+    isNotNull(tasksTable.dueDate)
+  );
   const taskWhere = role === "editor"
     ? and(baseWhere, eq(tasksTable.assignedToId, userId))
     : baseWhere;
@@ -1101,7 +1629,8 @@ router.get("/pipeline", requireAuth, async (req, res): Promise<void> => {
   const role = req.session.userRole!;
   const isEditor = role === "editor";
 
-  const baseWhere = and(ne(tasksTable.status, "rascunho"));
+  // Exclude subtasks from pipeline root view (they show inside multi_task cards)
+  const baseWhere = and(ne(tasksTable.status, "rascunho"), isNull(tasksTable.parentTaskId));
 
   let taskIds: number[] | null = null;
   if (isEditor) {
@@ -1122,6 +1651,7 @@ router.get("/pipeline", requireAuth, async (req, res): Promise<void> => {
       revisionCount: tasksTable.revisionCount, assignedToId: tasksTable.assignedToId,
       createdById: tasksTable.createdById, createdAt: tasksTable.createdAt,
       taskNumber: tasksTable.taskNumber, taskYear: tasksTable.taskYear,
+      taskType: tasksTable.taskType,
     })
     .from(tasksTable)
     .where(isEditor && taskIds !== null && taskIds.length > 0
@@ -1143,15 +1673,19 @@ router.get("/pipeline", requireAuth, async (req, res): Promise<void> => {
     persons.forEach(p => personMap.set(p.id, p));
   }
 
+  // Fetch subtask progress for multi_tasks
+  const multiIds = tasks.filter(t => t.taskType === "multi_task").map(t => t.id);
+  const progressMap = await getSubtaskProgressMap(multiIds);
+
   res.json(tasks.map(t => ({
     ...t,
     taskCode: fmtCode(t.taskNumber, t.taskYear),
     assignee: t.assignedToId ? (personMap.get(t.assignedToId) ?? null) : null,
     coordinator: t.createdById ? (personMap.get(t.createdById) ?? null) : null,
+    subtaskProgress: t.taskType === "multi_task" ? (progressMap.get(t.id) ?? null) : null,
   })));
 });
 
-// ── Timeline (tasks with due dates) ──────────────────────────────────────────
 // ── Task lifecycle ────────────────────────────────────────────────────────────
 router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
@@ -1197,13 +1731,9 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
     persons.forEach(p => personMap.set(p.id, p));
   }
 
-  // Merge task_revisions into events that have toStatus = "in_revision"
-  // by matching revision order to in_revision events
   const revisionQueue = [...revisions];
-
   const steps: object[] = [];
 
-  // Step 0: creation
   steps.push({
     type: "created",
     at: task.createdAt,
@@ -1211,7 +1741,6 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
     meta: { title: task.title, client: task.client, priority: task.priority, color: task.color },
   });
 
-  // Subsequent events
   for (const e of events) {
     const step: Record<string, unknown> = {
       type: "status_change",
@@ -1219,7 +1748,6 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
       by: e.changedById ? (personMap.get(e.changedById) ?? null) : null,
       meta: { fromStatus: e.fromStatus, toStatus: e.toStatus },
     };
-    // Attach revision comment if this is an in_revision transition
     if (e.toStatus === "in_revision" && revisionQueue.length > 0) {
       const rev = revisionQueue.shift()!;
       (step.meta as Record<string, unknown>).revisionComment = rev.comment;
@@ -1240,6 +1768,8 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
       color: task.color,
       dueDate: task.dueDate,
       revisionCount: task.revisionCount ?? 0,
+      taskType: task.taskType,
+      parentTaskId: task.parentTaskId,
       assignee: task.assignedToId ? (personMap.get(task.assignedToId) ?? null) : null,
       coordinator: task.createdById ? (personMap.get(task.createdById) ?? null) : null,
     },
@@ -1253,7 +1783,7 @@ router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
   const role   = req.session.userRole!;
   const editorFilter = role === "editor"
     ? eq(tasksTable.assignedToId, userId)
-    : undefined;
+    : isNull(tasksTable.parentTaskId); // coordinators see root tasks only
 
   const tasks = await db
     .select({
@@ -1274,6 +1804,7 @@ router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
       updatedAt: tasksTable.updatedAt,
       taskNumber: tasksTable.taskNumber,
       taskYear: tasksTable.taskYear,
+      taskType: tasksTable.taskType,
     })
     .from(tasksTable)
     .where(editorFilter)
@@ -1290,6 +1821,10 @@ router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
     persons.forEach(p => personMap.set(p.id, p));
   }
 
+  // Fetch subtasks for multi_tasks
+  const multiIds = tasks.filter(t => t.taskType === "multi_task").map(t => t.id);
+  const progressMap = await getSubtaskProgressMap(multiIds);
+
   res.json(tasks.map(t => ({
     id: t.id,
     taskCode: fmtCode(t.taskNumber, t.taskYear),
@@ -1305,21 +1840,39 @@ router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
     folderUrl: t.folderUrl,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
+    taskType: t.taskType,
     assignee: t.assignedToId ? (personMap.get(t.assignedToId) ?? null) : null,
     coordinator: t.createdById ? (personMap.get(t.createdById) ?? null) : null,
+    subtaskProgress: t.taskType === "multi_task" ? (progressMap.get(t.id) ?? null) : null,
   })));
 });
 
 // ── Reports ───────────────────────────────────────────────────────────────────
 router.get("/reports", requireCoordinator, async (req, res): Promise<void> => {
-  const { from, to } = req.query as Record<string, string | undefined>;
+  const { from, to, assignedToId: filterEditor, status: filterStatus, client: filterClient,
+          priority: filterPriority, complexity: filterComplexity, scope } = req.query as Record<string, string | undefined>;
 
-  const whereClause = and(
+  const userId = req.session.userId!;
+  const userRole = req.session.userRole!;
+
+  const conditions: any[] = [
+    // Exclude subtasks from top-level reports (they inflate counts)
+    isNull(tasksTable.parentTaskId),
     from ? gte(tasksTable.createdAt, new Date(from + "T00:00:00")) : undefined,
     to   ? lte(tasksTable.createdAt, new Date(to   + "T23:59:59")) : undefined,
-  );
+    filterEditor ? eq(tasksTable.assignedToId, parseInt(filterEditor, 10)) : undefined,
+    filterStatus ? eq(tasksTable.status, filterStatus) : undefined,
+    filterClient ? eq(tasksTable.client, filterClient) : undefined,
+    filterPriority ? eq(tasksTable.priority, filterPriority) : undefined,
+    filterComplexity ? eq(tasksTable.complexity, filterComplexity) : undefined,
+  ].filter(Boolean);
 
-  const rows = await db.select().from(tasksTable).where(whereClause).orderBy(desc(tasksTable.createdAt));
+  // "Minhas" scope: only tasks created by this coordinator
+  if (scope === "own" || userRole === "coordinator") {
+    conditions.push(eq(tasksTable.createdById, userId));
+  }
+
+  const rows = await db.select().from(tasksTable).where(and(...conditions)).orderBy(desc(tasksTable.createdAt));
 
   const personIds = [...new Set([
     ...rows.map(r => r.assignedToId),
@@ -1333,6 +1886,10 @@ router.get("/reports", requireCoordinator, async (req, res): Promise<void> => {
       .from(usersTable).where(inArray(usersTable.id, personIds));
     persons.forEach(p => personMap.set(p.id, p));
   }
+
+  // Fetch subtask progress for multi_tasks in report
+  const multiIds = rows.filter(r => r.taskType === "multi_task").map(r => r.id);
+  const progressMap = await getSubtaskProgressMap(multiIds);
 
   res.json({
     tasks: rows.map(r => ({
@@ -1348,8 +1905,10 @@ router.get("/reports", requireCoordinator, async (req, res): Promise<void> => {
       dueDate: r.dueDate,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
+      taskType: r.taskType,
       assignee:    r.assignedToId ? (personMap.get(r.assignedToId) ?? null) : null,
       coordinator: r.createdById  ? (personMap.get(r.createdById)  ?? null) : null,
+      subtaskProgress: r.taskType === "multi_task" ? (progressMap.get(r.id) ?? null) : null,
     })),
   });
 });
@@ -1357,7 +1916,6 @@ router.get("/reports", requireCoordinator, async (req, res): Promise<void> => {
 
 // ── Task editors: add / remove / reassign ────────────────────────────────────
 
-// List editors for a task
 router.get("/tasks/:id/editors", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
@@ -1369,7 +1927,6 @@ router.get("/tasks/:id/editors", requireAuth, async (req, res): Promise<void> =>
   res.json(editors);
 });
 
-// Add an editor to a task
 router.post("/tasks/:id/editors", requireCoordinator, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const editorId = parseInt(String(req.body.editorId), 10);
@@ -1392,7 +1949,6 @@ router.post("/tasks/:id/editors", requireCoordinator, async (req, res): Promise<
   res.json({ ok: true });
 });
 
-// Remove an editor from a task
 router.delete("/tasks/:id/editors/:editorId", requireCoordinator, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const editorId = parseInt(req.params.editorId, 10);
@@ -1414,7 +1970,6 @@ router.delete("/tasks/:id/editors/:editorId", requireCoordinator, async (req, re
   res.json({ ok: true });
 });
 
-// Reassign primary editor (replaces assignedToId + notifies both sides)
 router.post("/tasks/:id/reassign", requireCoordinator, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const newEditorId = parseInt(String(req.body.editorId), 10);
@@ -1428,35 +1983,35 @@ router.post("/tasks/:id/reassign", requireCoordinator, async (req, res): Promise
 
   const oldEditorId = task.assignedToId;
 
-  // Notify old editor (if different)
   if (oldEditorId && oldEditorId !== newEditorId) {
     await notify(oldEditorId, "task_reassigned",
       "Tarefa reatribuída",
       `A tarefa "${task.title}" foi reatribuída para ${newEditorUser.name}`,
       { taskId: id }
     );
-    // Remove old editor from junction table
     await db.delete(taskEditorsTable)
       .where(and(eq(taskEditorsTable.taskId, id), eq(taskEditorsTable.userId, oldEditorId)));
   }
 
-  // Update primary assignee
   const [updated] = await db.update(tasksTable)
     .set({ assignedToId: newEditorId })
     .where(eq(tasksTable.id, id))
     .returning();
 
-  // Add new editor to junction table
   await db.insert(taskEditorsTable).values({
     taskId: id, userId: newEditorId, assignedById: req.session.userId,
   }).onConflictDoNothing();
 
-  // Notify new editor
   await notify(newEditorId, "task_assigned",
     "Tarefa atribuída a você",
     `A tarefa "${task.title}" foi atribuída a você`,
     { taskId: id }
   );
+
+  // If subtask reassignment, recalculate parent
+  if (task.taskType === "subtask" && task.parentTaskId) {
+    await recalculateParentStatus(task.parentTaskId, req.session.userId!);
+  }
 
   broadcastTaskChange();
   res.json(updated);

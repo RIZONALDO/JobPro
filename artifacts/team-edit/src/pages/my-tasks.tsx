@@ -16,6 +16,8 @@ import { StackedAvatars } from "@/components/ui/avatar-display";
 import { usePageTitle } from "@/lib/use-page-title";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { PriorityBadge } from "@/components/ui/priority-badge";
+import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
+import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
@@ -38,6 +40,9 @@ interface Task {
   number?: number;
   client?: string | null;
   color?: string;
+  // multi-task
+  taskType?: string;
+  parentTask?: { id: number; title: string; taskCode?: string } | null;
 }
 
 const KANBAN_COLS = [
@@ -164,6 +169,12 @@ export default function MyTasks() {
             }}>
               {t.title}
             </p>
+            {t.taskType === "subtask" && t.parentTask && (
+              <ParentTaskBreadcrumb parentTask={t.parentTask} className="text-[9px]" />
+            )}
+            {t.taskType === "multi_task" && (
+              <MultiTaskBadge taskType="multi_task" className="text-[9px] px-1 py-px" />
+            )}
           </div>
           <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
             {isEditor ? (

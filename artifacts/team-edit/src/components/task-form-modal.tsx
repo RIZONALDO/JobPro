@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { ClientCombobox } from "@/components/ui/client-combobox";
-import { FolderOpen, ExternalLink, AlertTriangle, X, UserPlus } from "lucide-react";
+import { SubtaskFormRow, type SubtaskRow } from "@/components/ui/subtask-form-row";
+import { FolderOpen, ExternalLink, AlertTriangle, X, UserPlus, Layers, FileText, Plus } from "lucide-react";
 
 interface Editor { id: number; name: string; login: string; role: string; avatarUrl?: string | null; }
 interface EditorWorkload { id: number; score: number; taskCount: number; byComplexity: { low: number; medium: number; high: number }; }
@@ -24,6 +25,9 @@ interface Props {
 }
 
 const EMPTY_FORM = { title: "", description: "", dueDateTime: "", priority: "medium", complexity: "medium", assignedToId: "", folderUrl: "", client: "", color: "#6366f1" };
+const EMPTY_SUBTASK: Omit<SubtaskRow, "id"> = { title: "", editorId: "", dueDate: "" };
+let subtaskKeyCounter = 0;
+function newSubtaskRow(): SubtaskRow { return { id: String(subtaskKeyCounter++), ...EMPTY_SUBTASK }; }
 
 function workloadLevel(score: number): "ok" | "moderate" | "high" | "critical" {
   if (score <= 3)  return "ok";
@@ -45,6 +49,10 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   // Multiple editors selection
   const [selectedEditorIds, setSelectedEditorIds] = useState<number[]>([]);
   const [addEditorValue, setAddEditorValue]       = useState("none");
+
+  // Multi-task mode
+  const [isMultiTask, setIsMultiTask] = useState(false);
+  const [subtasks, setSubtasks]       = useState<SubtaskRow[]>([newSubtaskRow(), newSubtaskRow()]);
 
   useEffect(() => {
     apiFetch<Editor[]>("/api/users")
@@ -83,6 +91,8 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
       setForm({ ...EMPTY_FORM, dueDateTime: initialDueDate ?? "" });
       setSelectedEditorIds([]);
       setAddEditorValue("none");
+      setIsMultiTask(false);
+      setSubtasks([newSubtaskRow(), newSubtaskRow()]);
     }
   }, [open, editTaskId]);
 
@@ -107,6 +117,48 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   const save = async (publishStatus?: "rascunho" | "pending") => {
     if (!form.title.trim()) { toast.error("Título obrigatório"); return; }
     const isPublishing = publishStatus === "pending" || (editMode && taskStatus !== "rascunho");
+
+    if (isMultiTask && !editMode) {
+      // Multi-task validation
+      const filledSubtasks = subtasks.filter(s => s.title.trim());
+      if (filledSubtasks.length < 1) {
+        toast.error("Adicione ao menos uma subtarefa com título"); return;
+      }
+      if (publishStatus === "pending") {
+        const missing = filledSubtasks.filter(s => !s.editorId);
+        if (missing.length > 0) { toast.error("Atribua um editor a cada subtarefa para publicar"); return; }
+      }
+
+      const payload: Record<string, unknown> = {
+        taskType:    "multi_task",
+        title:       form.title,
+        description: form.description || null,
+        dueDate:     form.dueDateTime || null,
+        priority:    form.priority,
+        complexity:  form.complexity,
+        client:      form.client || null,
+        color:       form.color || "#6366f1",
+        folderUrl:   form.folderUrl || null,
+        subtasks:    filledSubtasks.map((s, i) => ({
+          title:    s.title,
+          editorId: s.editorId ? parseInt(s.editorId, 10) : null,
+          dueDate:  s.dueDate || null,
+          subtaskOrder: i,
+        })),
+      };
+      if (publishStatus) payload.status = publishStatus;
+      setSaving(true);
+      try {
+        await apiPost("/api/tasks", payload);
+        toast.success(publishStatus === "rascunho" ? "Rascunho salvo" : "Multi-tarefa publicada");
+        onOpenChange(false);
+        onSaved();
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Erro ao salvar");
+      } finally { setSaving(false); }
+      return;
+    }
+
     if (isPublishing && !form.dueDateTime) {
       toast.error("Informe o prazo antes de salvar"); return;
     }
@@ -151,13 +203,44 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
   const availableEditors = editors.filter(e => !selectedEditorIds.includes(e.id));
 
+  // Subtask helpers
+  const updateSubtask = (id: string, patch: Partial<SubtaskRow>) =>
+    setSubtasks(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
+  const removeSubtask = (id: string) =>
+    setSubtasks(prev => prev.filter(s => s.id !== id));
+  const addSubtask = () =>
+    setSubtasks(prev => [...prev, newSubtaskRow()]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[760px] w-[calc(100vw-16px)] flex flex-col max-h-[92vh] sm:max-h-[88vh] p-0 gap-0 overflow-hidden">
 
         {/* Header fixo */}
         <DialogHeader className="px-6 pt-5 pb-4 border-b shrink-0">
-          <DialogTitle className="text-base font-semibold">{editMode ? "Editar tarefa" : "Nova tarefa"}</DialogTitle>
+          <div className="flex items-center justify-between gap-4">
+            <DialogTitle className="text-base font-semibold">{editMode ? "Editar tarefa" : "Nova tarefa"}</DialogTitle>
+            {/* Tipo de tarefa toggle — apenas no modo criação */}
+            {!editMode && (
+              <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5 text-xs font-medium shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsMultiTask(false)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md transition-colors ${!isMultiTask ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  Simples
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsMultiTask(true)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md transition-colors ${isMultiTask ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  Multi-tarefa
+                </button>
+              </div>
+            )}
+          </div>
         </DialogHeader>
 
         {/* Corpo scrollável */}
@@ -187,7 +270,36 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                   <Textarea value={form.description} onChange={e => f({ description: e.target.value })} rows={5} className="text-sm resize-none" />
                 </div>
 
-                {/* Editores */}
+                {/* Subtarefas — modo multi-task */}
+                {isMultiTask && !editMode && (
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))] flex items-center gap-1.5">
+                      <Layers className="h-3.5 w-3.5" />Subtarefas
+                    </Label>
+                    <div className="space-y-2">
+                      {subtasks.map((row, i) => (
+                        <SubtaskFormRow
+                          key={row.id}
+                          row={row}
+                          index={i}
+                          editors={editors}
+                          onChange={patch => updateSubtask(row.id, patch)}
+                          onRemove={() => removeSubtask(row.id)}
+                        />
+                      ))}
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={addSubtask} className="w-full border-dashed text-xs gap-1.5">
+                      <Plus className="h-3.5 w-3.5" />
+                      Adicionar subtarefa
+                    </Button>
+                    <p className="text-[10px] text-muted-foreground">
+                      O prazo geral e o editor principal são opcionais aqui — defina-os por subtarefa.
+                    </p>
+                  </div>
+                )}
+
+                {/* Editores — modo simples */}
+                {(!isMultiTask || editMode) && (
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))] flex items-center gap-1.5">
                     <UserPlus className="h-3.5 w-3.5" />Editores atribuídos
@@ -280,6 +392,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                     );
                   })()}
                 </div>
+                )} {/* end !isMultiTask || editMode */}
               </div>
 
               {/* ── Coluna direita ──────────────────────────────────── */}
@@ -326,7 +439,8 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                   <div className="col-span-2 space-y-1.5">
                     <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
                       Previsão de entrega
-                      <span className="text-destructive ml-0.5">*</span>
+                      {(!isMultiTask || editMode) && <span className="text-destructive ml-0.5">*</span>}
+                      {isMultiTask && !editMode && <span className="text-muted-foreground ml-1 font-normal normal-case">(opcional)</span>}
                     </Label>
                     <DateTimePicker value={form.dueDateTime} onChange={v => f({ dueDateTime: v })} withTime min={new Date().toISOString().split("T")[0]} placeholder="Data e horário" />
                   </div>

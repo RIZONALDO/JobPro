@@ -12,6 +12,8 @@ import { Calendar, Tag, AlertTriangle, Search, X, ChevronDown } from "lucide-rea
 import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { PriorityBadge } from "@/components/ui/priority-badge";
+import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
+import { SubtaskProgressBar } from "@/components/ui/subtask-progress-bar";
 
 function FilterSelect({ label, value, onChange, options }: {
   label: string; value: string; onChange: (v: string) => void;
@@ -53,6 +55,8 @@ interface PipelineTask {
   assignee: Person | null;
   coordinator: Person | null;
   createdAt: string;
+  taskType?: string;
+  subtaskProgress?: { total: number; completed: number; percentage: number };
 }
 
 const COLUMNS: { key: string; label: string; desc: string; accent: string }[] = [
@@ -230,6 +234,21 @@ export default function Pipeline() {
 
                         {/* Title */}
                         <p className="text-[11px] font-medium leading-snug line-clamp-2 overflow-hidden">{t.title}</p>
+
+                        {/* Multi-task badge + progress */}
+                        {t.taskType === "multi_task" && (
+                          <div className="space-y-0.5">
+                            <MultiTaskBadge taskType="multi_task" className="text-[9px] px-1.5 py-0.5" />
+                            {t.subtaskProgress && (
+                              <SubtaskProgressBar
+                                total={t.subtaskProgress.total}
+                                completed={t.subtaskProgress.completed}
+                                percentage={t.subtaskProgress.percentage}
+                                showLabel={false}
+                              />
+                            )}
+                          </div>
+                        )}
 
                         {/* Client */}
                         {t.client && (

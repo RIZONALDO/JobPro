@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, smallint } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, smallint, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 
 export const tasksTable = pgTable("te_tasks", {
@@ -18,6 +18,10 @@ export const tasksTable = pgTable("te_tasks", {
   revisionCount: integer("revision_count").notNull().default(0),
   folderUrl: text("folder_url"),
   createdById: integer("created_by_id").references(() => usersTable.id),
+  // Multi-task hierarchy
+  taskType: text("task_type").notNull().default("task"), // 'task' | 'multi_task' | 'subtask'
+  parentTaskId: integer("parent_task_id").references((): AnyPgColumn => tasksTable.id, { onDelete: "cascade" }),
+  subtaskOrder: integer("subtask_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
