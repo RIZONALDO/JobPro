@@ -76,7 +76,8 @@ router.post("/users", requireSupervisor, async (req, res): Promise<void> => {
     name: String(name), login: String(login), passwordHash,
     role: String(role), jobTitle: jobTitle ? String(jobTitle) : null,
     mustChangePassword: true,
-  }).returning();
+    theme: "dark",
+  } as any).returning();
 
   res.status(201).json({ id: user.id, name: user.name, login: user.login, role: user.role, jobTitle: user.jobTitle, status: user.status });
 });
