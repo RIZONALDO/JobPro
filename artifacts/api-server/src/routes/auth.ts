@@ -49,7 +49,7 @@ router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
     email: user.email ?? null,
     phone: user.phone ?? null,
     avatarUrl: user.avatarUrl ?? null,
-    theme: (user as any).theme ?? "light",
+    theme: (user as any).theme ?? "dark",
   });
 });
 

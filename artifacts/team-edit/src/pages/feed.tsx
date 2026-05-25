@@ -5,6 +5,7 @@ import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
 import { apiFetch, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { toast } from "sonner";
 import { usePageTitle } from "@/lib/use-page-title";
 import { getSocket } from "@/lib/socket";
@@ -196,6 +197,7 @@ function EmojiReactions({ feedItemId, reactions, myUserId, onUpdate }: {
   onUpdate: (newReactions: FeedReaction[]) => void;
 }) {
   const [showPicker, setShowPicker] = useState(false);
+  const { theme } = useTheme();
   const pickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -249,7 +251,7 @@ function EmojiReactions({ feedItemId, reactions, myUserId, onUpdate }: {
               data={data}
               onEmojiSelect={(e: { native: string }) => { toggle(e.native); setShowPicker(false); }}
               locale="pt"
-              theme="light"
+              theme={theme}
               previewPosition="none"
               skinTonePosition="none"
               maxFrequentRows={2}
