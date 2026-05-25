@@ -460,9 +460,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                   <Select value={form.priority} onValueChange={v => f({ priority: v })}>
                     <SelectTrigger className="h-9 rounded-xl text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="low">🟢 Baixa</SelectItem>
-                      <SelectItem value="medium">🟡 Média</SelectItem>
-                      <SelectItem value="high">🔴 Alta</SelectItem>
+                      <SelectItem value="low">Baixa</SelectItem>
+                      <SelectItem value="medium">Média</SelectItem>
+                      <SelectItem value="high">Alta</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
