@@ -20,7 +20,8 @@ import {
   ClipboardList, MoreVertical,
   ArrowUpRight, X, PauseCircle, XCircle,
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
-  SlidersHorizontal, Check, Undo2, Search, CalendarClock, ChevronRight,
+  SlidersHorizontal, Search, CalendarClock, ChevronRight,
+  CheckCircle2, RotateCcw, AlertTriangle,
 } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
@@ -30,7 +31,7 @@ import { TaskFormModal } from "@/components/task-form-modal";
 import { ReassignEditorModal } from "@/components/reassign-editor-modal";
 import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
 import { SubtaskProgressBar } from "@/components/ui/subtask-progress-bar";
-import { RefreshCw, UserPlus, RotateCcw } from "lucide-react";
+import { RefreshCw, UserPlus } from "lucide-react";
 import { fmtClosedCycle, fmtPrazoWeek, fmtDate } from "@/lib/utils";
 import { PrazoCell } from "@/components/prazo-cell";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
@@ -195,6 +196,10 @@ export default function TasksOverview() {
   // Reassign / add editor modal
   const [reassignTarget, setReassignTarget] = useState<{ taskId: number; taskTitle: string; assignedTo: Person | null; mode: "reassign" | "add" } | null>(null);
   const [deleting,     setDeleting]     = useState(false);
+
+  // Approve confirmation
+  const [approveTarget, setApproveTarget] = useState<{ taskId: number; title: string; parentId?: number } | null>(null);
+  const [approvingTarget, setApprovingTarget] = useState(false);
 
   const doTaskAction = async (taskId: number, action: "cancel" | "pause" | "resume" | "reactivate") => {
     setSendingConfirm(true);
@@ -361,13 +366,22 @@ export default function TasksOverview() {
     return due < now;
   };
 
-  const approve = async (t: OverviewTask) => {
+  const doApprove = async () => {
+    if (!approveTarget) return;
+    setApprovingTarget(true);
     try {
-      await apiPut(`/api/tasks/${t.id}`, { status: "completed" });
-      toast.success("Tarefa aprovada");
+      await apiPut(`/api/tasks/${approveTarget.taskId}`, { status: "completed" });
+      toast.success(approveTarget.parentId ? "Subtarefa aprovada" : "Tarefa aprovada");
+      if (approveTarget.parentId) {
+        apiFetch<SubtaskDetail[]>(`/api/tasks/${approveTarget.parentId}/subtasks`)
+          .then(subs => setSubtasksMap(p => new Map(p).set(approveTarget!.parentId!, subs)));
+      }
+      setApproveTarget(null);
       load(true);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao aprovar");
+    } finally {
+      setApprovingTarget(false);
     }
   };
 
@@ -446,18 +460,6 @@ export default function TasksOverview() {
       }
       return next;
     });
-  };
-
-  const approveSubtask = async (subtaskId: number, parentId: number) => {
-    try {
-      await apiPut(`/api/tasks/${subtaskId}`, { status: "completed" });
-      toast.success("Subtarefa aprovada");
-      apiFetch<SubtaskDetail[]>(`/api/tasks/${parentId}/subtasks`)
-        .then(subs => setSubtasksMap(p => new Map(p).set(parentId, subs)));
-      load(true);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao aprovar");
-    }
   };
 
   const submitRevisionSubtask = async () => {
@@ -636,7 +638,7 @@ export default function TasksOverview() {
               <div className="w-32 shrink-0"><Th col="assignee" label="Editor" /></div>
               <div className="w-28 shrink-0 hidden lg:block"><Th col="dueDate" label="Prazo" /></div>
               <div className="w-24 shrink-0 hidden xl:block"><Th col="coordinator" label="Coord." /></div>
-              <div className="w-32 shrink-0" />
+              <div className="w-52 shrink-0" />
             </div>
           );
         })()}
@@ -927,15 +929,18 @@ export default function TasksOverview() {
                         </Button>
                       )}
                       {t.status === "review" && canActNow && (
-                        <div className="flex gap-1.5">
-                          <Button size="icon" className="h-8 w-8 bg-green-600 hover:bg-green-700"
-                            onClick={e => { e.stopPropagation(); approve(t); }}>
-                            <Check className="h-4 w-4" />
+                        <div className="flex gap-1.5 flex-wrap">
+                          <Button size="sm"
+                            className="h-8 gap-1.5 bg-green-600 hover:bg-green-700 text-white dark:bg-green-700 dark:hover:bg-green-600"
+                            onClick={e => { e.stopPropagation(); setApproveTarget({ taskId: t.id, title: t.title }); }}>
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Aprovar
                           </Button>
-                          <Button size="icon" variant="outline"
-                            className="h-8 w-8 text-orange-600 border-orange-300 hover:bg-orange-50"
+                          <Button size="sm" variant="outline"
+                            className="h-8 gap-1.5 text-amber-600 border-amber-400 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:border-amber-700/60 dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
                             onClick={e => { e.stopPropagation(); setRevisionTask(t); setRevisionComment(""); }}>
-                            <Undo2 className="h-4 w-4" />
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Revisar
                           </Button>
                         </div>
                       )}
@@ -1078,8 +1083,8 @@ export default function TasksOverview() {
                     )}
                   </div>
 
-                  {/* Ações — desktop (largura fixa w-32 para não desalinhar) */}
-                  <div className="hidden md:flex w-32 shrink-0 items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                  {/* Ações — desktop (largura fixa w-52 para não desalinhar) */}
+                  <div className="hidden md:flex w-52 shrink-0 items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
                     {t.status === "rascunho" && canActNow && (
                       <Button size="icon"
                         className={`h-7 w-7 ${t.editors?.length > 0 ? "bg-zinc-700 hover:bg-zinc-800" : "bg-zinc-300 cursor-not-allowed"}`}
@@ -1091,14 +1096,17 @@ export default function TasksOverview() {
                     )}
                     {t.status === "review" && canActNow && (
                       <>
-                        <Button size="icon" className="h-7 w-7 bg-green-600 hover:bg-green-700" title="Aprovar"
-                          onClick={e => { e.stopPropagation(); approve(t); }}>
-                          <Check className="h-3.5 w-3.5" />
+                        <Button size="sm"
+                          className="h-7 gap-1 text-xs bg-green-600 hover:bg-green-700 text-white dark:bg-green-700 dark:hover:bg-green-600"
+                          onClick={e => { e.stopPropagation(); setApproveTarget({ taskId: t.id, title: t.title }); }}>
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Aprovar
                         </Button>
-                        <Button size="icon" variant="outline"
-                          className="h-7 w-7 text-orange-600 border-orange-300 hover:bg-orange-50" title="Solicitar alteração"
+                        <Button size="sm" variant="outline"
+                          className="h-7 gap-1 text-xs text-amber-600 border-amber-400 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:border-amber-700/60 dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
                           onClick={e => { e.stopPropagation(); setRevisionTask(t); setRevisionComment(""); }}>
-                          <Undo2 className="h-3.5 w-3.5" />
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          Revisar
                         </Button>
                       </>
                     )}
@@ -1170,21 +1178,21 @@ export default function TasksOverview() {
                         {sub.status === "review" && canActNow && (
                           <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
                             <Button
-                              size="icon"
-                              className="h-6 w-6 bg-green-600 hover:bg-green-700"
-                              title="Aprovar subtarefa"
-                              onClick={e => { e.stopPropagation(); approveSubtask(sub.id, t.id); }}
+                              size="sm"
+                              className="h-6 px-2 gap-1 text-[11px] bg-green-600 hover:bg-green-700 text-white dark:bg-green-700 dark:hover:bg-green-600"
+                              onClick={e => { e.stopPropagation(); setApproveTarget({ taskId: sub.id, title: sub.title, parentId: t.id }); }}
                             >
-                              <Check className="h-3 w-3" />
+                              <CheckCircle2 className="h-3 w-3" />
+                              Aprovar
                             </Button>
                             <Button
-                              size="icon"
+                              size="sm"
                               variant="outline"
-                              className="h-6 w-6 text-orange-600 border-orange-300 hover:bg-orange-50"
-                              title="Solicitar alteração"
+                              className="h-6 px-2 gap-1 text-[11px] text-amber-600 border-amber-400 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:border-amber-700/60 dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
                               onClick={e => { e.stopPropagation(); setRevisionSubtask({ id: sub.id, title: sub.title, parentId: t.id }); setRevisionSubtaskComment(""); }}
                             >
-                              <Undo2 className="h-3 w-3" />
+                              <RotateCcw className="h-3 w-3" />
+                              Revisar
                             </Button>
                           </div>
                         )}
@@ -1386,6 +1394,42 @@ export default function TasksOverview() {
         onSaved={() => load(true)}
         editTaskId={editTaskId}
       />
+
+      {/* ── Approve confirm dialog ───────────────────────────────────────── */}
+      <Dialog open={!!approveTarget} onOpenChange={open => { if (!open && !approvingTarget) setApproveTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500" />
+              {approveTarget?.parentId ? "Aprovar subtarefa" : "Aprovar tarefa"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-1 space-y-2">
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              Tem certeza que deseja <strong className="text-[hsl(var(--foreground))]">aprovar</strong>{" "}
+              {approveTarget?.parentId ? "a subtarefa" : "a tarefa"}{" "}
+              <em>"{approveTarget?.title}"</em>?
+            </p>
+            <p className="text-xs text-[hsl(var(--muted-foreground))]/70">
+              {approveTarget?.parentId
+                ? "A subtarefa será marcada como concluída."
+                : "A tarefa será marcada como concluída e o editor será notificado."}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApproveTarget(null)} disabled={approvingTarget}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600"
+              onClick={doApprove}
+              disabled={approvingTarget}
+            >
+              {approvingTarget ? "Aprovando…" : "Confirmar aprovação"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirm */}
       <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
