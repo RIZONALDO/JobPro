@@ -21,7 +21,7 @@ import {
   ArrowUpRight, X, PauseCircle, XCircle,
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
   SlidersHorizontal, Search, CalendarClock, ChevronRight,
-  CheckCircle2, RotateCcw, AlertTriangle,
+  CheckCircle2, RotateCcw, AlertTriangle, Archive, Rocket,
 } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
@@ -116,8 +116,22 @@ export default function TasksOverview() {
   const isSuper = user?.role === "admin" || user?.role === "supervisor";
   const canCreate = isSuper || user?.role === "coordinator";
 
+  // ── Tab ──────────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<"lista" | "gaveta">(() => {
+    const v = new URLSearchParams(window.location.search).get("tab");
+    return v === "gaveta" ? "gaveta" : "lista";
+  });
+  const switchTab = (tab: "lista" | "gaveta") => {
+    setActiveTab(tab);
+    const u = new URL(window.location.href);
+    u.searchParams.set("tab", tab);
+    window.history.replaceState(null, "", u.toString());
+  };
+
   const [tasks,        setTasks]        = useState<OverviewTask[]>([]);
   const [loading,      setLoading]      = useState(true);
+  const [gavetaTasks,  setGavetaTasks]  = useState<OverviewTask[]>([]);
+  const [gavetaLoading, setGavetaLoading] = useState(false);
 
   const urlSearch = useSearch();
   const [highlighted, setHighlighted] = useState<number | null>(() => {
@@ -244,14 +258,23 @@ export default function TasksOverview() {
       .finally(() => { if (!silent) setLoading(false); });
   }, [filterStatus]);
 
+  const loadGaveta = useCallback((silent = false) => {
+    if (!silent) setGavetaLoading(true);
+    apiFetch<OverviewTask[]>("/api/tasks/overview?status=all")
+      .then(setGavetaTasks)
+      .catch(() => {})
+      .finally(() => { if (!silent) setGavetaLoading(false); });
+  }, []);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (activeTab === "gaveta") loadGaveta(); }, [activeTab, loadGaveta]);
 
   // Keep a ref that always reflects the current expandedIds set (to avoid stale closure in the realtime callback)
   const expandedIdsRef = useRef<Set<number>>(expandedIds);
   useEffect(() => { expandedIdsRef.current = expandedIds; }, [expandedIds]);
 
   useRealtime({
-    onTasksChanged: () => load(true),
+    onTasksChanged: () => { load(true); loadGaveta(true); },
 
     // Fired by subtask:changed — refresh ALL currently expanded panels immediately,
     // without waiting for the debounced load(true). This is the primary real-time
@@ -352,6 +375,20 @@ export default function TasksOverview() {
       return sortDir === "asc" ? cmp : -cmp;
     });
   }, [filtered, sortKey, sortDir]);
+
+  // ── Gaveta — tarefas sem editor E sem data (não subtarefas, não finalizadas) ──
+  const gavetaFiltered = useMemo(() => {
+    return gavetaTasks
+      .filter(t => {
+        if (t.taskType === "subtask") return false;
+        if (t.editors.length > 0 || t.assignee) return false;
+        if (t.dueDate) return false;
+        if (isTerminal(t.status)) return false;
+        if (!isSuper && user?.role === "coordinator" && t.coordinator?.id !== user?.id) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }, [gavetaTasks, isSuper, user]);
 
   // ── Summary stats ─────────────────────────────────────────────────────────
 
@@ -482,7 +519,158 @@ export default function TasksOverview() {
   return (
     <div className="flex flex-col h-full overflow-hidden p-2 sm:p-4 gap-2 sm:gap-4 bg-[hsl(var(--background))]">
 
+      {/* ── Tab bar ──────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          onClick={() => switchTab("lista")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+            activeTab === "lista"
+              ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm"
+              : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/60"
+          }`}
+        >
+          <ClipboardList className="h-4 w-4" />
+          Lista
+        </button>
+        {(isSuper || user?.role === "coordinator") && (
+          <button
+            onClick={() => switchTab("gaveta")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+              activeTab === "gaveta"
+                ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm"
+                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/60"
+            }`}
+          >
+            <Archive className="h-4 w-4" />
+            Gaveta
+            {gavetaFiltered.length > 0 && activeTab !== "gaveta" && (
+              <span className="min-w-[20px] h-5 px-1 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center">
+                {gavetaFiltered.length > 99 ? "99+" : gavetaFiltered.length}
+              </span>
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* ── Gaveta view ──────────────────────────────────────────────────── */}
+      {activeTab === "gaveta" && (
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between shrink-0 px-1">
+            <div>
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                {gavetaLoading ? "Carregando…" : `${gavetaFiltered.length} tarefa${gavetaFiltered.length !== 1 ? "s" : ""} na gaveta`}
+              </p>
+            </div>
+            {canCreate && (
+              <Button size="sm" className="h-8 gap-1.5" onClick={() => { setEditTaskId(null); setFormOpen(true); }}>
+                <Plus className="h-3.5 w-3.5" />Nova tarefa
+              </Button>
+            )}
+          </div>
+
+          {/* Cards */}
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+            {gavetaLoading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 p-1">
+                {[1,2,3,4,5,6].map(i => (
+                  <div key={i} className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 space-y-3">
+                    <div className="h-4 w-16 rounded bg-[hsl(var(--muted))]/60 animate-pulse" />
+                    <div className="h-4 w-full rounded bg-[hsl(var(--muted))]/60 animate-pulse" />
+                    <div className="h-3 w-24 rounded bg-[hsl(var(--muted))]/40 animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            ) : gavetaFiltered.length === 0 ? (
+              <div className="flex flex-col items-center gap-4 py-20 text-center">
+                <div className="h-16 w-16 rounded-2xl bg-[hsl(var(--muted))]/40 flex items-center justify-center">
+                  <Archive className="h-8 w-8 text-[hsl(var(--muted-foreground))]/30" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-[hsl(var(--foreground))]">Gaveta vazia</p>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
+                    Tarefas sem editor e sem prazo aparecem aqui.
+                  </p>
+                </div>
+                {canCreate && (
+                  <Button size="sm" variant="outline" className="gap-1.5 mt-1" onClick={() => { setEditTaskId(null); setFormOpen(true); }}>
+                    <Plus className="h-3.5 w-3.5" />Criar tarefa
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 p-1">
+                {gavetaFiltered.map(t => (
+                  <div
+                    key={t.id}
+                    className="group relative flex flex-col rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm hover:shadow-md hover:border-[hsl(var(--primary))]/30 transition-all overflow-hidden cursor-pointer"
+                    onClick={() => openTask(t.id)}
+                  >
+                    {/* Borda colorida de prioridade */}
+                    <div
+                      className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl"
+                      style={{ backgroundColor: t.priority === "high" ? "#ef4444" : t.priority === "medium" ? "#f59e0b" : "#6b7280" }}
+                    />
+
+                    <div className="pl-4 pr-4 pt-4 pb-3 flex flex-col gap-2 flex-1">
+                      {/* Código + prioridade */}
+                      <div className="flex items-center justify-between gap-2">
+                        {t.taskCode && (
+                          <span className="text-[10px] font-mono font-semibold text-[hsl(var(--muted-foreground))]/70 bg-[hsl(var(--muted))]/50 px-1.5 py-0.5 rounded">
+                            {t.taskCode}
+                          </span>
+                        )}
+                        <PriorityBadge priority={t.priority} />
+                      </div>
+
+                      {/* Título */}
+                      <p className="text-sm font-semibold leading-snug line-clamp-2 flex-1 text-[hsl(var(--foreground))]">
+                        {t.title}
+                      </p>
+
+                      {/* Cliente */}
+                      {t.client && (
+                        <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.client}</p>
+                      )}
+
+                      {/* Rodapé: data + coord */}
+                      <div className="flex items-center justify-between mt-1 pt-2 border-t border-[hsl(var(--border))]/50">
+                        <span className="text-[10px] text-[hsl(var(--muted-foreground))]/60">
+                          {fmtDate(t.updatedAt)}
+                        </span>
+                        {t.coordinator && (
+                          <div className="flex items-center gap-1">
+                            <AvatarDisplay name={t.coordinator.name} avatarUrl={t.coordinator.avatarUrl} size={22} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Botão disparar */}
+                    <div className="px-4 pb-3">
+                      <Button
+                        size="sm"
+                        className="w-full h-8 gap-1.5 text-xs bg-amber-500 hover:bg-amber-600 text-white dark:bg-amber-600 dark:hover:bg-amber-500"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setEditTaskId(t.id);
+                          setFormOpen(true);
+                        }}
+                      >
+                        <Rocket className="h-3.5 w-3.5" />
+                        Disparar
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Filters ──────────────────────────────────────────────────────── */}
+      {activeTab === "lista" && (<>
 
       {/* Mobile filter bar (< sm) */}
       <div className="sm:hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm p-3 space-y-2">
@@ -1212,6 +1400,7 @@ export default function TasksOverview() {
 
         </div>{/* fim body scrollável */}
       </div>
+      </>)}{/* fim activeTab === "lista" */}
 
       {/* ── Cancel / Pause / Resume confirm dialog ───────────────────────── */}
       <Dialog open={!!confirmTask} onOpenChange={open => { if (!open && !sendingConfirm) { setConfirmTask(null); setConfirmComment(""); } }}>
