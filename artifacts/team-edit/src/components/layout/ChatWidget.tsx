@@ -224,8 +224,12 @@ export function ChatWidget() {
 
   const [typingUsers, setTypingUsers] = useState<Set<number>>(new Set());
 
+  // Snapshot do número de não lidas no momento de abrir a conversa (para o divisor)
+  const [unreadSnapshot, setUnreadSnapshot] = useState<Record<number, number>>({});
+
   const chatEndRef = useRef<HTMLDivElement>(null);
   const dmEndRef = useRef<HTMLDivElement>(null);
+  const firstUnreadRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const fabRef = useRef<HTMLButtonElement>(null);
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -237,7 +241,7 @@ export function ChatWidget() {
   useEffect(() => { chatOpenRef.current = chatOpen; }, [chatOpen]);
   useEffect(() => { activeViewRef.current = activeView; }, [activeView]);
 
-  // ── Auto-clear DM unread when chat is open and viewing that conversation ──
+  // ── Auto-clear DM unread quando chat está aberto na conversa ──
   useEffect(() => {
     if (!chatOpen || typeof activeView !== "number") return;
     setDmUnread(prev => {
@@ -246,6 +250,13 @@ export function ChatWidget() {
     });
     apiPost(`/api/dm/${activeView}/read`, {}).catch(() => {});
   }, [chatOpen, activeView]);
+
+  // ── Limpa snapshot ao fechar o chat (próxima abertura começa limpa) ──
+  useEffect(() => {
+    if (chatOpen) return;
+    const t = setTimeout(() => setUnreadSnapshot({}), 400);
+    return () => clearTimeout(t);
+  }, [chatOpen]);
 
   const totalUnread = generalUnread + Object.values(dmUnread).reduce((a, b) => a + b, 0);
   const hasAlert = hasMention || Object.values(dmUnread).some(n => n > 0);
@@ -298,6 +309,17 @@ export function ChatWidget() {
   const openDm = useCallback((userId: number, prefill?: string) => {
     setSlideDir(1);
     setActiveView(userId);
+
+    // Captura quantas msgs não lidas existem agora para posicionar o divisor
+    setDmUnread(cur => {
+      const serverUnread = conversations.find(c => c.userId === userId)?.unread ?? 0;
+      const localUnread = cur[userId] ?? serverUnread;
+      if (localUnread > 0) {
+        setUnreadSnapshot(snap => ({ ...snap, [userId]: localUnread }));
+      }
+      return cur; // não altera dmUnread — o useEffect cuida disso
+    });
+
     if (prefill) {
       const m = prefill.match(/^\[([^\]|]+)\|id:(\d+)\](?:\s*[-—]\s*(.+))?/);
       if (m) {
@@ -347,10 +369,13 @@ export function ChatWidget() {
     return () => clearTimeout(t);
   }, [activeView]);
 
-  // Scroll DM — instantâneo ao trocar de conversa (aguarda animação spring), suave em novas msgs
+  // Scroll DM — ao abrir conversa: vai para o divisor de não lidas (se existir) ou para o fim
   useEffect(() => {
     if (typeof activeView !== "number") return;
-    const t = setTimeout(() => dmEndRef.current?.scrollIntoView({ behavior: "instant" }), 120);
+    const t = setTimeout(() => {
+      const target = firstUnreadRef.current ?? dmEndRef.current;
+      target?.scrollIntoView({ behavior: "instant", block: "start" });
+    }, 120);
     return () => clearTimeout(t);
   }, [activeView]);
   useEffect(() => {
@@ -847,26 +872,45 @@ export function ChatWidget() {
                         <p className="text-sm text-center py-10" style={{ color: "hsl(var(--muted-foreground))" }}>Carregando...</p>
                       ) : (dmMessages[activeView as number] ?? []).length === 0 ? (
                         <p className="text-sm text-center py-10" style={{ color: "hsl(var(--muted-foreground))" }}>Nenhuma mensagem. Diga olá! 👋</p>
-                      ) : (dmMessages[activeView as number] ?? []).map(msg => {
+                      ) : (dmMessages[activeView as number] ?? []).map((msg, idx) => {
                         const mine = msg.fromUserId === user?.id;
+                        const snap = unreadSnapshot[activeView as number] ?? 0;
+                        const firstUnreadIdx = snap > 0 ? (dmMessages[activeView as number]?.length ?? 0) - snap : -1;
                         return (
-                          <div key={msg.id} className={cn("flex gap-2 items-end", mine && "flex-row-reverse")}>
-                            {!mine && <Avatar name={msg.fromName} url={msg.fromAvatar} size="xs" />}
-                            <div
-                              className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
-                              style={mine
-                                ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
-                                : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
-                              }
-                            >
-                              <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
-                              <div className="flex items-center justify-end gap-1 mt-1">
-                                <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
-                                {mine && (
-                                  msg.readAt
-                                    ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-400" />
-                                    : <Check className="h-3.5 w-3.5 shrink-0 opacity-40" />
-                                )}
+                          <div key={msg.id}>
+                            {idx === firstUnreadIdx && (
+                              <div
+                                ref={firstUnreadRef}
+                                className="flex items-center gap-2 my-2 select-none"
+                              >
+                                <div className="flex-1 h-px" style={{ backgroundColor: "hsl(var(--primary) / 0.3)" }} />
+                                <span
+                                  className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                                  style={{ color: "hsl(var(--primary))", backgroundColor: "hsl(var(--primary) / 0.1)" }}
+                                >
+                                  {snap} {snap === 1 ? "mensagem não lida" : "mensagens não lidas"}
+                                </span>
+                                <div className="flex-1 h-px" style={{ backgroundColor: "hsl(var(--primary) / 0.3)" }} />
+                              </div>
+                            )}
+                            <div className={cn("flex gap-2 items-end", mine && "flex-row-reverse")}>
+                              {!mine && <Avatar name={msg.fromName} url={msg.fromAvatar} size="xs" />}
+                              <div
+                                className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
+                                style={mine
+                                  ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
+                                  : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
+                                }
+                              >
+                                <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
+                                <div className="flex items-center justify-end gap-1 mt-1">
+                                  <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
+                                  {mine && (
+                                    msg.readAt
+                                      ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-400" />
+                                      : <Check className="h-3.5 w-3.5 shrink-0 opacity-40" />
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </div>
