@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { apiFetch, apiPut } from "@/lib/api";
+import { apiFetch, apiPut, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useRealtime } from "@/hooks/use-realtime";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Archive, Plus, Send } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Archive, Plus, Send, MoreHorizontal, Trash2 } from "lucide-react";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { TaskFormModal } from "@/components/task-form-modal";
@@ -50,6 +51,9 @@ export default function TasksRascunho() {
   const [publishTarget, setPublishTarget] = useState<OverviewTask | null>(null);
   const [publishing,    setPublishing]    = useState(false);
 
+  const [deleteTarget, setDeleteTarget] = useState<OverviewTask | null>(null);
+  const [deleting,     setDeleting]     = useState(false);
+
   const load = useCallback((silent = false) => {
     if (!silent) setLoading(true);
     apiFetch<OverviewTask[]>("/api/tasks/overview?status=rascunho")
@@ -71,6 +75,19 @@ export default function TasksRascunho() {
     })
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
   [tasks, isSuper, user]);
+
+  const doDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await apiDelete(`/api/tasks/${deleteTarget.id}`);
+      toast.success("Rascunho excluído");
+      setDeleteTarget(null);
+      load(true);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao excluir");
+    } finally { setDeleting(false); }
+  };
 
   const doPublish = async () => {
     if (!publishTarget) return;
@@ -111,7 +128,7 @@ export default function TasksRascunho() {
           <div className="w-32 shrink-0">Editor</div>
           <div className="w-28 shrink-0 hidden lg:block">Prazo</div>
           <div className="w-20 shrink-0 hidden lg:block">Prior.</div>
-          <div className="w-28 shrink-0" />
+          <div className="w-10 shrink-0" />
         </div>
 
         <div className="flex-1 overflow-y-auto overscroll-contain">
@@ -160,6 +177,29 @@ export default function TasksRascunho() {
               {filtered.map(t => {
                 const openEdit  = () => { setEditTaskId(t.id); setFormOpen(true); };
                 const openPub   = (e: React.MouseEvent) => { e.stopPropagation(); setPublishTarget(t); };
+                const openDel   = (e: React.MouseEvent) => { e.stopPropagation(); setDeleteTarget(t); };
+
+                const RowMenu = ({ stopProp }: { stopProp?: boolean }) => (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={e => stopProp && e.stopPropagation()}>
+                      <button
+                        className="h-7 w-7 flex items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/40 transition-colors"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40">
+                      <DropdownMenuItem onClick={openPub}>
+                        <Send className="h-3.5 w-3.5 mr-2" />Publicar
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={openDel} className="text-red-600 focus:text-red-600">
+                        <Trash2 className="h-3.5 w-3.5 mr-2" />Excluir
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
 
                 return (
                   <div
@@ -196,10 +236,8 @@ export default function TasksRascunho() {
                           : <span className="text-[10px] text-[hsl(var(--muted-foreground))]/40 italic">sem prazo</span>
                         }
                       </div>
-                      <div className="mt-2" onClick={e => e.stopPropagation()}>
-                        <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs border-[hsl(var(--border))]" onClick={openPub}>
-                          <Send className="h-3.5 w-3.5" />Publicar
-                        </Button>
+                      <div className="mt-2 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                        <RowMenu />
                       </div>
                     </div>
 
@@ -246,11 +284,9 @@ export default function TasksRascunho() {
                       <PriorityBadge priority={t.priority} />
                     </div>
 
-                    {/* Publicar */}
-                    <div className="hidden md:flex w-28 shrink-0 items-center justify-end" onClick={e => e.stopPropagation()}>
-                      <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs border-[hsl(var(--border))]" onClick={openPub}>
-                        <Send className="h-3.5 w-3.5" />Publicar
-                      </Button>
+                    {/* Menu ações */}
+                    <div className="hidden md:flex w-10 shrink-0 items-center justify-end" onClick={e => e.stopPropagation()}>
+                      <RowMenu />
                     </div>
                   </div>
                 );
@@ -304,6 +340,28 @@ export default function TasksRascunho() {
             <Button variant="outline" onClick={() => setPublishTarget(null)} disabled={publishing}>Cancelar</Button>
             <Button onClick={doPublish} disabled={publishing}>
               {publishing ? "Publicando…" : <><Send className="h-3.5 w-3.5 mr-1" />Publicar</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Excluir confirm dialog ────────────────────────────────────── */}
+      <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open && !deleting) setDeleteTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Excluir rascunho</DialogTitle>
+          </DialogHeader>
+          <div className="py-1">
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              Tem certeza que deseja excluir{" "}
+              <span className="font-medium text-[hsl(var(--foreground))]">{deleteTarget?.title}</span>?{" "}
+              Esta ação não pode ser desfeita.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancelar</Button>
+            <Button variant="destructive" onClick={doDelete} disabled={deleting}>
+              {deleting ? "Excluindo…" : <><Trash2 className="h-3.5 w-3.5 mr-1" />Excluir</>}
             </Button>
           </DialogFooter>
         </DialogContent>
