@@ -471,9 +471,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   className="absolute right-0 top-full mt-1.5 w-80 rounded-xl border bg-[hsl(var(--card))] shadow-xl z-50 overflow-hidden">
 
                   {/* Header */}
-                  <div className="px-4 py-3 border-b bg-[hsl(var(--muted))]/30 space-y-2.5">
-                    {/* Row 1: título + lixeira */}
-                    <div className="flex items-center justify-between">
+                  <div className="border-b bg-[hsl(var(--muted))]/30">
+
+                    {/* Row 1: título + ações */}
+                    <div className="flex items-center justify-between px-4 pt-3 pb-2">
                       <div className="flex items-center gap-2">
                         <Bell className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
                         <span className="text-sm font-semibold">Notificações</span>
@@ -483,73 +484,102 @@ export function Shell({ children }: { children: React.ReactNode }) {
                           </span>
                         )}
                       </div>
-                      {notifications.length > 0 && (
-                        <button
-                          onClick={deleteAll}
-                          title="Limpar todas"
-                          className="h-6 w-6 flex items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-                    {/* Row 2: controles */}
-                    <div className="flex items-center justify-between">
-                      {/* Som + Push */}
-                      <div className="flex items-center gap-2.5">
-                        <button
-                          onClick={toggleSound}
-                          title={soundEnabled ? "Desligar som" : "Ligar som"}
-                          className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
-                        >
-                          {soundEnabled
-                            ? <Volume2 className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
-                            : <VolumeX className="h-3.5 w-3.5" />
-                          }
-                          <span className={cn(
-                            "relative inline-flex h-4 w-7 items-center rounded-full transition-colors",
-                            soundEnabled ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted-foreground))]/30"
-                          )}>
-                            <span className={cn(
-                              "absolute h-3 w-3 rounded-full bg-white shadow transition-transform",
-                              soundEnabled ? "translate-x-3.5" : "translate-x-0.5"
-                            )} />
-                          </span>
-                        </button>
-                        {isPushSupported() && getPushPermission() !== "denied" && (
-                          <button
-                            onClick={togglePush}
-                            title={pushEnabled ? "Desativar notificações do sistema" : "Ativar notificações do sistema"}
-                            className={cn(
-                              "flex items-center gap-1 text-xs transition-colors",
-                              pushEnabled
-                                ? "text-[hsl(var(--primary))]"
-                                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-                            )}
-                          >
-                            <BellRing className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {/* Filtro apenas não lidas */}
-                        <button
-                          onClick={() => setOnlyUnread(v => !v)}
-                          className={cn(
-                            "text-xs px-2 py-0.5 rounded-full border transition-colors",
-                            onlyUnread
-                              ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))] bg-[hsl(var(--primary))]/8"
-                              : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-                          )}
-                        >
-                          Não lidas
-                        </button>
+                      <div className="flex items-center gap-1">
                         {unreadCount > 0 && (
-                          <button onClick={markAllRead} className="flex items-center gap-1 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors">
+                          <button
+                            onClick={markAllRead}
+                            title="Marcar todas como lidas"
+                            className="h-6 w-6 flex items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] transition-colors"
+                          >
                             <CheckCheck className="h-3.5 w-3.5" />
                           </button>
                         )}
+                        {notifications.length > 0 && (
+                          <button
+                            onClick={deleteAll}
+                            title="Limpar todas"
+                            className="h-6 w-6 flex items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
+                    </div>
+
+                    {/* Row 2: toggles com rótulos + filtro */}
+                    <div className="flex items-center justify-between px-4 pb-3 gap-2">
+
+                      {/* Toggles de configuração */}
+                      <div className="flex items-center gap-3">
+
+                        {/* Som */}
+                        <button
+                          onClick={toggleSound}
+                          className="flex items-center gap-1.5 group"
+                          title={soundEnabled ? "Desligar som" : "Ligar som"}
+                        >
+                          {soundEnabled
+                            ? <Volume2 className="h-3 w-3 text-[hsl(var(--primary))]" />
+                            : <VolumeX className="h-3 w-3 text-[hsl(var(--muted-foreground))]" />
+                          }
+                          <span className={cn(
+                            "text-[11px] font-medium transition-colors",
+                            soundEnabled ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]"
+                          )}>Som</span>
+                          <span className={cn(
+                            "relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors shrink-0",
+                            soundEnabled ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted-foreground))]/30"
+                          )}>
+                            <span className={cn(
+                              "absolute h-2.5 w-2.5 rounded-full bg-white shadow transition-transform",
+                              soundEnabled ? "translate-x-[11px]" : "translate-x-0.5"
+                            )} />
+                          </span>
+                        </button>
+
+                        {/* Separador */}
+                        <span className="h-3 w-px bg-[hsl(var(--border))]" />
+
+                        {/* Push OS */}
+                        {isPushSupported() && getPushPermission() !== "denied" && (
+                          <button
+                            onClick={togglePush}
+                            className="flex items-center gap-1.5 group"
+                            title={pushEnabled ? "Desativar notificações do sistema operacional" : "Ativar notificações do sistema operacional"}
+                          >
+                            <BellRing className={cn(
+                              "h-3 w-3 transition-colors",
+                              pushEnabled ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--muted-foreground))]"
+                            )} />
+                            <span className={cn(
+                              "text-[11px] font-medium transition-colors",
+                              pushEnabled ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]"
+                            )}>Sistema</span>
+                            <span className={cn(
+                              "relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors shrink-0",
+                              pushEnabled ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted-foreground))]/30"
+                            )}>
+                              <span className={cn(
+                                "absolute h-2.5 w-2.5 rounded-full bg-white shadow transition-transform",
+                                pushEnabled ? "translate-x-[11px]" : "translate-x-0.5"
+                              )} />
+                            </span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Filtro não lidas */}
+                      <button
+                        onClick={() => setOnlyUnread(v => !v)}
+                        className={cn(
+                          "text-[11px] px-2 py-0.5 rounded-full border transition-colors whitespace-nowrap",
+                          onlyUnread
+                            ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))] bg-[hsl(var(--primary))]/8"
+                            : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                        )}
+                      >
+                        Não lidas
+                      </button>
                     </div>
                   </div>
 
