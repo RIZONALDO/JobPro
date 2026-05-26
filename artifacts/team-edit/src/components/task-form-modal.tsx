@@ -25,6 +25,7 @@ interface Props {
   onSaved: () => void;
   editTaskId?: number | null;
   initialDueDate?: string;
+  hidePublish?: boolean;
 }
 
 const EMPTY_FORM = {
@@ -42,7 +43,7 @@ function workloadLevel(score: number): "ok" | "moderate" | "high" | "critical" {
   return "critical";
 }
 
-export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initialDueDate }: Props) {
+export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initialDueDate, hidePublish }: Props) {
   const editMode = !!editTaskId;
 
   const [form, setForm]               = useState(EMPTY_FORM);
@@ -528,15 +529,17 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                 <Save className="h-3.5 w-3.5" />{saving ? "Salvando…" : "Salvar rascunho"}
               </Button>
             )}
-            {/* Publicar / Salvar */}
-            <Button size="sm" className="rounded-xl h-9 gap-1.5"
-              onClick={() => save(editMode ? (taskStatus === "rascunho" ? "pending" : undefined) : "pending")}
-              disabled={saving || loadingEdit}>
-              {editMode && taskStatus !== "rascunho"
-                ? <>{saving ? "Salvando…" : "Salvar"}</>
-                : <><Send className="h-3.5 w-3.5" />{saving ? "Publicando…" : "Publicar"}</>
-              }
-            </Button>
+            {/* Publicar / Salvar — oculto ao editar/criar rascunho quando hidePublish=true ou taskStatus=rascunho */}
+            {(editMode ? taskStatus !== "rascunho" : !hidePublish) && (
+              <Button size="sm" className="rounded-xl h-9 gap-1.5"
+                onClick={() => save(editMode ? undefined : "pending")}
+                disabled={saving || loadingEdit}>
+                {editMode && taskStatus !== "rascunho"
+                  ? <>{saving ? "Salvando…" : "Salvar"}</>
+                  : <><Send className="h-3.5 w-3.5" />{saving ? "Publicando…" : "Publicar"}</>
+                }
+              </Button>
+            )}
           </div>
         </div>
 

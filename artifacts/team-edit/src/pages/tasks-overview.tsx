@@ -199,8 +199,13 @@ export default function TasksOverview() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   // Create / Edit modal
-  const [formOpen,    setFormOpen]    = useState(false);
-  const [editTaskId,  setEditTaskId]  = useState<number | null>(null);
+  const [formOpen,       setFormOpen]       = useState(false);
+  const [editTaskId,     setEditTaskId]     = useState<number | null>(null);
+  const [formDraftMode,  setFormDraftMode]  = useState(false);
+
+  // Publicar confirm dialog
+  const [publishTarget, setPublishTarget] = useState<OverviewTask | null>(null);
+  const [publishing,    setPublishing]    = useState(false);
 
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
@@ -559,7 +564,7 @@ export default function TasksOverview() {
               {gavetaLoading ? "Carregando…" : `${gavetaFiltered.length} rascunho${gavetaFiltered.length !== 1 ? "s" : ""}`}
             </p>
             {canCreate && (
-              <Button size="sm" className="h-8 gap-1.5" onClick={() => { setEditTaskId(null); setFormOpen(true); }}>
+              <Button size="sm" className="h-8 gap-1.5" onClick={() => { setEditTaskId(null); setFormDraftMode(true); setFormOpen(true); }}>
                 <Plus className="h-3.5 w-3.5" />Novo rascunho
               </Button>
             )}
@@ -570,9 +575,10 @@ export default function TasksOverview() {
             {/* Cabeçalho colunas — desktop */}
             <div className="hidden md:flex shrink-0 items-center px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
               <div className="flex-1 pr-3">Tarefa</div>
+              <div className="w-32 shrink-0">Editor</div>
+              <div className="w-28 shrink-0 hidden lg:block">Prazo</div>
               <div className="w-20 shrink-0 hidden lg:block">Prior.</div>
               <div className="w-28 shrink-0 hidden xl:block">Coord.</div>
-              <div className="w-24 shrink-0 hidden lg:block">Atualizado</div>
               <div className="w-28 shrink-0" />
             </div>
 
@@ -606,7 +612,7 @@ export default function TasksOverview() {
                     </p>
                   </div>
                   {canCreate && (
-                    <Button size="sm" variant="outline" className="gap-1.5 mt-1" onClick={() => { setEditTaskId(null); setFormOpen(true); }}>
+                    <Button size="sm" variant="outline" className="gap-1.5 mt-1" onClick={() => { setEditTaskId(null); setFormDraftMode(true); setFormOpen(true); }}>
                       <Plus className="h-3.5 w-3.5" />Criar rascunho
                     </Button>
                   )}
@@ -615,14 +621,16 @@ export default function TasksOverview() {
                 <div className="divide-y divide-[hsl(var(--muted))]">
                   {gavetaFiltered.map(t => {
                     const prioColor = t.priority === "high" ? "#ef4444" : t.priority === "medium" ? "#f59e0b" : "#6b7280";
+                    const openEdit  = () => { setEditTaskId(t.id); setFormDraftMode(true); setFormOpen(true); };
+                    const openPub   = (e: React.MouseEvent) => { e.stopPropagation(); setPublishTarget(t); };
                     return (
                       <div
                         key={t.id}
                         className="flex items-center px-4 hover:bg-[hsl(var(--muted))]/20 transition-colors cursor-pointer"
                         style={{ borderLeft: `3px dashed ${prioColor}` }}
-                        onClick={() => { setEditTaskId(t.id); setFormOpen(true); }}
+                        onClick={openEdit}
                       >
-                        {/* Mobile layout */}
+                        {/* ── Mobile layout ────────────────────────────── */}
                         <div className="md:hidden flex-1 py-3 min-w-0">
                           <div className="flex items-baseline gap-2 min-w-0">
                             {t.taskCode && (
@@ -635,25 +643,30 @@ export default function TasksOverview() {
                           {t.client && (
                             <p className="text-xs text-[hsl(var(--muted-foreground))]/60 truncate mt-0.5">{t.client}</p>
                           )}
-                          <div className="flex items-center gap-2 mt-2">
+                          {t.editors && t.editors.length > 0 && (
+                            <div className="flex items-center gap-1.5 mt-1.5">
+                              <StackedAvatars people={t.editors} size={22} max={3} />
+                              <span className="text-xs text-[hsl(var(--muted-foreground))]/70 truncate">
+                                {t.editors.map(e => e.name.split(" ")[0]).join(", ")}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                             <PriorityBadge priority={t.priority} />
-                            <span className="text-[10px] text-[hsl(var(--muted-foreground))]/50">{fmtDate(t.updatedAt)}</span>
+                            {t.dueDate ? (
+                              <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={false} />
+                            ) : (
+                              <span className="text-[10px] text-[hsl(var(--muted-foreground))]/40 italic">sem prazo</span>
+                            )}
                           </div>
                           <div className="mt-2" onClick={e => e.stopPropagation()}>
-                            <Button
-                              size="sm"
-                              className="h-7 gap-1.5 text-xs bg-amber-500 hover:bg-amber-600 text-white dark:bg-amber-600 dark:hover:bg-amber-500"
-                              onClick={e => {
-                                e.stopPropagation();
-                                apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(() => { loadGaveta(true); load(true); });
-                              }}
-                            >
+                            <Button size="sm" className="h-7 gap-1.5 text-xs bg-amber-500 hover:bg-amber-600 text-white dark:bg-amber-600 dark:hover:bg-amber-500" onClick={openPub}>
                               <Send className="h-3.5 w-3.5" />Publicar
                             </Button>
                           </div>
                         </div>
 
-                        {/* Desktop layout */}
+                        {/* ── Desktop layout ───────────────────────────── */}
                         {/* Título + cliente */}
                         <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-3 pr-3">
                           <div className="flex items-baseline gap-2 min-w-0">
@@ -666,6 +679,29 @@ export default function TasksOverview() {
                           </div>
                           {t.client && (
                             <p className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</p>
+                          )}
+                        </div>
+
+                        {/* Editor */}
+                        <div className="hidden md:flex w-32 shrink-0 items-center gap-1.5">
+                          {t.editors && t.editors.length > 0 ? (
+                            <>
+                              <StackedAvatars people={t.editors} size={26} max={2} />
+                              {t.editors.length === 1 && (
+                                <span className="text-[11px] font-medium truncate">{t.editors[0].name.split(" ")[0]}</span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-[11px] text-[hsl(var(--muted-foreground))]/35 italic">sem editor</span>
+                          )}
+                        </div>
+
+                        {/* Prazo */}
+                        <div className="hidden lg:flex w-28 shrink-0 items-center">
+                          {t.dueDate ? (
+                            <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={false} />
+                          ) : (
+                            <span className="text-[11px] text-[hsl(var(--muted-foreground))]/35 italic">sem prazo</span>
                           )}
                         </div>
 
@@ -686,21 +722,9 @@ export default function TasksOverview() {
                           )}
                         </div>
 
-                        {/* Atualizado */}
-                        <div className="hidden lg:flex w-24 shrink-0 items-center">
-                          <span className="text-xs text-[hsl(var(--muted-foreground))]/50">{fmtDate(t.updatedAt)}</span>
-                        </div>
-
                         {/* Botão Publicar */}
                         <div className="hidden md:flex w-28 shrink-0 items-center justify-end" onClick={e => e.stopPropagation()}>
-                          <Button
-                            size="sm"
-                            className="h-7 gap-1.5 text-xs bg-amber-500 hover:bg-amber-600 text-white dark:bg-amber-600 dark:hover:bg-amber-500"
-                            onClick={e => {
-                              e.stopPropagation();
-                              apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(() => { loadGaveta(true); load(true); });
-                            }}
-                          >
+                          <Button size="sm" className="h-7 gap-1.5 text-xs bg-amber-500 hover:bg-amber-600 text-white dark:bg-amber-600 dark:hover:bg-amber-500" onClick={openPub}>
                             <Send className="h-3.5 w-3.5" />Publicar
                           </Button>
                         </div>
@@ -1622,11 +1646,102 @@ export default function TasksOverview() {
         />
       )}
 
+      {/* ── Publicar confirm dialog ──────────────────────────────────────── */}
+      <Dialog open={!!publishTarget} onOpenChange={open => { if (!open && !publishing) setPublishTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5 text-amber-500" />
+              Publicar tarefa
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              Revisão antes de enviar <em>"{publishTarget?.title}"</em> para o fluxo:
+            </p>
+            <div className="rounded-xl border border-[hsl(var(--border))] divide-y divide-[hsl(var(--border))]/60 overflow-hidden">
+              {/* Editor */}
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                {publishTarget?.editors && publishTarget.editors.length > 0
+                  ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                  : <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                }
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Editor</p>
+                  {publishTarget?.editors && publishTarget.editors.length > 0 ? (
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <StackedAvatars people={publishTarget.editors} size={22} max={3} />
+                      <span className="text-sm font-semibold truncate">
+                        {publishTarget.editors.map(e => e.name.split(" ")[0]).join(", ")}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-amber-600 font-medium">Sem editor atribuído</p>
+                  )}
+                </div>
+              </div>
+              {/* Prazo */}
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                {publishTarget?.dueDate
+                  ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                  : <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                }
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Prazo</p>
+                  <p className={`text-sm font-semibold ${!publishTarget?.dueDate ? "text-amber-600" : ""}`}>
+                    {publishTarget?.dueDate ? fmtDate(publishTarget.dueDate) : "Sem prazo definido"}
+                  </p>
+                </div>
+              </div>
+              {/* Prioridade */}
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Prioridade</p>
+                  <div className="mt-0.5"><PriorityBadge priority={publishTarget?.priority ?? "medium"} /></div>
+                </div>
+              </div>
+            </div>
+            {(!publishTarget?.dueDate || !publishTarget?.editors || publishTarget.editors.length === 0) && (
+              <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900 px-3 py-2.5">
+                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800 dark:text-amber-300">
+                  Itens incompletos precisarão ser preenchidos depois que a tarefa for publicada.
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPublishTarget(null)} disabled={publishing}>Cancelar</Button>
+            <Button
+              className="bg-amber-500 hover:bg-amber-600 text-white"
+              disabled={publishing}
+              onClick={async () => {
+                if (!publishTarget) return;
+                setPublishing(true);
+                try {
+                  await apiPut(`/api/tasks/${publishTarget.id}`, { status: "pending" });
+                  toast.success("Tarefa publicada com sucesso");
+                  setPublishTarget(null);
+                  loadGaveta(true);
+                  load(true);
+                } catch (err: unknown) {
+                  toast.error(err instanceof Error ? err.message : "Erro ao publicar");
+                } finally { setPublishing(false); }
+              }}
+            >
+              {publishing ? "Publicando…" : <><Send className="h-3.5 w-3.5 mr-1" />Confirmar publicação</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <TaskFormModal
         open={formOpen}
-        onOpenChange={setFormOpen}
+        onOpenChange={v => { setFormOpen(v); if (!v) setFormDraftMode(false); }}
         onSaved={() => { load(true); loadGaveta(true); }}
         editTaskId={editTaskId}
+        hidePublish={formDraftMode}
       />
 
       {/* ── Approve confirm dialog ───────────────────────────────────────── */}
