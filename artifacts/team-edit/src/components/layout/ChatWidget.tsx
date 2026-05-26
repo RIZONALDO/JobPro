@@ -233,11 +233,50 @@ export function ChatWidget() {
   const chatOpenRef = useRef(false);
   const typingTimeoutsRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const lastTypingEmitRef = useRef<number>(0);
+  const lastSoundRef = useRef<number>(0);
   useEffect(() => { chatOpenRef.current = chatOpen; }, [chatOpen]);
   useEffect(() => { activeViewRef.current = activeView; }, [activeView]);
 
+  // ── Auto-clear DM unread when chat is open and viewing that conversation ──
+  useEffect(() => {
+    if (!chatOpen || typeof activeView !== "number") return;
+    setDmUnread(prev => {
+      if ((prev[activeView] ?? 0) === 0) return prev;
+      return { ...prev, [activeView]: 0 };
+    });
+    apiPost(`/api/dm/${activeView}/read`, {}).catch(() => {});
+  }, [chatOpen, activeView]);
+
   const totalUnread = generalUnread + Object.values(dmUnread).reduce((a, b) => a + b, 0);
   const hasAlert = hasMention || Object.values(dmUnread).some(n => n > 0);
+
+  // Número de mensagens da conversa DM atualmente aberta (usado no efeito de scroll)
+  const activeDmLength = typeof activeView === "number"
+    ? (dmMessages[activeView as number]?.length ?? 0)
+    : 0;
+
+  // Som de notificação — dispara no máximo 1x a cada 3s, só com chat fechado
+  const playNotificationSound = useCallback(() => {
+    if (chatOpenRef.current) return;
+    const now = Date.now();
+    if (now - lastSoundRef.current < 3000) return;
+    lastSoundRef.current = now;
+    try {
+      const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.35);
+    } catch { /* AudioContext não suportado */ }
+  }, []);
 
   // Click outside to close
   useEffect(() => {
@@ -296,8 +335,29 @@ export function ChatWidget() {
     return () => { if (pingRef.current) clearInterval(pingRef.current); };
   }, []);
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
-  useEffect(() => { dmEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [dmMessages, activeView]);
+  // Scroll canal geral — suave em novas mensagens, instantâneo ao abrir a view
+  useEffect(() => {
+    if (activeView !== "general") return;
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length]);
+  useEffect(() => {
+    if (activeView !== "general") return;
+    const t = setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "instant" }), 120);
+    return () => clearTimeout(t);
+  }, [activeView]);
+
+  // Scroll DM — instantâneo ao trocar de conversa (aguarda animação spring), suave em novas msgs
+  useEffect(() => {
+    if (typeof activeView !== "number") return;
+    const t = setTimeout(() => dmEndRef.current?.scrollIntoView({ behavior: "instant" }), 120);
+    return () => clearTimeout(t);
+  }, [activeView]);
+  useEffect(() => {
+    if (typeof activeView !== "number" || activeDmLength === 0) return;
+    dmEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDmLength]);
 
   useEffect(() => _register((userId, prefill) => {
     setChatOpen(true);
@@ -314,7 +374,10 @@ export function ChatWidget() {
         return [...base, msg];
       });
       if (!chatOpenRef.current || activeViewRef.current !== "general") {
-        setGeneralUnread(prev => prev + 1);
+        setGeneralUnread(prev => {
+          if (prev === 0) playNotificationSound(); // só toca na 1ª msg não lida
+          return prev + 1;
+        });
         if (user && msg.content.toLowerCase().includes(`@${(user.name ?? "").toLowerCase()}`)) setHasMention(true);
       }
     };
@@ -329,8 +392,13 @@ export function ChatWidget() {
       });
       loadConversations();
       if (!chatOpenRef.current || activeViewRef.current !== otherId) {
-        if (msg.fromUserId !== user?.id)
-          setDmUnread(prev => ({ ...prev, [otherId]: (prev[otherId] ?? 0) + 1 }));
+        if (msg.fromUserId !== user?.id) {
+          setDmUnread(prev => {
+            const current = prev[otherId] ?? 0;
+            if (current === 0) playNotificationSound(); // só toca na 1ª msg não lida
+            return { ...prev, [otherId]: current + 1 };
+          });
+        }
       } else {
         apiPost(`/api/dm/${otherId}/read`, {}).catch(() => {});
       }
