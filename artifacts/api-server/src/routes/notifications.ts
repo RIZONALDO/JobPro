@@ -65,4 +65,20 @@ router.put("/notifications/read-all", requireAuth, async (req, res): Promise<voi
   res.sendStatus(204);
 });
 
+router.delete("/notifications/:id", requireAuth, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const userId = req.session.userId!;
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  await db.delete(notificationsTable)
+    .where(and(eq(notificationsTable.id, id), eq(notificationsTable.userId, userId)));
+  res.sendStatus(204);
+});
+
+router.delete("/notifications", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.session.userId!;
+  await db.delete(notificationsTable)
+    .where(eq(notificationsTable.userId, userId));
+  res.sendStatus(204);
+});
+
 export default router;

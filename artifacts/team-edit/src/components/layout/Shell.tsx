@@ -4,7 +4,7 @@ import {
   CalendarDays, Menu, Bell, ChevronRight, X, UserCircle,
   CalendarRange, BarChart3, Zap, AtSign, ClipboardList,
   CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2, CalendarClock, Shield,
-  Palette, Sun, Moon, ALargeSmall, Volume2, VolumeX,
+  Palette, Sun, Moon, ALargeSmall, Volume2, VolumeX, Trash2, CheckCheck,
 } from "lucide-react";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { BreadcrumbBar } from "./BreadcrumbBar";
@@ -14,7 +14,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useTaskModal } from "@/contexts/TaskModalContext";
-import { apiFetch, apiPut } from "@/lib/api";
+import { apiFetch, apiPut, apiDelete } from "@/lib/api";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -99,6 +99,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [onlyUnread, setOnlyUnread] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("notif_sound") !== "off");
   const soundEnabledRef = useRef(localStorage.getItem("notif_sound") !== "off");
   const [customOpen, setCustomOpen] = useState(false);
@@ -219,6 +220,22 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const markAllRead = async () => {
     await apiPut("/api/notifications/read-all", {});
     setNotifications(prev => prev.map(x => ({ ...x, read: true })));
+    setUnreadCount(0);
+  };
+
+  const deleteNotif = async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    await apiDelete(`/api/notifications/${id}`);
+    setNotifications(prev => {
+      const removed = prev.find(n => n.id === id);
+      if (removed && !removed.read) setUnreadCount(c => Math.max(0, c - 1));
+      return prev.filter(n => n.id !== id);
+    });
+  };
+
+  const deleteAll = async () => {
+    await apiDelete("/api/notifications");
+    setNotifications([]);
     setUnreadCount(0);
   };
 
@@ -466,17 +483,33 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 <motion.div
                   variants={panelVariants} initial="initial" animate="animate" exit="exit"
                   className="absolute right-0 top-full mt-1.5 w-80 rounded-xl border bg-[hsl(var(--card))] shadow-xl z-50 overflow-hidden">
+
                   {/* Header */}
-                  <div className="flex items-center justify-between px-4 py-3 border-b bg-[hsl(var(--muted))]/30">
-                    <div className="flex items-center gap-2">
-                      <Bell className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
-                      <span className="text-sm font-semibold">Notificações</span>
-                      {unreadCount > 0 && (
-                        <span className="text-xs font-bold bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))] rounded-full px-1.5 py-0.5 whitespace-nowrap">{unreadCount} nova{unreadCount !== 1 ? "s" : ""}</span>
+                  <div className="px-4 py-3 border-b bg-[hsl(var(--muted))]/30 space-y-2.5">
+                    {/* Row 1: título + lixeira */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Bell className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
+                        <span className="text-sm font-semibold">Notificações</span>
+                        {unreadCount > 0 && (
+                          <span className="text-xs font-bold bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] rounded-full px-1.5 py-0.5 whitespace-nowrap">
+                            {unreadCount} nova{unreadCount !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </div>
+                      {notifications.length > 0 && (
+                        <button
+                          onClick={deleteAll}
+                          title="Limpar todas"
+                          className="h-6 w-6 flex items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      {/* Sound toggle */}
+                    {/* Row 2: controles */}
+                    <div className="flex items-center justify-between">
+                      {/* Som */}
                       <button
                         onClick={toggleSound}
                         title={soundEnabled ? "Desligar som" : "Ligar som"}
@@ -486,70 +519,115 @@ export function Shell({ children }: { children: React.ReactNode }) {
                           ? <Volume2 className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
                           : <VolumeX className="h-3.5 w-3.5" />
                         }
-                        <span
-                          className={cn(
-                            "relative inline-flex h-4 w-7 items-center rounded-full transition-colors",
-                            soundEnabled ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted-foreground))]/30"
-                          )}
-                        >
+                        <span className={cn(
+                          "relative inline-flex h-4 w-7 items-center rounded-full transition-colors",
+                          soundEnabled ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted-foreground))]/30"
+                        )}>
                           <span className={cn(
                             "absolute h-3 w-3 rounded-full bg-white shadow transition-transform",
                             soundEnabled ? "translate-x-3.5" : "translate-x-0.5"
                           )} />
                         </span>
                       </button>
-                      {unreadCount > 0 && (
-                        <button onClick={markAllRead} className="text-xs text-[hsl(var(--primary))] hover:underline">
-                          Marcar todas
+                      <div className="flex items-center gap-2">
+                        {/* Filtro apenas não lidas */}
+                        <button
+                          onClick={() => setOnlyUnread(v => !v)}
+                          className={cn(
+                            "text-xs px-2 py-0.5 rounded-full border transition-colors",
+                            onlyUnread
+                              ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))] bg-[hsl(var(--primary))]/8"
+                              : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                          )}
+                        >
+                          Não lidas
                         </button>
-                      )}
+                        {unreadCount > 0 && (
+                          <button onClick={markAllRead} className="flex items-center gap-1 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors">
+                            <CheckCheck className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
                   {/* List */}
-                  <div className="overflow-y-auto max-h-[360px] divide-y">
-                    {notifications.length === 0 ? (
-                      <div className="py-10 text-center">
-                        <Bell className="h-8 w-8 text-[hsl(var(--muted-foreground))]/20 mx-auto mb-2" />
-                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Nenhuma notificação</p>
-                      </div>
-                    ) : notifications.map(n => (
-                      <div
-                        key={n.id}
-                        role="button"
-                        onClick={() => {
-                          markRead(n);
-                          setNotifOpen(false);
-                          if (n.taskId) {
-                            navigate(`/tasks?tab=lista&highlight=${n.taskId}`);
-                          } else {
-                            navigate("/");
-                          }
-                        }}
-                        className={cn(
-                          "flex items-start gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/40 transition-colors cursor-pointer",
-                          !n.read && "bg-[hsl(var(--primary))]/5"
-                        )}
-                      >
-                        <div className="mt-0.5 shrink-0">
-                          {NOTIF_ICON[n.type] ?? <Bell className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={cn("text-xs leading-snug", !n.read ? "font-semibold text-[hsl(var(--foreground))]" : "font-medium text-[hsl(var(--foreground))]/80")}>
-                            {n.taskCode && (
-                              <span className="font-mono text-[hsl(var(--primary))] mr-1">{n.taskCode}</span>
-                            )}
-                            {n.title}
+                  {(() => {
+                    const visible = onlyUnread ? notifications.filter(n => !n.read) : notifications;
+                    if (visible.length === 0) {
+                      return (
+                        <div className="py-10 text-center">
+                          <Bell className="h-8 w-8 text-[hsl(var(--muted-foreground))]/20 mx-auto mb-2" />
+                          <p className="text-sm font-medium text-[hsl(var(--foreground))]">
+                            {onlyUnread ? "Nenhuma não lida" : "Tudo em dia"}
                           </p>
-                          <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 leading-snug line-clamp-2">{n.message}</p>
-                          <p className="text-xs text-[hsl(var(--muted-foreground))]/60 mt-1">{timeAgo(n.createdAt)}</p>
+                          <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">
+                            {onlyUnread ? "Todas as notificações foram lidas." : "Nenhuma notificação ainda."}
+                          </p>
                         </div>
-                        {!n.read && (
-                          <span className="mt-1.5 h-2 w-2 rounded-full bg-[hsl(var(--primary))] shrink-0" />
-                        )}
+                      );
+                    }
+                    const today = new Date(); today.setHours(0,0,0,0);
+                    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+                    const groups: { label: string; items: AppNotification[] }[] = [
+                      { label: "Hoje",        items: visible.filter(n => new Date(n.createdAt) >= today) },
+                      { label: "Ontem",       items: visible.filter(n => new Date(n.createdAt) >= yesterday && new Date(n.createdAt) < today) },
+                      { label: "Mais antigas",items: visible.filter(n => new Date(n.createdAt) < yesterday) },
+                    ].filter(g => g.items.length > 0);
+
+                    return (
+                      <div className="overflow-y-auto max-h-[380px]">
+                        {groups.map(group => (
+                          <div key={group.label}>
+                            <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 bg-[hsl(var(--muted))]/20 border-b">
+                              {group.label}
+                            </div>
+                            <div className="divide-y">
+                              {group.items.map(n => (
+                                <div
+                                  key={n.id}
+                                  role="button"
+                                  onClick={() => {
+                                    markRead(n);
+                                    setNotifOpen(false);
+                                    if (n.taskId) navigate(`/tasks?tab=lista&highlight=${n.taskId}`);
+                                    else navigate("/");
+                                  }}
+                                  className={cn(
+                                    "group flex items-start gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/40 transition-colors cursor-pointer relative",
+                                    !n.read && "bg-[hsl(var(--primary))]/5"
+                                  )}
+                                >
+                                  <div className="mt-0.5 shrink-0">
+                                    {NOTIF_ICON[n.type] ?? <Bell className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className={cn("text-xs leading-snug", !n.read ? "font-semibold text-[hsl(var(--foreground))]" : "font-medium text-[hsl(var(--foreground))]/80")}>
+                                      {n.taskCode && (
+                                        <span className="font-mono text-[hsl(var(--primary))]/70 mr-1">{n.taskCode}</span>
+                                      )}
+                                      {n.title}
+                                    </p>
+                                    <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 leading-snug line-clamp-2">{n.message}</p>
+                                    <p className="text-xs text-[hsl(var(--muted-foreground))]/60 mt-1">{timeAgo(n.createdAt)}</p>
+                                  </div>
+                                  <div className="flex flex-col items-end gap-1 shrink-0">
+                                    {!n.read && <span className="h-2 w-2 rounded-full bg-[hsl(var(--primary))] mt-1" />}
+                                    <button
+                                      onClick={e => deleteNotif(e, n.id)}
+                                      className="opacity-0 group-hover:opacity-100 h-5 w-5 flex items-center justify-center rounded text-[hsl(var(--muted-foreground))] hover:text-red-500 transition-all"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()}
                 </motion.div>
               )}
               </AnimatePresence>
