@@ -984,7 +984,7 @@ export default function TasksOverview() {
                       )}
                     </div>
                     {t.client && (
-                      <p className="text-xs text-[hsl(var(--primary))] truncate mt-0.5">{t.client}</p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</p>
                     )}
                   </div>
 
@@ -1066,7 +1066,7 @@ export default function TasksOverview() {
                   {/* Coordenador — only on xl+ */}
                   <div className="hidden xl:flex w-24 shrink-0 items-center gap-1.5">
                     {t.isOwn ? (
-                      <span className="text-[11px] text-[hsl(var(--primary))] font-semibold truncate">Você</span>
+                      <span className="text-[11px] text-[hsl(var(--muted-foreground))]/55 font-semibold truncate">Você</span>
                     ) : t.coordinator ? (
                       <>
                         <ChatAvatarButton

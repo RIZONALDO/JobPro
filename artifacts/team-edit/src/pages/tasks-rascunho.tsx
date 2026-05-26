@@ -253,7 +253,7 @@ export default function TasksRascunho() {
                         <span className="text-sm font-semibold truncate leading-snug">{t.title}</span>
                       </div>
                       {t.client && (
-                        <p className="text-xs text-[hsl(var(--primary))] truncate mt-0.5">{t.client}</p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</p>
                       )}
                     </div>
 

@@ -396,7 +396,7 @@ export default function EditorTaskList() {
                   </div>
                 )}
                 {t.client && (
-                  <span className="text-xs text-[hsl(var(--primary))] truncate mt-0.5">{t.client}</span>
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</span>
                 )}
               </div>
 
