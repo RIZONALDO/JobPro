@@ -241,6 +241,7 @@ export function ChatWidget() {
   const typingTimeoutsRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const lastTypingEmitRef = useRef<number>(0);
   const lastSoundRef = useRef<number>(0);
+  const scrollAttemptRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => { chatOpenRef.current = chatOpen; }, [chatOpen]);
   useEffect(() => { activeViewRef.current = activeView; }, [activeView]);
 
@@ -358,17 +359,29 @@ export function ChatWidget() {
   const ping = useCallback(() => { apiPost("/api/presence/ping", {}).catch(() => {}); }, []);
 
   // Rola o container DM para o divisor de não lidas (se existir) ou para o fim.
-  // Usa scrollTop diretamente — funciona mesmo com transform CSS ativo (animação spring).
+  // Usa retry porque o AnimatePresence mode="wait" pode manter o DM desmontado
+  // enquanto a list-view termina sua animação de saída — os timers curtos disparariam
+  // com dmScrollRef.current === null. O retry aguarda até a ref estar pronta e
+  // o conteúdo renderizado (scrollHeight > clientHeight).
   const scrollDmToTarget = useCallback((delay = 50) => {
-    setTimeout(() => {
-      const scrollEl = dmScrollRef.current;
-      if (!scrollEl) return;
-      if (firstUnreadRef.current) {
-        scrollEl.scrollTop = Math.max(0, firstUnreadRef.current.offsetTop - 16);
-      } else {
-        scrollEl.scrollTop = scrollEl.scrollHeight;
-      }
-    }, delay);
+    if (scrollAttemptRef.current) clearTimeout(scrollAttemptRef.current);
+    let retries = 0;
+    const MAX_RETRIES = 14; // 14 × 50 ms = 700 ms máximo
+    const attempt = () => {
+      scrollAttemptRef.current = setTimeout(() => {
+        const scrollEl = dmScrollRef.current;
+        if (!scrollEl || scrollEl.scrollHeight <= scrollEl.clientHeight + 5) {
+          if (retries < MAX_RETRIES) { retries++; attempt(); }
+          return;
+        }
+        if (firstUnreadRef.current) {
+          scrollEl.scrollTop = Math.max(0, firstUnreadRef.current.offsetTop - 16);
+        } else {
+          scrollEl.scrollTop = scrollEl.scrollHeight;
+        }
+      }, delay);
+    };
+    attempt();
   }, []);
 
   // Carrega mensagens mais antigas (scroll para cima)
@@ -922,6 +935,11 @@ export function ChatWidget() {
                     animate="center"
                     exit="exit"
                     transition={SLIDE_T}
+                    onAnimationComplete={(def) => {
+                      // Quando a animação de entrada termina, o ref está garantidamente
+                      // apontando para o elemento correto — dispara o scroll.
+                      if (def === "center") scrollDmToTarget(0);
+                    }}
                     className="absolute inset-0 flex flex-col"
                     style={{ backgroundColor: "hsl(var(--card))" }}
                   >
