@@ -497,7 +497,7 @@ export default function TasksOverview() {
           />
           <Button
             variant="outline" size="sm"
-            className={`h-9 shrink-0 gap-1.5 relative ${mobileFiltersOpen || (filterStatus !== "all" || filterEditor !== "all" || filterCoord !== defaultCoord) ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]" : ""}`}
+            className={`h-9 shrink-0 gap-1.5 relative ${mobileFiltersOpen || (filterStatus !== "all" || filterEditor !== "all" || filterCoord !== defaultCoord) ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]/70" : ""}`}
             onClick={() => setMobileFiltersOpen(v => !v)}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -621,13 +621,13 @@ export default function TasksOverview() {
           const SortIcon = ({ col }: { col: string }) => {
             if (sortKey !== col) return <ChevronsUpDown className="h-3 w-3 opacity-30" />;
             return sortDir === "asc"
-              ? <ChevronUp className="h-3 w-3 text-[hsl(var(--primary))]" />
-              : <ChevronDown className="h-3 w-3 text-[hsl(var(--primary))]" />;
+              ? <ChevronUp className="h-3 w-3 text-[hsl(var(--primary))]/70" />
+              : <ChevronDown className="h-3 w-3 text-[hsl(var(--primary))]/70" />;
           };
           const Th = ({ col, label }: { col: string; label: string }) => (
             <button
               onClick={() => toggleSort(col)}
-              className={`flex items-center gap-1 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--foreground))] transition-colors select-none ${sortKey === col ? "text-[hsl(var(--primary))]/80" : ""}`}
+              className={`flex items-center gap-1 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--foreground))] transition-colors select-none ${sortKey === col ? "text-[hsl(var(--primary))]/70/80" : ""}`}
             >
               {label}<SortIcon col={col} />
             </button>
@@ -843,7 +843,7 @@ export default function TasksOverview() {
                           </button>
                         )}
                         {t.taskCode && (
-                          <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]">
+                          <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">
                             {t.taskCode}
                           </span>
                         )}
@@ -972,7 +972,7 @@ export default function TasksOverview() {
                         </button>
                       )}
                       {t.taskCode && (
-                        <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]">
+                        <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">
                           {t.taskCode}
                         </span>
                       )}
@@ -1146,7 +1146,7 @@ export default function TasksOverview() {
                         {/* Subtask info */}
                         <div className="flex-1 min-w-0 flex items-baseline gap-2">
                           {sub.taskCode && (
-                            <span className="shrink-0 font-mono text-xs text-[hsl(var(--primary))]">{sub.taskCode}</span>
+                            <span className="shrink-0 font-mono text-xs text-[hsl(var(--primary))]/70">{sub.taskCode}</span>
                           )}
                           <span className="text-sm truncate">{sub.title}</span>
                           {sub.revisionCount > 0 && (

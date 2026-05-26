@@ -212,7 +212,7 @@ export default function TasksRascunho() {
                     <div className="md:hidden flex-1 py-3 min-w-0">
                       <div className="flex items-baseline gap-2 min-w-0">
                         {t.taskCode && (
-                          <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]">
+                          <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">
                             {t.taskCode}
                           </span>
                         )}
@@ -246,7 +246,7 @@ export default function TasksRascunho() {
                     <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-3 pr-3">
                       <div className="flex items-baseline gap-2 min-w-0">
                         {t.taskCode && (
-                          <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]">
+                          <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">
                             {t.taskCode}
                           </span>
                         )}

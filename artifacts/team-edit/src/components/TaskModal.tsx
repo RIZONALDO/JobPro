@@ -136,7 +136,7 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
                   {task.taskCode && (
                     <div className="flex items-center gap-1 mb-2">
                       <Hash className="h-3 w-3 text-[hsl(var(--muted-foreground))]/40" />
-                      <span className="font-mono text-[10px] text-[hsl(var(--primary))] tracking-wider">
+                      <span className="font-mono text-[10px] text-[hsl(var(--primary))]/70 tracking-wider">
                         {task.taskCode}
                       </span>
                     </div>

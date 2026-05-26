@@ -125,7 +125,7 @@ function Avatar({ p, size = 22 }: { p: Person | null; size?: number }) {
         background: "hsl(var(--primary)/0.12)",
         display: "flex", alignItems: "center", justifyContent: "center",
       }}>
-        <span style={{ fontSize: 8, fontWeight: 700, color: "hsl(var(--primary))" }}>{ini}</span>
+        <span style={{ fontSize: 8, fontWeight: 700, color: "hsl(var(--primary) / 0.70)" }}>{ini}</span>
       </div>
     );
 }
@@ -350,7 +350,7 @@ function GanttGrid({ tasks, zoom, onOpen }: {
                       <Layers style={{ width: 11, height: 11, flexShrink: 0, color: "#6366f1", opacity: 0.8 }} />
                     )}
                     {t.taskCode && (
-                      <span style={{ fontSize: 11, fontFamily: "ui-monospace, monospace", fontWeight: 700, color: "hsl(var(--primary))", flexShrink: 0 }}>
+                      <span style={{ fontSize: 11, fontFamily: "ui-monospace, monospace", fontWeight: 700, color: "hsl(var(--primary) / 0.70)", flexShrink: 0 }}>
                         {t.taskCode}
                       </span>
                     )}
