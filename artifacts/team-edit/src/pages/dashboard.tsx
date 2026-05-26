@@ -1915,7 +1915,7 @@ export default function Dashboard() {
   useRealtime({ onTasksChanged: load });
 
   const byStatus = (s: string) => tasks.filter(t => t.status === s).length;
-  const openTasks      = tasks.filter(t => t.status !== "completed");
+  const openTasks      = tasks.filter(t => !["completed", "cancelled", "rascunho"].includes(t.status));
   const isEditor       = user?.role === "editor";
 
   const actionCount = isEditor
@@ -1926,7 +1926,7 @@ export default function Dashboard() {
 
   const editorOverdue: OverdueItem[] = tasks
     .filter(t => {
-      if (["completed", "cancelled", "paused"].includes(t.status) || !t.dueDate) return false;
+      if (["completed", "cancelled", "paused", "rascunho"].includes(t.status) || !t.dueDate) return false;
       const dt = new Date(t.dueDate.includes("T") ? t.dueDate : t.dueDate + "T00:00:00");
       return dt < todayStart;
     })
@@ -1934,7 +1934,7 @@ export default function Dashboard() {
 
   const coordOverdue: OverdueItem[] = tasks
     .filter(t => {
-      if (["completed", "cancelled", "paused"].includes(t.status) || !t.dueDate) return false;
+      if (["completed", "cancelled", "paused", "rascunho"].includes(t.status) || !t.dueDate) return false;
       const dt = new Date(t.dueDate.includes("T") ? t.dueDate : t.dueDate + "T00:00:00");
       return dt < todayStart;
     })

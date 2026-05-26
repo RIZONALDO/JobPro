@@ -1300,7 +1300,11 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
     tasks = [...primary, ...extra].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   } else {
     tasks = await db.select().from(tasksTable)
-      .where(and(eq(tasksTable.createdById, userId), isNull(tasksTable.parentTaskId)))
+      .where(and(
+        eq(tasksTable.createdById, userId),
+        isNull(tasksTable.parentTaskId),
+        ne(tasksTable.status, "rascunho"),
+      ))
       .orderBy(desc(tasksTable.createdAt));
   }
 
