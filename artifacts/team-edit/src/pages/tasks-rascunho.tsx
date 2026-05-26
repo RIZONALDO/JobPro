@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useRealtime } from "@/hooks/use-realtime";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Archive, Plus, Send, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Archive, Plus, Send } from "lucide-react";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { TaskFormModal } from "@/components/task-form-modal";
@@ -158,7 +158,6 @@ export default function TasksRascunho() {
           ) : (
             <div className="divide-y divide-[hsl(var(--muted))]">
               {filtered.map(t => {
-                const prioColor = t.priority === "high" ? "#ef4444" : t.priority === "medium" ? "#f59e0b" : "#6b7280";
                 const openEdit  = () => { setEditTaskId(t.id); setFormOpen(true); };
                 const openPub   = (e: React.MouseEvent) => { e.stopPropagation(); setPublishTarget(t); };
 
@@ -166,7 +165,7 @@ export default function TasksRascunho() {
                   <div
                     key={t.id}
                     className="flex items-center px-4 hover:bg-[hsl(var(--muted))]/20 transition-colors cursor-pointer"
-                    style={{ borderLeft: `3px dashed ${prioColor}` }}
+                    style={{ borderLeft: "3px dashed hsl(var(--border))" }}
                     onClick={openEdit}
                   >
                     {/* ── Mobile ───────────────────────────────────────── */}
@@ -265,71 +264,46 @@ export default function TasksRascunho() {
       <Dialog open={!!publishTarget} onOpenChange={open => { if (!open && !publishing) setPublishTarget(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Send className="h-5 w-5 text-[hsl(var(--primary))]" />
-              Publicar tarefa
-            </DialogTitle>
+            <DialogTitle>Publicar tarefa</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-1">
+          <div className="space-y-4 py-1">
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              Revisão antes de enviar <em>"{publishTarget?.title}"</em> para o fluxo:
+              Confirma a publicação de{" "}
+              <span className="font-medium text-[hsl(var(--foreground))]">{publishTarget?.title}</span>?
             </p>
-            <div className="rounded-xl border border-[hsl(var(--border))] divide-y divide-[hsl(var(--border))]/60 overflow-hidden">
+            <div className="rounded-xl border border-[hsl(var(--border))] divide-y divide-[hsl(var(--border))]/60 overflow-hidden text-sm">
               {/* Editor */}
-              <div className="flex items-center gap-3 px-3 py-2.5">
-                {publishTarget?.editors && publishTarget.editors.length > 0
-                  ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                  : <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-                }
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Editor</p>
-                  {publishTarget?.editors && publishTarget.editors.length > 0 ? (
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <StackedAvatars people={publishTarget.editors} size={22} max={3} />
-                      <span className="text-sm font-semibold truncate">
-                        {publishTarget.editors.map(e => e.name.split(" ")[0]).join(", ")}
-                      </span>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-amber-600 font-medium">Sem editor atribuído</p>
-                  )}
-                </div>
+              <div className="px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-1">Editor</p>
+                {publishTarget?.editors && publishTarget.editors.length > 0 ? (
+                  <div className="flex items-center gap-1.5">
+                    <StackedAvatars people={publishTarget.editors} size={22} max={3} />
+                    <span className="font-medium truncate">
+                      {publishTarget.editors.map(e => e.name.split(" ")[0]).join(", ")}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-[hsl(var(--muted-foreground))]">Sem editor</span>
+                )}
               </div>
               {/* Prazo */}
-              <div className="flex items-center gap-3 px-3 py-2.5">
-                {publishTarget?.dueDate
-                  ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                  : <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-                }
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Prazo</p>
-                  <p className={`text-sm font-semibold ${!publishTarget?.dueDate ? "text-amber-600" : ""}`}>
-                    {publishTarget?.dueDate ? fmtDate(publishTarget.dueDate) : "Sem prazo definido"}
-                  </p>
-                </div>
+              <div className="px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-1">Prazo</p>
+                <span className={publishTarget?.dueDate ? "font-medium" : "text-[hsl(var(--muted-foreground))]"}>
+                  {publishTarget?.dueDate ? fmtDate(publishTarget.dueDate) : "Sem prazo"}
+                </span>
               </div>
               {/* Prioridade */}
-              <div className="flex items-center gap-3 px-3 py-2.5">
-                <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Prioridade</p>
-                  <div className="mt-0.5"><PriorityBadge priority={publishTarget?.priority ?? "medium"} /></div>
-                </div>
+              <div className="px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-1">Prioridade</p>
+                <PriorityBadge priority={publishTarget?.priority ?? "medium"} />
               </div>
             </div>
-            {(!publishTarget?.dueDate || !publishTarget?.editors || publishTarget.editors.length === 0) && (
-              <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900 px-3 py-2.5">
-                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-amber-800 dark:text-amber-300">
-                  Itens incompletos precisarão ser preenchidos depois que a tarefa for publicada.
-                </p>
-              </div>
-            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPublishTarget(null)} disabled={publishing}>Cancelar</Button>
             <Button onClick={doPublish} disabled={publishing}>
-              {publishing ? "Publicando…" : <><Send className="h-3.5 w-3.5 mr-1" />Confirmar publicação</>}
+              {publishing ? "Publicando…" : <><Send className="h-3.5 w-3.5 mr-1" />Publicar</>}
             </Button>
           </DialogFooter>
         </DialogContent>
