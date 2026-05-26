@@ -15,6 +15,7 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { apiFetch, apiPut, apiDelete } from "@/lib/api";
+import { playSound } from "@/lib/sounds";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -128,27 +129,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
     if (notifOpen) fetchNotifications();
   }, [notifOpen, fetchNotifications]);
 
-  const playNotifSound = useCallback(async () => {
-    try {
-      const ctx = new AudioContext();
-      if (ctx.state === "suspended") await ctx.resume();
-      const tones: [number, number][] = [[880, 0], [660, 0.15]];
-      tones.forEach(([freq, delay], i) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = "sine";
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
-        gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + delay + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.35);
-        osc.start(ctx.currentTime + delay);
-        osc.stop(ctx.currentTime + delay + 0.35);
-        if (i === tones.length - 1) osc.onended = () => ctx.close();
-      });
-    } catch { /* ignore */ }
-  }, []);
+  const playNotifSound = useCallback(() => {
+    playSound(settings.sound_notif);
+  }, [settings.sound_notif]);
 
   const toggleSound = () => {
     const next = !soundEnabledRef.current;
@@ -158,26 +141,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
     if (next) playNotifSound();
   };
 
-  const playPokeSound = useCallback(async () => {
-    try {
-      const ctx = new AudioContext();
-      if (ctx.state === "suspended") await ctx.resume();
-      // Three quick ascending "boop" pulses
-      [[300, 0], [500, 0.12], [700, 0.24]].forEach(([freq, delay], i, arr) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.type = "triangle";
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
-        gain.gain.linearRampToValueAtTime(0.35, ctx.currentTime + delay + 0.01);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.18);
-        osc.start(ctx.currentTime + delay);
-        osc.stop(ctx.currentTime + delay + 0.18);
-        if (i === arr.length - 1) osc.onended = () => ctx.close();
-      });
-    } catch { /* ignore */ }
-  }, []);
+  const playPokeSound = useCallback(() => {
+    playSound(settings.sound_poke);
+  }, [settings.sound_poke]);
 
   // Socket: receber novas notificações em tempo real
   useEffect(() => {

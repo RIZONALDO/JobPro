@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useChatContext } from "@/contexts/ChatContext";
 import { useLocation } from "wouter";
+import { useSettings } from "@/contexts/SettingsContext";
+import { playSound } from "@/lib/sounds";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -199,6 +201,7 @@ const SLIDE_T = { type: "spring", stiffness: 420, damping: 34 } as const;
 
 export function ChatWidget() {
   const { user } = useAuth();
+  const { settings } = useSettings();
   const { _register } = useChatContext();
   const [, navigate] = useLocation();
 
@@ -278,22 +281,8 @@ export function ChatWidget() {
     const now = Date.now();
     if (now - lastSoundRef.current < 3000) return;
     lastSoundRef.current = now;
-    try {
-      const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const ctx = new AudioCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(880, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15);
-      gain.gain.setValueAtTime(0.1, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.35);
-    } catch { /* AudioContext não suportado */ }
-  }, []);
+    playSound(settings.sound_chat);
+  }, [settings.sound_chat]);
 
   // Click outside to close
   useEffect(() => {

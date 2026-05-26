@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ImagePlus, X, TriangleAlert, Settings as SettingsIcon, FlaskConical, CheckCircle2 } from "lucide-react";
+import { ImagePlus, X, TriangleAlert, Settings as SettingsIcon, FlaskConical, CheckCircle2, Volume2, Play } from "lucide-react";
+import { SOUND_OPTIONS, playSound, type SoundPreset } from "@/lib/sounds";
 import { usePageTitle } from "@/lib/use-page-title";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -20,6 +21,7 @@ export default function SettingsPage() {
   const { refreshSettings } = useSettings();
   const { logout } = useAuth();
   const [form, setForm] = useState({ company_name: "", system_name: "", logo_url: "", favicon_url: "", primary_color: "#6366f1" });
+  const [sounds, setSounds] = useState({ sound_notif: "ping", sound_chat: "ping", sound_poke: "boop" });
   const [logoDrag, setLogoDrag] = useState(false);
   const [faviconDrag, setFaviconDrag] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -37,6 +39,11 @@ export default function SettingsPage() {
         logo_url: d["logo_url"] ?? "",
         favicon_url: d["favicon_url"] ?? "",
         primary_color: d["primary_color"] ?? "#6366f1",
+      });
+      setSounds({
+        sound_notif: d["sound_notif"] ?? "ping",
+        sound_chat:  d["sound_chat"]  ?? "ping",
+        sound_poke:  d["sound_poke"]  ?? "boop",
       });
     });
   }, []);
@@ -90,7 +97,7 @@ export default function SettingsPage() {
     const prevFavicon = (await apiFetch<Record<string, string>>("/api/settings"))["favicon_url"] ?? "";
     const faviconChanged = form.favicon_url !== prevFavicon;
     try {
-      await apiPut("/api/settings", form);
+      await apiPut("/api/settings", { ...form, ...sounds });
       await refreshSettings();
       if (faviconChanged) {
         toast.success("Configurações salvas — recarregando para aplicar o favicon…");
@@ -242,7 +249,62 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Zona de Perigo */}
+      {/* Sons da Plataforma */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Volume2 className="h-4 w-4 text-[hsl(var(--primary))]" />
+            Sons da Plataforma
+          </CardTitle>
+          <CardDescription>
+            Escolha o som para cada tipo de notificação. Clique em ▶ para ouvir.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {(
+            [
+              { key: "sound_notif", label: "Notificações gerais (sininho)", icon: "🔔" },
+              { key: "sound_chat",  label: "Mensagens de chat",             icon: "💬" },
+              { key: "sound_poke",  label: "Cutucar",                       icon: "👈" },
+            ] as { key: keyof typeof sounds; label: string; icon: string }[]
+          ).map(({ key, label, icon }) => (
+            <div key={key} className="space-y-2">
+              <Label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-widest">
+                {icon} {label}
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                {SOUND_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setSounds(s => ({ ...s, [key]: opt.value }))}
+                    className={[
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all",
+                      sounds[key] === opt.value
+                        ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
+                        : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--foreground))]/20",
+                    ].join(" ")}
+                  >
+                    {opt.label}
+                    {opt.value !== "none" && (
+                      <span
+                        role="button"
+                        title="Ouvir"
+                        onClick={e => { e.stopPropagation(); playSound(opt.value as SoundPreset); }}
+                        className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
+                      >
+                        <Play className="h-2.5 w-2.5" />
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+            {/* Zona de Perigo */}
       <Card className="border-red-200 dark:border-red-900">
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2 text-red-600 dark:text-red-400">

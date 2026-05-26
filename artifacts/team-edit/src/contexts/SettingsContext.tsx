@@ -6,6 +6,9 @@ interface AppSettings {
   logo_url: string;
   favicon_url: string;
   primary_color: string;
+  sound_notif: string;
+  sound_chat: string;
+  sound_poke: string;
 }
 
 interface SettingsContextValue {
@@ -20,6 +23,9 @@ const DEFAULTS: AppSettings = {
   logo_url: "",
   favicon_url: "",
   primary_color: "#6366f1",
+  sound_notif: "ping",
+  sound_chat: "ping",
+  sound_poke: "boop",
 };
 
 const SettingsContext = createContext<SettingsContextValue>({
@@ -85,6 +91,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         logo_url: data["logo_url"] || "",
         favicon_url: data["favicon_url"] || "",
         primary_color: data["primary_color"] || DEFAULTS.primary_color,
+        sound_notif: data["sound_notif"] || DEFAULTS.sound_notif,
+        sound_chat:  data["sound_chat"]  || DEFAULTS.sound_chat,
+        sound_poke:  data["sound_poke"]  || DEFAULTS.sound_poke,
       };
       applySettings(next);
     } catch { /* ignore */ } finally {
