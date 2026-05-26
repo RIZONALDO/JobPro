@@ -34,6 +34,7 @@ export async function sendPushToUser(
     .from(pushSubscriptionsTable)
     .where(eq(pushSubscriptionsTable.userId, userId));
 
+  console.info(`[webpush] userId=${userId} subs=${subs.length} title="${payload.title}"`);
   if (subs.length === 0) return;
 
   const json = JSON.stringify(payload);
@@ -46,12 +47,15 @@ export async function sendPushToUser(
           json,
           { TTL: 60 }
         );
+        console.info(`[webpush] enviado ok subId=${sub.id}`);
       } catch (err: unknown) {
         const status = (err as { statusCode?: number }).statusCode;
+        console.warn(`[webpush] erro subId=${sub.id} status=${status}`, err);
         // 410 Gone = subscription expirou, remover do banco
         if (status === 410 || status === 404) {
           await db.delete(pushSubscriptionsTable)
             .where(eq(pushSubscriptionsTable.id, sub.id));
+          console.info(`[webpush] subscription removida subId=${sub.id}`);
         }
       }
     })
