@@ -225,7 +225,7 @@ export default function Pipeline() {
                         {/* Code + revision */}
                         <div className="flex items-center justify-between gap-1 min-w-0">
                           {t.taskCode && (
-                            <span className="text-[10px] font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">{t.taskCode}</span>
+                            <span className="text-[10px] font-bold font-mono shrink-0 text-[hsl(var(--primary))]">{t.taskCode}</span>
                           )}
                           {t.revisionCount > 0 && (
                             <span className="text-[9px] font-bold text-orange-500 shrink-0 ml-auto">Alt.{t.revisionCount}</span>

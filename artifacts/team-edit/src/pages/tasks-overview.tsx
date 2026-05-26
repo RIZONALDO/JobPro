@@ -843,7 +843,7 @@ export default function TasksOverview() {
                           </button>
                         )}
                         {t.taskCode && (
-                          <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--muted-foreground))]/55">
+                          <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]">
                             {t.taskCode}
                           </span>
                         )}
@@ -972,7 +972,7 @@ export default function TasksOverview() {
                         </button>
                       )}
                       {t.taskCode && (
-                        <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--muted-foreground))]/55">
+                        <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]">
                           {t.taskCode}
                         </span>
                       )}
@@ -984,7 +984,7 @@ export default function TasksOverview() {
                       )}
                     </div>
                     {t.client && (
-                      <p className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</p>
+                      <p className="text-xs text-[hsl(var(--primary))] truncate mt-0.5">{t.client}</p>
                     )}
                   </div>
 
@@ -1146,7 +1146,7 @@ export default function TasksOverview() {
                         {/* Subtask info */}
                         <div className="flex-1 min-w-0 flex items-baseline gap-2">
                           {sub.taskCode && (
-                            <span className="shrink-0 font-mono text-xs text-[hsl(var(--muted-foreground))]/55">{sub.taskCode}</span>
+                            <span className="shrink-0 font-mono text-xs text-[hsl(var(--primary))]">{sub.taskCode}</span>
                           )}
                           <span className="text-sm truncate">{sub.title}</span>
                           {sub.revisionCount > 0 && (

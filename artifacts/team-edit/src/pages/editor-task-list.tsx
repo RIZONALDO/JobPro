@@ -299,7 +299,7 @@ export default function EditorTaskList() {
                   {/* code + title + revision chip */}
                   <div className="flex items-baseline gap-2 min-w-0">
                     {t.taskCode && (
-                      <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--muted-foreground))]/55">
+                      <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]">
                         {t.taskCode}
                       </span>
                     )}
@@ -381,7 +381,7 @@ export default function EditorTaskList() {
               <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-3 pl-4 pr-3">
                 <div className="flex items-baseline gap-2 min-w-0">
                   {t.taskCode && (
-                    <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--muted-foreground))]/55">{t.taskCode}</span>
+                    <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]">{t.taskCode}</span>
                   )}
                   <p className="text-sm font-semibold truncate leading-snug">{t.title}</p>
                   {t.revisionCount > 0 && (
@@ -396,7 +396,7 @@ export default function EditorTaskList() {
                   </div>
                 )}
                 {t.client && (
-                  <span className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</span>
+                  <span className="text-xs text-[hsl(var(--primary))] truncate mt-0.5">{t.client}</span>
                 )}
               </div>
 
