@@ -274,12 +274,16 @@ export default function Pipeline() {
                               </span>
                             ) : null;
                           })()}
-                          {t.assignee && (
-                            <div className="ml-auto flex items-center gap-1 min-w-0 shrink-0">
-                              <AvatarDisplay name={t.assignee.name} avatarUrl={t.assignee.avatarUrl} size={30} />
-                              <span className="text-[9px] font-medium truncate max-w-[44px]">{t.assignee.name.split(" ")[0]}</span>
-                            </div>
-                          )}
+                          {(() => {
+                            // Editor vê o coordenador (quem atribuiu); coordenador vê o editor (quem executa)
+                            const person = isEditor ? t.coordinator : t.assignee;
+                            return person ? (
+                              <div className="ml-auto flex items-center gap-1 min-w-0 shrink-0">
+                                <AvatarDisplay name={person.name} avatarUrl={person.avatarUrl} size={30} />
+                                <span className="text-[9px] font-medium truncate max-w-[44px]">{person.name.split(" ")[0]}</span>
+                              </div>
+                            ) : null;
+                          })()}
                         </div>
                       </div>
                     );
