@@ -210,6 +210,8 @@ export function ChatWidget() {
   const [hasMention, setHasMention] = useState(false);
 
   const [dmMessages, setDmMessages] = useState<Record<number, DmMessage[]>>({});
+  const [dmHasMore, setDmHasMore] = useState<Record<number, boolean>>({});
+  const [dmLoadingMore, setDmLoadingMore] = useState<Set<number>>(new Set());
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [dmUnread, setDmUnread] = useState<Record<number, number>>({});
   const [dmText, setDmText] = useState("");
@@ -230,6 +232,7 @@ export function ChatWidget() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const dmEndRef = useRef<HTMLDivElement>(null);
   const firstUnreadRef = useRef<HTMLDivElement>(null);
+  const dmScrollRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const fabRef = useRef<HTMLButtonElement>(null);
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -333,9 +336,10 @@ export function ChatWidget() {
       setDmTaskRef(null);
     }
     if (!dmMessages[userId]) {
-      apiFetch<DmMessage[]>(`/api/dm/${userId}`)
-        .then(msgs => {
+      apiFetch<{ messages: DmMessage[]; hasMore: boolean }>(`/api/dm/${userId}`)
+        .then(({ messages: msgs, hasMore }) => {
           setDmMessages(prev => ({ ...prev, [userId]: msgs }));
+          setDmHasMore(prev => ({ ...prev, [userId]: hasMore }));
           setDmUnread(prev => ({ ...prev, [userId]: 0 }));
           loadConversations();
         }).catch(() => {});
@@ -346,6 +350,34 @@ export function ChatWidget() {
   }, [dmMessages, loadConversations]);
 
   const ping = useCallback(() => { apiPost("/api/presence/ping", {}).catch(() => {}); }, []);
+
+  // Carrega mensagens mais antigas (scroll para cima)
+  const loadMoreDm = useCallback(async (userId: number) => {
+    setDmLoadingMore(prev => {
+      if (prev.has(userId)) return prev; // já carregando
+      return new Set(prev).add(userId);
+    });
+    const msgs = dmMessages[userId];
+    if (!msgs?.length) { setDmLoadingMore(prev => { const s = new Set(prev); s.delete(userId); return s; }); return; }
+
+    const firstId = msgs[0]!.id;
+    const scrollEl = dmScrollRef.current;
+    const prevScrollHeight = scrollEl?.scrollHeight ?? 0;
+
+    try {
+      const { messages: older, hasMore } = await apiFetch<{ messages: DmMessage[]; hasMore: boolean }>(
+        `/api/dm/${userId}?before=${firstId}`
+      );
+      setDmMessages(prev => ({ ...prev, [userId]: [...older, ...(prev[userId] ?? [])] }));
+      setDmHasMore(prev => ({ ...prev, [userId]: hasMore }));
+      // Restaura posição do scroll para não pular para o topo
+      requestAnimationFrame(() => {
+        if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight - prevScrollHeight;
+      });
+    } catch { /* silencioso */ } finally {
+      setDmLoadingMore(prev => { const s = new Set(prev); s.delete(userId); return s; });
+    }
+  }, [dmMessages]);
 
   useEffect(() => {
     apiFetch<ChatMessage[]>("/api/chat/messages").then(setMessages).catch(() => {}).finally(() => setLoadingChat(false));
@@ -378,6 +410,19 @@ export function ChatWidget() {
     }, 120);
     return () => clearTimeout(t);
   }, [activeView]);
+
+  // Detecta scroll no topo para carregar mensagens anteriores
+  useEffect(() => {
+    const el = dmScrollRef.current;
+    if (!el || typeof activeView !== "number") return;
+    const onScroll = () => {
+      if (el.scrollTop < 80 && dmHasMore[activeView as number] && !dmLoadingMore.has(activeView as number)) {
+        loadMoreDm(activeView as number);
+      }
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [activeView, dmHasMore, dmLoadingMore, loadMoreDm]);
   useEffect(() => {
     if (typeof activeView !== "number" || activeDmLength === 0) return;
     dmEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -867,7 +912,26 @@ export function ChatWidget() {
                     className="absolute inset-0 flex flex-col"
                     style={{ backgroundColor: "hsl(var(--card))" }}
                   >
-                    <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                    <div ref={dmScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                      {/* Indicador de "carregar mais" no topo */}
+                      {dmLoadingMore.has(activeView as number) && (
+                        <div className="flex justify-center py-2">
+                          <span className="text-xs px-3 py-1 rounded-full" style={{ color: "hsl(var(--muted-foreground))", backgroundColor: "hsl(var(--muted))" }}>
+                            Carregando mensagens anteriores…
+                          </span>
+                        </div>
+                      )}
+                      {dmHasMore[activeView as number] && !dmLoadingMore.has(activeView as number) && (
+                        <div className="flex justify-center py-1">
+                          <button
+                            onClick={() => loadMoreDm(activeView as number)}
+                            className="text-xs px-3 py-1 rounded-full transition-colors"
+                            style={{ color: "hsl(var(--primary))", backgroundColor: "hsl(var(--primary) / 0.08)" }}
+                          >
+                            ↑ Ver mensagens anteriores
+                          </button>
+                        </div>
+                      )}
                       {!(dmMessages[activeView as number]) ? (
                         <p className="text-sm text-center py-10" style={{ color: "hsl(var(--muted-foreground))" }}>Carregando...</p>
                       ) : (dmMessages[activeView as number] ?? []).length === 0 ? (

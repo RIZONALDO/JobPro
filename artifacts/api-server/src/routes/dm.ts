@@ -36,13 +36,22 @@ router.get("/dm/conversations", requireAuth, async (req, res): Promise<void> => 
   res.json(rows.rows);
 });
 
-// Get messages between me and another user
+// Get messages between me and another user (cursor-based pagination)
 router.get("/dm/:userId", requireAuth, async (req, res): Promise<void> => {
   const myId = req.session.userId!;
-  const otherId = parseInt(req.params.userId, 10);
+  const otherId = parseInt(String(req.params.userId), 10);
   if (isNaN(otherId)) { res.status(400).json({ error: "ID inválido" }); return; }
 
-  const messages = await db
+  const LIMIT = 50;
+  const beforeRaw = Array.isArray(req.query.before) ? req.query.before[0] : req.query.before;
+  const beforeId = beforeRaw ? parseInt(String(beforeRaw), 10) : null;
+
+  const baseWhere = or(
+    and(eq(directMessagesTable.fromUserId, myId), eq(directMessagesTable.toUserId, otherId)),
+    and(eq(directMessagesTable.fromUserId, otherId), eq(directMessagesTable.toUserId, myId)),
+  )!;
+
+  const rows = await db
     .select({
       id: directMessagesTable.id,
       fromUserId: directMessagesTable.fromUserId,
@@ -55,32 +64,32 @@ router.get("/dm/:userId", requireAuth, async (req, res): Promise<void> => {
     })
     .from(directMessagesTable)
     .leftJoin(usersTable, eq(directMessagesTable.fromUserId, usersTable.id))
-    .where(
-      or(
-        and(eq(directMessagesTable.fromUserId, myId), eq(directMessagesTable.toUserId, otherId)),
-        and(eq(directMessagesTable.fromUserId, otherId), eq(directMessagesTable.toUserId, myId)),
-      )
-    )
-    .orderBy(asc(directMessagesTable.createdAt))
-    .limit(100);
+    .where(beforeId ? and(baseWhere, lt(directMessagesTable.id, beforeId)) : baseWhere)
+    .orderBy(desc(directMessagesTable.createdAt)) // mais recentes primeiro
+    .limit(LIMIT + 1); // busca 1 a mais para saber se há próxima página
 
-  // Mark as read and notify sender
-  await db
-    .update(directMessagesTable)
-    .set({ readAt: new Date() })
-    .where(
-      and(eq(directMessagesTable.toUserId, myId), eq(directMessagesTable.fromUserId, otherId),
-        sql`${directMessagesTable.readAt} IS NULL`)
-    );
-  broadcastDmRead(otherId, myId);
+  const hasMore = rows.length > LIMIT;
+  const messages = rows.slice(0, LIMIT).reverse(); // volta para ordem cronológica
 
-  res.json(messages);
+  // Marcar como lido apenas na carga inicial (não no "carregar mais")
+  if (!beforeId) {
+    await db
+      .update(directMessagesTable)
+      .set({ readAt: new Date() })
+      .where(
+        and(eq(directMessagesTable.toUserId, myId), eq(directMessagesTable.fromUserId, otherId),
+          sql`${directMessagesTable.readAt} IS NULL`)
+      );
+    broadcastDmRead(otherId, myId);
+  }
+
+  res.json({ messages, hasMore });
 });
 
 // Send DM
 router.post("/dm/:userId", requireAuth, async (req, res): Promise<void> => {
   const myId = req.session.userId!;
-  const toId = parseInt(req.params.userId, 10);
+  const toId = parseInt(String(req.params.userId), 10);
   if (isNaN(toId)) { res.status(400).json({ error: "ID inválido" }); return; }
 
   const { content } = req.body ?? {};
@@ -104,7 +113,7 @@ router.post("/dm/:userId", requireAuth, async (req, res): Promise<void> => {
 // Mark conversation as read
 router.post("/dm/:userId/read", requireAuth, async (req, res): Promise<void> => {
   const myId = req.session.userId!;
-  const fromId = parseInt(req.params.userId, 10);
+  const fromId = parseInt(String(req.params.userId), 10);
   if (isNaN(fromId)) { res.status(400).json({ error: "ID inválido" }); return; }
 
   await db
