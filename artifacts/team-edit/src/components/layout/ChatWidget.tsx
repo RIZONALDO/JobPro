@@ -244,7 +244,7 @@ export function ChatWidget() {
   useEffect(() => { chatOpenRef.current = chatOpen; }, [chatOpen]);
   useEffect(() => { activeViewRef.current = activeView; }, [activeView]);
 
-  // ── Auto-clear DM unread quando chat está aberto na conversa ──
+  // ── Auto-clear DM unread + scroll ao foco quando chat abre numa conversa ──
   useEffect(() => {
     if (!chatOpen || typeof activeView !== "number") return;
     setDmUnread(prev => {
@@ -252,7 +252,9 @@ export function ChatWidget() {
       return { ...prev, [activeView]: 0 };
     });
     apiPost(`/api/dm/${activeView}/read`, {}).catch(() => {});
-  }, [chatOpen, activeView]);
+    // Garante scroll ao reabrir chat (FAB) com conversa já ativa
+    scrollDmToTarget(80);
+  }, [chatOpen, activeView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Limpa snapshot ao fechar o chat (próxima abertura começa limpa) ──
   useEffect(() => {
@@ -342,14 +344,32 @@ export function ChatWidget() {
           setDmHasMore(prev => ({ ...prev, [userId]: hasMore }));
           setDmUnread(prev => ({ ...prev, [userId]: 0 }));
           loadConversations();
+          // Mensagens chegaram — aguarda React renderizar e rola para o alvo
+          scrollDmToTarget(60);
         }).catch(() => {});
     } else {
       apiPost(`/api/dm/${userId}/read`, {}).catch(() => {});
       setDmUnread(prev => ({ ...prev, [userId]: 0 }));
+      // Cache: mensagens já no DOM, rola imediatamente
+      scrollDmToTarget(60);
     }
   }, [dmMessages, loadConversations]);
 
   const ping = useCallback(() => { apiPost("/api/presence/ping", {}).catch(() => {}); }, []);
+
+  // Rola o container DM para o divisor de não lidas (se existir) ou para o fim.
+  // Usa scrollTop diretamente — funciona mesmo com transform CSS ativo (animação spring).
+  const scrollDmToTarget = useCallback((delay = 50) => {
+    setTimeout(() => {
+      const scrollEl = dmScrollRef.current;
+      if (!scrollEl) return;
+      if (firstUnreadRef.current) {
+        scrollEl.scrollTop = Math.max(0, firstUnreadRef.current.offsetTop - 16);
+      } else {
+        scrollEl.scrollTop = scrollEl.scrollHeight;
+      }
+    }, delay);
+  }, []);
 
   // Carrega mensagens mais antigas (scroll para cima)
   const loadMoreDm = useCallback(async (userId: number) => {
@@ -401,16 +421,6 @@ export function ChatWidget() {
     return () => clearTimeout(t);
   }, [activeView]);
 
-  // Scroll DM — ao abrir conversa: vai para o divisor de não lidas (se existir) ou para o fim
-  useEffect(() => {
-    if (typeof activeView !== "number") return;
-    const t = setTimeout(() => {
-      const target = firstUnreadRef.current ?? dmEndRef.current;
-      target?.scrollIntoView({ behavior: "instant", block: "start" });
-    }, 120);
-    return () => clearTimeout(t);
-  }, [activeView]);
-
   // Detecta scroll no topo para carregar mensagens anteriores
   useEffect(() => {
     const el = dmScrollRef.current;
@@ -423,9 +433,12 @@ export function ChatWidget() {
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
   }, [activeView, dmHasMore, dmLoadingMore, loadMoreDm]);
+  // Scroll suave para o fim quando chega mensagem nova — só se o usuário já estava perto do fim
   useEffect(() => {
-    if (typeof activeView !== "number" || activeDmLength === 0) return;
-    dmEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const scrollEl = dmScrollRef.current;
+    if (typeof activeView !== "number" || activeDmLength === 0 || !scrollEl) return;
+    const distFromBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
+    if (distFromBottom < 120) scrollEl.scrollTop = scrollEl.scrollHeight;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeDmLength]);
 
