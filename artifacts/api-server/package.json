@@ -23,7 +23,8 @@
     "nodemailer": "^8.0.7",
     "pino": "^9",
     "pino-http": "^10",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
@@ -32,6 +33,7 @@
     "@types/express": "^5.0.6",
     "@types/express-session": "^1.19.0",
     "@types/node": "catalog:",
+    "@types/web-push": "^3.6.4",
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^8.0.0",
     "esbuild": "^0.27.3",

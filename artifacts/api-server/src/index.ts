@@ -9,6 +9,7 @@ import { setIo } from "./lib/io.js";
 import { db, userPresenceTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { broadcastPresence } from "./lib/broadcast.js";
+import { initVapid } from "./lib/webpush.js";
 
 const port = parseInt(process.env.PORT ?? "8089", 10);
 const httpServer = createServer(app);
@@ -66,6 +67,8 @@ io.on("connection", (socket) => {
     logger.debug({ userId, socketId: socket.id }, "socket disconnected");
   });
 });
+
+initVapid();
 
 httpServer.listen(port, "0.0.0.0", () => {
   logger.info({ port }, "JobPro API server started");

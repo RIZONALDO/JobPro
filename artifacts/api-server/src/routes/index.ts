@@ -11,6 +11,7 @@ import pokeRouter from "./poke.js";
 import searchRouter from "./search.js";
 import dutyRouter from "./duty.js";
 import dutyEmailRouter from "./duty-email.js";
+import pushRouter from "./push.js";
 
 const router = Router();
 router.use(authRouter);
@@ -25,5 +26,6 @@ router.use(pokeRouter);
 router.use(searchRouter);
 router.use(dutyEmailRouter);
 router.use(dutyRouter);
+router.use(pushRouter);
 
 export default router;

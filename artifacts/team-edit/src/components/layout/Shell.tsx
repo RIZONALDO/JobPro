@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, FolderOpen, ListTodo, Users, Settings, LogOut,
-  CalendarDays, Menu, Bell, ChevronRight, X, UserCircle,
+  CalendarDays, Menu, Bell, BellRing, ChevronRight, X, UserCircle,
   CalendarRange, BarChart3, Zap, AtSign, ClipboardList,
   CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2, CalendarClock, Shield,
   Palette, Sun, Moon, ALargeSmall, Volume2, VolumeX, Trash2, CheckCheck,
@@ -16,6 +16,10 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { apiFetch, apiPut, apiDelete } from "@/lib/api";
 import { playSound } from "@/lib/sounds";
+import {
+  isPushSupported, getPushPermission,
+  subscribePush, unsubscribePush, autoResubscribeIfGranted,
+} from "@/lib/push-subscribe";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -103,6 +107,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("notif_sound") !== "off");
   const soundEnabledRef = useRef(localStorage.getItem("notif_sound") !== "off");
+  const [pushEnabled, setPushEnabled] = useState(() => isPushSupported() && getPushPermission() === "granted");
   const [customOpen, setCustomOpen] = useState(false);
   const [pokeFrom, setPokeFrom] = useState<string | null>(null);
   const [shaking, setShaking] = useState(false);
@@ -129,6 +134,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
     if (notifOpen) fetchNotifications();
   }, [notifOpen, fetchNotifications]);
 
+  // Auto-renovar subscription push (caso browser reinicie ou SW expire)
+  useEffect(() => {
+    autoResubscribeIfGranted().catch(() => {});
+  }, []);
+
   const playNotifSound = useCallback(() => {
     playSound(settings.sound_notif);
   }, [settings.sound_notif]);
@@ -139,6 +149,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
     localStorage.setItem("notif_sound", next ? "on" : "off");
     setSoundEnabled(next);
     if (next) playNotifSound();
+  };
+
+  const togglePush = async () => {
+    if (pushEnabled) {
+      await unsubscribePush();
+      setPushEnabled(false);
+    } else {
+      const result = await subscribePush();
+      setPushEnabled(result === "granted");
+    }
   };
 
   const playPokeSound = useCallback(() => {
@@ -475,26 +495,42 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     </div>
                     {/* Row 2: controles */}
                     <div className="flex items-center justify-between">
-                      {/* Som */}
-                      <button
-                        onClick={toggleSound}
-                        title={soundEnabled ? "Desligar som" : "Ligar som"}
-                        className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
-                      >
-                        {soundEnabled
-                          ? <Volume2 className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
-                          : <VolumeX className="h-3.5 w-3.5" />
-                        }
-                        <span className={cn(
-                          "relative inline-flex h-4 w-7 items-center rounded-full transition-colors",
-                          soundEnabled ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted-foreground))]/30"
-                        )}>
+                      {/* Som + Push */}
+                      <div className="flex items-center gap-2.5">
+                        <button
+                          onClick={toggleSound}
+                          title={soundEnabled ? "Desligar som" : "Ligar som"}
+                          className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
+                        >
+                          {soundEnabled
+                            ? <Volume2 className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
+                            : <VolumeX className="h-3.5 w-3.5" />
+                          }
                           <span className={cn(
-                            "absolute h-3 w-3 rounded-full bg-white shadow transition-transform",
-                            soundEnabled ? "translate-x-3.5" : "translate-x-0.5"
-                          )} />
-                        </span>
-                      </button>
+                            "relative inline-flex h-4 w-7 items-center rounded-full transition-colors",
+                            soundEnabled ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted-foreground))]/30"
+                          )}>
+                            <span className={cn(
+                              "absolute h-3 w-3 rounded-full bg-white shadow transition-transform",
+                              soundEnabled ? "translate-x-3.5" : "translate-x-0.5"
+                            )} />
+                          </span>
+                        </button>
+                        {isPushSupported() && getPushPermission() !== "denied" && (
+                          <button
+                            onClick={togglePush}
+                            title={pushEnabled ? "Desativar notificações do sistema" : "Ativar notificações do sistema"}
+                            className={cn(
+                              "flex items-center gap-1 text-xs transition-colors",
+                              pushEnabled
+                                ? "text-[hsl(var(--primary))]"
+                                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                            )}
+                          >
+                            <BellRing className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2">
                         {/* Filtro apenas não lidas */}
                         <button

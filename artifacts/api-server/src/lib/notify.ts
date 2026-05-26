@@ -1,6 +1,7 @@
 import { db, notificationsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { broadcastNotification } from "./broadcast.js";
+import { sendPushToUser } from "./webpush.js";
 
 export interface AppNotification {
   id: number;
@@ -32,6 +33,9 @@ export async function notify(
 
   // Enviar via socket em tempo real
   broadcastNotification(userId, row as AppNotification);
+
+  // Enviar push nativo (background / aba fechada) — fire-and-forget
+  sendPushToUser(userId, { title, body: message }).catch(() => {});
 }
 
 export async function notifyAdmins(
