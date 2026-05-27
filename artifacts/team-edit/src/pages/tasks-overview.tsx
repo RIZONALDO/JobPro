@@ -158,11 +158,18 @@ export default function TasksOverview() {
   const [revisionTask,    setRevisionTask]    = useState<OverviewTask | null>(null);
   const [revisionComment, setRevisionComment] = useState("");
 
+  // Workload (para checar carga do editor no reopen)
+  interface EditorWorkload { id: number; score: number; taskCount: number; }
+  const [workload, setWorkload] = useState<EditorWorkload[]>([]);
+  useEffect(() => { apiFetch<EditorWorkload[]>("/api/workload").then(setWorkload).catch(() => {}); }, []);
+
   // Reopen dialog
-  const [reopenTask,    setReopenTask]    = useState<OverviewTask | null>(null);
-  const [reopenComment, setReopenComment] = useState("");
-  const [reopenDueDate, setReopenDueDate] = useState("");
-  const [sendingReopen, setSendingReopen] = useState(false);
+  const [reopenTask,        setReopenTask]        = useState<OverviewTask | null>(null);
+  const [reopenComment,     setReopenComment]     = useState("");
+  const [reopenDueDate,     setReopenDueDate]     = useState("");
+  const [reopenComplexity,  setReopenComplexity]  = useState("medium");
+  const [reopenPriority,    setReopenPriority]    = useState("medium");
+  const [sendingReopen,     setSendingReopen]     = useState(false);
   const [sendingRevision, setSendingRevision] = useState(false);
   const [confirmTask, setConfirmTask] = useState<{ id: number; title: string; action: "cancel" | "pause" | "resume" | "reactivate" } | null>(null);
   const [confirmComment, setConfirmComment] = useState("");
@@ -409,11 +416,22 @@ export default function TasksOverview() {
       toast.error("Informe o motivo da reabertura");
       return;
     }
+    // Bloquear se editor principal está no limite
+    const primaryEditor = reopenTask.assignee ?? reopenTask.editors?.[0] ?? null;
+    if (primaryEditor) {
+      const wl = workload.find(w => w.id === primaryEditor.id);
+      if (wl && wl.score >= 12) {
+        toast.error(`${primaryEditor.name.split(" ")[0]} está no limite de capacidade. Reatribua a tarefa antes de reabrir.`);
+        return;
+      }
+    }
     setSendingReopen(true);
     try {
       await apiPut(`/api/tasks/${reopenTask.id}`, {
         status: "reopened",
         revisionComment: reopenComment.trim(),
+        complexity: reopenComplexity,
+        priority: reopenPriority,
         ...(reopenDueDate ? { dueDate: reopenDueDate } : {}),
       });
       toast.success("Tarefa reaberta");
@@ -752,7 +770,7 @@ export default function TasksOverview() {
                     <>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
-                        onClick={() => { setReopenTask(t); setReopenComment(""); setReopenDueDate(""); }}>
+                        onClick={() => { setReopenTask(t); setReopenComment(""); setReopenDueDate(""); setReopenComplexity(t.complexity ?? "medium"); setReopenPriority(t.priority ?? "medium"); }}>
                         <RotateCcw className="h-3.5 w-3.5" />Reabrir tarefa
                       </DropdownMenuItem>
                     </>
@@ -1329,48 +1347,122 @@ export default function TasksOverview() {
 
       {/* ── Reopen dialog ────────────────────────────────────────────────── */}
       <Dialog open={!!reopenTask} onOpenChange={open => { if (!open) { setReopenTask(null); setReopenDueDate(""); } }}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Reabrir tarefa aprovada</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              A tarefa voltará ao status <strong>Reaberta</strong> e o editor será notificado.
-              O histórico de aprovação é preservado.
-            </p>
-            {reopenTask?.dueDate && (
-              <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-[hsl(var(--muted))]/40 text-sm">
-                <span className="text-[hsl(var(--muted-foreground))]">Prazo anterior:</span>
-                <span className="font-semibold">{fmtDate(reopenTask.dueDate)}</span>
+          {(() => {
+            const t = reopenTask;
+            if (!t) return null;
+            const primaryEditor = t.assignee ?? t.editors?.[0] ?? null;
+            const editorWl = primaryEditor ? workload.find(w => w.id === primaryEditor.id) : null;
+            const editorBlocked = !!(editorWl && editorWl.score >= 12);
+            return (
+              <div className="space-y-3 py-1">
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                  A tarefa voltará ao status <strong>Reaberta</strong> e o editor será notificado.
+                </p>
+
+                {/* Editor + carga */}
+                {primaryEditor && (
+                  <div className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 ${editorBlocked ? "border-red-300 bg-red-50 dark:bg-red-950/20 dark:border-red-800" : "bg-[hsl(var(--muted))]/30"}`}>
+                    <AvatarDisplay name={primaryEditor.name} avatarUrl={primaryEditor.avatarUrl} size={28} className="shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{primaryEditor.name}</p>
+                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]">editor atribuído</p>
+                    </div>
+                    {editorWl && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                        style={{ background: editorBlocked ? "#ef444422" : "#f9731622", color: editorBlocked ? "#ef4444" : "#f97316" }}>
+                        {editorBlocked ? "No limite" : "Muito ocupado"}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {editorBlocked && (
+                  <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900 px-3 py-2.5">
+                    <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                    <p className="text-xs text-red-700 dark:text-red-300">
+                      <strong>{primaryEditor?.name.split(" ")[0]}</strong> está no limite de capacidade. Reatribua a tarefa antes de reabrir.
+                    </p>
+                  </div>
+                )}
+
+                {/* Prazo anterior */}
+                {t.dueDate && (
+                  <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-[hsl(var(--muted))]/40 text-sm">
+                    <span className="text-[hsl(var(--muted-foreground))]">Prazo anterior:</span>
+                    <span className="font-semibold">{fmtDate(t.dueDate)}</span>
+                  </div>
+                )}
+
+                {/* Complexidade + Prioridade */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Complexidade</Label>
+                    <Select value={reopenComplexity} onValueChange={setReopenComplexity}>
+                      <SelectTrigger className="h-9 text-sm rounded-xl">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Baixa</SelectItem>
+                        <SelectItem value="medium">Média</SelectItem>
+                        <SelectItem value="high">Alta</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Prioridade</Label>
+                    <Select value={reopenPriority} onValueChange={setReopenPriority}>
+                      <SelectTrigger className="h-9 text-sm rounded-xl">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Baixa</SelectItem>
+                        <SelectItem value="medium">Média</SelectItem>
+                        <SelectItem value="high">Alta</SelectItem>
+                        <SelectItem value="urgent">Urgente</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Novo prazo */}
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                    Novo prazo <span className="font-normal normal-case">(opcional)</span>
+                  </Label>
+                  <DateTimePicker
+                    value={reopenDueDate}
+                    onChange={setReopenDueDate}
+                    withTime
+                    placeholder="Selecionar novo prazo…"
+                    min={new Date().toISOString().split("T")[0]}
+                  />
+                </div>
+
+                {/* Motivo */}
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                    Motivo da reabertura *
+                  </Label>
+                  <Textarea
+                    value={reopenComment}
+                    onChange={e => setReopenComment(e.target.value)}
+                    rows={3}
+                    placeholder="Descreva o que o cliente solicitou alterar…"
+                    autoFocus
+                  />
+                </div>
               </div>
-            )}
-            <div className="space-y-1.5">
-              <Label>Motivo da reabertura *</Label>
-              <Textarea
-                value={reopenComment}
-                onChange={e => setReopenComment(e.target.value)}
-                rows={3}
-                placeholder="Descreva o que o cliente solicitou alterar…"
-                autoFocus
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>
-                Novo prazo
-                <span className="text-[hsl(var(--muted-foreground))] font-normal ml-1 text-xs">(opcional)</span>
-              </Label>
-              <DateTimePicker
-                value={reopenDueDate}
-                onChange={setReopenDueDate}
-                withTime
-                placeholder="Selecionar novo prazo…"
-                min={new Date().toISOString().split("T")[0]}
-              />
-            </div>
-          </div>
+            );
+          })()}
           <DialogFooter>
             <Button variant="outline" onClick={() => setReopenTask(null)}>Cancelar</Button>
-            <Button onClick={submitReopen} disabled={sendingReopen}
+            <Button
+              onClick={submitReopen}
+              disabled={sendingReopen || !reopenComment.trim() || !!(reopenTask && (reopenTask.assignee ?? reopenTask.editors?.[0]) && workload.find(w => w.id === ((reopenTask.assignee ?? reopenTask.editors?.[0])!).id)?.score! >= 12)}
               className="bg-rose-600 hover:bg-rose-700">
               {sendingReopen ? "Reabrindo…" : "↩ Reabrir tarefa"}
             </Button>
