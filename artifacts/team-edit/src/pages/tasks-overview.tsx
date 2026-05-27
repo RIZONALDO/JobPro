@@ -678,11 +678,11 @@ export default function TasksOverview() {
           return (
             <div className="hidden md:flex shrink-0 items-center px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b">
               <div className="flex-1 pr-3"><Th col="taskCode" label="Tarefa" /></div>
+              <div className="w-32 shrink-0"><Th col="status" label="Status" /></div>
               <div className="w-20 shrink-0 hidden lg:block"><Th col="priority" label="Prior." /></div>
               <div className="w-32 shrink-0"><Th col="assignee" label="Editor" /></div>
               <div className="w-28 shrink-0 hidden lg:block"><Th col="dueDate" label="Prazo" /></div>
               <div className="w-24 shrink-0 hidden xl:block"><Th col="coordinator" label="Coord." /></div>
-              <div className="w-32 shrink-0"><Th col="status" label="Status" /></div>
               <div className="w-52 shrink-0" />
             </div>
           );
@@ -1031,6 +1031,33 @@ export default function TasksOverview() {
                     )}
                   </div>
 
+                  {/* Status */}
+                  <div className="hidden md:flex w-36 shrink-0 flex-col gap-1 justify-center">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Badge className={`text-[11px] px-2 py-0.5 font-medium ${STATUS_CLASS[t.status] ?? ""}`}>
+                        {STATUS_LABEL[t.status] ?? t.status}
+                      </Badge>
+                      <MultiTaskBadge taskType={t.taskType ?? "task"} />
+                    </div>
+                    {t.taskType === "multi_task" && t.subtaskProgress && t.subtaskProgress.total > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] tabular-nums text-[hsl(var(--muted-foreground))]/70 font-medium leading-none">
+                          {t.subtaskProgress.completed}/{t.subtaskProgress.total}
+                        </span>
+                        <div className="h-1 flex-1 max-w-[48px] rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              subPct === 100 ? "bg-green-500" :
+                              subPct >= 66 ? "bg-blue-500" :
+                              subPct >= 33 ? "bg-indigo-400" : "bg-slate-400"
+                            }`}
+                            style={{ width: `${subPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Prioridade — only on lg+ */}
                   <div className="hidden lg:flex w-20 shrink-0 items-center">
                     <PriorityBadge priority={t.priority} />
@@ -1098,33 +1125,6 @@ export default function TasksOverview() {
                       </>
                     ) : (
                       <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30">—</span>
-                    )}
-                  </div>
-
-                  {/* Status — ao lado de Coord. */}
-                  <div className="hidden md:flex w-32 shrink-0 flex-col gap-1 justify-center">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <Badge className={`text-[11px] px-2 py-0.5 font-medium ${STATUS_CLASS[t.status] ?? ""}`}>
-                        {STATUS_LABEL[t.status] ?? t.status}
-                      </Badge>
-                      <MultiTaskBadge taskType={t.taskType ?? "task"} />
-                    </div>
-                    {t.taskType === "multi_task" && t.subtaskProgress && t.subtaskProgress.total > 0 && (
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] tabular-nums text-[hsl(var(--muted-foreground))]/70 font-medium leading-none">
-                          {t.subtaskProgress.completed}/{t.subtaskProgress.total}
-                        </span>
-                        <div className="h-1 flex-1 max-w-[48px] rounded-full bg-muted overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              subPct === 100 ? "bg-green-500" :
-                              subPct >= 66 ? "bg-blue-500" :
-                              subPct >= 33 ? "bg-indigo-400" : "bg-slate-400"
-                            }`}
-                            style={{ width: `${subPct}%` }}
-                          />
-                        </div>
-                      </div>
                     )}
                   </div>
 
