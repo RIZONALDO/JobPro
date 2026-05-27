@@ -99,12 +99,18 @@ interface DeadlineOverview {
   urgentCount: number;
 }
 
-// cinza=sem tarefas | verde=até 2 tarefas leves | laranja=transição | vermelho=acima da capacidade diária
+// cinza=disponível | verde=ocupado | laranja=muito ocupado | vermelho=no limite
 function scoreColor(score: number): string {
-  if (score === 0)  return "#94a3b8"; // cinza
-  if (score <= 6)   return "#22c55e"; // verde
-  if (score <= 8)   return "#f97316"; // laranja
-  return "#ef4444";                   // vermelho
+  if (score === 0)   return "#94a3b8"; // cinza  — Disponível
+  if (score <= 6)    return "#22c55e"; // verde  — Ocupado
+  if (score <= 11)   return "#f97316"; // laranja — Muito ocupado
+  return "#ef4444";                    // vermelho — No limite
+}
+function scoreLabel(score: number): string {
+  if (score === 0)   return "Disponível";
+  if (score <= 6)    return "Ocupado";
+  if (score <= 11)   return "Muito ocupado";
+  return "No limite";
 }
 
 const BATTERY_SEGS = 5;
@@ -307,36 +313,27 @@ function CapacityCard({ workload, menu }: { workload: EditorWorkload[]; menu?: R
       ) : (
         <div className="flex-1 min-h-0 flex flex-col justify-center gap-2 px-3.5 py-2">
           {sorted.map(e => {
-            const pct   = maxScore > 0 ? e.score / maxScore : 0;
             const color = scoreColor(e.score);
             const { low, medium, high } = e.byComplexity;
             return (
               <div key={e.id} className="flex items-center gap-2 min-w-0">
-                {/* Nome */}
-                <span className="text-[10px] font-medium w-14 truncate shrink-0 text-[hsl(var(--muted-foreground))]">
+                <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl ?? null} size={24} className="shrink-0" />
+                <span className="text-[10px] font-semibold truncate shrink-0">
                   {e.name.split(" ")[0]}
                 </span>
-                {/* Barra de ocupação */}
-                <div className="flex-1 h-2 rounded-full bg-[hsl(var(--muted))] overflow-hidden">
-                  <div className="h-2 rounded-full transition-all duration-500" style={{ width: `${pct * 100}%`, backgroundColor: color }} />
-                </div>
-                {/* Breakdown por complexidade: B · M · A */}
-                <span className="text-[9px] tabular-nums shrink-0 text-[hsl(var(--muted-foreground))]/70 w-[58px] text-right leading-none">
+                {/* Breakdown B · M · A */}
+                <span className="text-[9px] tabular-nums ml-auto shrink-0 text-[hsl(var(--muted-foreground))]/70 leading-none">
                   {low > 0 && <span>B:{low} </span>}
                   {medium > 0 && <span>M:{medium} </span>}
                   {high > 0 && <span>A:{high}</span>}
                   {low === 0 && medium === 0 && high === 0 && <span>—</span>}
-                </span>
-                {/* Score numérico */}
-                <span className="text-[10px] font-bold tabular-nums shrink-0 w-7 text-right" style={{ color }}>
-                  {e.score}
                 </span>
               </div>
             );
           })}
           {/* Legenda */}
           <div className="flex items-center gap-2 pt-0.5 border-t border-[hsl(var(--border))]/40">
-            <span className="text-[9px] text-[hsl(var(--muted-foreground))]/50">B = baixa · M = média · A = alta · score = peso total</span>
+            <span className="text-[9px] text-[hsl(var(--muted-foreground))]/50">B = baixa · M = média · A = alta</span>
           </div>
         </div>
       )}
@@ -914,7 +911,7 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
       <div className="flex items-center justify-between px-4 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
         <div className="flex items-center gap-2">
           <Users className="h-4 w-4 text-[hsl(var(--primary))]" />
-          <span className="font-semibold text-sm">Carga dos editores</span>
+          <span className="font-semibold text-sm">Editores</span>
           <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{workload.length}</span>
         </div>
         <Link href="/team" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
@@ -937,14 +934,15 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
                 onMouseMove={e => setTip(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null)}
                 onMouseLeave={() => setTip(null)}
               >
-                <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={36} fallbackColor={color} />
-                <span className="text-xs font-medium w-16 shrink-0 truncate">{firstName}</span>
-                <div className="flex-1 flex items-center">
-                  <Battery score={editor.score} maxScore={maxScore} color={color} />
+                <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={32} className="shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold truncate">{firstName}</p>
+                  <p className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                    {editor.taskCount === 0 ? "disponível" : `${editor.taskCount} tarefa${editor.taskCount !== 1 ? "s" : ""}`}
+                  </p>
                 </div>
-                <span className="text-xs font-bold tabular-nums shrink-0 px-1.5 py-0.5 rounded-full"
-                  style={{ backgroundColor: color + "22", color }}>
-                  {editor.score}
+                <span className="text-[9px] font-medium shrink-0 px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>
+                  {scoreLabel(editor.score)}
                 </span>
               </div>
             );
@@ -2070,10 +2068,10 @@ export default function Dashboard() {
 
       {/* ── COORDINATOR LAYOUT ──────────────────────────────────── */}
       {!isEditor && (
-        <div className="grid gap-5 md:grid-cols-3">
+        <div className="grid gap-5 md:grid-cols-4">
 
           {/* Slot 5 — order-last on mobile so tarefas appear first */}
-          <div className="order-last md:order-first md:col-span-2">
+          <div className="order-last md:order-first md:col-span-3">
             {(() => {
               const slot5 = cardPrefs.slot5 ?? "delivery_projection";
               const menu5 = <CardMenu value={slot5} options={SLOT5_OPTIONS} onChange={v => setCardPref("slot5", v)} />;
@@ -2089,7 +2087,7 @@ export default function Dashboard() {
           <WorkloadCard workload={workload} />
 
           {/* Tarefas */}
-          <div className="md:col-span-2 rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
+          <div className="md:col-span-3 rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
               <div className="flex items-center gap-2">
                 <ListTodo className="h-4 w-4 text-[hsl(var(--primary))]" />
