@@ -245,7 +245,7 @@ export default function Team() {
                           className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/30 transition-colors text-left"
                         >
                           {/* Avatar com borda colorida */}
-                          <div className="shrink-0 rounded-full p-[2px]" style={{ border: `2px solid ${color}`, backgroundColor: color + "22" }}>
+                          <div className="shrink-0 rounded-full" style={{ boxShadow: `0 0 0 3px ${color}` }}>
                             <AvatarDisplay
                               name={editor.name}
                               avatarUrl={editor.avatarUrl}
