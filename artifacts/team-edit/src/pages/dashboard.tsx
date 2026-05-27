@@ -943,9 +943,9 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
                 <div className="flex-1 flex items-center">
                   <Battery score={editor.score} maxScore={maxScore} color={color} />
                 </div>
-                <span className="text-xs font-semibold shrink-0 px-1.5 py-0.5 rounded-full"
+                <span className="text-xs font-bold tabular-nums shrink-0 px-1.5 py-0.5 rounded-full"
                   style={{ backgroundColor: color + "22", color }}>
-                  {scoreLabel(editor.score)}
+                  {editor.score}
                 </span>
               </div>
             );
@@ -960,9 +960,9 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
         >
           <p className="font-semibold">{tip.editor.name}</p>
           <p className="text-[hsl(var(--muted-foreground))]">{tip.editor.taskCount} tarefa(s) ativas</p>
-          {((tip.editor.byComplexity?.high   ?? 0) > 0) && <p className="text-red-600">{tip.editor.byComplexity.high} complexa(s)</p>}
-          {((tip.editor.byComplexity?.medium ?? 0) > 0) && <p className="text-amber-600">{tip.editor.byComplexity.medium} moderada(s)</p>}
-          {((tip.editor.byComplexity?.low    ?? 0) > 0) && <p className="text-green-600">{tip.editor.byComplexity.low} simples</p>}
+          {((tip.editor.byComplexity?.high   ?? 0) > 0) && <p className="text-[hsl(var(--muted-foreground))]">Alta: {tip.editor.byComplexity.high}</p>}
+          {((tip.editor.byComplexity?.medium ?? 0) > 0) && <p className="text-[hsl(var(--muted-foreground))]">Média: {tip.editor.byComplexity.medium}</p>}
+          {((tip.editor.byComplexity?.low    ?? 0) > 0) && <p className="text-[hsl(var(--muted-foreground))]">Baixa: {tip.editor.byComplexity.low}</p>}
           {tip.editor.taskCount === 0 && <p className="text-[hsl(var(--muted-foreground))]">Sem tarefas ativas</p>}
           <div className="border-t pt-1.5 space-y-0.5">
             {tip.editor.byStatus.pending     > 0 && <p className="text-slate-500">{tip.editor.byStatus.pending} pendente(s)</p>}
