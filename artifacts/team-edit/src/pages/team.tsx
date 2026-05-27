@@ -60,18 +60,12 @@ const STATUS_BAR: Record<string, string> = {
   completed:   "bg-green-500",
 };
 
-// cinza=disponível | verde=ocupado | laranja=muito ocupado | vermelho=no limite
+// cinza=sem tarefas | verde=até 2 tarefas leves | laranja=transição | vermelho=acima da capacidade diária
 function scoreColor(score: number): string {
-  if (score === 0)   return "#94a3b8"; // cinza  — Disponível
-  if (score <= 6)    return "#22c55e"; // verde  — Ocupado
-  if (score <= 11)   return "#f97316"; // laranja — Muito ocupado
-  return "#ef4444";                    // vermelho — No limite
-}
-function scoreLabel(score: number): string {
-  if (score === 0)   return "Disponível";
-  if (score <= 6)    return "Ocupado";
-  if (score <= 11)   return "Muito ocupado";
-  return "No limite";
+  if (score === 0)  return "#94a3b8"; // cinza
+  if (score <= 6)   return "#22c55e"; // verde
+  if (score <= 8)   return "#f97316"; // laranja
+  return "#ef4444";                   // vermelho
 }
 
 const BATTERY_SEGS = 5;
@@ -250,22 +244,31 @@ export default function Team() {
                           onClick={() => toggleEditor(editor.id)}
                           className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/30 transition-colors text-left"
                         >
+                          {/* Avatar */}
                           <AvatarDisplay
                             name={editor.name}
                             avatarUrl={editor.avatarUrl}
-                            className="shrink-0"
                           />
 
                           {/* Name + login */}
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold truncate">{editor.name}</p>
+                            <p className="text-sm font-medium truncate">{editor.name}</p>
                             <p className="text-xs text-[hsl(var(--muted-foreground))] font-mono">@{editor.login}</p>
                             {(() => { const u = users.find(x => x.id === editor.id); return u?.jobTitle ? <p className="text-xs text-[hsl(var(--muted-foreground))]/70 truncate">{u.jobTitle}</p> : null; })()}
                           </div>
 
-                          {/* Status label */}
-                          <span className="text-[10px] font-medium shrink-0 px-2 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>
-                            {scoreLabel(editor.score)}
+                          {/* Battery */}
+                          <Battery score={editor.score} maxScore={maxScore} color={color} />
+
+                          {/* Score numérico */}
+                          <span className="text-xs font-bold tabular-nums px-1.5 py-0.5 rounded-full shrink-0 hidden sm:inline"
+                            style={{ backgroundColor: color + "22", color }}>
+                            {editor.score > 0 ? `${editor.score}pt` : "—"}
+                          </span>
+
+                          {/* Task count */}
+                          <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5 shrink-0">
+                            {editor.taskCount} tarefa{editor.taskCount !== 1 ? "s" : ""}
                           </span>
 
                           {/* Chevron */}

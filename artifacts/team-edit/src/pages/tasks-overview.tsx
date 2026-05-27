@@ -894,8 +894,8 @@ export default function TasksOverview() {
                           {t.title}
                         </span>
                         {t.revisionCount > 0 && (
-                          <span className="shrink-0 text-xs font-bold px-1.5 py-px rounded bg-orange-100 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400 border border-orange-200 dark:border-orange-800/40 tabular-nums leading-none">
-                            ↩{t.revisionCount}
+                          <span className="shrink-0 text-xs font-medium px-2 py-px border-l-2 border-amber-500 dark:border-amber-500 rounded-r bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 leading-none whitespace-nowrap">
+                            {t.revisionCount} {t.revisionCount === 1 ? "alteração" : "alterações"}
                           </span>
                         )}
                       </div>
@@ -1021,8 +1021,8 @@ export default function TasksOverview() {
                       )}
                       <span className="text-sm font-semibold truncate leading-snug">{t.title}</span>
                       {t.revisionCount > 0 && (
-                        <span className="shrink-0 text-xs font-bold px-1.5 py-px rounded bg-orange-100 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400 border border-orange-200 dark:border-orange-800/40 tabular-nums leading-none">
-                          ↩{t.revisionCount}
+                        <span className="shrink-0 text-xs font-medium px-2 py-px border-l-2 border-amber-500 dark:border-amber-500 rounded-r bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 leading-none whitespace-nowrap">
+                          {t.revisionCount} {t.revisionCount === 1 ? "alteração" : "alterações"}
                         </span>
                       )}
                     </div>
@@ -1193,8 +1193,8 @@ export default function TasksOverview() {
                           )}
                           <span className="text-sm truncate">{sub.title}</span>
                           {sub.revisionCount > 0 && (
-                            <span className="shrink-0 text-xs font-bold px-1.5 py-px rounded bg-orange-100 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400 border border-orange-200 dark:border-orange-800/40 tabular-nums leading-none">
-                              ↩{sub.revisionCount}
+                            <span className="shrink-0 text-xs font-medium px-2 py-px border-l-2 border-amber-500 dark:border-amber-500 rounded-r bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 leading-none whitespace-nowrap">
+                              {sub.revisionCount} {sub.revisionCount === 1 ? "alteração" : "alterações"}
                             </span>
                           )}
                         </div>

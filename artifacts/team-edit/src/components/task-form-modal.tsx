@@ -36,18 +36,11 @@ const EMPTY_SUBTASK: Omit<SubtaskRow, "id"> = { title: "", editorId: "", dueDate
 let subtaskKeyCounter = 0;
 function newSubtaskRow(): SubtaskRow { return { id: String(subtaskKeyCounter++), ...EMPTY_SUBTASK }; }
 
-// cinza=disponível | verde=ocupado | laranja=muito ocupado | vermelho=no limite
-function scoreColor(score: number): string {
-  if (score === 0)  return "#94a3b8";
-  if (score <= 6)   return "#22c55e";
-  if (score <= 11)  return "#f97316";
-  return "#ef4444";
-}
-function scoreLabel(score: number): string {
-  if (score === 0)  return "Disponível";
-  if (score <= 6)   return "Ocupado";
-  if (score <= 11)  return "Muito ocupado";
-  return "No limite";
+function workloadLevel(score: number): "ok" | "moderate" | "high" | "critical" {
+  if (score <= 3)  return "ok";
+  if (score <= 9)  return "moderate";
+  if (score <= 18) return "high";
+  return "critical";
 }
 
 export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initialDueDate, hidePublish }: Props) {
@@ -141,7 +134,6 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
       const filledSubtasks = subtasks.filter(s => s.title.trim());
       if (filledSubtasks.length < 1) { toast.error("Adicione ao menos uma subtarefa"); return; }
       if (publishStatus === "pending") {
-        if (!form.client?.trim()) { toast.error("Cliente obrigatório para publicar"); return; }
         if (!form.dueDateTime) { toast.error("Informe o prazo da multi-tarefa"); return; }
         const missing = filledSubtasks.filter(s => !s.editorId);
         if (missing.length > 0) { toast.error("Atribua um editor a cada subtarefa"); return; }
@@ -173,7 +165,6 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
     // ── Multi-task edit ────────────────────────────────────────────────────
     if (isMultiTask && editMode) {
-      if (isPublishing && !form.client?.trim()) { toast.error("Cliente obrigatório para publicar"); return; }
       if (isPublishing && !form.dueDateTime) { toast.error("Informe o prazo"); return; }
       const payload: Record<string, unknown> = {
         title: form.title, description: form.description || null,
@@ -194,9 +185,8 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
     }
 
     // ── Tarefa simples ─────────────────────────────────────────────────────
-    if (isPublishing && !form.client?.trim()) { toast.error("Cliente obrigatório para publicar"); return; }
     if (isPublishing && !form.dueDateTime) { toast.error("Informe o prazo"); return; }
-    if (isPublishing && selectedEditorIds.length === 0) {
+    if (publishStatus === "pending" && selectedEditorIds.length === 0) {
       toast.error("Atribua ao menos um editor para publicar"); return;
     }
     const dueDatePayload = form.dueDateTime ? form.dueDateTime
@@ -320,7 +310,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       {subtasks.map((row, i) => (
                         <div key={row.id} className="px-3 py-2.5 bg-[hsl(var(--muted))]/10 hover:bg-[hsl(var(--muted))]/20 transition-colors">
                           <SubtaskFormRow
-                            row={row} index={i} editors={editors} workload={workload}
+                            row={row} index={i} editors={editors}
                             onChange={patch => updateSubtask(row.id, patch)}
                             onRemove={() => removeSubtask(row.id)}
                           />
@@ -344,7 +334,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       {subtasks.map((row, i) => (
                         <div key={row.id} className="px-3 py-2.5 bg-[hsl(var(--muted))]/10">
                           <SubtaskFormRow
-                            row={row} index={i} editors={editors} workload={workload}
+                            row={row} index={i} editors={editors}
                             onChange={patch => updateSubtask(row.id, patch)}
                             onRemove={() => removeSubtask(row.id)}
                           />
@@ -370,17 +360,22 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                           const editor = editors.find(e => e.id === id);
                           if (!editor) return null;
                           const wl = workload.find(w => w.id === id);
-                          const score = wl?.score ?? 0;
-                          const color = scoreColor(score);
-                          const label = scoreLabel(score);
+                          const level = workloadLevel(wl?.score ?? 0);
+                          const cfg: Record<string, { label: string; cls: string }> = {
+                            ok:       { label: wl?.score === 0 ? "Livre" : "Tranquilo", cls: "text-emerald-600" },
+                            moderate: { label: "Ocupado",   cls: "text-amber-600"  },
+                            high:     { label: "Apertado",  cls: "text-orange-600" },
+                            critical: { label: "No limite", cls: "text-red-600"    },
+                          };
+                          const { label, cls } = cfg[level];
                           return (
                             <div key={id} className="flex items-center gap-2.5 px-3 py-2 bg-[hsl(var(--muted))]/10 hover:bg-[hsl(var(--muted))]/20 transition-colors">
-                              <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={28} className="shrink-0" />
+                              <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} style={{ width: 28, height: 28, fontSize: 9, flexShrink: 0 }} />
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium truncate">{editor.name}</p>
                                 {idx === 0 && <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60">Principal</p>}
                               </div>
-                              <span className="text-[10px] font-semibold shrink-0 px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>{label}</span>
+                              <span className={`text-xs font-semibold shrink-0 ${cls}`}>{label}</span>
                               <button onClick={() => removeEditor(id)}
                                 className="h-6 w-6 flex items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors shrink-0">
                                 <X className="h-3.5 w-3.5" />
@@ -400,16 +395,17 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                         {availableEditors.map(e => {
                           const wl = workload.find(w => w.id === e.id);
                           const score = wl?.score ?? 0;
-                          const color = scoreColor(score);
-                          const label = scoreLabel(score);
-                          const blocked = score >= 12;
+                          const level = workloadLevel(score);
+                          const cfg: Record<string, { label: string; cls: string }> = {
+                            ok:       { label: score === 0 ? "Livre" : "Tranquilo", cls: score === 0 ? "text-slate-400" : "text-emerald-500" },
+                            moderate: { label: "Ocupado",   cls: "text-amber-500"  },
+                            high:     { label: "Apertado",  cls: "text-orange-500" },
+                            critical: { label: "No limite", cls: "text-red-500"    },
+                          };
+                          const { label, cls } = cfg[level];
                           return (
-                            <SelectItem key={e.id} value={String(e.id)} disabled={blocked}>
-                              <span className="flex items-center gap-2" style={{ opacity: blocked ? 0.45 : 1 }}>
-                                {e.name}
-                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>{label}</span>
-                                {blocked && <span className="text-[9px] text-red-500">bloqueado</span>}
-                              </span>
+                            <SelectItem key={e.id} value={String(e.id)}>
+                              <span className="flex items-center gap-2">{e.name}<span className={`text-xs font-semibold ${cls}`}>{label}</span></span>
                             </SelectItem>
                           );
                         })}
@@ -419,17 +415,17 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       </SelectContent>
                     </Select>
 
-                    {primaryWorkload && primaryWorkload.score > 6 && (() => {
-                      const score = primaryWorkload.score;
-                      const isCritical = score >= 12;
-                      const bg   = isCritical ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900"         : "bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-900";
-                      const icon = isCritical ? "text-red-500"    : "text-orange-500";
-                      const text = isCritical ? "text-red-800 dark:text-red-300"       : "text-orange-800 dark:text-orange-300";
-                      const msg  = isCritical ? "Editor no limite de capacidade!" : "Editor muito ocupado.";
+                    {primaryWorkload && workloadLevel(primaryWorkload.score) !== "ok" && (() => {
+                      const level = workloadLevel(primaryWorkload.score);
+                      const cfg = {
+                        moderate: { bg: "bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900", icon: "text-amber-500", text: "text-amber-800 dark:text-amber-300", msg: "Editor ocupado." },
+                        high:     { bg: "bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-900", icon: "text-orange-500", text: "text-orange-800 dark:text-orange-300", msg: "Agenda apertada." },
+                        critical: { bg: "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900", icon: "text-red-500", text: "text-red-800 dark:text-red-300", msg: "Editor no limite!" },
+                      }[level as "moderate" | "high" | "critical"]!;
                       return (
-                        <div className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${bg}`}>
-                          <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${icon}`} />
-                          <p className={`text-xs ${text}`}>{msg} {primaryWorkload.taskCount} tarefa(s) ativa(s).</p>
+                        <div className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${cfg.bg}`}>
+                          <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${cfg.icon}`} />
+                          <p className={`text-xs ${cfg.text}`}>{cfg.msg} {primaryWorkload.taskCount} tarefa(s) ativa(s).</p>
                         </div>
                       );
                     })()}

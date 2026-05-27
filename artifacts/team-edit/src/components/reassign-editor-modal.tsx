@@ -21,17 +21,12 @@ interface Props {
   mode: "reassign" | "add";
 }
 
-function scoreColor(score: number): string {
-  if (score === 0)  return "#94a3b8";
-  if (score <= 6)   return "#22c55e";
-  if (score <= 11)  return "#f97316";
-  return "#ef4444";
-}
-function scoreLabel(score: number): string {
-  if (score === 0)  return "Disponível";
-  if (score <= 6)   return "Ocupado";
-  if (score <= 11)  return "Muito ocupado";
-  return "No limite";
+function workloadBadge(score: number) {
+  if (score === 0) return { label: "Livre", cls: "text-slate-400" };
+  if (score <= 3)  return { label: "Tranquilo", cls: "text-green-500" };
+  if (score <= 9)  return { label: "Ocupado",   cls: "text-amber-400" };
+  if (score <= 18) return { label: "Apertado",  cls: "text-orange-500" };
+  return { label: "No limite", cls: "text-red-500" };
 }
 
 export function ReassignEditorModal({ open, onOpenChange, onSaved, taskId, taskTitle, currentAssignedTo, mode }: Props) {
@@ -154,16 +149,12 @@ export function ReassignEditorModal({ open, onOpenChange, onSaved, taskId, taskT
               <SelectContent>
                 {availableEditors.map(e => {
                   const wl = workload.find(w => w.id === e.id);
-                  const score = wl?.score ?? 0;
-                  const color = scoreColor(score);
-                  const label = scoreLabel(score);
-                  const blocked = score >= 12;
+                  const { label, cls } = workloadBadge(wl?.score ?? 0);
                   return (
-                    <SelectItem key={e.id} value={String(e.id)} disabled={blocked}>
-                      <span className="flex items-center gap-2" style={{ opacity: blocked ? 0.45 : 1 }}>
+                    <SelectItem key={e.id} value={String(e.id)}>
+                      <span className="flex items-center gap-2">
                         {e.name}
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>{label}</span>
-                        {blocked && <span className="text-[9px] text-red-500">bloqueado</span>}
+                        <span className={`text-xs font-semibold ${cls}`}>{label}</span>
                       </span>
                     </SelectItem>
                   );

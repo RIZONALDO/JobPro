@@ -16,31 +16,15 @@ interface Editor {
   avatarUrl?: string | null;
 }
 
-interface EditorWorkload { id: number; score: number; }
-
-function scoreColor(score: number): string {
-  if (score === 0)  return "#94a3b8";
-  if (score <= 6)   return "#22c55e";
-  if (score <= 11)  return "#f97316";
-  return "#ef4444";
-}
-function scoreLabel(score: number): string {
-  if (score === 0)  return "Disponível";
-  if (score <= 6)   return "Ocupado";
-  if (score <= 11)  return "Muito ocupado";
-  return "No limite";
-}
-
 interface SubtaskFormRowProps {
   row: SubtaskRow;
   index: number;
   editors: Editor[];
-  workload?: EditorWorkload[];
   onChange: (patch: Partial<SubtaskRow>) => void;
   onRemove: () => void;
 }
 
-export function SubtaskFormRow({ row, index, editors, workload = [], onChange, onRemove }: SubtaskFormRowProps) {
+export function SubtaskFormRow({ row, index, editors, onChange, onRemove }: SubtaskFormRowProps) {
   return (
     <div className="flex items-center gap-2">
       {/* Index pill */}
@@ -76,23 +60,14 @@ export function SubtaskFormRow({ row, index, editors, workload = [], onChange, o
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="none">Sem editor</SelectItem>
-            {editors.map(e => {
-              const wl = workload.find(w => w.id === e.id);
-              const score = wl?.score ?? 0;
-              const color = scoreColor(score);
-              const label = scoreLabel(score);
-              const blocked = score >= 12;
-              return (
-                <SelectItem key={e.id} value={String(e.id)} disabled={blocked}>
-                  <span className="flex items-center gap-1.5" style={{ opacity: blocked ? 0.45 : 1 }}>
-                    <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} style={{ width: 16, height: 16, fontSize: 6, flexShrink: 0 }} />
-                    {e.name}
-                    <span className="text-[9px] font-semibold px-1 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>{label}</span>
-                    {blocked && <span className="text-[9px] text-red-500">bloqueado</span>}
-                  </span>
-                </SelectItem>
-              );
-            })}
+            {editors.map(e => (
+              <SelectItem key={e.id} value={String(e.id)}>
+                <span className="flex items-center gap-1.5">
+                  <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} style={{ width: 16, height: 16, fontSize: 6, flexShrink: 0 }} />
+                  {e.name}
+                </span>
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

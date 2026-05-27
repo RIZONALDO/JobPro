@@ -377,7 +377,9 @@ export default function JobDetail() {
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
                     {t.revisionCount > 0 && (
-                      <span className="text-xs font-semibold text-orange-500">Alt.{t.revisionCount}</span>
+                      <span className="text-xs font-medium px-2 py-px border-l-2 border-amber-500 rounded-r bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 leading-none whitespace-nowrap">
+                        {t.revisionCount} {t.revisionCount === 1 ? "alteração" : "alterações"}
+                      </span>
                     )}
                     {t.revisions.length > 0 && (
                       <button type="button" onClick={() => toggleRevisions(t.id)}

@@ -6,7 +6,7 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Archive, Plus, Send, MoreHorizontal, Trash2, AlertTriangle } from "lucide-react";
+import { Archive, Plus, Send, MoreHorizontal, Trash2 } from "lucide-react";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { TaskFormModal } from "@/components/task-form-modal";
@@ -91,18 +91,6 @@ export default function TasksRascunho() {
 
   const doPublish = async () => {
     if (!publishTarget) return;
-    // Validação dos campos obrigatórios para publicar
-    const missing: string[] = [];
-    if (!publishTarget.title?.trim())                  missing.push("título");
-    if (!publishTarget.client?.trim())                 missing.push("cliente");
-    if (!publishTarget.dueDate)                        missing.push("prazo");
-    if (!publishTarget.editors || publishTarget.editors.length === 0) missing.push("editor");
-    if (!publishTarget.priority)                       missing.push("prioridade");
-    if (!publishTarget.complexity)                     missing.push("complexidade");
-    if (missing.length > 0) {
-      toast.error(`Preencha antes de publicar: ${missing.join(", ")}`);
-      return;
-    }
     setPublishing(true);
     try {
       await apiPut(`/api/tasks/${publishTarget.id}`, { status: "pending" });
@@ -314,62 +302,43 @@ export default function TasksRascunho() {
           <DialogHeader>
             <DialogTitle>Publicar tarefa</DialogTitle>
           </DialogHeader>
-          {(() => {
-            const t = publishTarget;
-            if (!t) return null;
-            const checks = [
-              { label: "Título",      ok: !!t.title?.trim() },
-              { label: "Cliente",     ok: !!t.client?.trim() },
-              { label: "Prazo",       ok: !!t.dueDate },
-              { label: "Editor",      ok: !!(t.editors && t.editors.length > 0) },
-              { label: "Prioridade",  ok: !!t.priority },
-              { label: "Complexidade",ok: !!t.complexity },
-            ];
-            const missing = checks.filter(c => !c.ok);
-            const canPublish = missing.length === 0;
-            return (
-              <div className="space-y-4 py-1">
-                {missing.length > 0 && (
-                  <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900 px-3 py-2.5">
-                    <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-xs font-semibold text-red-700 dark:text-red-300 mb-0.5">Campos obrigatórios incompletos</p>
-                      <p className="text-xs text-red-600 dark:text-red-400">{missing.map(c => c.label).join(", ")}</p>
-                    </div>
+          <div className="space-y-4 py-1">
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              Confirma a publicação de{" "}
+              <span className="font-medium text-[hsl(var(--foreground))]">{publishTarget?.title}</span>?
+            </p>
+            <div className="rounded-xl border border-[hsl(var(--border))] divide-y divide-[hsl(var(--border))]/60 overflow-hidden text-sm">
+              {/* Editor */}
+              <div className="px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-1">Editor</p>
+                {publishTarget?.editors && publishTarget.editors.length > 0 ? (
+                  <div className="flex items-center gap-1.5">
+                    <StackedAvatars people={publishTarget.editors} size={22} max={3} />
+                    <span className="font-medium truncate">
+                      {publishTarget.editors.map(e => e.name.split(" ")[0]).join(", ")}
+                    </span>
                   </div>
+                ) : (
+                  <span className="text-[hsl(var(--muted-foreground))]">Sem editor</span>
                 )}
-                <div className="rounded-xl border border-[hsl(var(--border))] divide-y divide-[hsl(var(--border))]/60 overflow-hidden text-sm">
-                  {checks.map(({ label, ok }) => (
-                    <div key={label} className="px-3 py-2 flex items-center justify-between gap-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">{label}</p>
-                      {ok
-                        ? (() => {
-                            if (label === "Editor") return (
-                              <div className="flex items-center gap-1.5">
-                                <StackedAvatars people={t.editors} size={20} max={3} />
-                                <span className="text-xs font-medium truncate max-w-[120px]">{t.editors.map(e => e.name.split(" ")[0]).join(", ")}</span>
-                              </div>
-                            );
-                            if (label === "Prazo") return <span className="text-xs font-medium">{fmtDate(t.dueDate!)}</span>;
-                            if (label === "Prioridade") return <PriorityBadge priority={t.priority} />;
-                            if (label === "Complexidade") return <span className="text-xs font-medium capitalize">{t.complexity}</span>;
-                            if (label === "Cliente") return <span className="text-xs font-medium truncate max-w-[140px]">{t.client}</span>;
-                            return <span className="text-xs font-medium truncate max-w-[140px]">{t.title}</span>;
-                          })()
-                        : <span className="text-[10px] text-red-500 font-semibold">obrigatório</span>
-                      }
-                    </div>
-                  ))}
-                </div>
               </div>
-            );
-          })()}
+              {/* Prazo */}
+              <div className="px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-1">Prazo</p>
+                <span className={publishTarget?.dueDate ? "font-medium" : "text-[hsl(var(--muted-foreground))]"}>
+                  {publishTarget?.dueDate ? fmtDate(publishTarget.dueDate) : "Sem prazo"}
+                </span>
+              </div>
+              {/* Prioridade */}
+              <div className="px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-1">Prioridade</p>
+                <PriorityBadge priority={publishTarget?.priority ?? "medium"} />
+              </div>
+            </div>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPublishTarget(null)} disabled={publishing}>Cancelar</Button>
-            <Button
-              onClick={doPublish}
-              disabled={publishing || !publishTarget?.title?.trim() || !publishTarget?.client?.trim() || !publishTarget?.dueDate || !(publishTarget?.editors?.length > 0)}
-            >
+            <Button onClick={doPublish} disabled={publishing}>
               {publishing ? "Publicando…" : <><Send className="h-3.5 w-3.5 mr-1" />Publicar</>}
             </Button>
           </DialogFooter>

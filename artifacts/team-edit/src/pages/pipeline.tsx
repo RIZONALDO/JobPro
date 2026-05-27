@@ -228,7 +228,9 @@ export default function Pipeline() {
                             <span className="text-[10px] font-bold font-mono shrink-0 text-[hsl(var(--primary))]/70">{t.taskCode}</span>
                           )}
                           {t.revisionCount > 0 && (
-                            <span className="text-[9px] font-bold text-orange-500 shrink-0 ml-auto">Alt.{t.revisionCount}</span>
+                            <span className="text-[9px] font-medium shrink-0 ml-auto px-1.5 py-px border-l-2 border-amber-500 rounded-r bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 leading-none whitespace-nowrap">
+                              {t.revisionCount} {t.revisionCount === 1 ? "alt." : "alts."}
+                            </span>
                           )}
                         </div>
 
