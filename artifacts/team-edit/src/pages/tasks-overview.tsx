@@ -171,18 +171,27 @@ export default function TasksOverview() {
   const [revisionTask,    setRevisionTask]    = useState<OverviewTask | null>(null);
   const [revisionComment, setRevisionComment] = useState("");
 
-  // Workload (para checar carga do editor no reopen)
-  interface EditorWorkload { id: number; score: number; taskCount: number; }
-  const [workload, setWorkload] = useState<EditorWorkload[]>([]);
-  useEffect(() => { apiFetch<EditorWorkload[]>("/api/workload").then(setWorkload).catch(() => {}); }, []);
-
   // Reopen dialog
+  interface EditorWorkload { id: number; score: number; taskCount: number; }
+  const COMPLEXITY_WEIGHT: Record<string, number> = { low: 3, medium: 6, high: 12 };
   const [reopenTask,        setReopenTask]        = useState<OverviewTask | null>(null);
   const [reopenComment,     setReopenComment]     = useState("");
   const [reopenDueDate,     setReopenDueDate]     = useState("");
   const [reopenComplexity,  setReopenComplexity]  = useState("medium");
   const [reopenPriority,    setReopenPriority]    = useState("medium");
+  const [reopenWorkload,    setReopenWorkload]    = useState<EditorWorkload[]>([]);
+  const [loadingWorkload,   setLoadingWorkload]   = useState(false);
   const [sendingReopen,     setSendingReopen]     = useState(false);
+
+  // Busca carga em tempo real quando o dialog de reabertura abre
+  useEffect(() => {
+    if (!reopenTask) return;
+    setLoadingWorkload(true);
+    apiFetch<EditorWorkload[]>("/api/workload")
+      .then(setReopenWorkload)
+      .catch(() => {})
+      .finally(() => setLoadingWorkload(false));
+  }, [reopenTask]);
   const [sendingRevision, setSendingRevision] = useState(false);
   const [confirmTask, setConfirmTask] = useState<{ id: number; title: string; action: "cancel" | "pause" | "resume" | "reactivate" } | null>(null);
   const [confirmComment, setConfirmComment] = useState("");
@@ -429,12 +438,15 @@ export default function TasksOverview() {
       toast.error("Informe o motivo da reabertura");
       return;
     }
-    // Bloquear se editor principal está no limite
+    // Bloquear se editor principal ficaria no limite após reabertura
     const primaryEditor = reopenTask.assignee ?? reopenTask.editors?.[0] ?? null;
     if (primaryEditor) {
-      const wl = workload.find(w => w.id === primaryEditor.id);
-      if (wl && wl.score >= 12) {
-        toast.error(`${primaryEditor.name.split(" ")[0]} está no limite de capacidade. Reatribua a tarefa antes de reabrir.`);
+      const wl = reopenWorkload.find(w => w.id === primaryEditor.id);
+      const currentScore = wl?.score ?? 0;
+      const addedWeight = COMPLEXITY_WEIGHT[reopenComplexity] ?? 6;
+      const projected = currentScore + addedWeight;
+      if (projected >= 12) {
+        toast.error(`${primaryEditor.name.split(" ")[0]} ficaria no limite (${projected}pts) com esta complexidade. Reduza a complexidade ou reatribua.`);
         return;
       }
     }
@@ -1367,38 +1379,57 @@ export default function TasksOverview() {
           {(() => {
             const t = reopenTask;
             if (!t) return null;
-            const primaryEditor = t.assignee ?? t.editors?.[0] ?? null;
-            const editorWl     = primaryEditor ? workload.find(w => w.id === primaryEditor.id) : null;
-            const editorScore  = editorWl?.score ?? 0;
-            const editorBlocked = editorScore >= 12;
-            const editorColor  = scoreColor(editorScore);
-            const editorLbl    = scoreLabel(editorScore);
+            const primaryEditor  = t.assignee ?? t.editors?.[0] ?? null;
+            const editorWl      = primaryEditor ? reopenWorkload.find(w => w.id === primaryEditor.id) : null;
+            const currentScore  = editorWl?.score ?? 0;
+            const addedWeight   = COMPLEXITY_WEIGHT[reopenComplexity] ?? 6;
+            const projectedScore = currentScore + addedWeight;
+            const projectedBlocked = projectedScore >= 12;
+            const currentColor  = scoreColor(currentScore);
+            const currentLbl    = scoreLabel(currentScore);
+            const projColor     = scoreColor(projectedScore);
+            const projLbl       = scoreLabel(projectedScore);
             return (
               <div className="space-y-3 py-1">
                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
                   A tarefa voltará ao status <strong>Reaberta</strong> e o editor será notificado.
                 </p>
 
-                {/* Editor + carga */}
+                {/* Editor + carga atual + projeção */}
                 {primaryEditor && (
-                  <div className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 ${editorBlocked ? "border-red-300 bg-red-50 dark:bg-red-950/20 dark:border-red-800" : "bg-[hsl(var(--muted))]/30"}`}>
-                    <AvatarDisplay name={primaryEditor.name} avatarUrl={primaryEditor.avatarUrl} size={28} className="shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{primaryEditor.name}</p>
-                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]">editor atribuído</p>
+                  <div className={`rounded-xl border px-3 py-2.5 space-y-2 ${projectedBlocked ? "border-red-300 bg-red-50 dark:bg-red-950/20 dark:border-red-800" : "bg-[hsl(var(--muted))]/30"}`}>
+                    <div className="flex items-center gap-2.5">
+                      <AvatarDisplay name={primaryEditor.name} avatarUrl={primaryEditor.avatarUrl} size={28} className="shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{primaryEditor.name}</p>
+                        <p className="text-[10px] text-[hsl(var(--muted-foreground))]">editor atribuído</p>
+                      </div>
+                      {loadingWorkload
+                        ? <span className="text-[10px] text-[hsl(var(--muted-foreground))]">verificando…</span>
+                        : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                            style={{ background: `${currentColor}22`, color: currentColor }}>
+                            {currentLbl}
+                          </span>
+                      }
                     </div>
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
-                      style={{ background: `${editorColor}22`, color: editorColor }}>
-                      {editorLbl}
-                    </span>
+                    {/* Projeção com a complexidade escolhida */}
+                    {!loadingWorkload && (
+                      <div className="flex items-center gap-1.5 text-[10px] text-[hsl(var(--muted-foreground))] border-t border-[hsl(var(--border))]/50 pt-2">
+                        <span>Após reabertura ({reopenComplexity === "low" ? "Baixa" : reopenComplexity === "medium" ? "Média" : "Alta"} +{addedWeight}pts):</span>
+                        <span className="font-semibold px-1.5 py-0.5 rounded-full"
+                          style={{ background: `${projColor}22`, color: projColor }}>
+                          {projLbl} ({projectedScore}pts)
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {editorBlocked && (
+                {projectedBlocked && !loadingWorkload && (
                   <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900 px-3 py-2.5">
                     <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
                     <p className="text-xs text-red-700 dark:text-red-300">
-                      <strong>{primaryEditor?.name.split(" ")[0]}</strong> está no limite de capacidade. Reatribua a tarefa antes de reabrir.
+                      Com esta complexidade, <strong>{primaryEditor?.name.split(" ")[0]}</strong> ficaria no limite ({projectedScore}pts). Reduza a complexidade ou reatribua a tarefa.
                     </p>
                   </div>
                 )}
@@ -1476,7 +1507,12 @@ export default function TasksOverview() {
             <Button variant="outline" onClick={() => setReopenTask(null)}>Cancelar</Button>
             <Button
               onClick={submitReopen}
-              disabled={sendingReopen || !reopenComment.trim() || (() => { const pe = reopenTask?.assignee ?? reopenTask?.editors?.[0]; return !!(pe && (workload.find(w => w.id === pe.id)?.score ?? 0) >= 12); })()}
+              disabled={sendingReopen || !reopenComment.trim() || loadingWorkload || (() => {
+                const pe = reopenTask?.assignee ?? reopenTask?.editors?.[0];
+                if (!pe) return false;
+                const cur = reopenWorkload.find(w => w.id === pe.id)?.score ?? 0;
+                return cur + (COMPLEXITY_WEIGHT[reopenComplexity] ?? 6) >= 12;
+              })()}
               className="bg-rose-600 hover:bg-rose-700">
               {sendingReopen ? "Reabrindo…" : "↩ Reabrir tarefa"}
             </Button>
