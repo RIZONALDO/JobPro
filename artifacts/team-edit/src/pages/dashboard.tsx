@@ -2065,10 +2065,10 @@ export default function Dashboard() {
 
       {/* ── COORDINATOR LAYOUT ──────────────────────────────────── */}
       {!isEditor && (
-        <div className="grid gap-5 md:grid-cols-3">
+        <div className="grid gap-5 md:grid-cols-4">
 
           {/* Slot 5 — order-last on mobile so tarefas appear first */}
-          <div className="order-last md:order-first md:col-span-2">
+          <div className="order-last md:order-first md:col-span-3">
             {(() => {
               const slot5 = cardPrefs.slot5 ?? "delivery_projection";
               const menu5 = <CardMenu value={slot5} options={SLOT5_OPTIONS} onChange={v => setCardPref("slot5", v)} />;
@@ -2084,7 +2084,7 @@ export default function Dashboard() {
           <WorkloadCard workload={workload} />
 
           {/* Tarefas */}
-          <div className="md:col-span-2 rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
+          <div className="md:col-span-3 rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
               <div className="flex items-center gap-2">
                 <ListTodo className="h-4 w-4 text-[hsl(var(--primary))]" />
