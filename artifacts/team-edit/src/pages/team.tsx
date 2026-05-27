@@ -60,12 +60,18 @@ const STATUS_BAR: Record<string, string> = {
   completed:   "bg-green-500",
 };
 
-// cinza=sem tarefas | verde=até 2 tarefas leves | laranja=transição | vermelho=acima da capacidade diária
+// cinza=disponível | verde=ocupado | laranja=muito ocupado | vermelho=no limite
 function scoreColor(score: number): string {
-  if (score === 0)  return "#94a3b8"; // cinza
-  if (score <= 6)   return "#22c55e"; // verde
-  if (score <= 8)   return "#f97316"; // laranja
-  return "#ef4444";                   // vermelho
+  if (score === 0)   return "#94a3b8"; // cinza  — Disponível
+  if (score <= 6)    return "#22c55e"; // verde  — Ocupado
+  if (score <= 11)   return "#f97316"; // laranja — Muito ocupado
+  return "#ef4444";                    // vermelho — No limite
+}
+function scoreLabel(score: number): string {
+  if (score === 0)   return "Disponível";
+  if (score <= 6)    return "Ocupado";
+  if (score <= 11)   return "Muito ocupado";
+  return "No limite";
 }
 
 const BATTERY_SEGS = 5;
@@ -260,9 +266,9 @@ export default function Team() {
                             {(() => { const u = users.find(x => x.id === editor.id); return u?.jobTitle ? <p className="text-xs text-[hsl(var(--muted-foreground))]/70 truncate">{u.jobTitle}</p> : null; })()}
                           </div>
 
-                          {/* Task count */}
-                          <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5 shrink-0">
-                            {editor.taskCount} tarefa{editor.taskCount !== 1 ? "s" : ""}
+                          {/* Status label */}
+                          <span className="text-[10px] font-medium shrink-0 px-2 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>
+                            {scoreLabel(editor.score)}
                           </span>
 
                           {/* Chevron */}
