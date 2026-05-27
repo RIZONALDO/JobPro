@@ -60,11 +60,11 @@ const STATUS_BAR: Record<string, string> = {
   completed:   "bg-green-500",
 };
 
-// cinza=sem tarefas | verde=dentro da capacidade | laranja=carga dupla | vermelho=sobrecarga
+// cinza=sem tarefas | verde=até 2 tarefas leves | laranja=transição | vermelho=acima da capacidade diária
 function scoreColor(score: number): string {
   if (score === 0)  return "#94a3b8"; // cinza
-  if (score <= 12)  return "#22c55e"; // verde
-  if (score <= 24)  return "#f97316"; // laranja
+  if (score <= 6)   return "#22c55e"; // verde
+  if (score <= 8)   return "#f97316"; // laranja
   return "#ef4444";                   // vermelho
 }
 
