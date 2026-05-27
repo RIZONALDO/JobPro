@@ -141,6 +141,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
       const filledSubtasks = subtasks.filter(s => s.title.trim());
       if (filledSubtasks.length < 1) { toast.error("Adicione ao menos uma subtarefa"); return; }
       if (publishStatus === "pending") {
+        if (!form.client?.trim()) { toast.error("Cliente obrigatório para publicar"); return; }
         if (!form.dueDateTime) { toast.error("Informe o prazo da multi-tarefa"); return; }
         const missing = filledSubtasks.filter(s => !s.editorId);
         if (missing.length > 0) { toast.error("Atribua um editor a cada subtarefa"); return; }
@@ -172,6 +173,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
     // ── Multi-task edit ────────────────────────────────────────────────────
     if (isMultiTask && editMode) {
+      if (isPublishing && !form.client?.trim()) { toast.error("Cliente obrigatório para publicar"); return; }
       if (isPublishing && !form.dueDateTime) { toast.error("Informe o prazo"); return; }
       const payload: Record<string, unknown> = {
         title: form.title, description: form.description || null,
@@ -192,8 +194,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
     }
 
     // ── Tarefa simples ─────────────────────────────────────────────────────
+    if (isPublishing && !form.client?.trim()) { toast.error("Cliente obrigatório para publicar"); return; }
     if (isPublishing && !form.dueDateTime) { toast.error("Informe o prazo"); return; }
-    if (publishStatus === "pending" && selectedEditorIds.length === 0) {
+    if (isPublishing && selectedEditorIds.length === 0) {
       toast.error("Atribua ao menos um editor para publicar"); return;
     }
     const dueDatePayload = form.dueDateTime ? form.dueDateTime
@@ -401,11 +404,13 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                           const score = wl?.score ?? 0;
                           const color = scoreColor(score);
                           const label = scoreLabel(score);
+                          const blocked = score >= 12;
                           return (
-                            <SelectItem key={e.id} value={String(e.id)}>
-                              <span className="flex items-center gap-2">
+                            <SelectItem key={e.id} value={String(e.id)} disabled={blocked}>
+                              <span className="flex items-center gap-2" style={{ opacity: blocked ? 0.45 : 1 }}>
                                 {e.name}
                                 <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>{label}</span>
+                                {blocked && <span className="text-[9px] text-red-500">bloqueado</span>}
                               </span>
                             </SelectItem>
                           );
