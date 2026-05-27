@@ -909,7 +909,7 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
       <div className="flex items-center justify-between px-4 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
         <div className="flex items-center gap-2">
           <Users className="h-4 w-4 text-[hsl(var(--primary))]" />
-          <span className="font-semibold text-sm">Carga dos editores</span>
+          <span className="font-semibold text-sm">Editores</span>
           <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{workload.length}</span>
         </div>
         <Link href="/team" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
