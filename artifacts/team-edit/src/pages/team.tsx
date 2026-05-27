@@ -249,6 +249,7 @@ export default function Team() {
                             <AvatarDisplay
                               name={editor.name}
                               avatarUrl={editor.avatarUrl}
+                              className="ring-0 shadow-none"
                             />
                           </div>
 

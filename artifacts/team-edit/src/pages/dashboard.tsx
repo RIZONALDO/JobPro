@@ -313,7 +313,7 @@ function CapacityCard({ workload, menu }: { workload: EditorWorkload[]; menu?: R
               <div key={e.id} className="flex items-center gap-2 min-w-0">
                 {/* Avatar com borda colorida */}
                 <div className="shrink-0 rounded-full" style={{ boxShadow: `0 0 0 3px ${color}` }}>
-                  <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl ?? null} size={24} />
+                  <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl ?? null} size={24} className="ring-0 shadow-none" />
                 </div>
                 {/* Nome colorido */}
                 <span className="text-[10px] font-semibold truncate shrink-0" style={{ color }}>
@@ -933,7 +933,7 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
                 onMouseLeave={() => setTip(null)}
               >
                 <div className="shrink-0 rounded-full" style={{ boxShadow: `0 0 0 3px ${color}` }}>
-                  <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={32} />
+                  <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={32} className="ring-0 shadow-none" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold truncate" style={{ color }}>{firstName}</p>
