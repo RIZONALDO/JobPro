@@ -250,18 +250,15 @@ export default function Team() {
                           onClick={() => toggleEditor(editor.id)}
                           className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/30 transition-colors text-left"
                         >
-                          {/* Avatar com borda colorida */}
-                          <div className="shrink-0 rounded-full" style={{ boxShadow: `0 0 0 3px ${color}` }}>
-                            <AvatarDisplay
-                              name={editor.name}
-                              avatarUrl={editor.avatarUrl}
-                              className="ring-0 shadow-none"
-                            />
-                          </div>
+                          <AvatarDisplay
+                            name={editor.name}
+                            avatarUrl={editor.avatarUrl}
+                            className="shrink-0"
+                          />
 
                           {/* Name + login */}
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold truncate" style={{ color }}>{editor.name}</p>
+                            <p className="text-sm font-semibold truncate">{editor.name}</p>
                             <p className="text-xs text-[hsl(var(--muted-foreground))] font-mono">@{editor.login}</p>
                             {(() => { const u = users.find(x => x.id === editor.id); return u?.jobTitle ? <p className="text-xs text-[hsl(var(--muted-foreground))]/70 truncate">{u.jobTitle}</p> : null; })()}
                           </div>

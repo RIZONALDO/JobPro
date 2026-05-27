@@ -317,12 +317,8 @@ function CapacityCard({ workload, menu }: { workload: EditorWorkload[]; menu?: R
             const { low, medium, high } = e.byComplexity;
             return (
               <div key={e.id} className="flex items-center gap-2 min-w-0">
-                {/* Avatar com borda colorida */}
-                <div className="shrink-0 rounded-full" style={{ boxShadow: `0 0 0 3px ${color}` }}>
-                  <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl ?? null} size={24} className="ring-0 shadow-none" />
-                </div>
-                {/* Nome colorido */}
-                <span className="text-[10px] font-semibold truncate shrink-0" style={{ color }}>
+                <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl ?? null} size={24} className="shrink-0" />
+                <span className="text-[10px] font-semibold truncate shrink-0">
                   {e.name.split(" ")[0]}
                 </span>
                 {/* Breakdown B · M · A */}
@@ -938,16 +934,14 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
                 onMouseMove={e => setTip(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null)}
                 onMouseLeave={() => setTip(null)}
               >
-                <div className="shrink-0 rounded-full" style={{ boxShadow: `0 0 0 3px ${color}` }}>
-                  <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={32} className="ring-0 shadow-none" />
-                </div>
+                <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={32} className="shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold truncate" style={{ color }}>{firstName}</p>
+                  <p className="text-xs font-semibold truncate">{firstName}</p>
                   <p className="text-[10px] text-[hsl(var(--muted-foreground))]">
                     {editor.taskCount === 0 ? "disponível" : `${editor.taskCount} tarefa${editor.taskCount !== 1 ? "s" : ""}`}
                   </p>
                 </div>
-                <span className="text-[9px] font-medium shrink-0 px-1.5 py-0.5 rounded-full" style={{ background: `${scoreColor(editor.score)}22`, color: scoreColor(editor.score) }}>
+                <span className="text-[9px] font-medium shrink-0 px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>
                   {scoreLabel(editor.score)}
                 </span>
               </div>

@@ -375,9 +375,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                           const label = scoreLabel(score);
                           return (
                             <div key={id} className="flex items-center gap-2.5 px-3 py-2 bg-[hsl(var(--muted))]/10 hover:bg-[hsl(var(--muted))]/20 transition-colors">
-                              <div className="shrink-0 rounded-full" style={{ boxShadow: `0 0 0 2.5px ${color}` }}>
-                                <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={28} className="ring-0 shadow-none" />
-                              </div>
+                              <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={28} className="shrink-0" />
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium truncate">{editor.name}</p>
                                 {idx === 0 && <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60">Principal</p>}
