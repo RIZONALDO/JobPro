@@ -1495,7 +1495,7 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
 });
 
 // ── Workload ──────────────────────────────────────────────────────────────────
-const COMPLEXITY_WEIGHT: Record<string, number> = { low: 1, medium: 3, high: 6 };
+const COMPLEXITY_WEIGHT: Record<string, number> = { low: 3, medium: 6, high: 12 };
 
 router.get("/workload", requireCoordinator, async (_req, res): Promise<void> => {
   const editors = await db
@@ -1516,7 +1516,7 @@ router.get("/workload", requireCoordinator, async (_req, res): Promise<void> => 
 
   const result = editors.map(editor => {
     const editorTasks = open.filter(t => t.assignedToId === editor.id);
-    const score = editorTasks.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 3), 0);
+    const score = editorTasks.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
     return {
       id: editor.id, name: editor.name, login: editor.login, avatarUrl: editor.avatarUrl ?? null,
       taskCount: editorTasks.length, score,
