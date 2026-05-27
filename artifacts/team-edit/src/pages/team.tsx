@@ -244,27 +244,20 @@ export default function Team() {
                           onClick={() => toggleEditor(editor.id)}
                           className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/30 transition-colors text-left"
                         >
-                          {/* Avatar */}
-                          <AvatarDisplay
-                            name={editor.name}
-                            avatarUrl={editor.avatarUrl}
-                          />
+                          {/* Avatar com borda colorida */}
+                          <div className="shrink-0 rounded-full p-[2px]" style={{ border: `2px solid ${color}`, backgroundColor: color + "22" }}>
+                            <AvatarDisplay
+                              name={editor.name}
+                              avatarUrl={editor.avatarUrl}
+                            />
+                          </div>
 
                           {/* Name + login */}
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{editor.name}</p>
+                            <p className="text-sm font-semibold truncate" style={{ color }}>{editor.name}</p>
                             <p className="text-xs text-[hsl(var(--muted-foreground))] font-mono">@{editor.login}</p>
                             {(() => { const u = users.find(x => x.id === editor.id); return u?.jobTitle ? <p className="text-xs text-[hsl(var(--muted-foreground))]/70 truncate">{u.jobTitle}</p> : null; })()}
                           </div>
-
-                          {/* Battery */}
-                          <Battery score={editor.score} maxScore={maxScore} color={color} />
-
-                          {/* Score numérico */}
-                          <span className="text-xs font-bold tabular-nums px-1.5 py-0.5 rounded-full shrink-0 hidden sm:inline"
-                            style={{ backgroundColor: color + "22", color }}>
-                            {editor.score > 0 ? `${editor.score}pt` : "—"}
-                          </span>
 
                           {/* Task count */}
                           <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5 shrink-0">

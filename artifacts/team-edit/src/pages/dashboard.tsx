@@ -307,36 +307,31 @@ function CapacityCard({ workload, menu }: { workload: EditorWorkload[]; menu?: R
       ) : (
         <div className="flex-1 min-h-0 flex flex-col justify-center gap-2 px-3.5 py-2">
           {sorted.map(e => {
-            const pct   = maxScore > 0 ? e.score / maxScore : 0;
             const color = scoreColor(e.score);
             const { low, medium, high } = e.byComplexity;
             return (
               <div key={e.id} className="flex items-center gap-2 min-w-0">
-                {/* Nome */}
-                <span className="text-[10px] font-medium w-14 truncate shrink-0 text-[hsl(var(--muted-foreground))]">
+                {/* Avatar com borda colorida */}
+                <div className="shrink-0 rounded-full p-[2px]" style={{ border: `2px solid ${color}`, backgroundColor: color + "22" }}>
+                  <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl ?? null} size={24} />
+                </div>
+                {/* Nome colorido */}
+                <span className="text-[10px] font-semibold truncate shrink-0" style={{ color }}>
                   {e.name.split(" ")[0]}
                 </span>
-                {/* Barra de ocupação */}
-                <div className="flex-1 h-2 rounded-full bg-[hsl(var(--muted))] overflow-hidden">
-                  <div className="h-2 rounded-full transition-all duration-500" style={{ width: `${pct * 100}%`, backgroundColor: color }} />
-                </div>
-                {/* Breakdown por complexidade: B · M · A */}
-                <span className="text-[9px] tabular-nums shrink-0 text-[hsl(var(--muted-foreground))]/70 w-[58px] text-right leading-none">
+                {/* Breakdown B · M · A */}
+                <span className="text-[9px] tabular-nums ml-auto shrink-0 text-[hsl(var(--muted-foreground))]/70 leading-none">
                   {low > 0 && <span>B:{low} </span>}
                   {medium > 0 && <span>M:{medium} </span>}
                   {high > 0 && <span>A:{high}</span>}
                   {low === 0 && medium === 0 && high === 0 && <span>—</span>}
-                </span>
-                {/* Score numérico */}
-                <span className="text-[10px] font-bold tabular-nums shrink-0 w-7 text-right" style={{ color }}>
-                  {e.score}
                 </span>
               </div>
             );
           })}
           {/* Legenda */}
           <div className="flex items-center gap-2 pt-0.5 border-t border-[hsl(var(--border))]/40">
-            <span className="text-[9px] text-[hsl(var(--muted-foreground))]/50">B = baixa · M = média · A = alta · score = peso total</span>
+            <span className="text-[9px] text-[hsl(var(--muted-foreground))]/50">B = baixa · M = média · A = alta</span>
           </div>
         </div>
       )}
@@ -937,15 +932,15 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
                 onMouseMove={e => setTip(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null)}
                 onMouseLeave={() => setTip(null)}
               >
-                <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={36} fallbackColor={color} />
-                <span className="text-xs font-medium w-16 shrink-0 truncate">{firstName}</span>
-                <div className="flex-1 flex items-center">
-                  <Battery score={editor.score} maxScore={maxScore} color={color} />
+                <div className="shrink-0 rounded-full p-[2px]" style={{ border: `2px solid ${color}`, backgroundColor: color + "22" }}>
+                  <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={32} />
                 </div>
-                <span className="text-xs font-bold tabular-nums shrink-0 px-1.5 py-0.5 rounded-full"
-                  style={{ backgroundColor: color + "22", color }}>
-                  {editor.score}
-                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold truncate" style={{ color }}>{firstName}</p>
+                  <p className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                    {editor.taskCount === 0 ? "disponível" : `${editor.taskCount} tarefa${editor.taskCount !== 1 ? "s" : ""}`}
+                  </p>
+                </div>
               </div>
             );
           })}
