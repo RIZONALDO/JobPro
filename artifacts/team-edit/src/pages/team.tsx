@@ -62,18 +62,10 @@ const STATUS_BAR: Record<string, string> = {
 
 function scoreColor(score: number): string {
   if (score === 0)  return "#94a3b8";
-  if (score <= 3)   return "#4ade80";
-  if (score <= 9)   return "#fbbf24";
-  if (score <= 18)  return "#f97316";
-  return "#ef4444";
-}
-
-function scoreLabel(score: number): string {
-  if (score === 0)  return "Livre";
-  if (score <= 3)   return "Tranquilo";
-  if (score <= 9)   return "Ocupado";
-  if (score <= 18)  return "Apertado";
-  return "No limite";
+  if (score <= 4)   return "#60a5fa";
+  if (score <= 10)  return "#3b82f6";
+  if (score <= 18)  return "#2563eb";
+  return "#1d4ed8";
 }
 
 const BATTERY_SEGS = 5;
@@ -268,10 +260,10 @@ export default function Team() {
                           {/* Battery */}
                           <Battery score={editor.score} maxScore={maxScore} color={color} />
 
-                          {/* Label */}
-                          <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full shrink-0 hidden sm:inline"
+                          {/* Score numérico */}
+                          <span className="text-xs font-bold tabular-nums px-1.5 py-0.5 rounded-full shrink-0 hidden sm:inline"
                             style={{ backgroundColor: color + "22", color }}>
-                            {scoreLabel(editor.score)}
+                            {editor.score > 0 ? `${editor.score}pt` : "—"}
                           </span>
 
                           {/* Task count */}
