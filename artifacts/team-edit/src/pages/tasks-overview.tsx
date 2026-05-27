@@ -446,7 +446,7 @@ export default function TasksOverview() {
       const addedWeight = COMPLEXITY_WEIGHT[reopenComplexity] ?? 6;
       const projected = currentScore + addedWeight;
       if (projected >= 12) {
-        toast.error(`${primaryEditor.name.split(" ")[0]} ficaria no limite (${projected}pts) com esta complexidade. Reduza a complexidade ou reatribua.`);
+        toast.error(`${primaryEditor.name.split(" ")[0]} ficaria no limite com esta complexidade. Reduza a complexidade ou reatribua.`);
         return;
       }
     }
@@ -1415,10 +1415,10 @@ export default function TasksOverview() {
                     {/* Projeção com a complexidade escolhida */}
                     {!loadingWorkload && (
                       <div className="flex items-center gap-1.5 text-[10px] text-[hsl(var(--muted-foreground))] border-t border-[hsl(var(--border))]/50 pt-2">
-                        <span>Após reabertura ({reopenComplexity === "low" ? "Baixa" : reopenComplexity === "medium" ? "Média" : "Alta"} +{addedWeight}pts):</span>
+                        <span>Após reabertura ({reopenComplexity === "low" ? "Baixa" : reopenComplexity === "medium" ? "Média" : "Alta"}):</span>
                         <span className="font-semibold px-1.5 py-0.5 rounded-full"
                           style={{ background: `${projColor}22`, color: projColor }}>
-                          {projLbl} ({projectedScore}pts)
+                          {projLbl}
                         </span>
                       </div>
                     )}
@@ -1429,7 +1429,7 @@ export default function TasksOverview() {
                   <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900 px-3 py-2.5">
                     <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
                     <p className="text-xs text-red-700 dark:text-red-300">
-                      Com esta complexidade, <strong>{primaryEditor?.name.split(" ")[0]}</strong> ficaria no limite ({projectedScore}pts). Reduza a complexidade ou reatribua a tarefa.
+                      Com esta complexidade, <strong>{primaryEditor?.name.split(" ")[0]}</strong> ficaria no limite. Reduza a complexidade ou reatribua a tarefa.
                     </p>
                   </div>
                 )}
