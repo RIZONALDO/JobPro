@@ -99,20 +99,13 @@ interface DeadlineOverview {
   urgentCount: number;
 }
 
+// Cor única neutra — intensidade cresce com a ocupação, sem conotação de bom/ruim
 function scoreColor(score: number): string {
   if (score === 0)  return "#94a3b8";
-  if (score <= 3)   return "#4ade80";
-  if (score <= 9)   return "#fbbf24";
-  if (score <= 18)  return "#f97316";
-  return "#ef4444";
-}
-
-function scoreLabel(score: number): string {
-  if (score === 0)  return "Livre";
-  if (score <= 3)   return "Tranquilo";
-  if (score <= 9)   return "Ocupado";
-  if (score <= 18)  return "Apertado";
-  return "No limite";
+  if (score <= 4)   return "#60a5fa";
+  if (score <= 10)  return "#3b82f6";
+  if (score <= 18)  return "#2563eb";
+  return "#1d4ed8";
 }
 
 const BATTERY_SEGS = 5;
@@ -266,7 +259,7 @@ function BottleneckCard({ allTasks, workload, menu }: {
   if (reviewCount >= 3) alerts.push({ text: `${reviewCount} tarefas aguardam aprovação`, color: "#f59e0b" });
   if (inRevision  >= 2) alerts.push({ text: `${inRevision} tarefas em revisão`,          color: "#f97316" });
   if (pendingCnt  >= 5) alerts.push({ text: `${pendingCnt} tarefas ainda pendentes`,      color: "#94a3b8" });
-  if (maxLoad && maxLoad.score > 15) alerts.push({ text: `${maxLoad.name.split(" ")[0]} sobrecarregado`, color: "#ef4444" });
+  if (maxLoad && maxLoad.score > 15) alerts.push({ text: `${maxLoad.name.split(" ")[0]} com maior volume de tarefas (score ${maxLoad.score})`, color: "#f97316" });
   if (alerts.length === 0) alerts.push({ text: "Nenhum gargalo identificado", color: "#22c55e" });
 
   return (
@@ -304,7 +297,7 @@ function CapacityCard({ workload, menu }: { workload: EditorWorkload[]; menu?: R
       <div className="flex items-center gap-2 px-3.5 py-2.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
           <Users className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
-          <span className="text-xs font-semibold">Termômetro de Capacidade</span>
+          <span className="text-xs font-semibold">Distribuição da Equipe</span>
         </div>
         {menu}
       </div>
@@ -313,24 +306,39 @@ function CapacityCard({ workload, menu }: { workload: EditorWorkload[]; menu?: R
           <p className="text-xs text-[hsl(var(--muted-foreground))]">Sem editores</p>
         </div>
       ) : (
-        <div className="flex-1 min-h-0 flex flex-col justify-center gap-1.5 px-3.5 py-2">
+        <div className="flex-1 min-h-0 flex flex-col justify-center gap-2 px-3.5 py-2">
           {sorted.map(e => {
             const pct   = maxScore > 0 ? e.score / maxScore : 0;
             const color = scoreColor(e.score);
+            const { low, medium, high } = e.byComplexity;
             return (
               <div key={e.id} className="flex items-center gap-2 min-w-0">
+                {/* Nome */}
                 <span className="text-[10px] font-medium w-14 truncate shrink-0 text-[hsl(var(--muted-foreground))]">
                   {e.name.split(" ")[0]}
                 </span>
-                <div className="flex-1 h-3 rounded-full bg-[hsl(var(--muted))] overflow-hidden">
-                  <div className="h-3 rounded-full transition-all duration-500" style={{ width: `${pct * 100}%`, backgroundColor: color }} />
+                {/* Barra de ocupação */}
+                <div className="flex-1 h-2 rounded-full bg-[hsl(var(--muted))] overflow-hidden">
+                  <div className="h-2 rounded-full transition-all duration-500" style={{ width: `${pct * 100}%`, backgroundColor: color }} />
                 </div>
-                <span className="text-[10px] font-bold shrink-0 w-14 text-right tabular-nums" style={{ color }}>
-                  {scoreLabel(e.score)}
+                {/* Breakdown por complexidade: B · M · A */}
+                <span className="text-[9px] tabular-nums shrink-0 text-[hsl(var(--muted-foreground))]/70 w-[58px] text-right leading-none">
+                  {low > 0 && <span>B:{low} </span>}
+                  {medium > 0 && <span>M:{medium} </span>}
+                  {high > 0 && <span>A:{high}</span>}
+                  {low === 0 && medium === 0 && high === 0 && <span>—</span>}
+                </span>
+                {/* Score numérico */}
+                <span className="text-[10px] font-bold tabular-nums shrink-0 w-7 text-right" style={{ color }}>
+                  {e.score}
                 </span>
               </div>
             );
           })}
+          {/* Legenda */}
+          <div className="flex items-center gap-2 pt-0.5 border-t border-[hsl(var(--border))]/40">
+            <span className="text-[9px] text-[hsl(var(--muted-foreground))]/50">B = baixa · M = média · A = alta · score = peso total</span>
+          </div>
         </div>
       )}
     </div>
