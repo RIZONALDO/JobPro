@@ -40,6 +40,19 @@ import { DateTimePicker } from "@/components/ui/date-time-picker";
 
 interface Person { id: number; name: string; login: string; avatarUrl?: string | null; }
 
+function scoreColor(score: number): string {
+  if (score === 0)  return "#94a3b8";
+  if (score <= 6)   return "#22c55e";
+  if (score <= 11)  return "#f97316";
+  return "#ef4444";
+}
+function scoreLabel(score: number): string {
+  if (score === 0)  return "Disponível";
+  if (score <= 6)   return "Ocupado";
+  if (score <= 11)  return "Muito ocupado";
+  return "No limite";
+}
+
 interface OverviewTask {
   id: number;
   taskCode?: string;
@@ -1355,8 +1368,11 @@ export default function TasksOverview() {
             const t = reopenTask;
             if (!t) return null;
             const primaryEditor = t.assignee ?? t.editors?.[0] ?? null;
-            const editorWl = primaryEditor ? workload.find(w => w.id === primaryEditor.id) : null;
-            const editorBlocked = !!(editorWl && editorWl.score >= 12);
+            const editorWl     = primaryEditor ? workload.find(w => w.id === primaryEditor.id) : null;
+            const editorScore  = editorWl?.score ?? 0;
+            const editorBlocked = editorScore >= 12;
+            const editorColor  = scoreColor(editorScore);
+            const editorLbl    = scoreLabel(editorScore);
             return (
               <div className="space-y-3 py-1">
                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -1371,12 +1387,10 @@ export default function TasksOverview() {
                       <p className="text-sm font-medium truncate">{primaryEditor.name}</p>
                       <p className="text-[10px] text-[hsl(var(--muted-foreground))]">editor atribuído</p>
                     </div>
-                    {editorWl && (
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
-                        style={{ background: editorBlocked ? "#ef444422" : "#f9731622", color: editorBlocked ? "#ef4444" : "#f97316" }}>
-                        {editorBlocked ? "No limite" : "Muito ocupado"}
-                      </span>
-                    )}
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                      style={{ background: `${editorColor}22`, color: editorColor }}>
+                      {editorLbl}
+                    </span>
                   </div>
                 )}
 
@@ -1462,7 +1476,7 @@ export default function TasksOverview() {
             <Button variant="outline" onClick={() => setReopenTask(null)}>Cancelar</Button>
             <Button
               onClick={submitReopen}
-              disabled={sendingReopen || !reopenComment.trim() || !!(reopenTask && (reopenTask.assignee ?? reopenTask.editors?.[0]) && workload.find(w => w.id === ((reopenTask.assignee ?? reopenTask.editors?.[0])!).id)?.score! >= 12)}
+              disabled={sendingReopen || !reopenComment.trim() || (() => { const pe = reopenTask?.assignee ?? reopenTask?.editors?.[0]; return !!(pe && (workload.find(w => w.id === pe.id)?.score ?? 0) >= 12); })()}
               className="bg-rose-600 hover:bg-rose-700">
               {sendingReopen ? "Reabrindo…" : "↩ Reabrir tarefa"}
             </Button>
