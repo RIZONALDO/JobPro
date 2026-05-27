@@ -307,7 +307,7 @@ export default function EditorTaskList() {
                       {t.title}
                     </span>
                     {t.revisionCount > 0 && (
-                      <span className="shrink-0 text-xs font-medium px-2 py-px border-l-2 border-amber-500 rounded-r bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 leading-none whitespace-nowrap">
+                      <span className="shrink-0 text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap leading-none">
                         {t.revisionCount} {t.revisionCount === 1 ? "alteração" : "alterações"}
                       </span>
                     )}
@@ -385,7 +385,7 @@ export default function EditorTaskList() {
                   )}
                   <p className="text-sm font-semibold truncate leading-snug">{t.title}</p>
                   {t.revisionCount > 0 && (
-                    <span className="shrink-0 text-xs font-medium px-2 py-px border-l-2 border-amber-500 rounded-r bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 leading-none whitespace-nowrap">
+                    <span className="shrink-0 text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap leading-none">
                       {t.revisionCount} {t.revisionCount === 1 ? "alteração" : "alterações"}
                     </span>
                   )}

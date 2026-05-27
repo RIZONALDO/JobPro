@@ -263,7 +263,7 @@ export default function MyTasks() {
         }}>
           <PriorityBadge priority={t.priority} />
           {t.revisionCount > 0 && (
-            <span style={{ fontSize: 9, fontWeight: 500, flexShrink: 0, padding: "1px 5px", borderLeft: "2px solid #f59e0b", borderRadius: "0 3px 3px 0", background: "#fffbeb", color: "#78350f", lineHeight: 1, whiteSpace: "nowrap" }}>
+            <span style={{ fontSize: 9, fontWeight: 400, flexShrink: 0, padding: "2px 6px", borderRadius: 99, border: "1px solid #fde68a", background: "#fffbeb", color: "#d97706", lineHeight: 1, whiteSpace: "nowrap" }}>
               {t.revisionCount} {t.revisionCount === 1 ? "alt." : "alts."}
             </span>
           )}

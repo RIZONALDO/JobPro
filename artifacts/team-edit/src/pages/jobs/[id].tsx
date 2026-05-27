@@ -377,7 +377,7 @@ export default function JobDetail() {
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
                     {t.revisionCount > 0 && (
-                      <span className="text-xs font-medium px-2 py-px border-l-2 border-amber-500 rounded-r bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 leading-none whitespace-nowrap">
+                      <span className="text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap leading-none">
                         {t.revisionCount} {t.revisionCount === 1 ? "alteração" : "alterações"}
                       </span>
                     )}
