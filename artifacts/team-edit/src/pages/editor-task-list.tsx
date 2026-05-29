@@ -35,6 +35,7 @@ interface Task {
   status: string;
   priority: string;
   dueDate: string | null;
+  startDate?: string | null;
   revisionCount: number;
   client: string | null;
   color: string;
@@ -45,6 +46,18 @@ interface Task {
   // multi-task
   taskType?: string;
   parentTask?: { id: number; title: string; taskCode?: string } | null;
+}
+
+// ── Helpers de agendamento ────────────────────────────────────────────────────
+const TAB_TODAY_STR = (() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+})();
+const ACTIVE_STATUSES = new Set(["pending", "in_progress", "in_revision", "review"]);
+function isTaskScheduled(t: Task): boolean {
+  const ref = t.startDate ?? (t.status === "pending" ? t.dueDate : null);
+  if (!ref) return false;
+  return ref.split("T")[0] > TAB_TODAY_STR;
 }
 
 
@@ -94,6 +107,7 @@ export default function EditorTaskList() {
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [viewTab,      setViewTab]      = useState<"today" | "scheduled" | "all">("today");
 
   const urlSearch = useSearch();
   const [highlighted, setHighlighted] = useState<number | null>(() => {
@@ -165,6 +179,21 @@ export default function EditorTaskList() {
     })
     .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
 
+  const tabFiltered = (() => {
+    if (viewTab === "today")     return filtered.filter(t => !isTaskScheduled(t) && ACTIVE_STATUSES.has(t.status));
+    if (viewTab === "scheduled") return filtered.filter(t => isTaskScheduled(t));
+    return filtered;
+  })();
+
+  const todayCount     = filtered.filter(t => !isTaskScheduled(t) && ACTIVE_STATUSES.has(t.status)).length;
+  const scheduledCount = filtered.filter(t => isTaskScheduled(t)).length;
+
+  const tabs = [
+    { key: "today"     as const, label: "Tarefas do dia", count: todayCount     },
+    { key: "scheduled" as const, label: "Agendadas",       count: scheduledCount },
+    { key: "all"       as const, label: "Todas",            count: filtered.length },
+  ];
+
   const hasFilter = search || filterStatus !== "all";
 
   if (loading) return (
@@ -216,12 +245,42 @@ export default function EditorTaskList() {
           </button>
         )}
         <span className="text-xs text-[hsl(var(--muted-foreground))] ml-auto shrink-0">
-          {filtered.length} tarefa{filtered.length !== 1 ? "s" : ""}
+          {tabFiltered.length} tarefa{tabFiltered.length !== 1 ? "s" : ""}
         </span>
       </div>
 
       {/* Table */}
       <div className="rounded-xl border bg-[hsl(var(--card))] card-float flex flex-col md:max-h-[calc(100vh-160px)] overflow-hidden">
+
+        {/* Tabs strip */}
+        <div className="flex shrink-0 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20 px-2">
+          {tabs.map(tab => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setViewTab(tab.key)}
+              className={[
+                "relative flex items-center gap-2 px-4 py-2.5 text-xs font-semibold transition-colors",
+                viewTab === tab.key
+                  ? "text-[hsl(var(--foreground))]"
+                  : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]",
+              ].join(" ")}
+            >
+              {tab.label}
+              <span className={[
+                "tabular-nums text-[10px] px-1.5 py-px rounded-full font-medium leading-none",
+                viewTab === tab.key
+                  ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
+                  : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]",
+              ].join(" ")}>
+                {tab.count}
+              </span>
+              {viewTab === tab.key && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[hsl(var(--primary))] rounded-full" />
+              )}
+            </button>
+          ))}
+        </div>
 
         {/* Header — desktop fixo */}
         <div className="hidden md:flex shrink-0 items-center py-2.5 pl-[3px] bg-[hsl(var(--muted))]/30 border-b text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
@@ -237,16 +296,16 @@ export default function EditorTaskList() {
         {/* Body scrollável */}
         <div className="flex-1 overflow-y-auto overscroll-contain">
 
-        {filtered.length === 0 ? (
+        {tabFiltered.length === 0 ? (
           <div className="py-16 text-center">
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              {search ? "Nenhuma tarefa encontrada." : "Nenhuma tarefa atribuída."}
+              {viewTab === "today" ? "Nenhuma tarefa para hoje." : viewTab === "scheduled" ? "Nenhuma tarefa agendada." : search ? "Nenhuma tarefa encontrada." : "Nenhuma tarefa atribuída."}
             </p>
           </div>
         ) : (
           <>
             {TASK_GROUPS.map(group => {
-              const groupTasks = filtered.filter(t => group.statuses.includes(t.status));
+              const groupTasks = tabFiltered.filter(t => group.statuses.includes(t.status));
               if (!groupTasks.length) return null;
               return (
                 <div key={group.key}>
