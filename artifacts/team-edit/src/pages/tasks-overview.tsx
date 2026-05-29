@@ -215,7 +215,7 @@ export default function TasksOverview() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   // View tabs: todas / tarefas do dia / agendadas
-  const [viewTab, setViewTab] = useState<"all" | "today" | "scheduled">("all");
+  const [viewTab, setViewTab] = useState<"all" | "today" | "scheduled">("today");
 
   // Create / Edit modal
   const [formOpen,   setFormOpen]   = useState(false);
