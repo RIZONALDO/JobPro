@@ -13,8 +13,9 @@ import { ClientCombobox } from "@/components/ui/client-combobox";
 import { SubtaskFormRow, type SubtaskRow } from "@/components/ui/subtask-form-row";
 import {
   FolderOpen, ExternalLink, AlertTriangle, X,
-  Layers, FileText, Plus, Users, Calendar, Tag, Link2, Send, Save, SquarePen,
+  Layers, FileText, Plus, Users, Calendar, Tag, Link2, Send, Save, SquarePen, CalendarDays,
 } from "lucide-react";
+import { EditorAvailabilityModal } from "@/components/editor-availability-modal";
 
 interface Editor { id: number; name: string; login: string; role: string; avatarUrl?: string | null; }
 interface EditorWorkload {
@@ -65,11 +66,11 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   const [editors, setEditors]         = useState<Editor[]>([]);
   const [workload, setWorkload]             = useState<EditorWorkload[]>([]);
   const [projectedWorkload, setProjectedWorkload] = useState<EditorWorkload[]>([]);
-  const [dueDateWorkload, setDueDateWorkload]     = useState<EditorWorkload[]>([]);
   const [selectedEditorIds, setSelectedEditorIds] = useState<number[]>([]);
   const [addEditorValue, setAddEditorValue]       = useState("none");
   const [isMultiTask, setIsMultiTask] = useState(false);
   const [subtasks, setSubtasks]       = useState<SubtaskRow[]>([newSubtaskRow(), newSubtaskRow()]);
+  const [availModalEditorId, setAvailModalEditorId] = useState<number | null>(null);
 
   useEffect(() => {
     apiFetch<Editor[]>("/api/users")
@@ -84,16 +85,6 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
     const date = form.startDateTime.split("T")[0];
     apiFetch<EditorWorkload[]>(`/api/workload?date=${date}`).then(setProjectedWorkload).catch(() => {});
   }, [form.startDateTime]);
-
-  // Quando dueDateTime muda (e é diferente de startDateTime e é futuro), busca carga no prazo
-  useEffect(() => {
-    const todayStr = new Date().toISOString().split("T")[0];
-    const dueStr   = form.dueDateTime ? form.dueDateTime.split("T")[0] : "";
-    const startStr = form.startDateTime ? form.startDateTime.split("T")[0] : "";
-    // Só faz call separado se dueDate é futuro e diferente de startDate
-    if (!dueStr || dueStr <= todayStr || dueStr === startStr) { setDueDateWorkload([]); return; }
-    apiFetch<EditorWorkload[]>(`/api/workload?date=${dueStr}`).then(setDueDateWorkload).catch(() => {});
-  }, [form.dueDateTime, form.startDateTime]);
 
   useEffect(() => {
     if (!open) return;
@@ -262,10 +253,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   const isFutureStart = !!form.startDateTime && form.startDateTime.split("T")[0] > todayIso;
   const activeWorkload = (isFutureStart && projectedWorkload.length > 0) ? projectedWorkload : workload;
   const primaryWorkload = activeWorkload.find(w => w.id === selectedEditorIds[0]);
-  // Verifica se há range completo (startDate + dueDate futuros e diferentes)
-  const hasRangeCheck = isFutureStart && dueDateWorkload.length > 0;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[calc(100vw-16px)] sm:max-w-[900px] flex flex-col max-h-[95vh] sm:max-h-[90vh] p-0 gap-0 overflow-hidden rounded-2xl border shadow-2xl [&>button]:hidden">
 
@@ -403,13 +393,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                           const editor = editors.find(e => e.id === id);
                           if (!editor) return null;
                           const wl = activeWorkload.find(w => w.id === id);
-                          const startScore = isFutureStart ? (wl?.projectedScore ?? wl?.score ?? 0) : (wl?.score ?? 0);
-                          const startColor = scoreColor(startScore);
-                          const startLabel = scoreLabel(startScore);
-                          const dueWl     = hasRangeCheck ? dueDateWorkload.find(w => w.id === id) : null;
-                          const dueScore  = dueWl ? (dueWl.projectedScore ?? dueWl.score ?? 0) : 0;
-                          const dueColor  = scoreColor(dueScore);
-                          const dueLabel  = scoreLabel(dueScore);
+                          const score = isFutureStart ? (wl?.projectedScore ?? wl?.score ?? 0) : (wl?.score ?? 0);
+                          const color = scoreColor(score);
+                          const label = scoreLabel(score);
                           return (
                             <div key={id} className="flex items-center gap-2.5 px-3 py-2 bg-[hsl(var(--muted))]/10 hover:bg-[hsl(var(--muted))]/20 transition-colors">
                               <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={28} className="shrink-0" />
@@ -418,26 +404,18 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                                 {idx === 0 && <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60">Principal</p>}
                               </div>
                               <div className="flex flex-col items-end shrink-0 gap-0.5">
-                                {hasRangeCheck ? (
-                                  <>
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-[9px] text-[hsl(var(--muted-foreground))]/50 font-medium">início</span>
-                                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${startColor}22`, color: startColor }}>{startLabel}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-[9px] text-[hsl(var(--muted-foreground))]/50 font-medium">prazo</span>
-                                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${dueColor}22`, color: dueColor }}>{dueLabel}</span>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${startColor}22`, color: startColor }}>{startLabel}</span>
-                                    {isFutureStart && wl?.scheduledScore != null && wl.scheduledScore > 0 && (
-                                      <span className="text-[9px] text-[hsl(var(--muted-foreground))]">+{wl.scheduledCount ?? 0} agendada(s)</span>
-                                    )}
-                                  </>
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>{label}</span>
+                                {isFutureStart && wl?.scheduledScore != null && wl.scheduledScore > 0 && (
+                                  <span className="text-[9px] text-[hsl(var(--muted-foreground))]">+{wl.scheduledCount ?? 0} agendada(s)</span>
                                 )}
                               </div>
+                              <button
+                                type="button"
+                                onClick={() => setAvailModalEditorId(id)}
+                                title="Ver disponibilidade no calendário"
+                                className="h-6 w-6 flex items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/10 transition-colors shrink-0">
+                                <CalendarDays className="h-3.5 w-3.5" />
+                              </button>
                               <button onClick={() => removeEditor(id)}
                                 className="h-6 w-6 flex items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors shrink-0">
                                 <X className="h-3.5 w-3.5" />
@@ -455,14 +433,10 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       <SelectContent>
                         <SelectItem value="none">{selectedEditorIds.length === 0 ? "Ninguém" : "+ Adicionar editor"}</SelectItem>
                         {availableEditors.map(e => {
-                          const wl         = activeWorkload.find(w => w.id === e.id);
-                          const startScore = isFutureStart ? (wl?.projectedScore ?? wl?.score ?? 0) : (wl?.score ?? 0);
-                          const dueWl      = hasRangeCheck ? dueDateWorkload.find(w => w.id === e.id) : null;
-                          const dueScore   = dueWl ? (dueWl.projectedScore ?? dueWl.score ?? 0) : 0;
-                          // Usa o pior score do período para cor e bloqueio
-                          const worstScore = hasRangeCheck ? Math.max(startScore, dueScore) : startScore;
-                          const color      = scoreColor(worstScore);
-                          const label      = scoreLabel(worstScore);
+                          const wl    = activeWorkload.find(w => w.id === e.id);
+                          const score = isFutureStart ? (wl?.projectedScore ?? wl?.score ?? 0) : (wl?.score ?? 0);
+                          const color = scoreColor(score);
+                          const label = scoreLabel(score);
                           return (
                             <SelectItem key={e.id} value={String(e.id)}>
                               <span className="flex items-center gap-2">
@@ -479,29 +453,13 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                     </Select>
 
                     {primaryWorkload && (() => {
-                      const startScore = isFutureStart ? (primaryWorkload.projectedScore ?? primaryWorkload.score) : primaryWorkload.score;
-                      const dueWl      = hasRangeCheck ? dueDateWorkload.find(w => w.id === selectedEditorIds[0]) : null;
-                      const dueScore   = dueWl ? (dueWl.projectedScore ?? dueWl.score ?? 0) : 0;
-                      const worstScore = hasRangeCheck ? Math.max(startScore, dueScore) : startScore;
-                      if (worstScore <= 6) return null;
-                      const isCritical = worstScore >= 12;
+                      const score = isFutureStart ? (primaryWorkload.projectedScore ?? primaryWorkload.score) : primaryWorkload.score;
+                      if (score <= 6) return null;
+                      const isCritical = score >= 12;
                       const bg   = isCritical ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900" : "bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-900";
                       const icon = isCritical ? "text-red-500" : "text-orange-500";
                       const text = isCritical ? "text-red-800 dark:text-red-300" : "text-orange-800 dark:text-orange-300";
-                      // Mensagem específica sobre onde está o problema
-                      let msg = "";
-                      if (hasRangeCheck && dueScore > startScore && dueScore > 6) {
-                        msg = isCritical
-                          ? "Editor ficará no limite no prazo. No início ainda está ok."
-                          : "Editor ficará muito ocupado no prazo. No início ainda está ok.";
-                      } else if (hasRangeCheck && startScore > 6) {
-                        const dueLabel2 = scoreLabel(dueScore);
-                        msg = isCritical
-                          ? `Editor no limite no início e no prazo (${dueLabel2}).`
-                          : `Editor muito ocupado no início. No prazo: ${dueLabel2}.`;
-                      } else {
-                        msg = isCritical ? "Editor no limite de capacidade!" : "Editor muito ocupado.";
-                      }
+                      const msg  = isCritical ? "Editor no limite de capacidade!" : "Editor muito ocupado.";
                       return (
                         <div className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${bg}`}>
                           <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${icon}`} />
@@ -541,9 +499,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                   />
                   {isFutureStart && (
                     <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-snug">
-                      {hasRangeCheck
-                        ? "Carga verificada no início e no prazo do período"
-                        : "Carga projetada para a data de início"}
+                      Carga projetada para a data de início
                     </p>
                   )}
                   <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 leading-snug">
@@ -641,5 +597,12 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
       </DialogContent>
     </Dialog>
+
+    <EditorAvailabilityModal
+      open={availModalEditorId !== null}
+      onOpenChange={v => { if (!v) setAvailModalEditorId(null); }}
+      editor={availModalEditorId !== null ? (editors.find(e => e.id === availModalEditorId) ?? null) : null}
+    />
+  </>
   );
 }

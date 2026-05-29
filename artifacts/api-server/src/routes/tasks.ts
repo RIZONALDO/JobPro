@@ -1591,6 +1591,58 @@ router.get("/workload", requireCoordinator, async (req, res): Promise<void> => {
   res.json(result);
 });
 
+// ── Workload calendar — per-day score for one editor ─────────────────────────
+router.get("/workload/calendar", requireCoordinator, async (req, res): Promise<void> => {
+  const editorId = parseInt(req.query.editorId as string, 10);
+  const monthStr = typeof req.query.month === "string" ? req.query.month : ""; // "YYYY-MM"
+  if (!editorId || !monthStr || !/^\d{4}-\d{2}$/.test(monthStr)) {
+    res.status(400).json({ error: "editorId e month (YYYY-MM) são obrigatórios" });
+    return;
+  }
+
+  // Fetch all non-terminal tasks for this editor
+  const tasks = await db
+    .select({
+      id: tasksTable.id,
+      complexity: tasksTable.complexity,
+      startDate: tasksTable.startDate,
+      dueDate: tasksTable.dueDate,
+    })
+    .from(tasksTable)
+    .where(and(
+      eq(tasksTable.assignedToId, editorId),
+      ne(tasksTable.status, "completed"),
+      ne(tasksTable.status, "cancelled"),
+      ne(tasksTable.status, "paused"),
+      ne(tasksTable.status, "rascunho"),
+      ne(tasksTable.taskType, "multi_task"),
+    ));
+
+  // Generate per-day data for the month
+  const [year, month] = monthStr.split("-").map(Number);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const days: { date: string; score: number; count: number }[] = [];
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dayStr = `${monthStr}-${String(d).padStart(2, "0")}`;
+    const dayEnd = new Date(dayStr + "T23:59:59");
+
+    const active = tasks.filter(t => {
+      // Task is active on this day if:
+      // startDate <= day (or null = already started)
+      const started = !t.startDate || new Date(t.startDate) <= dayEnd;
+      // dueDate >= day (or null = no deadline = always counts)
+      const notDone = !t.dueDate || new Date(t.dueDate) >= new Date(dayStr + "T00:00:00");
+      return started && notDone;
+    });
+
+    const score = active.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
+    days.push({ date: dayStr, score, count: active.length });
+  }
+
+  res.json(days);
+});
+
 // ── Dashboard extras ──────────────────────────────────────────────────────────
 router.get("/dashboard-extras", requireAuth, async (_req, res): Promise<void> => {
   const todayStr = new Date().toISOString().split("T")[0];
