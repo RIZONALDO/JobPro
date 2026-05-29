@@ -150,7 +150,23 @@ export function DateRangePicker({
   }, [open]);
 
   function handleSelect(r: DateRange | undefined) {
-    setRange(r ?? {});
+    // Quando o displayRange tem from+to (por causa do hover preview),
+    // o react-day-picker entende que é um range completo e "reseta" ao próximo clique,
+    // retornando { from: clickedDate, to: undefined }.
+    // Detectamos esse caso e reconstruímos o range correto.
+    if (range.from && !range.to && r?.from && !r?.to) {
+      const d1 = range.from;
+      const d2 = r.from;
+      if (format(d1, "yyyy-MM-dd") === format(d2, "yyyy-MM-dd")) {
+        // Mesma data → seleção de data única
+        setRange({ from: d1, to: d1 });
+      } else {
+        const [from, to] = d1 <= d2 ? [d1, d2] : [d2, d1];
+        setRange({ from, to });
+      }
+    } else {
+      setRange(r ?? {});
+    }
     setHoveredDay(undefined);
   }
 
@@ -299,14 +315,18 @@ export function DateRangePicker({
               className="p-2"
               style={{
                 "--rdp-accent-color": color,
-                "--rdp-accent-background-color": hexRgba(color, 0.15),
-                "--rdp-today-color": color,
-                // Fix 1: variáveis para o range highlight funcionar (hover preview)
-                "--rdp-range_middle-background-color": hexRgba(color, 0.12),
+                // Fundo do range (meio do intervalo) — mais visível
+                "--rdp-accent-background-color": hexRgba(color, 0.18),
+                "--rdp-range_middle-background-color": hexRgba(color, 0.18),
+                // Cores das extremidades (start / end)
                 "--rdp-range_start-date-background-color": color,
                 "--rdp-range_end-date-background-color": color,
                 "--rdp-range_start-color": "#ffffff",
                 "--rdp-range_end-color": "#ffffff",
+                "--rdp-range_middle-color": color,
+                // Hoje
+                "--rdp-today-color": color,
+                // Tamanhos
                 "--rdp-day-height": "30px",
                 "--rdp-day-width": "30px",
                 "--rdp-day_button-height": "28px",

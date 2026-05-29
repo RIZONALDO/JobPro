@@ -34,7 +34,7 @@ import { SubtaskProgressBar } from "@/components/ui/subtask-progress-bar";
 import { RefreshCw, UserPlus } from "lucide-react";
 import { fmtClosedCycle, fmtPrazoWeek, fmtDate } from "@/lib/utils";
 import { PrazoCell } from "@/components/prazo-cell";
-import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1417,10 +1417,12 @@ export default function TasksOverview() {
             )}
             <div className="space-y-1.5">
               <Label>Novo prazo</Label>
-              <DateTimePicker
-                value={changeDueDateValue}
-                onChange={setChangeDueDateValue}
-                withTime
+              <DateRangePicker
+                startDate=""
+                endDate={changeDueDateValue}
+                onChangeStart={() => {}}
+                onChangeEnd={setChangeDueDateValue}
+                withEndTime
                 placeholder="Selecionar novo prazo…"
               />
             </div>
@@ -1542,12 +1544,13 @@ export default function TasksOverview() {
                   <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
                     Novo prazo <span className="font-normal normal-case">(opcional)</span>
                   </Label>
-                  <DateTimePicker
-                    value={reopenDueDate}
-                    onChange={setReopenDueDate}
-                    withTime
+                  <DateRangePicker
+                    startDate=""
+                    endDate={reopenDueDate}
+                    onChangeStart={() => {}}
+                    onChangeEnd={setReopenDueDate}
+                    withEndTime
                     placeholder="Selecionar novo prazo…"
-                    min={new Date().toISOString().split("T")[0]}
                   />
                 </div>
 
