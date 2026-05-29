@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { DayPicker, DateRange } from "react-day-picker";
 import { ptBR } from "date-fns/locale";
-import { format, parse, isValid } from "date-fns";
+import { format, parse, isValid, isBefore, startOfDay } from "date-fns";
 import { Calendar, Clock, X, ChevronLeft, ChevronUp, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSettings } from "@/contexts/SettingsContext";
@@ -100,9 +100,26 @@ export function DateRangePicker({
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"calendar" | "time">("calendar");
 
+  // Hoje sem horas — para bloquear datas passadas
+  const today = useMemo(() => startOfDay(new Date()), []);
+
   // Draft state — só commitado ao clicar Aplicar
   const [range, setRange] = useState<DateRange>({});
   const [time, setTime] = useState({ h: 18, m: 0 });
+
+  // Dia sob o cursor — para preview animado do range
+  const [hoveredDay, setHoveredDay] = useState<Date | undefined>();
+
+  // Range exibido no calendário: inclui preview hover quando só "from" está selecionado
+  const displayRange = useMemo((): DateRange => {
+    if (range.from && !range.to && hoveredDay) {
+      const [a, b] = range.from <= hoveredDay
+        ? [range.from, hoveredDay]
+        : [hoveredDay, range.from];
+      return { from: a, to: b };
+    }
+    return range;
+  }, [range, hoveredDay]);
 
   // Sync draft com props ao abrir
   useEffect(() => {
@@ -110,12 +127,18 @@ export function DateRangePicker({
     const from = startDate ? parse(startDate, "yyyy-MM-dd", new Date()) : undefined;
     const toStr = endDate ? endDate.split("T")[0] : undefined;
     const to = toStr ? parse(toStr, "yyyy-MM-dd", new Date()) : undefined;
+
+    const validFrom = from && isValid(from) ? from : undefined;
+    const validTo   = to   && isValid(to)   ? to   : undefined;
+
     setRange({
-      from: from && isValid(from) ? from : undefined,
-      to: to && isValid(to) ? to : undefined,
+      // Fix 3: data única → from = to, para que o DayPicker destaque o dia corretamente
+      from: validFrom ?? validTo,
+      to: validTo,
     });
     setTime(parseEndTime(endDate));
     setStep("calendar");
+    setHoveredDay(undefined);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reseta step após fechar
@@ -128,6 +151,7 @@ export function DateRangePicker({
 
   function handleSelect(r: DateRange | undefined) {
     setRange(r ?? {});
+    setHoveredDay(undefined);
   }
 
   function adjustTime(type: "h" | "m", delta: number) {
@@ -154,7 +178,7 @@ export function DateRangePicker({
       return;
     }
 
-    // Se from === to (mesma data clicada duas vezes), trata como data única
+    // Se from === to (mesma data), trata como data única
     const sameDay =
       effectiveFrom && effectiveTo &&
       format(effectiveFrom, "yyyy-MM-dd") === format(effectiveTo, "yyyy-MM-dd");
@@ -265,16 +289,24 @@ export function DateRangePicker({
           <div style={{ width: PANEL_W, flexShrink: 0 }} className="flex flex-col">
             <DayPicker
               mode="range"
-              selected={range}
+              selected={displayRange}
               onSelect={handleSelect}
               locale={ptBR}
               weekStartsOn={1}
               showOutsideDays
+              // Fix 2: bloquear datas passadas (antes de hoje)
+              disabled={{ before: today }}
               className="p-2"
               style={{
                 "--rdp-accent-color": color,
                 "--rdp-accent-background-color": hexRgba(color, 0.15),
                 "--rdp-today-color": color,
+                // Fix 1: variáveis para o range highlight funcionar (hover preview)
+                "--rdp-range_middle-background-color": hexRgba(color, 0.12),
+                "--rdp-range_start-date-background-color": color,
+                "--rdp-range_end-date-background-color": color,
+                "--rdp-range_start-color": "#ffffff",
+                "--rdp-range_end-color": "#ffffff",
                 "--rdp-day-height": "30px",
                 "--rdp-day-width": "30px",
                 "--rdp-day_button-height": "28px",
@@ -283,7 +315,14 @@ export function DateRangePicker({
                 "--rdp-nav-height": "2rem",
                 "--rdp-nav_button-height": "1.75rem",
                 "--rdp-nav_button-width": "1.75rem",
+                "--rdp-disabled-opacity": "0.25",
               } as React.CSSProperties}
+              // Fix 1: rastrear hover para exibir preview animado do range
+              onDayMouseEnter={(day) => {
+                if (isBefore(day, today)) return;
+                setHoveredDay(day);
+              }}
+              onDayMouseLeave={() => setHoveredDay(undefined)}
             />
 
             {/* Hint de seleção */}
