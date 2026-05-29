@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { ClientCombobox } from "@/components/ui/client-combobox";
 import { SubtaskFormRow, type SubtaskRow } from "@/components/ui/subtask-form-row";
@@ -472,25 +472,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                   <ClientCombobox value={form.client} onChange={v => f({ client: v })} />
                 </div>
 
-                {/* Início */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <Calendar className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
-                    <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
-                      Início
-                      <span className="text-[hsl(var(--muted-foreground))] font-normal normal-case ml-1 text-[10px]">(opcional)</span>
-                    </Label>
-                  </div>
-                  <DateTimePicker value={form.startDateTime} onChange={v => f({ startDateTime: v })}
-                    withTime placeholder="Quando começa…" />
-                  {isFutureStart && (
-                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-snug">
-                      Carga projetada para a data de início
-                    </p>
-                  )}
-                </div>
-
-                {/* Prazo */}
+                {/* Prazo (+ Início opcional) */}
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-1.5">
                     <Calendar className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
@@ -499,8 +481,22 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       {isMultiTask && !editMode && <span className="text-[hsl(var(--muted-foreground))] font-normal normal-case ml-1 text-[10px]">(opcional)</span>}
                     </Label>
                   </div>
-                  <DateTimePicker value={form.dueDateTime} onChange={v => f({ dueDateTime: v })}
-                    withTime min={form.startDateTime ? form.startDateTime.split("T")[0] : new Date().toISOString().split("T")[0]} placeholder="Selecionar…" />
+                  <DateRangePicker
+                    startDate={form.startDateTime}
+                    endDate={form.dueDateTime}
+                    onChangeStart={v => f({ startDateTime: v })}
+                    onChangeEnd={v => f({ dueDateTime: v })}
+                    withEndTime
+                    placeholder="Selecionar início → prazo…"
+                  />
+                  {isFutureStart && (
+                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-snug">
+                      Carga projetada para a data de início
+                    </p>
+                  )}
+                  <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 leading-snug">
+                    Clique uma vez para só o prazo, ou escolha início → prazo
+                  </p>
                 </div>
 
                 {/* Prioridade */}
