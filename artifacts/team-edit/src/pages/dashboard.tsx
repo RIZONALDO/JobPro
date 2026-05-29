@@ -952,9 +952,9 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
                   <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>
                     {scoreLabel(editor.score)}
                   </span>
-                  {(editor.scheduledScore ?? 0) > 0 && (
+                  {(editor.scheduledCount ?? 0) > 0 && (
                     <span className="text-[8px] text-sky-500 leading-none">
-                      +{editor.scheduledScore}pts agend.
+                      +{editor.scheduledCount} agend.
                     </span>
                   )}
                 </div>
@@ -970,9 +970,9 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
           style={{ left: tip.x + 14, top: tip.y - 8 }}
         >
           <p className="font-semibold">{tip.editor.name}</p>
-          <p className="text-[hsl(var(--muted-foreground))]">{tip.editor.taskCount} tarefa(s) ativa(s) · score {tip.editor.score}pts</p>
+          <p className="text-[hsl(var(--muted-foreground))]">{tip.editor.taskCount} tarefa(s) ativa(s) · {scoreLabel(tip.editor.score)}</p>
           {(tip.editor.scheduledCount ?? 0) > 0 && (
-            <p className="text-sky-500">{tip.editor.scheduledCount} agendada(s) · +{tip.editor.scheduledScore}pts → projetado {tip.editor.projectedScore}pts</p>
+            <p className="text-sky-500">{tip.editor.scheduledCount} agendada(s) · projetado: {scoreLabel(tip.editor.projectedScore ?? tip.editor.score)}</p>
           )}
           {((tip.editor.byComplexity?.high   ?? 0) > 0) && <p className="text-[hsl(var(--muted-foreground))]">Alta: {tip.editor.byComplexity.high}</p>}
           {((tip.editor.byComplexity?.medium ?? 0) > 0) && <p className="text-[hsl(var(--muted-foreground))]">Média: {tip.editor.byComplexity.medium}</p>}

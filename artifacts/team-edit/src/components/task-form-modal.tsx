@@ -433,7 +433,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                                   <>
                                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${startColor}22`, color: startColor }}>{startLabel}</span>
                                     {isFutureStart && wl?.scheduledScore != null && wl.scheduledScore > 0 && (
-                                      <span className="text-[9px] text-[hsl(var(--muted-foreground))]">+{wl.scheduledScore}pts agendados</span>
+                                      <span className="text-[9px] text-[hsl(var(--muted-foreground))]">+{wl.scheduledCount ?? 0} agendada(s)</span>
                                     )}
                                   </>
                                 )}
@@ -494,12 +494,13 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       let msg = "";
                       if (hasRangeCheck && dueScore > startScore && dueScore > 6) {
                         msg = isCritical
-                          ? `Editor ficará no limite no prazo (${dueScore}pts). No início: ${startScore}pts.`
-                          : `Editor ficará muito ocupado no prazo (${dueScore}pts). No início: ${startScore}pts.`;
+                          ? "Editor ficará no limite no prazo. No início ainda está ok."
+                          : "Editor ficará muito ocupado no prazo. No início ainda está ok.";
                       } else if (hasRangeCheck && startScore > 6) {
+                        const dueLabel2 = scoreLabel(dueScore);
                         msg = isCritical
-                          ? `Editor no limite no início (${startScore}pts) e no prazo (${dueScore}pts).`
-                          : `Editor muito ocupado no início (${startScore}pts).`;
+                          ? `Editor no limite no início e no prazo (${dueLabel2}).`
+                          : `Editor muito ocupado no início. No prazo: ${dueLabel2}.`;
                       } else {
                         msg = isCritical ? "Editor no limite de capacidade!" : "Editor muito ocupado.";
                       }
