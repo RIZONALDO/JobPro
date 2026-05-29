@@ -214,6 +214,9 @@ export default function TasksOverview() {
   // Mobile filter panel toggle
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
+  // View tabs: todas / tarefas do dia / agendadas
+  const [viewTab, setViewTab] = useState<"all" | "today" | "scheduled">("all");
+
   // Create / Edit modal
   const [formOpen,   setFormOpen]   = useState(false);
   const [editTaskId, setEditTaskId] = useState<number | null>(null);
@@ -389,6 +392,17 @@ export default function TasksOverview() {
     });
   }, [filtered, sortKey, sortDir]);
 
+
+  // ── Tab filtering ─────────────────────────────────────────────────────────
+
+  const TAB_TODAY_STR = new Date().toISOString().split("T")[0];
+  const tabFiltered = useMemo(() => {
+    if (viewTab === "today")
+      return sorted.filter(t => !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR);
+    if (viewTab === "scheduled")
+      return sorted.filter(t => !!t.startDate && t.startDate.split("T")[0] > TAB_TODAY_STR);
+    return sorted;
+  }, [sorted, viewTab]);
 
   // ── Summary stats ─────────────────────────────────────────────────────────
 
@@ -596,8 +610,8 @@ export default function TasksOverview() {
         )}
 
         <p className="text-xs text-[hsl(var(--muted-foreground))] px-0.5">
-          {filtered.length} tarefa{filtered.length !== 1 ? "s" : ""}
-          {hasFilter ? " encontrada" + (filtered.length !== 1 ? "s" : "") : ""}
+          {tabFiltered.length} tarefa{tabFiltered.length !== 1 ? "s" : ""}
+          {hasFilter ? " encontrada" + (tabFiltered.length !== 1 ? "s" : "") : ""}
         </p>
       </div>
 
@@ -659,8 +673,36 @@ export default function TasksOverview() {
           </Button>
         )}
         <span className={`text-xs text-[hsl(var(--muted-foreground))] shrink-0 ${!canCreate ? "ml-auto" : ""}`}>
-          {filtered.length} tarefa{filtered.length !== 1 ? "s" : ""}
+          {tabFiltered.length} tarefa{tabFiltered.length !== 1 ? "s" : ""}
         </span>
+      </div>
+
+      {/* ── View tabs ────────────────────────────────────────────────────── */}
+      <div className="flex gap-1 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm p-1">
+        {([
+          { key: "all",       label: "Todas",           count: sorted.length },
+          { key: "today",     label: "Tarefas do dia",  count: sorted.filter(t => !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR).length },
+          { key: "scheduled", label: "Agendadas",       count: sorted.filter(t => !!t.startDate && t.startDate.split("T")[0] > TAB_TODAY_STR).length },
+        ] as const).map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setViewTab(tab.key)}
+            className={`flex items-center gap-2 flex-1 justify-center px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              viewTab === tab.key
+                ? "bg-[hsl(var(--primary))] text-white shadow-sm"
+                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/40"
+            }`}
+          >
+            {tab.label}
+            <span className={`tabular-nums text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+              viewTab === tab.key
+                ? "bg-white/20 text-white"
+                : "bg-[hsl(var(--muted))]/60 text-[hsl(var(--muted-foreground))]"
+            }`}>
+              {tab.count}
+            </span>
+          </button>
+        ))}
       </div>
 
       {/* ── Table ────────────────────────────────────────────────────────── */}
@@ -719,16 +761,18 @@ export default function TasksOverview() {
             ))}
           </div>
 
-        ) : sorted.length === 0 ? (
+        ) : tabFiltered.length === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center gap-3 py-16 text-center">
             <div className="h-14 w-14 rounded-2xl bg-[hsl(var(--muted))]/40 flex items-center justify-center">
               <ClipboardList className="h-7 w-7 text-[hsl(var(--muted-foreground))]/30" />
             </div>
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              {hasFilter ? "Nenhuma tarefa corresponde aos filtros." : "Nenhuma tarefa encontrada."}
+              {viewTab === "scheduled" ? "Nenhuma tarefa agendada para o futuro." :
+               viewTab === "today" ? "Nenhuma tarefa ativa para hoje." :
+               hasFilter ? "Nenhuma tarefa corresponde aos filtros." : "Nenhuma tarefa encontrada."}
             </p>
-            {hasFilter && (
+            {hasFilter && viewTab === "all" && (
               <Button variant="outline" size="sm" onClick={clearFilters}>Limpar filtros</Button>
             )}
           </div>
@@ -736,7 +780,7 @@ export default function TasksOverview() {
         ) : (
           <div>
             {TASK_GROUPS.map(group => {
-              const groupTasks = sorted.filter(t => group.statuses.includes(t.status));
+              const groupTasks = tabFiltered.filter(t => group.statuses.includes(t.status));
               if (!groupTasks.length) return null;
               return (
                 <div key={group.key}>

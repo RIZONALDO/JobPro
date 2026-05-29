@@ -47,7 +47,6 @@ interface Task {
 }
 
 const KANBAN_COLS = [
-  { key: "scheduled",   label: "Agendadas",    color: "#0ea5e9" }, // virtual — tarefas com startDate futuro
   { key: "pending",     label: "Pendente",     color: "#94a3b8" },
   { key: "in_progress", label: "Em edição",    color: "#3b82f6" },
   { key: "in_revision", label: "Em alteração", color: "#f97316" },
@@ -133,6 +132,12 @@ export default function MyTasks() {
 
   const isEditor = user?.role === "editor";
   const { openTask } = useTaskModal();
+
+  // Tabs: pauta do dia (kanban ativo) | agendadas (lista futura)
+  const [activeTab, setActiveTab] = useState<"today" | "scheduled">("today");
+  const scheduledTasks = tasks
+    .filter(t => isScheduled(t))
+    .sort((a, b) => (a.startDate ?? "").localeCompare(b.startDate ?? ""));
 
   /* ── Kanban Card ─────────────────────────────────────────────── */
   const KanbanCard = ({ t, col }: { t: Task; col: typeof KANBAN_COLS[0] }) => {
@@ -314,82 +319,159 @@ export default function MyTasks() {
   if (loading) return <div className="text-[hsl(var(--muted-foreground))] text-sm p-4">Carregando...</div>;
 
   return (
-    <div className="p-2 sm:p-4">
+    <div className="p-2 sm:p-4 flex flex-col gap-3">
 
-      {/* ── Board ─────────────────────────────────────────────────── */}
-      <motion.div
-        variants={staggerContainer} initial="initial" animate="animate"
-        style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
-        gap: 8,
-        alignItems: "start",
-        paddingBottom: 16,
-      }}>
-        {KANBAN_COLS.map(col => {
-          // Coluna "scheduled" = tarefas pendentes com startDate no futuro
-          // Coluna "pending" = pendentes sem startDate futuro
-          const colTasks = col.key === "scheduled"
-            ? tasks.filter(t => isScheduled(t))
-            : col.key === "pending"
+      {/* ── Tabs ─────────────────────────────────────────────────── */}
+      <div className="flex gap-1 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm p-1">
+        {([
+          {
+            key: "today" as const,
+            label: "Pauta do dia",
+            count: tasks.filter(t => !isScheduled(t) && !["completed","cancelled"].includes(t.status)).length,
+          },
+          {
+            key: "scheduled" as const,
+            label: "Agendadas",
+            count: scheduledTasks.length,
+          },
+        ]).map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`flex items-center gap-2 flex-1 justify-center px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === tab.key
+                ? "bg-[hsl(var(--primary))] text-white shadow-sm"
+                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/40"
+            }`}
+          >
+            {tab.label}
+            <span className={`tabular-nums text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+              activeTab === tab.key
+                ? "bg-white/20 text-white"
+                : "bg-[hsl(var(--muted))]/60 text-[hsl(var(--muted-foreground))]"
+            }`}>
+              {tab.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "today" ? (
+        /* ── Board — Pauta do dia ──────────────────────────────── */
+        <motion.div
+          variants={staggerContainer} initial="initial" animate="animate"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
+            gap: 8,
+            alignItems: "start",
+            paddingBottom: 16,
+          }}>
+          {KANBAN_COLS.map(col => {
+            const colTasks = col.key === "pending"
               ? tasks.filter(t => t.status === "pending" && !isScheduled(t))
               : tasks.filter(t => t.status === col.key);
-          return (
-            <motion.div
-              key={col.key}
-              variants={staggerFade}
-              style={{
-                borderRadius: 10,
-                border: "1px solid hsl(var(--border))",
-                background: "hsl(var(--card))",
-                display: "flex",
-                flexDirection: "column",
-                overflow: "hidden",
-                boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-              }}
-            >
-              {/* Column header */}
-              <div style={{
-                padding: "10px 12px",
-                display: "flex", alignItems: "center", gap: 8,
-                borderBottom: `1px solid ${col.color}33`,
-                borderRadius: "10px 10px 0 0",
-                background: `${col.color}15`,
-                flexShrink: 0,
-              }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: col.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, fontWeight: 600, color: "hsl(var(--foreground))", flex: 1 }}>
-                  {col.label}
-                </span>
-                <span style={{ fontSize: 13, fontFamily: "ui-monospace, monospace", color: "hsl(var(--muted-foreground))" }}>
-                  {colTasks.length}
-                </span>
+            return (
+              <motion.div
+                key={col.key}
+                variants={staggerFade}
+                style={{
+                  borderRadius: 10,
+                  border: "1px solid hsl(var(--border))",
+                  background: "hsl(var(--card))",
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+                }}
+              >
+                <div style={{
+                  padding: "10px 12px",
+                  display: "flex", alignItems: "center", gap: 8,
+                  borderBottom: `1px solid ${col.color}33`,
+                  borderRadius: "10px 10px 0 0",
+                  background: `${col.color}15`,
+                  flexShrink: 0,
+                }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: col.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "hsl(var(--foreground))", flex: 1 }}>{col.label}</span>
+                  <span style={{ fontSize: 13, fontFamily: "ui-monospace, monospace", color: "hsl(var(--muted-foreground))" }}>{colTasks.length}</span>
+                </div>
+                <div style={{ overflowY: "auto", maxHeight: "60vh", padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {colTasks.length === 0 ? (
+                    <div style={{ padding: "28px 12px", textAlign: "center", fontSize: 13, color: "hsl(var(--muted-foreground))", border: "1px dashed hsl(var(--border))", borderRadius: 8 }}>
+                      Vazio
+                    </div>
+                  ) : colTasks.map(t => <KanbanCard key={t.id} t={t} col={col} />)}
+                </div>
+              </motion.div>
+            );
+          })}
+        </motion.div>
+      ) : (
+        /* ── Lista — Agendadas ─────────────────────────────────── */
+        <div className="flex flex-col gap-2">
+          {scheduledTasks.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-16 text-center rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))]">
+              <div className="h-14 w-14 rounded-2xl bg-[hsl(var(--muted))]/40 flex items-center justify-center">
+                <Calendar className="h-7 w-7 text-[hsl(var(--muted-foreground))]/30" />
               </div>
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Nenhuma tarefa agendada para o futuro.</p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm overflow-hidden">
+              {scheduledTasks.map((t, i) => {
+                const startParts = t.startDate ? fmtDateParts(t.startDate) : null;
+                const dueParts   = t.dueDate   ? fmtDateParts(t.dueDate)   : null;
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => openTask(t.id)}
+                    className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[hsl(var(--muted))]/30 transition-colors ${i > 0 ? "border-t border-[hsl(var(--border))]" : ""}`}
+                  >
+                    {/* Pill com data de início */}
+                    <div className="shrink-0 flex flex-col items-center justify-center w-11 h-11 rounded-xl bg-sky-50 border border-sky-200 text-sky-600 dark:bg-sky-950/40 dark:border-sky-800 dark:text-sky-400">
+                      {startParts ? (
+                        <>
+                          <span className="text-[13px] font-bold leading-none">{startParts.date.split("/")[0]}</span>
+                          <span className="text-[9px] leading-none opacity-60">/{startParts.date.split("/")[1]}</span>
+                        </>
+                      ) : (
+                        <Clock className="h-4 w-4 opacity-50" />
+                      )}
+                    </div>
 
-              {/* Scrollable card list */}
-              <div style={{
-                overflowY: "auto",
-                maxHeight: "60vh",
-                padding: 8,
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-              }}>
-                {colTasks.length === 0 ? (
-                  <div style={{
-                    padding: "28px 12px", textAlign: "center",
-                    fontSize: 13, color: "hsl(var(--muted-foreground))",
-                    border: "1px dashed hsl(var(--border))",
-                    borderRadius: 8,
-                  }}>
-                    Vazio
+                    {/* Título + cliente */}
+                    <div className="flex-1 min-w-0">
+                      {t.taskCode && (
+                        <span className="text-[10px] font-mono font-bold text-[hsl(var(--primary))]/70 block leading-none mb-0.5">{t.taskCode}</span>
+                      )}
+                      <p className="text-sm font-semibold truncate leading-snug">{t.title}</p>
+                      {t.client && (
+                        <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.client}</p>
+                      )}
+                    </div>
+
+                    {/* Prioridade + prazo */}
+                    <div className="shrink-0 flex flex-col items-end gap-1">
+                      <PriorityBadge priority={t.priority} />
+                      {dueParts && (
+                        <span className="flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))]">
+                          <Calendar className="h-2.5 w-2.5" />
+                          {dueParts.date}{dueParts.time ? ` ${dueParts.time}` : ""}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Avatar do coordenador */}
+                    {t.createdBy && <StackedAvatars people={[t.createdBy]} size={28} max={1} />}
                   </div>
-                ) : colTasks.map(t => <KanbanCard key={t.id} t={t} col={col} />)}
-              </div>
-            </motion.div>
-          );
-        })}
-      </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Revision dialog ───────────────────────────────────── */}
       <Dialog open={!!revisionTarget} onOpenChange={v => { if (!v && !revisionSubmitting) { setRevisionTarget(null); setRevisionComment(""); } }}>
