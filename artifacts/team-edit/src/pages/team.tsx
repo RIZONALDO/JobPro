@@ -34,7 +34,10 @@ interface EditorWorkload {
   login: string;
   avatarUrl: string | null;
   taskCount: number;
+  scheduledCount?: number;
   score: number;
+  scheduledScore?: number;
+  projectedScore?: number;
   byComplexity: { low: number; medium: number; high: number };
   byStatus: { pending: number; in_progress: number; in_revision: number; review: number };
 }
@@ -263,10 +266,17 @@ export default function Team() {
                             {(() => { const u = users.find(x => x.id === editor.id); return u?.jobTitle ? <p className="text-xs text-[hsl(var(--muted-foreground))]/70 truncate">{u.jobTitle}</p> : null; })()}
                           </div>
 
-                          {/* Status label */}
-                          <span className="text-[10px] font-medium shrink-0 px-2 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>
-                            {scoreLabel(editor.score)}
-                          </span>
+                          {/* Carga: atual + agendada */}
+                          <div className="flex flex-col items-end shrink-0 gap-0.5">
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>
+                              {scoreLabel(editor.score)}
+                            </span>
+                            {(editor.scheduledCount ?? 0) > 0 && (
+                              <span className="text-[8px] text-sky-500 leading-none pr-0.5">
+                                +{editor.scheduledCount} agend.
+                              </span>
+                            )}
+                          </div>
 
                           {/* Chevron */}
                           {expanded

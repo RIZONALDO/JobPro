@@ -61,6 +61,7 @@ interface OverviewTask {
   status: string;
   priority: string;
   complexity: string;
+  startDate: string | null;
   dueDate: string | null;
   folderUrl: string | null;
   revisionCount: number;
@@ -368,6 +369,12 @@ export default function TasksOverview() {
         case "assignee":
           cmp = (a.assignee?.name ?? "").localeCompare(b.assignee?.name ?? "");
           break;
+        case "startDate": {
+          const sa = a.startDate ? new Date(a.startDate).getTime() : Infinity;
+          const sb = b.startDate ? new Date(b.startDate).getTime() : Infinity;
+          cmp = sa - sb;
+          break;
+        }
         case "dueDate": {
           const da = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
           const db = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
@@ -681,6 +688,7 @@ export default function TasksOverview() {
               <div className="w-32 shrink-0"><Th col="status" label="Status" /></div>
               <div className="w-20 shrink-0 hidden lg:block"><Th col="priority" label="Prior." /></div>
               <div className="w-32 shrink-0"><Th col="assignee" label="Editor" /></div>
+              <div className="w-24 shrink-0 hidden xl:block"><Th col="startDate" label="Início" /></div>
               <div className="w-28 shrink-0 hidden lg:block"><Th col="dueDate" label="Prazo" /></div>
               <div className="w-24 shrink-0 hidden xl:block"><Th col="coordinator" label="Coord." /></div>
               <div className="w-52 shrink-0" />
@@ -1098,6 +1106,18 @@ export default function TasksOverview() {
                       <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30">
                         {t.taskType === "multi_task" ? "sem subtarefas" : "—"}
                       </span>
+                    )}
+                  </div>
+
+                  {/* Início (startDate) — only on xl+ */}
+                  <div className="hidden xl:flex w-24 shrink-0 items-center">
+                    {t.startDate ? (
+                      <span className="flex items-center gap-1 text-[11px] text-sky-500 font-medium">
+                        <CalendarClock className="h-3 w-3 shrink-0" />
+                        {fmtDate(t.startDate)}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30">—</span>
                     )}
                   </div>
 

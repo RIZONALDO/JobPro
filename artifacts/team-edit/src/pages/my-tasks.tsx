@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { MessageSquare, Calendar, AlertCircle, Undo2, MoreVertical, Info, PauseCircle, XCircle } from "lucide-react";
+import { MessageSquare, Calendar, AlertCircle, Undo2, MoreVertical, Info, PauseCircle, XCircle, Clock } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { StackedAvatars } from "@/components/ui/avatar-display";
 import { usePageTitle } from "@/lib/use-page-title";
@@ -26,6 +26,7 @@ interface Task {
   taskCode?: string;
   title: string;
   description: string | null;
+  startDate: string | null;
   dueDate: string | null;
   status: string;
   priority: string;
@@ -46,6 +47,7 @@ interface Task {
 }
 
 const KANBAN_COLS = [
+  { key: "scheduled",   label: "Agendadas",    color: "#0ea5e9" }, // virtual — tarefas com startDate futuro
   { key: "pending",     label: "Pendente",     color: "#94a3b8" },
   { key: "in_progress", label: "Em edição",    color: "#3b82f6" },
   { key: "in_revision", label: "Em alteração", color: "#f97316" },
@@ -58,6 +60,12 @@ const KANBAN_COLS = [
 function isOverdue(dueDate: string | null): boolean {
   if (!dueDate) return false;
   return new Date(dueDate) < new Date(new Date().toDateString());
+}
+
+const TODAY_STR = new Date().toISOString().split("T")[0];
+function isScheduled(task: Task): boolean {
+  // Tarefa "agendada" = está pendente E tem startDate no futuro (ainda não começou)
+  return task.status === "pending" && !!task.startDate && task.startDate > TODAY_STR + "T23:59:59";
 }
 
 export default function MyTasks() {
@@ -268,6 +276,16 @@ export default function MyTasks() {
             </span>
           )}
           <div style={{ flex: 1 }} />
+          {/* Início (startDate) */}
+          {isScheduled(t) && t.startDate && (() => {
+            const parts = fmtDateParts(t.startDate);
+            return parts ? (
+              <span style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0, color: "#0ea5e9" }} title="Início agendado">
+                <Clock style={{ width: 8, height: 8, flexShrink: 0 }} />
+                <span style={{ fontSize: 9, lineHeight: 1 }}>{parts.date}</span>
+              </span>
+            ) : null;
+          })()}
           {t.dueDate && (() => {
             const parts = fmtDateParts(t.dueDate);
             return parts ? (
@@ -309,7 +327,13 @@ export default function MyTasks() {
         paddingBottom: 16,
       }}>
         {KANBAN_COLS.map(col => {
-          const colTasks = tasks.filter(t => t.status === col.key);
+          // Coluna "scheduled" = tarefas pendentes com startDate no futuro
+          // Coluna "pending" = pendentes sem startDate futuro
+          const colTasks = col.key === "scheduled"
+            ? tasks.filter(t => isScheduled(t))
+            : col.key === "pending"
+              ? tasks.filter(t => t.status === "pending" && !isScheduled(t))
+              : tasks.filter(t => t.status === col.key);
           return (
             <motion.div
               key={col.key}

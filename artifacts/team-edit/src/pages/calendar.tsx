@@ -13,6 +13,7 @@ interface CalendarTask {
   title: string;
   status: string;
   priority: string;
+  startDate: string | null;
   dueDate: string;
   color: string;
   client: string | null;
@@ -171,8 +172,64 @@ export default function Calendar() {
     : `${fmtDay(weekStart)} – ${fmtDay(weekEnd)} ${weekEnd.getFullYear()}`;
   const monthLabel = `${MONTHS_PT[monthDate.getMonth()]} ${monthDate.getFullYear()}`;
 
-  const tasksByDay = (day: Date) =>
-    filteredTasks.filter(t => t.dueDate && toLocalDate(new Date(t.dueDate)) === toLocalDate(day));
+  // Tarefas que "pousam" em um dia específico (apenas prazo, sem duração visível na view)
+  const tasksByDay = (day: Date) => {
+    const dayStr = fmt(day);
+    return filteredTasks.filter(t => {
+      const due  = t.dueDate ? t.dueDate.slice(0, 10) : null;
+      const start = t.startDate ? t.startDate.slice(0, 10) : null;
+      // Tarefa de duração (startDate diferente de dueDate) → não mostra no dia, vai para barra
+      if (start && due && start !== due) return false;
+      return due === dayStr || start === dayStr;
+    });
+  };
+
+  // Tarefas com duração para a view de semana
+  const spanningTasksForWeek = useMemo(() => {
+    const weekDayStrs = Array.from({ length: 7 }, (_, i) => fmt(addDays(weekStart, i)));
+    const wStart = weekDayStrs[0];
+    const wEnd   = weekDayStrs[6];
+    return filteredTasks.filter(t => {
+      if (!t.startDate || !t.dueDate) return false;
+      const start = t.startDate.slice(0, 10);
+      const due   = t.dueDate.slice(0, 10);
+      if (start === due) return false; // mesmo dia → chip normal
+      // Sobrepõe com a semana
+      return start <= wEnd && due >= wStart;
+    }).map(t => {
+      const start = t.startDate!.slice(0, 10);
+      const due   = t.dueDate.slice(0, 10);
+      const wStart = weekDayStrs[0];
+      const wEnd   = weekDayStrs[6];
+      // Posição na grade (0-6), clampado à semana
+      const colStart = Math.max(0, weekDayStrs.indexOf(weekDayStrs.find(d => d >= start) ?? weekDayStrs[0]));
+      const colEnd   = Math.min(6, weekDayStrs.indexOf(weekDayStrs.find(d => d >= due)   ?? weekDayStrs[6]));
+      const clampedStart = start < wStart ? wStart : start;
+      const clampedEnd   = due   > wEnd   ? wEnd   : due;
+      const startIdx = weekDayStrs.findIndex(d => d === clampedStart);
+      const endIdx   = weekDayStrs.findIndex(d => d === clampedEnd);
+      return {
+        task: t,
+        startIdx: startIdx < 0 ? 0 : startIdx,
+        endIdx:   endIdx   < 0 ? 6 : endIdx,
+        cutLeft:  start < wStart,
+        cutRight: due   > wEnd,
+      };
+    });
+  }, [filteredTasks, weekStart]);
+
+  // Tarefas com duração para a view de mês (aparece em cada dia do intervalo)
+  const tasksByDayMonth = (day: Date) => {
+    const dayStr = fmt(day);
+    return filteredTasks.filter(t => {
+      const due   = t.dueDate ? t.dueDate.slice(0, 10) : null;
+      const start = t.startDate ? t.startDate.slice(0, 10) : null;
+      if (start && due && start !== due) {
+        return dayStr >= start && dayStr <= due;
+      }
+      return due === dayStr || start === dayStr;
+    });
+  };
 
   const prev = () => {
     if (view === "week") setWeekStart(d => addDays(d, -7));
@@ -281,6 +338,7 @@ export default function Calendar() {
         {/* ── WEEK VIEW ── */}
         {view === "week" && (
           <>
+            {/* Day headers */}
             <div className="grid grid-cols-7 border-b shrink-0">
               {weekDays.map((day, i) => {
                 const isToday = fmt(day) === today;
@@ -293,6 +351,46 @@ export default function Calendar() {
                 );
               })}
             </div>
+
+            {/* Spanning tasks (duration bars) */}
+            {spanningTasksForWeek.length > 0 && (
+              <div className="relative border-b bg-[hsl(var(--muted))]/10 shrink-0" style={{ minHeight: spanningTasksForWeek.length * 24 + 8 }}>
+                {/* Background columns */}
+                <div className="absolute inset-0 grid grid-cols-7 pointer-events-none">
+                  {weekDays.map((day, i) => (
+                    <div key={i} className={`border-r last:border-r-0 ${fmt(day) === today ? "bg-[hsl(var(--primary))]/5" : ""}`} />
+                  ))}
+                </div>
+                {/* Duration bars */}
+                {spanningTasksForWeek.map((s, idx) => {
+                  const { task: t, startIdx, endIdx, cutLeft, cutRight } = s;
+                  const span = endIdx - startIdx + 1;
+                  return (
+                    <div
+                      key={t.id}
+                      onClick={() => isCoord && openEdit(t)}
+                      title={`${t.title}${t.startDate ? ` · Início: ${t.startDate.slice(0,10)}` : ""} · Prazo: ${t.dueDate.slice(0,10)}`}
+                      className={`absolute flex items-center px-2 text-xs font-medium leading-none truncate ${isCoord ? "cursor-pointer hover:brightness-90" : ""}`}
+                      style={{
+                        top: 4 + idx * 24,
+                        height: 20,
+                        left: `calc(${startIdx / 7 * 100}% + ${cutLeft ? 0 : 2}px)`,
+                        width: `calc(${span / 7 * 100}% - ${cutLeft ? 0 : 2}px - ${cutRight ? 0 : 2}px)`,
+                        backgroundColor: t.color + "cc",
+                        color: "#fff",
+                        borderRadius: `${cutLeft ? 0 : 6}px ${cutRight ? 0 : 6}px ${cutRight ? 0 : 6}px ${cutLeft ? 0 : 6}px`,
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.18)",
+                      }}
+                    >
+                      {!cutLeft && <span className="truncate">{t.title}</span>}
+                      {cutLeft && <span className="truncate opacity-70">···{t.title}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Day task chips */}
             <div className="flex-1 overflow-y-auto">
               <div className="grid grid-cols-7 min-h-full w-full">
                 {weekDays.map((day, i) => {
@@ -367,23 +465,38 @@ export default function Calendar() {
                       )}
                     </div>
                     {loading ? (
-                      dayTasks.length === 0 && i < 7 && <div className="h-4 rounded bg-[hsl(var(--muted))]/50 animate-pulse" />
+                      i < 7 && <div className="h-4 rounded bg-[hsl(var(--muted))]/50 animate-pulse" />
                     ) : (
                       <div className="flex flex-col gap-0.5 overflow-hidden">
-                        {dayTasks.slice(0, 3).map(t => (
-                          <button
-                            key={t.id}
-                            type="button"
-                            onClick={() => isCoord && openEdit(t)}
-                            className={`text-left w-full rounded px-1.5 py-0.5 text-xs leading-tight truncate border-l-2 ${isCoord ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
-                            style={{ borderLeftColor: t.color, backgroundColor: t.color + "18", color: "hsl(var(--foreground))" }}
-                            title={t.title}
-                          >
-                            {t.title}
-                          </button>
-                        ))}
-                        {dayTasks.length > 3 && (
-                          <span className="text-xs text-[hsl(var(--muted-foreground))] pl-1">+{dayTasks.length - 3} mais</span>
+                        {tasksByDayMonth(day).slice(0, 3).map(t => {
+                          const dayStr   = fmt(day);
+                          const start    = t.startDate ? t.startDate.slice(0,10) : null;
+                          const due      = t.dueDate.slice(0,10);
+                          const isStart  = start === dayStr;
+                          const isEnd    = due === dayStr;
+                          const spanning = start && due && start !== due;
+                          const isMid    = spanning && !isStart && !isEnd;
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => isCoord && openEdit(t)}
+                              className={`text-left w-full text-xs leading-tight truncate ${isCoord ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+                              style={{
+                                padding: "1px 6px",
+                                backgroundColor: spanning ? t.color + "cc" : t.color + "18",
+                                color: spanning ? "#fff" : "hsl(var(--foreground))",
+                                borderRadius: isStart ? "4px 0 0 4px" : isEnd ? "0 4px 4px 0" : isMid ? 0 : 4,
+                                borderLeft: !spanning ? `2px solid ${t.color}` : undefined,
+                              }}
+                              title={`${t.title}${start && due && start !== due ? ` · ${start} → ${due}` : ""}`}
+                            >
+                              {isStart || !spanning ? t.title : ""}
+                            </button>
+                          );
+                        })}
+                        {tasksByDayMonth(day).length > 3 && (
+                          <span className="text-[10px] text-[hsl(var(--muted-foreground))] pl-1">+{tasksByDayMonth(day).length - 3} mais</span>
                         )}
                       </div>
                     )}

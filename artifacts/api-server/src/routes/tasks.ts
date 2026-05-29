@@ -127,7 +127,7 @@ async function getSubtaskProgressMap(parentIds: number[]): Promise<Map<number, {
 
 // ── Create task ──────────────────────────────────────────────────────────────
 router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
-  const { title, description, dueDate, priority, complexity, assignedToId, editorIds,
+  const { title, description, startDate, dueDate, priority, complexity, assignedToId, editorIds,
           folderUrl, client, color, status, taskType, parentTaskId, subtasks } = req.body ?? {};
 
   if (!title) { res.status(400).json({ error: "Título obrigatório" }); return; }
@@ -168,6 +168,7 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
     description: description ? String(description) : null,
     client: client ? String(client) : null,
     color: color ? String(color) : "#6366f1",
+    startDate: startDate ? new Date(String(startDate)) : null,
     dueDate: dueDate ? new Date(String(dueDate)) : null,
     priority: priority ?? "medium",
     complexity: complexity ?? "medium",
@@ -366,6 +367,7 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     status: r.status,
     priority: r.priority,
     complexity: r.complexity,
+    startDate: r.startDate,
     dueDate: r.dueDate,
     folderUrl: r.folderUrl,
     revisionCount: r.revisionCount ?? 0,
@@ -595,7 +597,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   const role = req.session.userRole!;
   const userId = req.session.userId!;
 
-  const { title, description, dueDate, priority, complexity, assignedToId, folderUrl, status, revisionComment, client, color } = req.body ?? {};
+  const { title, description, startDate, dueDate, priority, complexity, assignedToId, folderUrl, status, revisionComment, client, color } = req.body ?? {};
   const update: Record<string, unknown> = {};
   let eventComment: string | undefined;
 
@@ -634,6 +636,9 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     if (description !== undefined) update.description = description ? String(description) : null;
     if (client !== undefined) update.client = client ? String(client) : null;
     if (color) update.color = String(color);
+    if (startDate !== undefined) {
+      update.startDate = startDate ? new Date(String(startDate)) : null;
+    }
     if (dueDate !== undefined) {
       if (dueDate) {
         const parsed = new Date(String(dueDate));
@@ -1457,6 +1462,7 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
       title: tasksTable.title,
       status: tasksTable.status,
       priority: tasksTable.priority,
+      startDate: tasksTable.startDate,
       dueDate: tasksTable.dueDate,
       color: tasksTable.color,
       client: tasksTable.client,
@@ -1469,8 +1475,12 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
     .where(and(
       roleFilter,
       isNotNull(tasksTable.dueDate),
+      // fetch tasks that overlap the window: dueDate >= windowStart AND (startDate <= windowEnd OR startDate is null)
       sql`${tasksTable.dueDate} >= ${weekStartStr}`,
-      sql`${tasksTable.dueDate} <= ${weekEndStr}`,
+      or(
+        isNull(tasksTable.startDate),
+        sql`${tasksTable.startDate} <= ${weekEndStr}`,
+      ),
     ))
     .orderBy(asc(tasksTable.dueDate));
 
@@ -1497,39 +1507,68 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
 // ── Workload ──────────────────────────────────────────────────────────────────
 const COMPLEXITY_WEIGHT: Record<string, number> = { low: 3, medium: 6, high: 12 };
 
-router.get("/workload", requireCoordinator, async (_req, res): Promise<void> => {
+router.get("/workload", requireCoordinator, async (req, res): Promise<void> => {
   const editors = await db
     .select({ id: usersTable.id, name: usersTable.name, login: usersTable.login, avatarUrl: usersTable.avatarUrl })
     .from(usersTable).where(eq(usersTable.role, "editor"));
 
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  // projected date from query param (default = today)
+  const projDateStr = typeof req.query.date === "string" ? req.query.date : todayStr;
+  const projDate = new Date(projDateStr + "T23:59:59");
+
   const open = await db
-    .select({ id: tasksTable.id, status: tasksTable.status, complexity: tasksTable.complexity, assignedToId: tasksTable.assignedToId })
+    .select({
+      id: tasksTable.id,
+      status: tasksTable.status,
+      complexity: tasksTable.complexity,
+      assignedToId: tasksTable.assignedToId,
+      startDate: tasksTable.startDate,
+    })
     .from(tasksTable)
     .where(and(
       ne(tasksTable.status, "completed"),
       ne(tasksTable.status, "cancelled"),
       ne(tasksTable.status, "paused"),
       ne(tasksTable.status, "rascunho"),
-      ne(tasksTable.taskType, "multi_task"), // exclude parent tasks
+      ne(tasksTable.taskType, "multi_task"),
       isNotNull(tasksTable.assignedToId),
     ));
 
+  const todayEnd = new Date(todayStr + "T23:59:59");
+
   const result = editors.map(editor => {
-    const editorTasks = open.filter(t => t.assignedToId === editor.id);
-    const score = editorTasks.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
+    const all = open.filter(t => t.assignedToId === editor.id);
+
+    // Current score: tasks with no startDate OR startDate <= today
+    const current = all.filter(t => !t.startDate || t.startDate <= todayEnd);
+    const score = current.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
+
+    // Scheduled score: tasks starting after today up to projDate
+    const scheduled = all.filter(t => t.startDate && t.startDate > todayEnd && t.startDate <= projDate);
+    const scheduledScore = scheduled.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
+
+    // Projected = current + scheduled (all tasks up to projDate)
+    const projectedScore = score + scheduledScore;
+
     return {
       id: editor.id, name: editor.name, login: editor.login, avatarUrl: editor.avatarUrl ?? null,
-      taskCount: editorTasks.length, score,
+      taskCount: current.length,
+      scheduledCount: scheduled.length,
+      score,
+      scheduledScore,
+      projectedScore,
       byComplexity: {
-        low:    editorTasks.filter(t => t.complexity === "low").length,
-        medium: editorTasks.filter(t => t.complexity === "medium").length,
-        high:   editorTasks.filter(t => t.complexity === "high").length,
+        low:    current.filter(t => t.complexity === "low").length,
+        medium: current.filter(t => t.complexity === "medium").length,
+        high:   current.filter(t => t.complexity === "high").length,
       },
       byStatus: {
-        pending:     editorTasks.filter(t => t.status === "pending").length,
-        in_progress: editorTasks.filter(t => t.status === "in_progress").length,
-        in_revision: editorTasks.filter(t => t.status === "in_revision").length,
-        review:      editorTasks.filter(t => t.status === "review").length,
+        pending:     current.filter(t => t.status === "pending").length,
+        in_progress: current.filter(t => t.status === "in_progress").length,
+        in_revision: current.filter(t => t.status === "in_revision").length,
+        review:      current.filter(t => t.status === "review").length,
       },
     };
   });

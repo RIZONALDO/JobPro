@@ -17,7 +17,11 @@ import {
 } from "lucide-react";
 
 interface Editor { id: number; name: string; login: string; role: string; avatarUrl?: string | null; }
-interface EditorWorkload { id: number; score: number; taskCount: number; byComplexity: { low: number; medium: number; high: number }; }
+interface EditorWorkload {
+  id: number; score: number; taskCount: number;
+  scheduledCount?: number; scheduledScore?: number; projectedScore?: number;
+  byComplexity: { low: number; medium: number; high: number };
+}
 
 interface Props {
   open: boolean;
@@ -29,7 +33,7 @@ interface Props {
 }
 
 const EMPTY_FORM = {
-  title: "", description: "", dueDateTime: "", priority: "medium",
+  title: "", description: "", startDateTime: "", dueDateTime: "", priority: "medium",
   complexity: "medium", assignedToId: "", folderUrl: "", client: "",
 };
 const EMPTY_SUBTASK: Omit<SubtaskRow, "id"> = { title: "", editorId: "", dueDate: "" };
@@ -60,6 +64,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [editors, setEditors]         = useState<Editor[]>([]);
   const [workload, setWorkload]       = useState<EditorWorkload[]>([]);
+  const [projectedWorkload, setProjectedWorkload] = useState<EditorWorkload[]>([]);
   const [selectedEditorIds, setSelectedEditorIds] = useState<number[]>([]);
   const [addEditorValue, setAddEditorValue]       = useState("none");
   const [isMultiTask, setIsMultiTask] = useState(false);
@@ -72,6 +77,13 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
     apiFetch<EditorWorkload[]>("/api/workload").then(setWorkload).catch(() => {});
   }, []);
 
+  // Quando startDateTime muda, busca carga projetada para aquela data
+  useEffect(() => {
+    if (!form.startDateTime) { setProjectedWorkload([]); return; }
+    const date = form.startDateTime.split("T")[0];
+    apiFetch<EditorWorkload[]>(`/api/workload?date=${date}`).then(setProjectedWorkload).catch(() => {});
+  }, [form.startDateTime]);
+
   useEffect(() => {
     if (!open) return;
     if (editMode && editTaskId) {
@@ -79,7 +91,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
       setSelectedEditorIds([]);
       setLoadingEdit(true);
       apiFetch<{
-        title: string; description: string | null; dueDate: string | null;
+        title: string; description: string | null; startDate: string | null; dueDate: string | null;
         priority: string; complexity: string; assignedToId: number | null;
         folderUrl: string | null; client: string | null; status: string;
         taskType: string; editors?: { id: number }[];
@@ -91,6 +103,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
           setIsMultiTask(t.taskType === "multi_task");
           setForm({
             title: t.title ?? "", description: t.description ?? "",
+            startDateTime: t.startDate ?? "",
             dueDateTime: t.dueDate ?? "", priority: t.priority ?? "medium",
             complexity: t.complexity ?? "medium",
             assignedToId: t.assignedToId ? String(t.assignedToId) : "",
@@ -149,6 +162,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
       const payload: Record<string, unknown> = {
         taskType: "multi_task",
         title: form.title, description: form.description || null,
+        startDate: form.startDateTime || null,
         dueDate: form.dueDateTime || null, priority: form.priority,
         complexity: form.complexity, client: form.client || null,
         folderUrl: form.folderUrl || null,
@@ -177,6 +191,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
       if (isPublishing && !form.dueDateTime) { toast.error("Informe o prazo"); return; }
       const payload: Record<string, unknown> = {
         title: form.title, description: form.description || null,
+        startDate: form.startDateTime || null,
         dueDate: form.dueDateTime || null, priority: form.priority,
         complexity: form.complexity, client: form.client || null,
         folderUrl: form.folderUrl || null,
@@ -203,6 +218,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
       : (editMode && taskStatus !== "rascunho" ? undefined : null);
     const payload: Record<string, unknown> = {
       title: form.title, description: form.description || null,
+      startDate: form.startDateTime || null,
       dueDate: dueDatePayload, priority: form.priority, complexity: form.complexity,
       assignedToId: selectedEditorIds[0] ?? null, editorIds: selectedEditorIds,
       folderUrl: form.folderUrl || null, client: form.client || null,
@@ -230,7 +246,10 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
     setSubtasks(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
   const removeSubtask = (id: string) => setSubtasks(prev => prev.filter(s => s.id !== id));
   const addSubtask = () => setSubtasks(prev => [...prev, newSubtaskRow()]);
-  const primaryWorkload = workload.find(w => w.id === selectedEditorIds[0]);
+  // Se há startDate futura, usa carga projetada; senão, usa carga atual
+  const isFutureStart = !!form.startDateTime && form.startDateTime > new Date().toISOString().split("T")[0];
+  const activeWorkload = (isFutureStart && projectedWorkload.length > 0) ? projectedWorkload : workload;
+  const primaryWorkload = activeWorkload.find(w => w.id === selectedEditorIds[0]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -369,8 +388,8 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                         {selectedEditorIds.map((id, idx) => {
                           const editor = editors.find(e => e.id === id);
                           if (!editor) return null;
-                          const wl = workload.find(w => w.id === id);
-                          const score = wl?.score ?? 0;
+                          const wl = activeWorkload.find(w => w.id === id);
+                          const score = isFutureStart ? (wl?.projectedScore ?? wl?.score ?? 0) : (wl?.score ?? 0);
                           const color = scoreColor(score);
                           const label = scoreLabel(score);
                           return (
@@ -380,7 +399,12 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                                 <p className="text-sm font-medium truncate">{editor.name}</p>
                                 {idx === 0 && <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60">Principal</p>}
                               </div>
-                              <span className="text-[10px] font-semibold shrink-0 px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>{label}</span>
+                              <div className="flex flex-col items-end shrink-0 gap-0.5">
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>{label}</span>
+                                {isFutureStart && wl?.scheduledScore != null && wl.scheduledScore > 0 && (
+                                  <span className="text-[9px] text-[hsl(var(--muted-foreground))]">+{wl.scheduledScore}pts agendados</span>
+                                )}
+                              </div>
                               <button onClick={() => removeEditor(id)}
                                 className="h-6 w-6 flex items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors shrink-0">
                                 <X className="h-3.5 w-3.5" />
@@ -398,8 +422,8 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       <SelectContent>
                         <SelectItem value="none">{selectedEditorIds.length === 0 ? "Ninguém" : "+ Adicionar editor"}</SelectItem>
                         {availableEditors.map(e => {
-                          const wl = workload.find(w => w.id === e.id);
-                          const score = wl?.score ?? 0;
+                          const wl = activeWorkload.find(w => w.id === e.id);
+                          const score = isFutureStart ? (wl?.projectedScore ?? wl?.score ?? 0) : (wl?.score ?? 0);
                           const color = scoreColor(score);
                           const label = scoreLabel(score);
                           const blocked = score >= 12;
@@ -419,17 +443,19 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       </SelectContent>
                     </Select>
 
-                    {primaryWorkload && primaryWorkload.score > 6 && (() => {
-                      const score = primaryWorkload.score;
+                    {primaryWorkload && (() => {
+                      const score = isFutureStart ? (primaryWorkload.projectedScore ?? primaryWorkload.score) : primaryWorkload.score;
+                      if (score <= 6) return null;
                       const isCritical = score >= 12;
-                      const bg   = isCritical ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900"         : "bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-900";
-                      const icon = isCritical ? "text-red-500"    : "text-orange-500";
-                      const text = isCritical ? "text-red-800 dark:text-red-300"       : "text-orange-800 dark:text-orange-300";
+                      const bg   = isCritical ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900" : "bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-900";
+                      const icon = isCritical ? "text-red-500" : "text-orange-500";
+                      const text = isCritical ? "text-red-800 dark:text-red-300" : "text-orange-800 dark:text-orange-300";
                       const msg  = isCritical ? "Editor no limite de capacidade!" : "Editor muito ocupado.";
+                      const when = isFutureStart ? " na data de início" : "";
                       return (
                         <div className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${bg}`}>
                           <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${icon}`} />
-                          <p className={`text-xs ${text}`}>{msg} {primaryWorkload.taskCount} tarefa(s) ativa(s).</p>
+                          <p className={`text-xs ${text}`}>{msg}{when} {primaryWorkload.taskCount + (primaryWorkload.scheduledCount ?? 0)} tarefa(s) ativa(s).</p>
                         </div>
                       );
                     })()}
@@ -446,6 +472,24 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                   <ClientCombobox value={form.client} onChange={v => f({ client: v })} />
                 </div>
 
+                {/* Início */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
+                    <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                      Início
+                      <span className="text-[hsl(var(--muted-foreground))] font-normal normal-case ml-1 text-[10px]">(opcional)</span>
+                    </Label>
+                  </div>
+                  <DateTimePicker value={form.startDateTime} onChange={v => f({ startDateTime: v })}
+                    withTime placeholder="Quando começa…" />
+                  {isFutureStart && (
+                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-snug">
+                      Carga projetada para a data de início
+                    </p>
+                  )}
+                </div>
+
                 {/* Prazo */}
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-1.5">
@@ -456,7 +500,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                     </Label>
                   </div>
                   <DateTimePicker value={form.dueDateTime} onChange={v => f({ dueDateTime: v })}
-                    withTime min={new Date().toISOString().split("T")[0]} placeholder="Selecionar…" />
+                    withTime min={form.startDateTime ? form.startDateTime.split("T")[0] : new Date().toISOString().split("T")[0]} placeholder="Selecionar…" />
                 </div>
 
                 {/* Prioridade */}

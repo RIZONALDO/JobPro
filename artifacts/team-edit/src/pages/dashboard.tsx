@@ -52,7 +52,10 @@ interface EditorWorkload {
   login: string;
   avatarUrl: string | null;
   taskCount: number;
+  scheduledCount?: number;
   score: number;
+  scheduledScore?: number;
+  projectedScore?: number;
   byComplexity: { low: number; medium: number; high: number };
   byStatus: { pending: number; in_progress: number; in_revision: number; review: number };
 }
@@ -934,16 +937,26 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
                 onMouseMove={e => setTip(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null)}
                 onMouseLeave={() => setTip(null)}
               >
-                <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={32} className="shrink-0" />
+                <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={32} style={{ borderColor: color, borderWidth: 2 }} className="shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold truncate">{firstName}</p>
                   <p className="text-[10px] text-[hsl(var(--muted-foreground))]">
-                    {editor.taskCount === 0 ? "disponível" : `${editor.taskCount} tarefa${editor.taskCount !== 1 ? "s" : ""}`}
+                    {editor.taskCount === 0 ? "disponível" : `${editor.taskCount} ativa${editor.taskCount !== 1 ? "s" : ""}`}
+                    {(editor.scheduledCount ?? 0) > 0 && (
+                      <span className="ml-1 text-sky-500">+{editor.scheduledCount} agend.</span>
+                    )}
                   </p>
                 </div>
-                <span className="text-[9px] font-medium shrink-0 px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>
-                  {scoreLabel(editor.score)}
-                </span>
+                <div className="flex flex-col items-end gap-0.5 shrink-0">
+                  <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>
+                    {scoreLabel(editor.score)}
+                  </span>
+                  {(editor.scheduledScore ?? 0) > 0 && (
+                    <span className="text-[8px] text-sky-500 leading-none">
+                      +{editor.scheduledScore}pts agend.
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -956,11 +969,14 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
           style={{ left: tip.x + 14, top: tip.y - 8 }}
         >
           <p className="font-semibold">{tip.editor.name}</p>
-          <p className="text-[hsl(var(--muted-foreground))]">{tip.editor.taskCount} tarefa(s) ativas</p>
+          <p className="text-[hsl(var(--muted-foreground))]">{tip.editor.taskCount} tarefa(s) ativa(s) · score {tip.editor.score}pts</p>
+          {(tip.editor.scheduledCount ?? 0) > 0 && (
+            <p className="text-sky-500">{tip.editor.scheduledCount} agendada(s) · +{tip.editor.scheduledScore}pts → projetado {tip.editor.projectedScore}pts</p>
+          )}
           {((tip.editor.byComplexity?.high   ?? 0) > 0) && <p className="text-[hsl(var(--muted-foreground))]">Alta: {tip.editor.byComplexity.high}</p>}
           {((tip.editor.byComplexity?.medium ?? 0) > 0) && <p className="text-[hsl(var(--muted-foreground))]">Média: {tip.editor.byComplexity.medium}</p>}
           {((tip.editor.byComplexity?.low    ?? 0) > 0) && <p className="text-[hsl(var(--muted-foreground))]">Baixa: {tip.editor.byComplexity.low}</p>}
-          {tip.editor.taskCount === 0 && <p className="text-[hsl(var(--muted-foreground))]">Sem tarefas ativas</p>}
+          {tip.editor.taskCount === 0 && (tip.editor.scheduledCount ?? 0) === 0 && <p className="text-[hsl(var(--muted-foreground))]">Sem tarefas ativas</p>}
           <div className="border-t pt-1.5 space-y-0.5">
             {tip.editor.byStatus.pending     > 0 && <p className="text-slate-500">{tip.editor.byStatus.pending} pendente(s)</p>}
             {tip.editor.byStatus.in_progress > 0 && <p className="text-blue-600">{tip.editor.byStatus.in_progress} em edição</p>}
