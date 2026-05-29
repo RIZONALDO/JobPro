@@ -26,6 +26,7 @@ interface Task {
   status: string;
   priority: string;
   dueDate: string | null;
+  startDate?: string | null;
   client?: string | null;
   color?: string;
   number?: number;
@@ -1937,6 +1938,20 @@ export default function Dashboard() {
 
   const byStatus = (s: string) => tasks.filter(t => t.status === s).length;
   const openTasks      = tasks.filter(t => !["completed", "cancelled", "rascunho"].includes(t.status));
+
+  // Tarefas do dia: ativas (sem pausadas/concluídas) e não agendadas para o futuro
+  const TODAY_DASH_STR = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
+  const ACTIVE_STATUSES_DASH = new Set(["pending", "in_progress", "in_revision", "review"]);
+  const isScheduledDash = (t: Task) => {
+    const ref = t.startDate ?? (t.status === "pending" ? t.dueDate : null);
+    if (!ref) return false;
+    return ref.split("T")[0] > TODAY_DASH_STR;
+  };
+  const todayTasks = tasks.filter(t => ACTIVE_STATUSES_DASH.has(t.status) && !isScheduledDash(t));
+
   const isEditor       = user?.role === "editor";
 
   const actionCount = isEditor
@@ -2107,9 +2122,9 @@ export default function Dashboard() {
             <div className="flex items-center justify-between px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
               <div className="flex items-center gap-2">
                 <ListTodo className="h-4 w-4 text-[hsl(var(--primary))]" />
-                <span className="font-semibold text-sm">Minhas tarefas em aberto</span>
-                {openTasks.length > 0 && (
-                  <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{openTasks.length}</span>
+                <span className="font-semibold text-sm">Tarefas do dia</span>
+                {todayTasks.length > 0 && (
+                  <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{todayTasks.length}</span>
                 )}
               </div>
               <Link href="/tasks?tab=lista" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
@@ -2117,9 +2132,9 @@ export default function Dashboard() {
               </Link>
             </div>
             <div className="overflow-y-auto max-h-[340px] divide-y">
-              {openTasks.length === 0 ? (
-                <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma tarefa em aberto.</p>
-              ) : openTasks.map(t => (
+              {todayTasks.length === 0 ? (
+                <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma tarefa para hoje.</p>
+              ) : todayTasks.map(t => (
                 <div key={t.id} role="button" onClick={() => goToTask(t.id)}
                   className="flex items-center gap-3 px-4 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
                   <div className={`w-0.5 h-8 rounded-full shrink-0 ${STATUS_BAR[t.status] ?? "bg-slate-300"}`} />
@@ -2287,9 +2302,9 @@ export default function Dashboard() {
             <div className="flex items-center justify-between px-5 py-3.5 border-b bg-[hsl(var(--muted))]/30 shrink-0">
               <div className="flex items-center gap-2">
                 <ListTodo className="h-4 w-4 text-[hsl(var(--primary))]" />
-                <span className="font-semibold text-sm">Minhas tarefas em aberto</span>
-                {openTasks.length > 0 && (
-                  <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{openTasks.length}</span>
+                <span className="font-semibold text-sm">Tarefas do dia</span>
+                {todayTasks.length > 0 && (
+                  <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded-full px-2 py-0.5">{todayTasks.length}</span>
                 )}
               </div>
               <Link href="/tasks?tab=lista" className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-0.5 shrink-0">
@@ -2297,9 +2312,9 @@ export default function Dashboard() {
               </Link>
             </div>
             <div className="overflow-y-auto max-h-[340px] divide-y">
-              {openTasks.length === 0 ? (
-                <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma tarefa em aberto.</p>
-              ) : openTasks.map(t => (
+              {todayTasks.length === 0 ? (
+                <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Nenhuma tarefa para hoje.</p>
+              ) : todayTasks.map(t => (
                 <div key={t.id} role="button" onClick={() => goToTask(t.id)}
                   className="flex items-center gap-3 px-4 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group cursor-pointer">
                   <div className={`w-0.5 h-8 rounded-full shrink-0 ${STATUS_BAR[t.status] ?? "bg-slate-300"}`} />
