@@ -395,13 +395,25 @@ export default function TasksOverview() {
 
   // ── Tab filtering ─────────────────────────────────────────────────────────
 
-  const TAB_TODAY_STR = new Date().toISOString().split("T")[0];
+  // Data local (não UTC) para evitar bug de fuso horário
+  const TAB_TODAY_STR = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
+
+  // Uma tarefa é "agendada" se sua data de referência for amanhã ou depois.
+  // Usa startDate quando disponível; caso contrário, usa dueDate (só para pendentes sem início explícito).
+  const isTaskScheduled = (t: OverviewTask) => {
+    const ref = t.startDate ?? (t.status === "pending" ? t.dueDate : null);
+    if (!ref) return false;
+    return ref.split("T")[0] > TAB_TODAY_STR;
+  };
+
   const tabFiltered = useMemo(() => {
-    if (viewTab === "today")
-      return sorted.filter(t => !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR);
-    if (viewTab === "scheduled")
-      return sorted.filter(t => !!t.startDate && t.startDate.split("T")[0] > TAB_TODAY_STR);
+    if (viewTab === "today")     return sorted.filter(t => !isTaskScheduled(t));
+    if (viewTab === "scheduled") return sorted.filter(t => isTaskScheduled(t));
     return sorted;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sorted, viewTab]);
 
   // ── Summary stats ─────────────────────────────────────────────────────────
@@ -683,8 +695,8 @@ export default function TasksOverview() {
         {/* ── Tab bar (underline) ─── */}
         <div className="flex shrink-0 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20 px-2">
           {([
-            { key: "today",     label: "Tarefas do dia", count: sorted.filter(t => !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR).length },
-            { key: "scheduled", label: "Agendadas",      count: sorted.filter(t => !!t.startDate && t.startDate.split("T")[0] > TAB_TODAY_STR).length },
+            { key: "today",     label: "Tarefas do dia", count: sorted.filter(t => !isTaskScheduled(t)).length },
+            { key: "scheduled", label: "Agendadas",      count: sorted.filter(t => isTaskScheduled(t)).length },
             { key: "all",       label: "Todas",          count: sorted.length },
           ] as const).map(tab => (
             <button

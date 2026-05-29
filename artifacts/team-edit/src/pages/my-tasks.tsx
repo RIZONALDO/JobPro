@@ -61,10 +61,18 @@ function isOverdue(dueDate: string | null): boolean {
   return new Date(dueDate) < new Date(new Date().toDateString());
 }
 
-const TODAY_STR = new Date().toISOString().split("T")[0];
+// Data local do dispositivo (não UTC) para evitar bug de fuso horário
+function getLocalToday(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+const TODAY_STR = getLocalToday();
+
 function isScheduled(task: Task): boolean {
-  // Tarefa "agendada" = está pendente E tem startDate no futuro (ainda não começou)
-  return task.status === "pending" && !!task.startDate && task.startDate > TODAY_STR + "T23:59:59";
+  // Referência: usa startDate se existir, senão usa dueDate (para tarefas pendentes sem início explícito)
+  const ref = task.startDate ?? (task.status === "pending" ? task.dueDate : null);
+  if (!ref) return false;
+  return ref.split("T")[0] > TODAY_STR;
 }
 
 export default function MyTasks() {
