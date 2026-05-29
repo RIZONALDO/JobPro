@@ -409,9 +409,13 @@ export default function TasksOverview() {
     return ref.split("T")[0] > TAB_TODAY_STR;
   };
 
+  const ACTIVE_STATUSES = new Set(["pending", "in_progress", "in_revision", "review"]);
+
   const tabFiltered = useMemo(() => {
-    if (viewTab === "today")     return sorted.filter(t => !isTaskScheduled(t));
-    if (viewTab === "scheduled") return sorted.filter(t => isTaskScheduled(t));
+    if (viewTab === "today")
+      return sorted.filter(t => !isTaskScheduled(t) && ACTIVE_STATUSES.has(t.status));
+    if (viewTab === "scheduled")
+      return sorted.filter(t => isTaskScheduled(t));
     return sorted;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sorted, viewTab]);
@@ -695,7 +699,7 @@ export default function TasksOverview() {
         {/* ── Tab bar (underline) ─── */}
         <div className="flex shrink-0 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20 px-2">
           {([
-            { key: "today",     label: "Tarefas do dia", count: sorted.filter(t => !isTaskScheduled(t)).length },
+            { key: "today",     label: "Tarefas do dia", count: sorted.filter(t => !isTaskScheduled(t) && ACTIVE_STATUSES.has(t.status)).length },
             { key: "scheduled", label: "Agendadas",      count: sorted.filter(t => isTaskScheduled(t)).length },
             { key: "all",       label: "Todas",          count: sorted.length },
           ] as const).map(tab => (

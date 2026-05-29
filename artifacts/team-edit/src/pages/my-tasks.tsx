@@ -46,14 +46,12 @@ interface Task {
   parentTask?: { id: number; title: string; taskCode?: string } | null;
 }
 
+// Pauta do dia — só status ativos (pausada não conta no peso, concluída/cancelada não exige ação)
 const KANBAN_COLS = [
   { key: "pending",     label: "Pendente",     color: "#94a3b8" },
   { key: "in_progress", label: "Em edição",    color: "#3b82f6" },
   { key: "in_revision", label: "Em alteração", color: "#f97316" },
   { key: "review",      label: "Para aprovar", color: "#f59e0b" },
-  { key: "completed",   label: "Aprovadas",    color: "#22c55e" },
-  { key: "paused",      label: "Pausadas",     color: "#a855f7" },
-  { key: "cancelled",   label: "Canceladas",   color: "#ef4444" },
 ];
 
 function isOverdue(dueDate: string | null): boolean {
@@ -335,7 +333,7 @@ export default function MyTasks() {
           {
             key: "today" as const,
             label: "Pauta do dia",
-            count: tasks.filter(t => !isScheduled(t) && !["completed","cancelled"].includes(t.status)).length,
+            count: tasks.filter(t => !isScheduled(t) && ["pending","in_progress","in_revision","review"].includes(t.status)).length,
           },
           {
             key: "scheduled" as const,
