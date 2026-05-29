@@ -184,9 +184,9 @@ export function DateRangePicker({
   }
 
   function handleApply() {
+    // Se o usuário clicou só uma vez, from existe mas to não — trata o dia como início e prazo
     const effectiveFrom = range.from;
-    // Se o usuário clicou só uma vez, from existe mas to não
-    const effectiveTo = range.to ?? range.from;
+    const effectiveTo   = range.to ?? range.from;
 
     if (!effectiveTo) {
       // Nada selecionado
@@ -196,36 +196,20 @@ export function DateRangePicker({
       return;
     }
 
-    // Se from === to (mesma data), trata como data única
-    const sameDay =
-      effectiveFrom && effectiveTo &&
-      format(effectiveFrom, "yyyy-MM-dd") === format(effectiveTo, "yyyy-MM-dd");
+    // startDate = from (ou effectiveTo se não houver from explícito)
+    onChangeStart(format(effectiveFrom ?? effectiveTo, "yyyy-MM-dd"));
 
-    if (!effectiveFrom || sameDay) {
-      // Data única — sem início, só prazo
-      onChangeStart("");
-      if (withEndTime) {
-        const dt = new Date(
-          effectiveTo.getFullYear(), effectiveTo.getMonth(), effectiveTo.getDate(),
-          time.h, time.m, 0
-        );
-        onChangeEnd(dt.toISOString());
-      } else {
-        onChangeEnd(format(effectiveTo, "yyyy-MM-dd"));
-      }
+    // endDate = to (com hora opcional)
+    if (withEndTime) {
+      const dt = new Date(
+        effectiveTo.getFullYear(), effectiveTo.getMonth(), effectiveTo.getDate(),
+        time.h, time.m, 0
+      );
+      onChangeEnd(dt.toISOString());
     } else {
-      // Intervalo
-      onChangeStart(format(effectiveFrom, "yyyy-MM-dd"));
-      if (withEndTime) {
-        const dt = new Date(
-          effectiveTo.getFullYear(), effectiveTo.getMonth(), effectiveTo.getDate(),
-          time.h, time.m, 0
-        );
-        onChangeEnd(dt.toISOString());
-      } else {
-        onChangeEnd(format(effectiveTo, "yyyy-MM-dd"));
-      }
+      onChangeEnd(format(effectiveTo, "yyyy-MM-dd"));
     }
+
     setOpen(false);
   }
 
@@ -245,12 +229,16 @@ export function DateRangePicker({
   const toParsed = toStr ? parse(toStr, "yyyy-MM-dd", new Date()) : null;
   const { h: dH, m: dM } = parseEndTime(endDate);
 
+  // Só mostra seta de range quando from e to são dias diferentes
+  const fromToStr = fromParsed && isValid(fromParsed) ? format(fromParsed, "yyyy-MM-dd") : null;
+  const toOnlyStr = toParsed  && isValid(toParsed)  ? format(toParsed,  "yyyy-MM-dd") : null;
+  const isRange   = fromToStr && toOnlyStr && fromToStr !== toOnlyStr;
+  const timeStr   = withEndTime && endDate?.includes("T") ? `  ${pad(dH)}:${pad(dM)}` : "";
+
   const display = toParsed && isValid(toParsed)
-    ? (fromParsed && isValid(fromParsed)
-        ? `${format(fromParsed, "dd/MM")} → ${format(toParsed, "dd/MM/yyyy")}` +
-          (withEndTime && endDate?.includes("T") ? `  ${pad(dH)}:${pad(dM)}` : "")
-        : format(toParsed, "dd/MM/yyyy") +
-          (withEndTime && endDate?.includes("T") ? `  ${pad(dH)}:${pad(dM)}` : ""))
+    ? (isRange
+        ? `${format(fromParsed!, "dd/MM")} → ${format(toParsed, "dd/MM/yyyy")}${timeStr}`
+        : `${format(toParsed, "dd/MM/yyyy")}${timeStr}`)
     : null;
 
   const endDisplayLabel =
@@ -352,7 +340,7 @@ export function DateRangePicker({
             {/* Hint de seleção */}
             {range.from && !range.to && (
               <p className="px-3 pb-1 text-[11px] text-[hsl(var(--muted-foreground))] text-center">
-                Clique em outra data para definir o prazo
+                Aplicar usa só este dia · ou clique outra data para criar intervalo
               </p>
             )}
 
