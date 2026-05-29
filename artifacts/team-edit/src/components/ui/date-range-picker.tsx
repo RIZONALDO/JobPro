@@ -124,9 +124,11 @@ export function DateRangePicker({
   // Sync draft com props ao abrir
   useEffect(() => {
     if (!open) return;
-    const from = startDate ? parse(startDate, "yyyy-MM-dd", new Date()) : undefined;
-    const toStr = endDate ? endDate.split("T")[0] : undefined;
-    const to = toStr ? parse(toStr, "yyyy-MM-dd", new Date()) : undefined;
+    // Extrai só "yyyy-MM-dd" de ambos — o banco devolve ISO timestamps
+    const startStr = startDate ? startDate.split("T")[0] : undefined;
+    const endStr   = endDate   ? endDate.split("T")[0]   : undefined;
+    const from = startStr ? parse(startStr, "yyyy-MM-dd", new Date()) : undefined;
+    const to   = endStr   ? parse(endStr,   "yyyy-MM-dd", new Date()) : undefined;
 
     const validFrom = from && isValid(from) ? from : undefined;
     const validTo   = to   && isValid(to)   ? to   : undefined;
@@ -236,7 +238,9 @@ export function DateRangePicker({
   }
 
   // ── Display no botão trigger ──────────────────────────────────────────────
-  const fromParsed = startDate ? parse(startDate, "yyyy-MM-dd", new Date()) : null;
+  // Extrai só a parte de data ("yyyy-MM-dd") antes de parsear — banco devolve ISO
+  const fromTriggerStr = startDate ? startDate.split("T")[0] : null;
+  const fromParsed = fromTriggerStr ? parse(fromTriggerStr, "yyyy-MM-dd", new Date()) : null;
   const toStr = endDate ? endDate.split("T")[0] : null;
   const toParsed = toStr ? parse(toStr, "yyyy-MM-dd", new Date()) : null;
   const { h: dH, m: dM } = parseEndTime(endDate);
