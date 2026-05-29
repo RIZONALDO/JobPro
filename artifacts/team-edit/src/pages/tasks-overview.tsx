@@ -469,18 +469,7 @@ export default function TasksOverview() {
       toast.error("Informe o motivo da reabertura");
       return;
     }
-    // Bloquear se editor principal ficaria no limite após reabertura
     const primaryEditor = reopenTask.assignee ?? reopenTask.editors?.[0] ?? null;
-    if (primaryEditor) {
-      const wl = reopenWorkload.find(w => w.id === primaryEditor.id);
-      const currentScore = wl?.score ?? 0;
-      const addedWeight = COMPLEXITY_WEIGHT[reopenComplexity] ?? 6;
-      const projected = currentScore + addedWeight;
-      if (projected >= 12) {
-        toast.error(`${primaryEditor.name.split(" ")[0]} ficaria no limite com esta complexidade. Reduza a complexidade ou reatribua.`);
-        return;
-      }
-    }
     setSendingReopen(true);
     try {
       await apiPut(`/api/tasks/${reopenTask.id}`, {
@@ -1470,7 +1459,6 @@ export default function TasksOverview() {
             const currentScore  = editorWl?.score ?? 0;
             const addedWeight   = COMPLEXITY_WEIGHT[reopenComplexity] ?? 6;
             const projectedScore = currentScore + addedWeight;
-            const projectedBlocked = projectedScore >= 12;
             const currentColor  = scoreColor(currentScore);
             const currentLbl    = scoreLabel(currentScore);
             const projColor     = scoreColor(projectedScore);
@@ -1483,7 +1471,7 @@ export default function TasksOverview() {
 
                 {/* Editor + carga atual + projeção */}
                 {primaryEditor && (
-                  <div className={`rounded-xl border px-3 py-2.5 space-y-2 ${projectedBlocked ? "border-red-300 bg-red-50 dark:bg-red-950/20 dark:border-red-800" : "bg-[hsl(var(--muted))]/30"}`}>
+                  <div className="rounded-xl border px-3 py-2.5 space-y-2 bg-[hsl(var(--muted))]/30">
                     <div className="flex items-center gap-2.5">
                       <AvatarDisplay name={primaryEditor.name} avatarUrl={primaryEditor.avatarUrl} size={28} className="shrink-0" />
                       <div className="flex-1 min-w-0">
@@ -1594,12 +1582,7 @@ export default function TasksOverview() {
             <Button variant="outline" onClick={() => setReopenTask(null)}>Cancelar</Button>
             <Button
               onClick={submitReopen}
-              disabled={sendingReopen || !reopenComment.trim() || loadingWorkload || (() => {
-                const pe = reopenTask?.assignee ?? reopenTask?.editors?.[0];
-                if (!pe) return false;
-                const cur = reopenWorkload.find(w => w.id === pe.id)?.score ?? 0;
-                return cur + (COMPLEXITY_WEIGHT[reopenComplexity] ?? 6) >= 12;
-              })()}
+              disabled={sendingReopen || !reopenComment.trim() || loadingWorkload}
               className="bg-rose-600 hover:bg-rose-700">
               {sendingReopen ? "Reabrindo…" : "↩ Reabrir tarefa"}
             </Button>

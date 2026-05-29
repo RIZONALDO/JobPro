@@ -81,14 +81,12 @@ export function SubtaskFormRow({ row, index, editors, workload = [], onChange, o
               const score = wl?.score ?? 0;
               const color = scoreColor(score);
               const label = scoreLabel(score);
-              const blocked = score >= 12;
               return (
-                <SelectItem key={e.id} value={String(e.id)} disabled={blocked}>
-                  <span className="flex items-center gap-1.5" style={{ opacity: blocked ? 0.45 : 1 }}>
+                <SelectItem key={e.id} value={String(e.id)}>
+                  <span className="flex items-center gap-1.5">
                     <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} style={{ width: 16, height: 16, fontSize: 6, flexShrink: 0 }} />
                     {e.name}
                     <span className="text-[9px] font-semibold px-1 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>{label}</span>
-                    {blocked && <span className="text-[9px] text-red-500">bloqueado</span>}
                   </span>
                 </SelectItem>
               );

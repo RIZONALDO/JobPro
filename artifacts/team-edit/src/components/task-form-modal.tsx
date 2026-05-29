@@ -463,13 +463,11 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                           const worstScore = hasRangeCheck ? Math.max(startScore, dueScore) : startScore;
                           const color      = scoreColor(worstScore);
                           const label      = scoreLabel(worstScore);
-                          const blocked    = worstScore >= 12;
                           return (
-                            <SelectItem key={e.id} value={String(e.id)} disabled={blocked}>
-                              <span className="flex items-center gap-2" style={{ opacity: blocked ? 0.45 : 1 }}>
+                            <SelectItem key={e.id} value={String(e.id)}>
+                              <span className="flex items-center gap-2">
                                 {e.name}
                                 <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>{label}</span>
-                                {blocked && <span className="text-[9px] text-red-500">bloqueado</span>}
                               </span>
                             </SelectItem>
                           );
