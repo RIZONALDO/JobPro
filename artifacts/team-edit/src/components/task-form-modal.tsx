@@ -63,8 +63,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   const [saving, setSaving]           = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [editors, setEditors]         = useState<Editor[]>([]);
-  const [workload, setWorkload]       = useState<EditorWorkload[]>([]);
+  const [workload, setWorkload]             = useState<EditorWorkload[]>([]);
   const [projectedWorkload, setProjectedWorkload] = useState<EditorWorkload[]>([]);
+  const [dueDateWorkload, setDueDateWorkload]     = useState<EditorWorkload[]>([]);
   const [selectedEditorIds, setSelectedEditorIds] = useState<number[]>([]);
   const [addEditorValue, setAddEditorValue]       = useState("none");
   const [isMultiTask, setIsMultiTask] = useState(false);
@@ -83,6 +84,16 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
     const date = form.startDateTime.split("T")[0];
     apiFetch<EditorWorkload[]>(`/api/workload?date=${date}`).then(setProjectedWorkload).catch(() => {});
   }, [form.startDateTime]);
+
+  // Quando dueDateTime muda (e é diferente de startDateTime e é futuro), busca carga no prazo
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const dueStr   = form.dueDateTime ? form.dueDateTime.split("T")[0] : "";
+    const startStr = form.startDateTime ? form.startDateTime.split("T")[0] : "";
+    // Só faz call separado se dueDate é futuro e diferente de startDate
+    if (!dueStr || dueStr <= todayStr || dueStr === startStr) { setDueDateWorkload([]); return; }
+    apiFetch<EditorWorkload[]>(`/api/workload?date=${dueStr}`).then(setDueDateWorkload).catch(() => {});
+  }, [form.dueDateTime, form.startDateTime]);
 
   useEffect(() => {
     if (!open) return;
@@ -247,9 +258,12 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   const removeSubtask = (id: string) => setSubtasks(prev => prev.filter(s => s.id !== id));
   const addSubtask = () => setSubtasks(prev => [...prev, newSubtaskRow()]);
   // Se há startDate futura, usa carga projetada; senão, usa carga atual
-  const isFutureStart = !!form.startDateTime && form.startDateTime > new Date().toISOString().split("T")[0];
+  const todayIso = new Date().toISOString().split("T")[0];
+  const isFutureStart = !!form.startDateTime && form.startDateTime.split("T")[0] > todayIso;
   const activeWorkload = (isFutureStart && projectedWorkload.length > 0) ? projectedWorkload : workload;
   const primaryWorkload = activeWorkload.find(w => w.id === selectedEditorIds[0]);
+  // Verifica se há range completo (startDate + dueDate futuros e diferentes)
+  const hasRangeCheck = isFutureStart && dueDateWorkload.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -389,9 +403,13 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                           const editor = editors.find(e => e.id === id);
                           if (!editor) return null;
                           const wl = activeWorkload.find(w => w.id === id);
-                          const score = isFutureStart ? (wl?.projectedScore ?? wl?.score ?? 0) : (wl?.score ?? 0);
-                          const color = scoreColor(score);
-                          const label = scoreLabel(score);
+                          const startScore = isFutureStart ? (wl?.projectedScore ?? wl?.score ?? 0) : (wl?.score ?? 0);
+                          const startColor = scoreColor(startScore);
+                          const startLabel = scoreLabel(startScore);
+                          const dueWl     = hasRangeCheck ? dueDateWorkload.find(w => w.id === id) : null;
+                          const dueScore  = dueWl ? (dueWl.projectedScore ?? dueWl.score ?? 0) : 0;
+                          const dueColor  = scoreColor(dueScore);
+                          const dueLabel  = scoreLabel(dueScore);
                           return (
                             <div key={id} className="flex items-center gap-2.5 px-3 py-2 bg-[hsl(var(--muted))]/10 hover:bg-[hsl(var(--muted))]/20 transition-colors">
                               <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={28} className="shrink-0" />
@@ -400,9 +418,24 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                                 {idx === 0 && <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60">Principal</p>}
                               </div>
                               <div className="flex flex-col items-end shrink-0 gap-0.5">
-                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>{label}</span>
-                                {isFutureStart && wl?.scheduledScore != null && wl.scheduledScore > 0 && (
-                                  <span className="text-[9px] text-[hsl(var(--muted-foreground))]">+{wl.scheduledScore}pts agendados</span>
+                                {hasRangeCheck ? (
+                                  <>
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-[9px] text-[hsl(var(--muted-foreground))]/50 font-medium">início</span>
+                                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${startColor}22`, color: startColor }}>{startLabel}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-[9px] text-[hsl(var(--muted-foreground))]/50 font-medium">prazo</span>
+                                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${dueColor}22`, color: dueColor }}>{dueLabel}</span>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${startColor}22`, color: startColor }}>{startLabel}</span>
+                                    {isFutureStart && wl?.scheduledScore != null && wl.scheduledScore > 0 && (
+                                      <span className="text-[9px] text-[hsl(var(--muted-foreground))]">+{wl.scheduledScore}pts agendados</span>
+                                    )}
+                                  </>
                                 )}
                               </div>
                               <button onClick={() => removeEditor(id)}
@@ -422,11 +455,15 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       <SelectContent>
                         <SelectItem value="none">{selectedEditorIds.length === 0 ? "Ninguém" : "+ Adicionar editor"}</SelectItem>
                         {availableEditors.map(e => {
-                          const wl = activeWorkload.find(w => w.id === e.id);
-                          const score = isFutureStart ? (wl?.projectedScore ?? wl?.score ?? 0) : (wl?.score ?? 0);
-                          const color = scoreColor(score);
-                          const label = scoreLabel(score);
-                          const blocked = score >= 12;
+                          const wl         = activeWorkload.find(w => w.id === e.id);
+                          const startScore = isFutureStart ? (wl?.projectedScore ?? wl?.score ?? 0) : (wl?.score ?? 0);
+                          const dueWl      = hasRangeCheck ? dueDateWorkload.find(w => w.id === e.id) : null;
+                          const dueScore   = dueWl ? (dueWl.projectedScore ?? dueWl.score ?? 0) : 0;
+                          // Usa o pior score do período para cor e bloqueio
+                          const worstScore = hasRangeCheck ? Math.max(startScore, dueScore) : startScore;
+                          const color      = scoreColor(worstScore);
+                          const label      = scoreLabel(worstScore);
+                          const blocked    = worstScore >= 12;
                           return (
                             <SelectItem key={e.id} value={String(e.id)} disabled={blocked}>
                               <span className="flex items-center gap-2" style={{ opacity: blocked ? 0.45 : 1 }}>
@@ -444,18 +481,32 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                     </Select>
 
                     {primaryWorkload && (() => {
-                      const score = isFutureStart ? (primaryWorkload.projectedScore ?? primaryWorkload.score) : primaryWorkload.score;
-                      if (score <= 6) return null;
-                      const isCritical = score >= 12;
+                      const startScore = isFutureStart ? (primaryWorkload.projectedScore ?? primaryWorkload.score) : primaryWorkload.score;
+                      const dueWl      = hasRangeCheck ? dueDateWorkload.find(w => w.id === selectedEditorIds[0]) : null;
+                      const dueScore   = dueWl ? (dueWl.projectedScore ?? dueWl.score ?? 0) : 0;
+                      const worstScore = hasRangeCheck ? Math.max(startScore, dueScore) : startScore;
+                      if (worstScore <= 6) return null;
+                      const isCritical = worstScore >= 12;
                       const bg   = isCritical ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900" : "bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-900";
                       const icon = isCritical ? "text-red-500" : "text-orange-500";
                       const text = isCritical ? "text-red-800 dark:text-red-300" : "text-orange-800 dark:text-orange-300";
-                      const msg  = isCritical ? "Editor no limite de capacidade!" : "Editor muito ocupado.";
-                      const when = isFutureStart ? " na data de início" : "";
+                      // Mensagem específica sobre onde está o problema
+                      let msg = "";
+                      if (hasRangeCheck && dueScore > startScore && dueScore > 6) {
+                        msg = isCritical
+                          ? `Editor ficará no limite no prazo (${dueScore}pts). No início: ${startScore}pts.`
+                          : `Editor ficará muito ocupado no prazo (${dueScore}pts). No início: ${startScore}pts.`;
+                      } else if (hasRangeCheck && startScore > 6) {
+                        msg = isCritical
+                          ? `Editor no limite no início (${startScore}pts) e no prazo (${dueScore}pts).`
+                          : `Editor muito ocupado no início (${startScore}pts).`;
+                      } else {
+                        msg = isCritical ? "Editor no limite de capacidade!" : "Editor muito ocupado.";
+                      }
                       return (
                         <div className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${bg}`}>
                           <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${icon}`} />
-                          <p className={`text-xs ${text}`}>{msg}{when} {primaryWorkload.taskCount + (primaryWorkload.scheduledCount ?? 0)} tarefa(s) ativa(s).</p>
+                          <p className={`text-xs ${text}`}>{msg}</p>
                         </div>
                       );
                     })()}
@@ -491,7 +542,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                   />
                   {isFutureStart && (
                     <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-snug">
-                      Carga projetada para a data de início
+                      {hasRangeCheck
+                        ? "Carga verificada no início e no prazo do período"
+                        : "Carga projetada para a data de início"}
                     </p>
                   )}
                   <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 leading-snug">
