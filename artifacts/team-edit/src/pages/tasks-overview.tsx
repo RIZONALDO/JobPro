@@ -743,6 +743,7 @@ export default function TasksOverview() {
               <div className="w-32 shrink-0"><Th col="status" label="Status" /></div>
               <div className="w-20 shrink-0 hidden lg:block"><Th col="priority" label="Prior." /></div>
               <div className="w-32 shrink-0"><Th col="assignee" label="Editor" /></div>
+              {viewTab === "scheduled" && <div className="w-28 shrink-0 hidden lg:block"><Th col="startDate" label="Início" /></div>}
               <div className="w-28 shrink-0 hidden lg:block"><Th col="dueDate" label="Prazo" /></div>
               <div className="w-24 shrink-0 hidden xl:block"><Th col="coordinator" label="Coord." /></div>
               <div className="w-52 shrink-0" />
@@ -1015,6 +1016,16 @@ export default function TasksOverview() {
                         })()}
                       </div>
 
+                      {/* Início chip — mobile, only in "Agendadas" tab */}
+                      {viewTab === "scheduled" && t.startDate && (
+                        <div className="flex items-center gap-1 mt-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]/50">Início</span>
+                          <span className="text-xs font-medium text-sky-500 tabular-nums">
+                            {t.startDate.split("T")[0].split("-").slice(1).reverse().join("/")}
+                          </span>
+                        </div>
+                      )}
+
                       {/* Row 4: editors */}
                       {t.editors && t.editors.length > 0 && (
                         <div className="flex items-center gap-2 mt-2.5">
@@ -1164,6 +1175,15 @@ export default function TasksOverview() {
                       </span>
                     )}
                   </div>
+
+                  {/* Início — only on lg+, only in "Agendadas" tab */}
+                  {viewTab === "scheduled" && (
+                    <div className="hidden lg:flex w-28 shrink-0 items-center">
+                      <span className="text-xs font-medium text-sky-500 tabular-nums">
+                        {t.startDate ? t.startDate.split("T")[0].split("-").slice(1).reverse().join("/") : "—"}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Prazo — only on lg+ */}
                   <div className="hidden lg:flex w-28 shrink-0 items-center">

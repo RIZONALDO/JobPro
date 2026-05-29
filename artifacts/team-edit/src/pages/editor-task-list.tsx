@@ -287,6 +287,7 @@ export default function EditorTaskList() {
           <div className="flex-1 min-w-0 pl-4 pr-3">Tarefa</div>
           <div className="w-36 shrink-0 px-2">Status</div>
           <div className="w-28 shrink-0 hidden lg:block pl-6">Prioridade</div>
+          {viewTab === "scheduled" && <div className="w-28 shrink-0 hidden lg:block pl-6">Início</div>}
           <div className="w-28 shrink-0 hidden lg:block pl-6">Prazo</div>
           <div className="w-20 shrink-0 hidden xl:block pl-6">Coord.</div>
           <div className="w-28 shrink-0 pl-6">Ação</div>
@@ -390,6 +391,16 @@ export default function EditorTaskList() {
                     </p>
                   )}
 
+                  {/* Início chip — mobile, only in "Agendadas" tab */}
+                  {viewTab === "scheduled" && t.startDate && (
+                    <div className="flex items-center gap-1 mt-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]/50">Início</span>
+                      <span className="text-xs font-medium text-sky-500 tabular-nums">
+                        {t.startDate.split("T")[0].split("-").slice(1).reverse().join("/")}
+                      </span>
+                    </div>
+                  )}
+
                   {/* status + priority + due date */}
                   <div className="flex items-center gap-2 mt-2.5 flex-wrap">
                     <Badge className={`text-xs px-2 py-0.5 font-medium shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
@@ -471,6 +482,15 @@ export default function EditorTaskList() {
               <div className="hidden lg:flex w-28 shrink-0 items-center pl-6">
                 <PriorityBadge priority={t.priority} />
               </div>
+
+              {/* Início — only in "Agendadas" tab, lg+ */}
+              {viewTab === "scheduled" && (
+                <div className="hidden lg:flex w-28 shrink-0 items-center pl-6">
+                  <span className="text-xs font-medium text-sky-500 tabular-nums">
+                    {t.startDate ? t.startDate.split("T")[0].split("-").slice(1).reverse().join("/") : "—"}
+                  </span>
+                </div>
+              )}
 
               {/* Due date */}
               <div className="hidden lg:flex w-28 shrink-0 items-center pl-6">
