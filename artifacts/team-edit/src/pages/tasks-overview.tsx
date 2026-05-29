@@ -677,36 +677,39 @@ export default function TasksOverview() {
         </span>
       </div>
 
-      {/* ── View tabs ────────────────────────────────────────────────────── */}
-      <div className="flex gap-1 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm p-1">
-        {([
-          { key: "all",       label: "Todas",           count: sorted.length },
-          { key: "today",     label: "Tarefas do dia",  count: sorted.filter(t => !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR).length },
-          { key: "scheduled", label: "Agendadas",       count: sorted.filter(t => !!t.startDate && t.startDate.split("T")[0] > TAB_TODAY_STR).length },
-        ] as const).map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setViewTab(tab.key)}
-            className={`flex items-center gap-2 flex-1 justify-center px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              viewTab === tab.key
-                ? "bg-[hsl(var(--primary))] text-white shadow-sm"
-                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/40"
-            }`}
-          >
-            {tab.label}
-            <span className={`tabular-nums text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-              viewTab === tab.key
-                ? "bg-white/20 text-white"
-                : "bg-[hsl(var(--muted))]/60 text-[hsl(var(--muted-foreground))]"
-            }`}>
-              {tab.count}
-            </span>
-          </button>
-        ))}
-      </div>
-
       {/* ── Table ────────────────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm overflow-hidden flex flex-col">
+
+        {/* ── Tab bar (underline) ─── */}
+        <div className="flex shrink-0 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20 px-2">
+          {([
+            { key: "today",     label: "Tarefas do dia", count: sorted.filter(t => !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR).length },
+            { key: "scheduled", label: "Agendadas",      count: sorted.filter(t => !!t.startDate && t.startDate.split("T")[0] > TAB_TODAY_STR).length },
+            { key: "all",       label: "Todas",          count: sorted.length },
+          ] as const).map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setViewTab(tab.key)}
+              className={`relative flex items-center gap-2 px-4 py-2.5 text-xs font-semibold transition-colors whitespace-nowrap ${
+                viewTab === tab.key
+                  ? "text-[hsl(var(--foreground))]"
+                  : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+              }`}
+            >
+              {tab.label}
+              <span className={`tabular-nums text-[10px] px-1.5 py-px rounded-full font-bold transition-colors ${
+                viewTab === tab.key
+                  ? "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]"
+                  : "bg-[hsl(var(--muted))]/80 text-[hsl(var(--muted-foreground))]/60"
+              }`}>
+                {tab.count}
+              </span>
+              {viewTab === tab.key && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[hsl(var(--primary))] rounded-full" />
+              )}
+            </button>
+          ))}
+        </div>
 
         {/* Column headers — desktop fixed, não scrollam */}
         {(() => {

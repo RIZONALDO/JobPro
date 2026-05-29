@@ -321,8 +321,8 @@ export default function MyTasks() {
   return (
     <div className="p-2 sm:p-4 flex flex-col gap-3">
 
-      {/* ── Tabs ─────────────────────────────────────────────────── */}
-      <div className="flex gap-1 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm p-1">
+      {/* ── Tabs (underline) ──────────────────────────────────── */}
+      <div className="flex border-b border-[hsl(var(--border))] bg-[hsl(var(--card))] rounded-xl rounded-b-none shadow-sm px-2">
         {([
           {
             key: "today" as const,
@@ -338,20 +338,23 @@ export default function MyTasks() {
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-2 flex-1 justify-center px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            className={`relative flex items-center gap-2 px-4 py-2.5 text-xs font-semibold transition-colors whitespace-nowrap ${
               activeTab === tab.key
-                ? "bg-[hsl(var(--primary))] text-white shadow-sm"
-                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/40"
+                ? "text-[hsl(var(--foreground))]"
+                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
             }`}
           >
             {tab.label}
-            <span className={`tabular-nums text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+            <span className={`tabular-nums text-[10px] px-1.5 py-px rounded-full font-bold transition-colors ${
               activeTab === tab.key
-                ? "bg-white/20 text-white"
-                : "bg-[hsl(var(--muted))]/60 text-[hsl(var(--muted-foreground))]"
+                ? "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]"
+                : "bg-[hsl(var(--muted))]/80 text-[hsl(var(--muted-foreground))]/60"
             }`}>
               {tab.count}
             </span>
+            {activeTab === tab.key && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[hsl(var(--primary))] rounded-full" />
+            )}
           </button>
         ))}
       </div>
