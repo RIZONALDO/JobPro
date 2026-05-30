@@ -23,7 +23,7 @@ interface Props {
 
 function scoreColor(score: number): string {
   if (score === 0)  return "#94a3b8";
-  if (score <= 6)   return "#22c55e";
+  if (score <= 6)    return "#eab308"; // amarelo — Ocupado
   if (score <= 11)  return "#f97316";
   return "#ef4444";
 }

@@ -66,7 +66,7 @@ const STATUS_BAR: Record<string, string> = {
 // cinza=disponível | verde=ocupado | laranja=muito ocupado | vermelho=no limite
 function scoreColor(score: number): string {
   if (score === 0)   return "#94a3b8"; // cinza  — Disponível
-  if (score <= 6)    return "#22c55e"; // verde  — Ocupado
+  if (score <= 6)    return "#eab308"; // amarelo — Ocupado
   if (score <= 11)   return "#f97316"; // laranja — Muito ocupado
   return "#ef4444";                    // vermelho — No limite
 }

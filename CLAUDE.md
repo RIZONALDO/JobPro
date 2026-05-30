@@ -115,7 +115,7 @@ Cada tarefa tem um **peso por complexidade**:
 | Score | Cor | Rótulo |
 |-------|-----|--------|
 | 0 | cinza `#94a3b8` | Disponível |
-| 1–6 | verde `#22c55e` | Ocupado |
+| 1–6 | amarelo `#eab308` | Ocupado |
 | 7–11 | laranja `#f97316` | Muito ocupado |
 | ≥12 | vermelho `#ef4444` | No limite |
 

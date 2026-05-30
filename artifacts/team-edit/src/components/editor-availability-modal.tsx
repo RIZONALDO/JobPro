@@ -18,7 +18,7 @@ interface Props {
 
 function scoreColor(score: number): string {
   if (score === 0)  return "transparent";
-  if (score <= 6)   return "#22c55e";
+  if (score <= 6)   return "#eab308";
   if (score <= 11)  return "#f97316";
   return "#ef4444";
 }
@@ -30,13 +30,13 @@ function scoreLabel(score: number): string {
 }
 function scoreBg(score: number): string {
   if (score === 0)  return "bg-transparent";
-  if (score <= 6)   return "bg-green-100 dark:bg-green-950/50";
+  if (score <= 6)   return "bg-yellow-100 dark:bg-yellow-950/50";
   if (score <= 11)  return "bg-orange-100 dark:bg-orange-950/50";
   return "bg-red-100 dark:bg-red-950/50";
 }
 function scoreText(score: number): string {
   if (score === 0)  return "text-[hsl(var(--muted-foreground))]";
-  if (score <= 6)   return "text-green-700 dark:text-green-400";
+  if (score <= 6)   return "text-yellow-700 dark:text-yellow-400";
   if (score <= 11)  return "text-orange-700 dark:text-orange-400";
   return "text-red-700 dark:text-red-400";
 }
@@ -170,7 +170,7 @@ export function EditorAvailabilityModal({ open, onOpenChange, editor }: Props) {
           <div className="flex items-center gap-3 pt-1 flex-wrap justify-center">
             {[
               { color: "bg-[hsl(var(--muted))]/50", label: "Livre" },
-              { color: "bg-green-100 dark:bg-green-950/50", label: "Ocupado" },
+              { color: "bg-yellow-100 dark:bg-yellow-950/50", label: "Ocupado" },
               { color: "bg-orange-100 dark:bg-orange-950/50", label: "Muito ocupado" },
               { color: "bg-red-100 dark:bg-red-950/50", label: "No limite" },
             ].map(({ color, label }) => (
