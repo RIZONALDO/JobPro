@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRealtime } from "@/hooks/use-realtime";
 import { apiFetch, apiPost, apiPut, apiDelete, ApiError } from "@/lib/api";
-import { fmtDate, fmtDateHuman, fmtShort } from "@/lib/utils";
+import { fmtDate, fmtShort } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -660,10 +660,8 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                           {/* Due date */}
                           <div className="w-28 shrink-0 flex flex-col justify-center gap-0.5">
                             {t.dueDate && (() => {
-                              const h = fmtDateHuman(t.dueDate); const n = fmtDate(t.dueDate);
                               return <>
-                                <span className="text-xs text-[hsl(var(--muted-foreground))]">{h}</span>
-                                {h !== n && <span className="text-xs text-[hsl(var(--muted-foreground))]/50">{n}</span>}
+                                <span className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(task.dueDate)}</span></span>}
                               </>;
                             })()}
                           </div>

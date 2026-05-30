@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRealtime } from "@/hooks/use-realtime";
 import { useParams, Link, useLocation } from "wouter";
 import { apiFetch, apiPost, apiPut, apiDelete, ApiError } from "@/lib/api";
-import { fmtDate, fmtDateHuman, fmtShort } from "@/lib/utils";
+import { fmtDate, fmtShort } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -397,10 +397,8 @@ export default function JobDetail() {
                   {/* Data — w-28 */}
                   <div className="w-28 shrink-0 flex flex-col justify-center gap-0.5">
                     {t.dueDate && (() => {
-                      const h = fmtDateHuman(t.dueDate); const n = fmtDate(t.dueDate);
                       return <>
-                        <span className="text-xs text-[hsl(var(--muted-foreground))]">{h}</span>
-                        {h !== n && <span className="text-[9px] text-[hsl(var(--muted-foreground))]/40">{n}</span>}
+                        <span className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(task.dueDate)}</span></span>}
                       </>;
                     })()}
                   </div>

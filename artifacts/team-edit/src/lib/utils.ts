@@ -87,112 +87,40 @@ export function fmtClosedCycle(
 ): { line1: string; line2: string | null; cls: string } | null {
   if (status !== "completed" && status !== "cancelled") return null;
 
-  // Humanise the closure date (updatedAt)
-  const closed   = new Date(updatedAt);
+  const closed    = new Date(updatedAt);
   const closedDay = new Date(closed.getFullYear(), closed.getMonth(), closed.getDate());
-  const today     = new Date(); today.setHours(0, 0, 0, 0);
-  const diffClose = Math.round((closedDay.getTime() - today.getTime()) / 86_400_000);
-
-  const fmtDay = (d: Date) => {
-    const dd = String(d.getDate()).padStart(2, "0");
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    return `${dd}/${mm}`;
-  };
-
-  const closedLabel =
-    diffClose === 0  ? "hoje" :
-    diffClose === -1 ? "ontem" :
-    fmtDay(closed);
+  const closedLabel = fmtDate(updatedAt) ?? "";
 
   if (status === "cancelled") {
     return { line1: `Cancelada ${closedLabel}`, line2: null, cls: "text-[hsl(var(--muted-foreground))]/60" };
   }
 
-  // status === "completed"
   const line1 = `Entregue ${closedLabel}`;
 
   if (!dueDate) {
     return { line1, line2: null, cls: "text-emerald-600" };
   }
 
-  const dueDay  = new Date(dueDate.includes("T") ? dueDate : dueDate + "T00:00");
+  const dueDay   = new Date(dueDate.includes("T") ? dueDate : dueDate + "T00:00");
   const lateDays = Math.round((closedDay.getTime() - dueDay.getTime()) / 86_400_000);
 
   if (lateDays <= 0) {
     return { line1, line2: "No prazo ✓", cls: "text-emerald-600" };
   }
 
-  const d = lateDays;
-  const plural = d === 1 ? "dia" : "dias";
-  return { line1, line2: `${d} ${plural} de atraso`, cls: "text-amber-600" };
+  const plural = lateDays === 1 ? "dia" : "dias";
+  return { line1, line2: `${lateDays} ${plural} de atraso`, cls: "text-amber-600" };
 }
 
 export function fmtDateHuman(date: string | null | undefined): string | null {
-  if (!date) return null;
-  const hasTime = date.includes("T");
-  const dt = hasTime
-    ? new Date(date)
-    : (() => { const [y, m, d] = date.split("-").map(Number); return new Date(y, m - 1, d); })();
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dtDay = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
-  const diff = Math.round((dtDay.getTime() - today.getTime()) / 86_400_000);
-  const h = hasTime ? dt.getHours() : -1;
-  const period = h >= 5 && h < 12 ? " pela manhã"
-    : h >= 12 && h < 18 ? " à tarde"
-    : h >= 18 ? " à noite"
-    : "";
-  if (diff === 0)  return `Hoje${period}`;
-  if (diff === -1) return `Ontem${period}`;
-  if (diff === 1)  return `Amanhã${period}`;
-  if (diff > 1 && diff <= 7) {
-    const days = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
-    return `${days[dt.getDay()]}${period}`;
-  }
   return fmtDate(date);
 }
 
-/**
- * Week-scoped humanization for the Prazo column.
- * Returns label + sublabel (time period) for dates within the current week (Mon–Sun).
- * Beyond the week returns the full formatted date with isHuman=false.
- */
 export function fmtPrazoWeek(date: string | null | undefined): {
   label: string;
   sublabel: string | null;
   isHuman: boolean;
 } {
   if (!date) return { label: "—", sublabel: null, isHuman: false };
-
-  const hasTime = date.includes("T");
-  const dt = hasTime
-    ? new Date(date)
-    : (() => { const [y, m, d] = date.split("-").map(Number); return new Date(y, m - 1, d); })();
-
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const dtDay = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
-  const diff  = Math.round((dtDay.getTime() - today.getTime()) / 86_400_000);
-
-  // How many days until end of this week (Sunday)
-  const todayDow       = today.getDay(); // 0=Sun
-  const daysUntilSunday = todayDow === 0 ? 0 : 7 - todayDow;
-
-  const h = hasTime ? dt.getHours() : -1;
-  const period: string | null =
-    h >= 5  && h < 12 ? "pela manhã"
-    : h >= 12 && h < 18 ? "à tarde"
-    : h >= 18           ? "à noite"
-    : null;
-
-  if (diff === 0) return { label: "Hoje",  sublabel: period, isHuman: true };
-  if (diff === 1) return { label: "Amanhã", sublabel: period, isHuman: true };
-
-  if (diff > 1 && diff <= daysUntilSunday) {
-    const names  = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
-    const dow    = dt.getDay();
-    const prefix = dow === 0 || dow === 6 ? "Neste" : "Nesta";
-    return { label: `${prefix} ${names[dow]}`, sublabel: period, isHuman: true };
-  }
-
   return { label: fmtDate(date) ?? "—", sublabel: null, isHuman: false };
 }

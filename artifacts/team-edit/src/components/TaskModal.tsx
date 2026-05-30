@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
-import { fmtDate, fmtDateHuman } from "@/lib/utils";
+import { fmtDate } from "@/lib/utils";
 import {
   Clock, FolderOpen, RotateCcw, Calendar, AlertTriangle,
   Layers, Copy, ChevronRight, Hash, Tag, Zap,
@@ -142,7 +142,7 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
                       {overdue
                         ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                         : <Calendar className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]/60" />}
-                      <span className="text-sm font-semibold">{fmtDateHuman(task.dueDate)}</span>
+                      <span className="text-sm font-semibold">{fmtDate(task.dueDate)}</span>
                     </div>
                   ) : (
                     <span className="text-sm text-[hsl(var(--muted-foreground))]/30">—</span>

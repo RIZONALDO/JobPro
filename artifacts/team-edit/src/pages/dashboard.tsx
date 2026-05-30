@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback } from "react";
 import ReactECharts from "echarts-for-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useRealtime } from "@/hooks/use-realtime";
-import { fmtDate, fmtDateHuman, fmtShort } from "@/lib/utils";
+import { fmtDate, fmtShort } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -1258,7 +1258,7 @@ function ActionCard({ label, actionCount, total, rows }: {
         </span>
       </div>
       <div ref={ref} className="flex-1 min-h-0 -mx-2">
-        <StatusBars data={visxData} width={w} height={h} />
+        <StatusBars data={visxData} width={w} height={fmtDate(task.dueDate)} />
       </div>
     </div>
   );
@@ -1279,7 +1279,7 @@ function DeadlineCard({ label, sub, subCls, pill, days, color }: {
         {pill && <span className={`text-xs font-semibold px-2 py-0.5 rounded-full leading-none shrink-0 ${pill.cls}`}>{pill.text}</span>}
       </div>
       <div ref={ref} className="flex-1 min-h-0 -mx-2 mt-1">
-        <StatusBars data={data} width={w} height={h} />
+        <StatusBars data={data} width={w} height={fmtDate(task.dueDate)} />
       </div>
       <p className={`text-xs px-1 shrink-0 mt-1 ${subCls}`}>{sub}</p>
     </div>
@@ -1777,7 +1777,7 @@ function TaskDeadlineCard({ data, onOpenJob }: {
                 <span className="text-xs text-[hsl(var(--muted-foreground))]">Carregando…</span>
               </div>
             ) : (
-              <StatusBars data={barData} width={w} height={h} />
+              <StatusBars data={barData} width={w} height={fmtDate(task.dueDate)} />
             )}
           </div>
 
@@ -1867,7 +1867,7 @@ function WaffleCard({ tasks }: { tasks: Task[] }) {
       </div>
       <div className="flex-1 min-h-0 flex items-center gap-4 mt-1.5">
         <div ref={ref} className="flex-1 min-w-0 min-h-0">
-          <WaffleChart cells={cells} width={Math.min(w, h * 1.05)} height={h} />
+          <WaffleChart cells={cells} width={Math.min(w, h * 1.05)} height={fmtDate(task.dueDate)} />
         </div>
         <div className="shrink-0 flex flex-col justify-center gap-2">
           {counts.map(s => (
@@ -2143,13 +2143,9 @@ export default function Dashboard() {
                       {t.taskCode ? <span className="text-xs font-bold font-mono shrink-0 text-[hsl(var(--muted-foreground))]">{t.taskCode}</span> : null}
                       <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{t.title}</p>
                     </div>
-                    {t.dueDate && (() => {
-                      const h = fmtDateHuman(t.dueDate); const n = fmtDate(t.dueDate);
-                      return <>
-                        <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">Entrega: {h}</p>
-                        {h !== n && <p className="text-[9px] text-[hsl(var(--muted-foreground))]/40">{n}</p>}
-                      </>;
-                    })()}
+                    {t.dueDate && (
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">Entrega: {fmtDate(t.dueDate)}</p>
+                    )}
                   </div>
                   <div className="flex items-center justify-end gap-1.5 shrink-0">
                     <div className="hidden sm:flex items-center gap-2">
@@ -2244,7 +2240,7 @@ export default function Dashboard() {
                         <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{t.client ?? ""}</p>
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="text-xs font-semibold text-blue-500">{fmtDateHuman(t.dueDate!)}</p>
+                        <p className="text-xs font-semibold text-blue-500">{fmtDate(t.dueDate!)}</p>
                         <p className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(t.dueDate!)}</p>
                       </div>
                     </div>
@@ -2283,7 +2279,7 @@ export default function Dashboard() {
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-xs font-semibold text-red-500">{fmtDateHuman(t.dueDate)}</p>
+                    <p className="text-xs font-semibold text-red-500">{fmtDate(t.dueDate)}</p>
                     <p className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(t.dueDate)}</p>
                   </div>
                 </div>
@@ -2329,7 +2325,7 @@ export default function Dashboard() {
                       )}
                       {t.dueDate && (
                         <span className="text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap shrink-0">
-                          Entrega: {fmtDateHuman(t.dueDate)}
+                          Entrega: {fmtDate(t.dueDate)}
                         </span>
                       )}
                     </div>

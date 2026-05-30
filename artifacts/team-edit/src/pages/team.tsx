@@ -3,7 +3,7 @@ import { staggerContainer, staggerItem } from "@/lib/motion";
 import { useEffect, useState } from "react";
 import { apiFetch, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { useJobModal } from "@/contexts/JobModalContext";
-import { fmtDate, fmtDateHuman } from "@/lib/utils";
+import { fmtDate } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -318,10 +318,8 @@ export default function Team() {
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
                                   {task.dueDate && (() => {
-                                    const h = fmtDateHuman(task.dueDate); const n = fmtDate(task.dueDate);
                                     return <span className="flex flex-col items-end gap-0">
-                                      <span className="text-xs text-[hsl(var(--muted-foreground))]">{h}</span>
-                                      {h !== n && <span className="text-[9px] text-[hsl(var(--muted-foreground))]/40">{n}</span>}
+                                      <span className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(task.dueDate)}</span></span>}
                                     </span>;
                                   })()}
                                   <PriorityBadge priority={task.priority} />

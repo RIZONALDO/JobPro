@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { cn, fmtDate, fmtClosedCycle, fmtPrazoWeek, fmtDaysLeft } from "@/lib/utils";
 
 interface Props {
@@ -10,8 +9,6 @@ interface Props {
 }
 
 export function PrazoCell({ dueDate, status, updatedAt, overdue, className }: Props) {
-  const [revealed, setRevealed] = useState(false);
-
   const closed = fmtClosedCycle(status, dueDate, updatedAt);
   if (closed) return (
     <div className={cn("flex flex-col gap-0.5", className)}>
@@ -26,56 +23,21 @@ export function PrazoCell({ dueDate, status, updatedAt, overdue, className }: Pr
     <span className={cn("text-[11px] text-[hsl(var(--muted-foreground))]/30", className)}>—</span>
   );
 
-  const { label, isHuman } = fmtPrazoWeek(dueDate);
+  const { label } = fmtPrazoWeek(dueDate);
   const days = fmtDaysLeft(dueDate);
 
-  // Diff just for line-2 color logic — red only for overdue, one amber accent for today
   const dt    = new Date(dueDate.includes("T") ? dueDate : dueDate + "T00:00");
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const diff  = Math.round((new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime() - today.getTime()) / 86_400_000);
-  const daysCls = diff < 0
-    ? "text-red-400"
-    : diff === 0
-    ? "text-amber-600"
-    : "text-[hsl(var(--muted-foreground))]/55";
+  const daysCls = diff < 0 ? "text-red-400" : diff === 0 ? "text-amber-600" : "text-[hsl(var(--muted-foreground))]/55";
 
   const lineColor  = overdue ? "text-red-500" : "text-[hsl(var(--muted-foreground))]";
   const lineWeight = overdue ? "font-semibold" : "font-normal";
 
-  const DaysLine = () => days ? (
-    <span className={`leading-tight ${daysCls}`} style={{ fontSize: "9px" }}>{days.text}</span>
-  ) : null;
-
-  if (!isHuman) {
-    return (
-      <div className={cn("flex flex-col gap-0.5", className)}>
-        <span className={`text-xs ${lineWeight} leading-tight ${lineColor}`}>{label}</span>
-        <DaysLine />
-      </div>
-    );
-  }
-
-  if (revealed) {
-    return (
-      <div
-        className={cn("flex flex-col gap-0.5 cursor-pointer select-none", className)}
-        onClick={() => setRevealed(false)}
-        title="Clique para voltar"
-      >
-        <span className={`text-xs ${lineWeight} leading-tight ${lineColor}`}>{fmtDate(dueDate)}</span>
-        <DaysLine />
-      </div>
-    );
-  }
-
   return (
-    <div
-      className={cn("flex flex-col gap-0.5 cursor-pointer select-none", className)}
-      onClick={() => setRevealed(true)}
-      title={fmtDate(dueDate) ?? undefined}
-    >
+    <div className={cn("flex flex-col gap-0.5", className)}>
       <span className={`text-xs ${lineWeight} leading-tight ${lineColor}`}>{label}</span>
-      <DaysLine />
+      {days && <span className={`leading-tight ${daysCls}`} style={{ fontSize: "9px" }}>{days.text}</span>}
     </div>
   );
 }
