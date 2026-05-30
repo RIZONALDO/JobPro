@@ -21,7 +21,7 @@ import {
   ArrowUpRight, X, PauseCircle, XCircle,
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
   SlidersHorizontal, Search, CalendarClock, ChevronRight,
-  CheckCircle2, RotateCcw, AlertTriangle,
+  CheckCircle2, RotateCcw, AlertTriangle, Clock,
 } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
@@ -738,7 +738,7 @@ export default function TasksOverview() {
               <div className="w-32 shrink-0"><Th col="assignee" label="Editor" /></div>
               {viewTab === "scheduled"
                 ? <div className="w-44 shrink-0 hidden lg:block"><Th col="startDate" label="Período" /></div>
-                : <div className="w-28 shrink-0 hidden lg:block"><Th col="dueDate" label="Entrega" /></div>
+                : <div className="w-28 shrink-0 hidden lg:flex items-center gap-1"><Clock className="h-3 w-3" /><Th col="dueDate" label="Entrega" /></div>
               }
               <div className="w-24 shrink-0 hidden xl:block"><Th col="coordinator" label="Coord." /></div>
               <div className="w-52 shrink-0" />
