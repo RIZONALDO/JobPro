@@ -184,9 +184,10 @@ export function DateRangePicker({
   }
 
   function handleApply() {
-    // Se o usuário clicou só uma vez, from existe mas to não — trata o dia como início e prazo
+    // Fim efetivo: to clicado, ou hoveredDay (hover-to-select), ou mesmo dia do from
     const effectiveFrom = range.from;
-    const effectiveTo   = range.to ?? range.from;
+    const rawTo = range.to ?? hoveredDay ?? range.from;
+    const effectiveTo = rawTo && effectiveFrom && rawTo < effectiveFrom ? effectiveFrom : rawTo;
 
     if (!effectiveTo) {
       // Nada selecionado
@@ -329,16 +330,10 @@ export function DateRangePicker({
                 "--rdp-nav_button-width": "1.75rem",
                 "--rdp-disabled-opacity": "0.25",
               } as React.CSSProperties}
-              // Hover-to-select: atualiza o fim em tempo real ao mover o cursor
+              // Hover-to-select: só atualiza o visual (displayRange), não commita range.to
               onDayMouseEnter={(day) => {
                 if (isBefore(day, today)) return;
                 setHoveredDay(day);
-                if (range.from) {
-                  const d1 = range.from;
-                  const d2 = day;
-                  const [from, to] = d1 <= d2 ? [d1, d2] : [d2, d1];
-                  setRange({ from, to });
-                }
               }}
               onDayMouseLeave={() => setHoveredDay(undefined)}
             />
