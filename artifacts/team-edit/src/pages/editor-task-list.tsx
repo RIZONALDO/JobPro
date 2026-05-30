@@ -290,7 +290,7 @@ export default function EditorTaskList() {
           <div className="w-36 shrink-0 px-2">Status</div>
           <div className="w-28 shrink-0 hidden lg:block pl-6">Prioridade</div>
           {viewTab === "scheduled"
-            ? <div className="w-44 shrink-0 hidden lg:flex items-center gap-1 pl-6"><Clock className="h-3 w-3 shrink-0 text-current" />Entrega</div>
+            ? <div className="w-44 shrink-0 hidden lg:block pl-6">Período</div>
             : <div className="w-28 shrink-0 hidden lg:flex items-center gap-1 pl-6"><Clock className="h-3 w-3 shrink-0 text-current" />Entrega</div>
           }
           <div className="w-20 shrink-0 hidden xl:block pl-6">Coord.</div>
