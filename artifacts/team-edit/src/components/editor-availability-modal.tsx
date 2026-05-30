@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
+import { toLocalDate } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
@@ -75,7 +76,7 @@ export function EditorAvailabilityModal({ open, onOpenChange, editor }: Props) {
   // Build calendar grid
   const firstDay = new Date(year, month - 1, 1).getDay(); // 0=Sun
   const daysInMonth = new Date(year, month, 0).getDate();
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = toLocalDate(new Date());
 
   // Map date string → DayData for quick lookup
   const dayMap = new Map(days.map(d => [d.date, d]));
