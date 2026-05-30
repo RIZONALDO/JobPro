@@ -59,7 +59,8 @@ function scoreLabel(score: number): string {
 export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initialDueDate, hidePublish }: Props) {
   const editMode = !!editTaskId;
   const { user } = useAuth();
-  const isCoordinator = user?.role === "coordinator";
+  // Coordenadores e supervisores não veem complexidade — só admin pode definir manualmente
+  const hideComplexity = user?.role !== "admin";
 
   const [form, setForm]               = useState(EMPTY_FORM);
   const [taskStatus, setTaskStatus]   = useState<string>("");
@@ -222,7 +223,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
         title: form.title, description: form.description || null,
         startDate: form.startDateTime || null,
         dueDate: form.dueDateTime || null, priority: form.priority,
-        ...(!isCoordinator ? { complexity: form.complexity } : {}), client: form.client || null,
+        ...(!hideComplexity ? { complexity: form.complexity } : {}), client: form.client || null,
         folderUrl: form.folderUrl || null,
         subtasks: filledSubtasks.map((s, i) => ({
           title: s.title,
@@ -249,7 +250,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
         title: form.title, description: form.description || null,
         startDate: form.startDateTime || null,
         dueDate: form.dueDateTime || null, priority: form.priority,
-        ...(!isCoordinator ? { complexity: form.complexity } : {}), client: form.client || null,
+        ...(!hideComplexity ? { complexity: form.complexity } : {}), client: form.client || null,
         folderUrl: form.folderUrl || null,
       };
       if (publishStatus === "pending") payload.status = "pending";
@@ -271,7 +272,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
       title: form.title, description: form.description || null,
       startDate: form.startDateTime || null,
       dueDate: dueDatePayload, priority: form.priority,
-      ...(!isCoordinator ? { complexity: form.complexity } : {}),
+      ...(!hideComplexity ? { complexity: form.complexity } : {}),
       assignedToId: selectedEditorIds[0] ?? null, editorIds: selectedEditorIds,
       folderUrl: form.folderUrl || null, client: form.client || null,
     };
@@ -610,7 +611,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                 </div>
 
                 {/* Complexidade — visível só para admin; coordenador usa padrão (editor define ao iniciar) */}
-                {!isCoordinator && (
+                {!hideComplexity && (
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-1.5">
                       <Tag className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
