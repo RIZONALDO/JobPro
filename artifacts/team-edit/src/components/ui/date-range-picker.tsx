@@ -329,10 +329,16 @@ export function DateRangePicker({
                 "--rdp-nav_button-width": "1.75rem",
                 "--rdp-disabled-opacity": "0.25",
               } as React.CSSProperties}
-              // Fix 1: rastrear hover para exibir preview animado do range
+              // Hover-to-select: ao passar o cursor após clicar o início, confirma o fim
               onDayMouseEnter={(day) => {
                 if (isBefore(day, today)) return;
                 setHoveredDay(day);
+                if (range.from && !range.to) {
+                  const d1 = range.from;
+                  const d2 = day;
+                  const [from, to] = d1 <= d2 ? [d1, d2] : [d2, d1];
+                  setRange({ from, to });
+                }
               }}
               onDayMouseLeave={() => setHoveredDay(undefined)}
             />
