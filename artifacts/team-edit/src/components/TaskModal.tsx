@@ -175,11 +175,8 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
                     </>
                   ) : (
                     <>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Criado em</p>
-                      <div className="flex items-center gap-1.5 text-[hsl(var(--muted-foreground))]">
-                        <Clock className="h-3.5 w-3.5 shrink-0" />
-                        <span className="text-sm font-medium">{fmtDate(task.createdAt)}</span>
-                      </div>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Atualizado</p>
+                      <span className="text-sm font-medium text-[hsl(var(--muted-foreground))]">{fmtDate(task.updatedAt)}</span>
                     </>
                   )}
                 </div>
@@ -314,11 +311,8 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
               </div>
 
               {/* FOOTER timestamps */}
-              <div className="px-5 py-3 flex items-center gap-2 text-[10px] text-[hsl(var(--muted-foreground))]/30">
-                <Clock className="h-3 w-3 shrink-0" />
-                <span>Criado {fmtDate(task.createdAt)}</span>
-                <span>·</span>
-                <span>Atualizado {fmtDate(task.updatedAt)}</span>
+              <div className="px-5 py-3 flex items-center gap-1.5 text-[10px] text-[hsl(var(--muted-foreground))]/30">
+                <span>Criado em {fmtDate(task.createdAt)}</span>
               </div>
 
             </div>
