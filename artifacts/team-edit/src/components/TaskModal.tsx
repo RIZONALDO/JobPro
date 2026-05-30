@@ -118,14 +118,14 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
                     <RotateCcw className="h-3 w-3" />{task.revisionCount} alt.
                   </span>
                 )}
-                {task.client && (
-                  <>
-                    <span className="text-[hsl(var(--border))]">·</span>
-                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]/60 flex items-center gap-1">
-                      <Tag className="h-3 w-3" />{task.client}
-                    </span>
-                  </>
-                )}
+                <span className="text-[hsl(var(--border))]">·</span>
+                <span className="text-[11px] flex items-center gap-1">
+                  <Tag className="h-3 w-3 text-[hsl(var(--muted-foreground))]/40" />
+                  {task.client
+                    ? <span className="text-[hsl(var(--muted-foreground))]/60">{task.client}</span>
+                    : <span className="text-[hsl(var(--muted-foreground))]/25 italic">Sem cliente</span>
+                  }
+                </span>
               </div>
             </div>
 
@@ -186,9 +186,9 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
               </div>
 
               {/* EQUIPE */}
-              {(task.createdBy || task.editors?.length > 0) && (
-                <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-3">Equipe</p>
+              <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-3">Equipe</p>
+                {(task.createdBy || task.editors?.length > 0) ? (
                   <div className="flex flex-wrap gap-2">
                     {task.createdBy && (
                       <div className="flex items-center gap-2 bg-[hsl(var(--muted))]/40 border border-[hsl(var(--border))] rounded-xl px-3 py-2">
@@ -209,8 +209,10 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]/30 italic">Sem equipe atribuída.</p>
+                )}
+              </div>
 
               {/* DESCRIÇÃO */}
               <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
@@ -258,9 +260,9 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
               )}
 
               {/* PASTA */}
-              {task.folderUrl && (
-                <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-2">Pasta / Arquivos</p>
+              <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-2">Pasta / Arquivos</p>
+                {task.folderUrl ? (
                   <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-[hsl(var(--muted))]/40 border border-[hsl(var(--border))]">
                     <FolderOpen className="h-4 w-4 shrink-0 mt-0.5 text-[hsl(var(--muted-foreground))]/50" />
                     <span className="flex-1 text-sm text-[hsl(var(--foreground))]/70 break-all leading-snug select-all">{task.folderUrl}</span>
@@ -273,16 +275,21 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
                       <Copy className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-[hsl(var(--muted))]/20 border border-dashed border-[hsl(var(--border))]">
+                    <FolderOpen className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]/25" />
+                    <span className="text-sm text-[hsl(var(--muted-foreground))]/30 italic">Nenhuma pasta vinculada.</span>
+                  </div>
+                )}
+              </div>
 
               {/* ALTERAÇÕES */}
-              {task.revisions.length > 0 && (
-                <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
-                  <div className="flex items-center gap-1.5 mb-3">
-                    <Zap className="h-3 w-3 text-amber-500" />
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40">Histórico de alterações</p>
-                  </div>
+              <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
+                <div className="flex items-center gap-1.5 mb-3">
+                  <Zap className="h-3 w-3 text-amber-500" />
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40">Histórico de alterações</p>
+                </div>
+                {task.revisions.length > 0 ? (
                   <div className="space-y-4">
                     {task.revisions.map((r, idx) => (
                       <div key={r.id} className="flex gap-3">
@@ -301,8 +308,10 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]/30 italic">Nenhuma alteração solicitada.</p>
+                )}
+              </div>
 
               {/* FOOTER timestamps */}
               <div className="px-5 py-3 flex items-center gap-2 text-[10px] text-[hsl(var(--muted-foreground))]/30">
