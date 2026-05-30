@@ -738,7 +738,7 @@ export default function TasksOverview() {
               <div className="w-32 shrink-0"><Th col="assignee" label="Editor" /></div>
               {viewTab === "scheduled"
                 ? <div className="w-44 shrink-0 hidden lg:block"><Th col="startDate" label="Período" /></div>
-                : <div className="w-28 shrink-0 hidden lg:block"><Th col="dueDate" label="Prazo" /></div>
+                : <div className="w-28 shrink-0 hidden lg:block"><Th col="dueDate" label="Entrega" /></div>
               }
               <div className="w-24 shrink-0 hidden xl:block"><Th col="coordinator" label="Coord." /></div>
               <div className="w-52 shrink-0" />

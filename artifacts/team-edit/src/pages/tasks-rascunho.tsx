@@ -6,7 +6,7 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Archive, Plus, Send, MoreHorizontal, Trash2, AlertTriangle } from "lucide-react";
+import { Archive, Plus, Send, MoreHorizontal, Trash2, AlertTriangle, Clock } from "lucide-react";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { TaskFormModal } from "@/components/task-form-modal";
@@ -138,7 +138,7 @@ export default function TasksRascunho() {
         <div className="hidden md:flex shrink-0 items-center px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
           <div className="flex-1 pr-3">Tarefa</div>
           <div className="w-32 shrink-0">Editor</div>
-          <div className="w-28 shrink-0 hidden lg:block">Prazo</div>
+          <div className="w-28 shrink-0 hidden lg:block flex items-center gap-1"><Clock className="h-3 w-3" />Entrega</div>
           <div className="w-20 shrink-0 hidden lg:block">Prior.</div>
           <div className="w-10 shrink-0" />
         </div>

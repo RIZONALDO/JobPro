@@ -13,7 +13,7 @@ import { ClientCombobox } from "@/components/ui/client-combobox";
 import { SubtaskFormRow, type SubtaskRow } from "@/components/ui/subtask-form-row";
 import {
   FolderOpen, ExternalLink, AlertTriangle, X,
-  Layers, FileText, Plus, Users, Calendar, Tag, Link2, Send, Save, SquarePen, CalendarDays,
+  Layers, FileText, Plus, Users, Calendar, Tag, Link2, Send, Save, SquarePen, CalendarDays, Clock,
 } from "lucide-react";
 import { EditorAvailabilityModal } from "@/components/editor-availability-modal";
 
@@ -483,9 +483,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                 {/* Prazo (+ Início opcional) */}
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-1.5">
-                    <Calendar className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
+                    <Clock className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
                     <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
-                      Prazo{(!isMultiTask || editMode) && <span className="text-destructive ml-0.5">*</span>}
+                      Entrega{(!isMultiTask || editMode) && <span className="text-destructive ml-0.5">*</span>}
                       {isMultiTask && !editMode && <span className="text-[hsl(var(--muted-foreground))] font-normal normal-case ml-1 text-[10px]">(opcional)</span>}
                     </Label>
                   </div>

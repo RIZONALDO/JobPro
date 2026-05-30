@@ -136,7 +136,7 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
               <div className="grid grid-cols-2 divide-x divide-y divide-[hsl(var(--border))] border-b border-[hsl(var(--border))]">
 
                 <div className="px-5 py-3.5">
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Prazo</p>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5 flex items-center gap-1"><Clock className="h-3 w-3" />Entrega</p>
                   {task.dueDate ? (
                     <div className={`flex items-center gap-1.5 ${overdue ? "text-red-500" : "text-[hsl(var(--foreground))]"}`}>
                       {overdue
