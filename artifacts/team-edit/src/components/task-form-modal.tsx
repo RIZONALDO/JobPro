@@ -326,11 +326,32 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                     placeholder="Nome da tarefa" className="text-sm h-9 rounded-xl" />
                 </div>
 
-                {/* Descrição */}
+                {/* Direcionamento */}
                 <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Descrição</Label>
+                  <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Direcionamento</Label>
                   <Textarea value={form.description} onChange={e => f({ description: e.target.value })}
-                    rows={3} placeholder="Briefing, referências ou observações…" className="text-sm resize-none rounded-xl" />
+                    rows={4} placeholder="Briefing, referências ou observações…" className="text-sm resize-none rounded-xl" />
+                </div>
+
+                {/* Pasta / Link */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Link2 className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
+                    <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Pasta / Arquivos</Label>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <div className="relative flex-1">
+                      <FolderOpen className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]/50 pointer-events-none" />
+                      <Input value={form.folderUrl} onChange={e => f({ folderUrl: e.target.value })}
+                        placeholder="https://drive.google.com/… ou caminho da pasta" className="text-sm h-9 rounded-xl pl-8" />
+                    </div>
+                    {form.folderUrl && (
+                      <a href={form.folderUrl} target="_blank" rel="noreferrer"
+                        className="inline-flex items-center justify-center h-9 w-9 shrink-0 rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))] transition-colors">
+                        <ExternalLink className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
+                      </a>
+                    )}
+                  </div>
                 </div>
 
                 {/* ── Subtarefas — criação ───────────────────────────── */}
@@ -384,7 +405,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                 {(!isMultiTask || editMode && taskType === "task") && (
                   <div className="space-y-2.5">
                     <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))] flex items-center gap-1.5">
-                      <Users className="h-3.5 w-3.5" />Editores
+                      <Users className="h-3.5 w-3.5" />Editores <span className="text-destructive">*</span>
                     </Label>
 
                     {selectedEditorIds.length > 0 && (
@@ -536,26 +557,6 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                   </Select>
                 </div>
 
-                {/* Pasta */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <Link2 className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
-                    <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Pasta</Label>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <div className="relative flex-1">
-                      <FolderOpen className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]/50 pointer-events-none" />
-                      <Input value={form.folderUrl} onChange={e => f({ folderUrl: e.target.value })}
-                        placeholder="https://…" className="text-sm h-9 rounded-xl pl-8" />
-                    </div>
-                    {form.folderUrl && (
-                      <a href={form.folderUrl} target="_blank" rel="noreferrer"
-                        className="inline-flex items-center justify-center h-9 w-9 shrink-0 rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))] transition-colors">
-                        <ExternalLink className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
-                      </a>
-                    )}
-                  </div>
-                </div>
 
               </div>
             </div>

@@ -213,7 +213,7 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
 
               {/* DESCRIÇÃO */}
               <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
-                <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-2">Descrição</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-2">Direcionamento</p>
                 {task.description ? (
                   <p className="text-sm text-[hsl(var(--foreground))]/80 leading-relaxed whitespace-pre-wrap">{task.description}</p>
                 ) : (
