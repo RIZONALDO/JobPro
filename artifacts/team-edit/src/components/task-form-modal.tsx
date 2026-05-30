@@ -71,6 +71,8 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   const [isMultiTask, setIsMultiTask] = useState(false);
   const [subtasks, setSubtasks]       = useState<SubtaskRow[]>([newSubtaskRow(), newSubtaskRow()]);
   const [availModalEditorId, setAvailModalEditorId] = useState<number | null>(null);
+  const [periodCheck,   setPeriodCheck]   = useState<{ blocked: boolean; conflictDays: string[]; maxScore: number } | null>(null);
+  const [checkingPeriod, setCheckingPeriod] = useState(false);
 
   useEffect(() => {
     apiFetch<Editor[]>("/api/users")
@@ -85,6 +87,28 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
     const date = form.startDateTime.split("T")[0];
     apiFetch<EditorWorkload[]>(`/api/workload?date=${date}`).then(setProjectedWorkload).catch(() => {});
   }, [form.startDateTime]);
+
+  // Nível 3 — verifica conflito de capacidade no período completo da tarefa
+  useEffect(() => {
+    const primaryId = selectedEditorIds[0];
+    if (!primaryId || !form.startDateTime || !form.dueDateTime || isMultiTask) {
+      setPeriodCheck(null); return;
+    }
+    const startDate = form.startDateTime.split("T")[0];
+    const endDate   = form.dueDateTime.split("T")[0];
+    if (startDate > endDate) { setPeriodCheck(null); return; }
+    setCheckingPeriod(true);
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams({ editorId: String(primaryId), startDate, endDate, complexity: form.complexity });
+      if (editMode && editTaskId) params.set("excludeTaskId", String(editTaskId));
+      apiFetch<{ blocked: boolean; conflictDays: string[]; maxScore: number }>(
+        `/api/workload/period-check?${params}`
+      ).then(r => { setPeriodCheck(r); setCheckingPeriod(false); })
+       .catch(() => { setPeriodCheck(null); setCheckingPeriod(false); });
+    }, 400);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEditorIds[0], form.startDateTime, form.dueDateTime, form.complexity, isMultiTask, editMode, editTaskId]);
 
   useEffect(() => {
     if (!open) return;
@@ -156,6 +180,28 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
     if (!form.folderUrl?.trim())  { toast.error("Pasta / Arquivos obrigatório");    return; }
     if (!isMultiTask && selectedEditorIds.length === 0) {
       toast.error("Atribua ao menos um editor"); return;
+    }
+
+    // ── Nível 1: bloqueio se editor já está no limite de capacidade ────────
+    if (!isMultiTask && !editMode && selectedEditorIds.length > 0) {
+      const WEIGHT: Record<string, number> = { low: 3, medium: 6, high: 12 };
+      const newWeight     = WEIGHT[form.complexity] ?? 6;
+      const wl            = activeWorkload.find(w => w.id === selectedEditorIds[0]);
+      const existingScore = isFutureStart ? (wl?.projectedScore ?? wl?.score ?? 0) : (wl?.score ?? 0);
+      if (existingScore + newWeight > 12) {
+        const editorName = editors.find(e => e.id === selectedEditorIds[0])?.name ?? "Editor";
+        toast.error(`${editorName} está no limite de capacidade. Escolha outro editor ou altere a data de início.`);
+        return;
+      }
+    }
+
+    // ── Nível 3: bloqueio por conflito de período ──────────────────────────
+    if (!isMultiTask && periodCheck?.blocked) {
+      const days = periodCheck.conflictDays.slice(0, 3)
+        .map(d => { const [,m,day] = d.split("-"); return `${day}/${m}`; }).join(", ");
+      const extra = periodCheck.conflictDays.length > 3 ? ` +${periodCheck.conflictDays.length - 3} dias` : "";
+      toast.error(`Conflito de capacidade no período: ${days}${extra}. Ajuste as datas ou escolha outro editor.`);
+      return;
     }
 
     const isPublishing = publishStatus === "pending" || (editMode && taskStatus !== "rascunho");
@@ -488,6 +534,24 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                         </div>
                       );
                     })()}
+
+                    {/* Nível 3 — conflito de capacidade no período */}
+                    {!isMultiTask && periodCheck?.blocked && (
+                      <div className="flex items-start gap-2 rounded-xl border px-3 py-2 bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900">
+                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-500" />
+                        <div>
+                          <p className="text-xs font-semibold text-red-800 dark:text-red-300">Conflito de capacidade no período</p>
+                          <p className="text-[10px] text-red-700 dark:text-red-400 mt-0.5">
+                            Dias sobrecarregados:{" "}
+                            {periodCheck.conflictDays.slice(0, 3).map(d => { const [,m,day]=d.split("-"); return `${day}/${m}`; }).join(", ")}
+                            {periodCheck.conflictDays.length > 3 ? ` +${periodCheck.conflictDays.length - 3}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {!isMultiTask && checkingPeriod && selectedEditorIds.length > 0 && (
+                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 animate-pulse">Verificando disponibilidade no período...</p>
+                    )}
                   </div>
                 )}
               </div>

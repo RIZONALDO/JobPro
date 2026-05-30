@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, FolderOpen, ListTodo, Users, Settings, LogOut,
   CalendarDays, Menu, Bell, BellRing, ChevronRight, X, UserCircle,
-  CalendarRange, BarChart3, Zap, AtSign, ClipboardList,
+  CalendarRange, BarChart3, Zap, AtSign, ClipboardList, LayoutGrid,
   CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2, CalendarClock, Shield,
   Palette, Sun, Moon, ALargeSmall, Volume2, VolumeX, Trash2, CheckCheck,
 } from "lucide-react";
@@ -80,6 +80,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/",         label: "Dashboard",      icon: LayoutDashboard, roles: NON_ADMIN    },
   { href: "/tasks",    label: "Tarefas",         icon: ClipboardList,   roles: NON_ADMIN    },
   { href: "/feed",     label: "Feed",             icon: Zap,             roles: NON_ADMIN    },
+  { href: "/agenda",   label: "Agenda Geral",     icon: LayoutGrid,      roles: COORD_ROLES  },
   { href: "/reports",  label: "Relatórios",       icon: BarChart3,       roles: COORD_ACTIVE },
   { href: "/team",     label: "Membros",          icon: Users,           roles: COORD_ROLES  },
   { href: "/duty",     label: "Plantões",         icon: Shield,          roles: ["admin","supervisor","coordinator","editor"] },

@@ -23,6 +23,7 @@ import TasksOverview from "@/pages/tasks-overview";
 import TasksHub      from "@/pages/tasks-hub";
 import DutyPage      from "@/pages/duty";
 import FaviconDebugPage from "@/pages/favicon-debug";
+import AgendaGeral from "@/pages/agenda-geral";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } });
 
@@ -86,6 +87,7 @@ function Router() {
         <Route path="/feed" component={FeedPage} />
         <Route path="/tasks" component={TasksHub} />
         <Route path="/duty" component={DutyPage} />
+        <Route path="/agenda" component={AgendaGeral} />
         <Route>
           <div className="text-center py-20">
             <h2 className="text-2xl font-bold">404</h2>

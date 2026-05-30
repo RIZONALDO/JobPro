@@ -1657,6 +1657,109 @@ router.get("/workload/calendar", requireCoordinator, async (req, res): Promise<v
   res.json(days);
 });
 
+// ── Nível 3: verificação de período ───────────────────────────────────────────
+// GET /api/workload/period-check?editorId=X&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&complexity=low|medium|high&excludeTaskId=N
+router.get("/workload/period-check", requireCoordinator, async (req, res): Promise<void> => {
+  const editorId      = parseInt(req.query.editorId as string, 10);
+  const startDate     = req.query.startDate as string;
+  const endDate       = req.query.endDate   as string;
+  const complexity    = (req.query.complexity as string) ?? "medium";
+  const excludeTaskId = req.query.excludeTaskId ? parseInt(req.query.excludeTaskId as string, 10) : null;
+
+  if (!editorId || !startDate || !endDate) {
+    res.status(400).json({ error: "editorId, startDate e endDate são obrigatórios" }); return;
+  }
+
+  const newWeight = COMPLEXITY_WEIGHT[complexity] ?? 6;
+  const startD    = new Date(startDate + "T00:00:00Z");
+  const endD      = new Date(endDate   + "T23:59:59Z");
+
+  const conds = [
+    eq(tasksTable.assignedToId, editorId),
+    ne(tasksTable.status, "completed"),
+    ne(tasksTable.status, "cancelled"),
+    ne(tasksTable.status, "paused"),
+    ne(tasksTable.status, "rascunho"),
+    ne(tasksTable.taskType, "multi_task"),
+  ];
+  if (excludeTaskId) conds.push(ne(tasksTable.id, excludeTaskId));
+
+  const tasks = await db
+    .select({ id: tasksTable.id, complexity: tasksTable.complexity, startDate: tasksTable.startDate, dueDate: tasksTable.dueDate })
+    .from(tasksTable).where(and(...conds));
+
+  const conflictDays: string[] = [];
+  let maxScore = 0;
+  const DAY_MS = 86_400_000;
+
+  for (let d = new Date(startD); d <= endD; d = new Date(d.getTime() + DAY_MS)) {
+    const dayEnd = new Date(d.getTime() + DAY_MS - 1);
+    const active = tasks.filter(t => {
+      const started = !t.startDate || t.startDate <= dayEnd;
+      const notDone = !t.dueDate   || t.dueDate   >= d;
+      return started && notDone;
+    });
+    const dayScore = active.reduce((s, t) => s + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
+    const projected = dayScore + newWeight;
+    if (projected > maxScore) maxScore = projected;
+    if (projected > 12) conflictDays.push(d.toISOString().slice(0, 10));
+  }
+
+  res.json({ blocked: conflictDays.length > 0, conflictDays, maxScore });
+});
+
+// ── Nível 2: agenda geral de todos os editores ────────────────────────────────
+// GET /api/agenda
+router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
+  const editors = await db
+    .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+    .from(usersTable).where(eq(usersTable.role, "editor"));
+
+  const tasks = await db
+    .select({
+      id:           tasksTable.id,
+      taskNumber:   tasksTable.taskNumber,
+      taskYear:     tasksTable.taskYear,
+      title:        tasksTable.title,
+      status:       tasksTable.status,
+      priority:     tasksTable.priority,
+      complexity:   tasksTable.complexity,
+      color:        tasksTable.color,
+      client:       tasksTable.client,
+      startDate:    tasksTable.startDate,
+      dueDate:      tasksTable.dueDate,
+      assignedToId: tasksTable.assignedToId,
+    })
+    .from(tasksTable)
+    .where(and(
+      ne(tasksTable.status, "completed"),
+      ne(tasksTable.status, "cancelled"),
+      ne(tasksTable.status, "rascunho"),
+      ne(tasksTable.taskType, "multi_task"),
+      isNotNull(tasksTable.assignedToId),
+    ));
+
+  const result = editors.map(editor => ({
+    editor,
+    tasks: tasks
+      .filter(t => t.assignedToId === editor.id)
+      .map(t => ({
+        id:        t.id,
+        taskCode:  fmtCode(t.taskNumber ?? 0, t.taskYear ?? 0),
+        title:     t.title,
+        status:    t.status,
+        priority:  t.priority,
+        complexity: t.complexity,
+        color:     t.color,
+        client:    t.client,
+        startDate: t.startDate ? t.startDate.toISOString() : null,
+        dueDate:   t.dueDate   ? t.dueDate.toISOString()   : null,
+      })),
+  })).filter(e => e.tasks.length > 0);
+
+  res.json(result);
+});
+
 // ── Dashboard extras ──────────────────────────────────────────────────────────
 router.get("/dashboard-extras", requireAuth, async (_req, res): Promise<void> => {
   const todayStr = new Date().toISOString().split("T")[0];
