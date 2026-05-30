@@ -396,11 +396,9 @@ export default function JobDetail() {
 
                   {/* Data — w-28 */}
                   <div className="w-28 shrink-0 flex flex-col justify-center gap-0.5">
-                    {t.dueDate && (() => {
-                      return <>
-                        <span className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(task.dueDate)}</span></span>}
-                      </>;
-                    })()}
+                    {t.dueDate && (
+                      <span className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(t.dueDate)}</span>
+                    )}
                   </div>
 
                   {/* Ações — w-56 */}

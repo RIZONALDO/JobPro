@@ -1258,7 +1258,7 @@ function ActionCard({ label, actionCount, total, rows }: {
         </span>
       </div>
       <div ref={ref} className="flex-1 min-h-0 -mx-2">
-        <StatusBars data={visxData} width={w} height={fmtDate(task.dueDate)} />
+        <StatusBars data={visxData} width={w} height={h} />
       </div>
     </div>
   );
@@ -1279,7 +1279,7 @@ function DeadlineCard({ label, sub, subCls, pill, days, color }: {
         {pill && <span className={`text-xs font-semibold px-2 py-0.5 rounded-full leading-none shrink-0 ${pill.cls}`}>{pill.text}</span>}
       </div>
       <div ref={ref} className="flex-1 min-h-0 -mx-2 mt-1">
-        <StatusBars data={data} width={w} height={fmtDate(task.dueDate)} />
+        <StatusBars data={data} width={w} height={h} />
       </div>
       <p className={`text-xs px-1 shrink-0 mt-1 ${subCls}`}>{sub}</p>
     </div>
@@ -1777,7 +1777,7 @@ function TaskDeadlineCard({ data, onOpenJob }: {
                 <span className="text-xs text-[hsl(var(--muted-foreground))]">Carregando…</span>
               </div>
             ) : (
-              <StatusBars data={barData} width={w} height={fmtDate(task.dueDate)} />
+              <StatusBars data={barData} width={w} height={h} />
             )}
           </div>
 
@@ -1867,7 +1867,7 @@ function WaffleCard({ tasks }: { tasks: Task[] }) {
       </div>
       <div className="flex-1 min-h-0 flex items-center gap-4 mt-1.5">
         <div ref={ref} className="flex-1 min-w-0 min-h-0">
-          <WaffleChart cells={cells} width={Math.min(w, h * 1.05)} height={fmtDate(task.dueDate)} />
+          <WaffleChart cells={cells} width={Math.min(w, h * 1.05)} height={h} />
         </div>
         <div className="shrink-0 flex flex-col justify-center gap-2">
           {counts.map(s => (

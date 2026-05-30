@@ -659,11 +659,9 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                           </div>
                           {/* Due date */}
                           <div className="w-28 shrink-0 flex flex-col justify-center gap-0.5">
-                            {t.dueDate && (() => {
-                              return <>
-                                <span className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(task.dueDate)}</span></span>}
-                              </>;
-                            })()}
+                            {t.dueDate && (
+                              <span className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(t.dueDate)}</span>
+                            )}
                           </div>
                           {/* Actions */}
                           <div className="w-52 shrink-0 flex items-center justify-end gap-1 py-2">
