@@ -1481,8 +1481,9 @@ export default function TasksOverview() {
             const projectedScore = currentScore + addedWeight;
             const currentColor  = scoreColor(currentScore);
             const currentLbl    = scoreLabel(currentScore);
-            const projColor     = scoreColor(projectedScore);
-            const projLbl       = scoreLabel(projectedScore);
+            const projColor        = scoreColor(projectedScore);
+            const projLbl         = scoreLabel(projectedScore);
+            const projectedBlocked = projectedScore >= 12;
             return (
               <div className="space-y-3 py-1">
                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
