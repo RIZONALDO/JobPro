@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { apiFetch, apiPost, apiPut } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +58,8 @@ function scoreLabel(score: number): string {
 
 export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initialDueDate, hidePublish }: Props) {
   const editMode = !!editTaskId;
+  const { user } = useAuth();
+  const isCoordinator = user?.role === "coordinator";
 
   const [form, setForm]               = useState(EMPTY_FORM);
   const [taskStatus, setTaskStatus]   = useState<string>("");
@@ -219,7 +222,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
         title: form.title, description: form.description || null,
         startDate: form.startDateTime || null,
         dueDate: form.dueDateTime || null, priority: form.priority,
-        complexity: form.complexity, client: form.client || null,
+        ...(!isCoordinator ? { complexity: form.complexity } : {}), client: form.client || null,
         folderUrl: form.folderUrl || null,
         subtasks: filledSubtasks.map((s, i) => ({
           title: s.title,
@@ -246,7 +249,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
         title: form.title, description: form.description || null,
         startDate: form.startDateTime || null,
         dueDate: form.dueDateTime || null, priority: form.priority,
-        complexity: form.complexity, client: form.client || null,
+        ...(!isCoordinator ? { complexity: form.complexity } : {}), client: form.client || null,
         folderUrl: form.folderUrl || null,
       };
       if (publishStatus === "pending") payload.status = "pending";
@@ -267,7 +270,8 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
     const payload: Record<string, unknown> = {
       title: form.title, description: form.description || null,
       startDate: form.startDateTime || null,
-      dueDate: dueDatePayload, priority: form.priority, complexity: form.complexity,
+      dueDate: dueDatePayload, priority: form.priority,
+      ...(!isCoordinator ? { complexity: form.complexity } : {}),
       assignedToId: selectedEditorIds[0] ?? null, editorIds: selectedEditorIds,
       folderUrl: form.folderUrl || null, client: form.client || null,
     };
@@ -605,24 +609,23 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                   </Select>
                 </div>
 
-                {/* Complexidade */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <Tag className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
-                    <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Complexidade estimada *</Label>
+                {/* Complexidade — visível só para admin; coordenador usa padrão (editor define ao iniciar) */}
+                {!isCoordinator && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <Tag className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
+                      <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Complexidade *</Label>
+                    </div>
+                    <Select value={form.complexity} onValueChange={v => f({ complexity: v })}>
+                      <SelectTrigger className="h-9 rounded-xl text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Simples</SelectItem>
+                        <SelectItem value="medium">Moderada</SelectItem>
+                        <SelectItem value="high">Complexa</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <Select value={form.complexity} onValueChange={v => f({ complexity: v })}>
-                    <SelectTrigger className="h-9 rounded-xl text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Simples</SelectItem>
-                      <SelectItem value="medium">Moderada</SelectItem>
-                      <SelectItem value="high">Complexa</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 leading-snug">
-                    O editor confirmará ou ajustará ao iniciar.
-                  </p>
-                </div>
+                )}
 
 
               </div>
