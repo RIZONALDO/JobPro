@@ -9,10 +9,9 @@ import { toast } from "sonner";
 import { Search, Printer, X } from "lucide-react";
 import { usePageTitle } from "@/lib/use-page-title";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
-import { format, parseISO } from "date-fns";
 import { PriorityBadge } from "@/components/ui/priority-badge";
-import { ptBR } from "date-fns/locale";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { fmtDate } from "@/lib/utils";
 
 interface Person { id: number; name: string; avatarUrl: string | null }
 
@@ -28,8 +27,10 @@ const STATUS_ORDER = ["pending", "in_progress", "in_revision", "review", "comple
 const COMPLEXITY_LABEL: Record<string, string> = { low: "Simples", medium: "Moderada", high: "Complexa" };
 const COORD_ROLES = ["admin", "supervisor", "coordinator"];
 
-function fmtShort(iso: string) {
-  try { return format(parseISO(iso), "dd/MM/yy", { locale: ptBR }); } catch { return iso; }
+function fmtPeriod(iso: string) {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
 }
 
 function Select({ value, onChange, children }: {
@@ -57,7 +58,6 @@ export default function Reports() {
   const [tasks, setTasks] = useState<ReportTask[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Filters
   const defaultCoord = user ? String(user.id) : "all";
   const [search,      setSearch]      = useState("");
   const [fStatus,     setFStatus]     = useState("all");
@@ -78,7 +78,6 @@ export default function Reports() {
 
   useEffect(() => { load(); }, [isCoord]);
 
-  // Derive filter options from loaded data
   const clients = useMemo(() => [...new Set(tasks.map(t => t.client).filter(Boolean) as string[])].sort(), [tasks]);
   const editors  = useMemo(() => {
     const map = new Map<number, string>();
@@ -92,12 +91,12 @@ export default function Reports() {
   }, [tasks, user]);
 
   const filtered = useMemo(() => tasks.filter(t => {
-    if (fStatus     !== "all" && t.status                    !== fStatus)               return false;
-    if (fClient     !== "all" && (t.client ?? "")            !== fClient)               return false;
-    if (fEditor     !== "all" && String(t.assignee?.id ?? "") !== fEditor)              return false;
-    if (fCoord      !== "all" && String(t.coordinator?.id ?? "") !== fCoord)            return false;
-    if (fPriority   !== "all" && t.priority                  !== fPriority)             return false;
-    if (fComplexity !== "all" && t.complexity                !== fComplexity)           return false;
+    if (fStatus     !== "all" && t.status                       !== fStatus)     return false;
+    if (fClient     !== "all" && (t.client ?? "")               !== fClient)     return false;
+    if (fEditor     !== "all" && String(t.assignee?.id ?? "")   !== fEditor)     return false;
+    if (fCoord      !== "all" && String(t.coordinator?.id ?? "") !== fCoord)     return false;
+    if (fPriority   !== "all" && t.priority                     !== fPriority)   return false;
+    if (fComplexity !== "all" && t.complexity                   !== fComplexity) return false;
     if (search) {
       const q = search.toLowerCase();
       if (!t.title.toLowerCase().includes(q)
@@ -116,7 +115,6 @@ export default function Reports() {
     setFCoord(defaultCoord); setFPriority("all"); setFComplexity("all"); setSearch("");
   };
 
-  // Summary counts from filtered set
   const total     = filtered.length;
   const completed = filtered.filter(t => t.status === "completed").length;
   const inRev     = filtered.filter(t => t.status === "in_revision").length;
@@ -127,11 +125,18 @@ export default function Reports() {
 
   return (
     <>
-      <style>{`@media print { .no-print { display: none !important; } body { background: white !important; } }`}</style>
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          body { background: white !important; color: black !important; }
+          table { font-size: 11px; }
+          th, td { padding: 6px 8px !important; }
+        }
+      `}</style>
 
       <div className="space-y-3">
 
-        {/* ── Period + Print ── */}
+        {/* ── Período + Imprimir ── */}
         <div className="no-print flex flex-wrap items-end gap-3 rounded-xl border bg-[hsl(var(--card))] card-float p-4">
           <div className="space-y-1">
             <Label className="text-xs text-[hsl(var(--muted-foreground))]">De</Label>
@@ -142,58 +147,50 @@ export default function Reports() {
             <DateTimePicker value={to} onChange={v => setTo(v)} placeholder="Data final" className="w-44 h-8 text-xs" />
           </div>
           <Button size="sm" onClick={load} disabled={loading}>{loading ? "Buscando…" : "Buscar"}</Button>
-          <div className="ml-auto flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => window.print()} className="flex items-center gap-1.5 no-print">
+          <div className="ml-auto">
+            <Button size="sm" variant="outline" onClick={() => window.print()} className="flex items-center gap-1.5">
               <Printer className="h-3.5 w-3.5" /> Imprimir
             </Button>
           </div>
         </div>
 
-        {/* ── Filters ── */}
+        {/* ── Filtros ── */}
         <div className="no-print flex flex-wrap items-center gap-2 rounded-xl border bg-[hsl(var(--card))] card-float p-3">
-          {/* Search */}
           <div className="flex items-center gap-2 rounded-md border bg-[hsl(var(--muted))]/30 px-2.5 h-8 w-52">
             <Search className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] shrink-0" />
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Buscar…"
               className="flex-1 bg-transparent text-xs outline-none placeholder:text-[hsl(var(--muted-foreground))]" />
           </div>
-
           <Select value={fStatus} onChange={setFStatus}>
             <option value="all">Todos os status</option>
             {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_LABEL[s] ?? s}</option>)}
           </Select>
-
           <Select value={fClient} onChange={setFClient}>
             <option value="all">Todos os clientes</option>
             {clients.map(c => <option key={c} value={c}>{c}</option>)}
           </Select>
-
           <Select value={fEditor} onChange={setFEditor}>
             <option value="all">Todos os editores</option>
             {editors.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
           </Select>
-
           <Select value={fCoord} onChange={setFCoord}>
             <option value="all">Geral</option>
             {user && <option value={String(user.id)}>Minhas</option>}
             {coords.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
           </Select>
-
           <Select value={fPriority} onChange={setFPriority}>
             <option value="all">Todas as prioridades</option>
             <option value="high">Alta</option>
             <option value="medium">Média</option>
             <option value="low">Baixa</option>
           </Select>
-
           <Select value={fComplexity} onChange={setFComplexity}>
             <option value="all">Todas as complexidades</option>
             <option value="high">Complexa</option>
             <option value="medium">Moderada</option>
             <option value="low">Simples</option>
           </Select>
-
           {hasFilters && (
             <button onClick={clearFilters}
               className="flex items-center gap-1 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors ml-1">
@@ -202,7 +199,7 @@ export default function Reports() {
           )}
         </div>
 
-        {/* ── Summary ── */}
+        {/* ── Resumo ── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 print:grid-cols-4">
           {[
             { label: "Total no período", value: total,     cls: "" },
@@ -217,14 +214,26 @@ export default function Reports() {
           ))}
         </div>
 
-        {/* ── Print header ── */}
-        <div className="hidden print:block mb-2">
-          <h1 className="text-[28px] font-semibold">Relatório de tarefas</h1>
-          <p className="text-sm text-gray-500">Período: {from} → {to} · {total} tarefa{total !== 1 ? "s" : ""}</p>
-          <hr className="mt-2 mb-4" />
+        {/* ── Cabeçalho de impressão ── */}
+        <div className="hidden print:block mb-4 border-b pb-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Relatório de Tarefas</h1>
+              <p className="text-sm text-gray-500 mt-1">
+                Período: <strong>{fmtPeriod(from)}</strong> → <strong>{fmtPeriod(to)}</strong>
+                &nbsp;·&nbsp;{total} tarefa{total !== 1 ? "s" : ""}
+              </p>
+            </div>
+            <div className="text-right text-sm text-gray-500">
+              {user?.name && (
+                <p className="font-semibold text-gray-800">{user.name}</p>
+              )}
+              <p>Gerado em {fmtPeriod(new Date().toISOString().split("T")[0])}</p>
+            </div>
+          </div>
         </div>
 
-        {/* ── Table ── */}
+        {/* ── Tabela ── */}
         <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
           <div className="no-print flex items-center justify-between px-5 py-3 border-b bg-[hsl(var(--muted))]/20">
             <span className="text-sm font-semibold">Tarefas</span>
@@ -240,50 +249,68 @@ export default function Reports() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-[hsl(var(--muted))]/10">
-                    {["#", "Tarefa", "Cliente", "Editor", "Coordenador", "Status", "Prioridade", "Complexidade", "Revisões", "Criada em", "Atualizada em"].map(h => (
-                      <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide whitespace-nowrap">
+                    {[
+                      { h: "#",           w: "w-20"  },
+                      { h: "Tarefa",      w: "w-64"  },
+                      { h: "Cliente",     w: "w-36"  },
+                      { h: "Editor",      w: "w-36"  },
+                      { h: "Coordenador", w: "w-36"  },
+                      { h: "Status",      w: "w-32"  },
+                      { h: "Prioridade",  w: "w-24"  },
+                      { h: "Complexidade",w: "w-28"  },
+                      { h: "Revisões",    w: "w-20 text-center" },
+                      { h: "Entrega",     w: "w-24"  },
+                      { h: "Criada em",   w: "w-24"  },
+                    ].map(({ h, w }) => (
+                      <th key={h} className={`text-left px-4 py-2.5 text-[10px] font-bold text-[hsl(var(--muted-foreground))] uppercase tracking-widest whitespace-nowrap ${w}`}>
                         {h}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {filtered.map((t, idx) => (
+                  {filtered.map((t) => (
                     <tr key={t.id} className="hover:bg-[hsl(var(--muted))]/10 transition-colors">
-                      <td className="px-4 py-2.5 text-sm font-bold font-mono text-[hsl(var(--muted-foreground))]">{t.taskCode ?? String(idx + 1).padStart(3, "0")}</td>
-                      <td className="px-4 py-2.5 max-w-[200px]">
+                      <td className="px-4 py-2.5 font-mono text-xs font-bold text-[hsl(var(--muted-foreground))]">
+                        {t.taskCode ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 max-w-[256px]">
                         <div className="flex items-center gap-2">
                           <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color ?? "#6366f1" }} />
                           <span className="text-xs font-medium truncate">{t.title}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] max-w-[130px]">
+                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] max-w-[144px]">
                         <span className="truncate block">{t.client ?? "—"}</span>
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">
-                        {t.assignee?.name ?? "—"}
+                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] max-w-[144px]">
+                        <span className="truncate block">{t.assignee?.name ?? "—"}</span>
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">
-                        {t.coordinator?.name ?? "—"}
+                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] max-w-[144px]">
+                        <span className="truncate block">{t.coordinator?.name ?? "—"}</span>
                       </td>
                       <td className="px-4 py-2.5">
-                        <Badge className={`text-xs px-1.5 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
+                        <Badge className={`text-[10px] px-1.5 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
                           {STATUS_LABEL[t.status] ?? t.status}
                         </Badge>
                       </td>
                       <td className="px-4 py-2.5">
-                        <PriorityBadge priority={t.priority} />
+                        <PriorityBadge priority={t.priority} showLabel />
                       </td>
                       <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">
                         {COMPLEXITY_LABEL[t.complexity] ?? t.complexity}
                       </td>
                       <td className="px-4 py-2.5 text-center">
                         {t.revisionCount > 0
-                          ? <Badge className="bg-orange-100 text-orange-700 border border-orange-200 text-xs px-1.5">{t.revisionCount}×</Badge>
-                          : <span className="text-xs text-[hsl(var(--muted-foreground))]">—</span>}
+                          ? <Badge className="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 text-[10px] px-1.5">{t.revisionCount}×</Badge>
+                          : <span className="text-xs text-[hsl(var(--muted-foreground))]/40">—</span>}
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">{fmtShort(t.createdAt)}</td>
-                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">{fmtShort(t.updatedAt)}</td>
+                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">
+                        {t.dueDate ? fmtDate(t.dueDate) : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">
+                        {fmtDate(t.createdAt)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
