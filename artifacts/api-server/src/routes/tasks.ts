@@ -157,6 +157,17 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
     }
   }
 
+  // ── Bloqueio server-side de capacidade (fecha race condition) ─────────────
+  if (resolvedType !== "multi_task" && parsedAssignee && initialStatus !== "rascunho") {
+    const score = await editorScore(parsedAssignee);
+    const newW   = COMPLEXITY_WEIGHT[String(complexity ?? "medium")] ?? 6;
+    if (score + newW > 12) {
+      const [ed] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, parsedAssignee));
+      res.status(422).json({ error: `${ed?.name ?? "Editor"} está no limite de capacidade (${score} pts). Reduza a complexidade, escolha outro editor ou ajuste as datas.` });
+      return;
+    }
+  }
+
   const seqResult = await db.execute<{ nextval: string }>(sql`SELECT nextval('te_task_number_seq') AS nextval`);
   const taskNumber = Number((seqResult.rows ?? seqResult)[0].nextval);
   const taskYear = new Date().getFullYear() % 100;
@@ -776,6 +787,23 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           });
         }
       }
+    }
+  }
+
+  // ── Bloqueio server-side de capacidade em edições ─────────────────────────
+  // Aplica quando muda editor OU complexidade, para tarefas reais (não rascunho, não multi_task)
+  const changingAssignee   = update.assignedToId !== undefined && update.assignedToId !== task.assignedToId;
+  const changingComplexity = update.complexity   !== undefined && update.complexity   !== task.complexity;
+  const targetAssignee     = update.assignedToId !== undefined ? (update.assignedToId as number | null) : task.assignedToId;
+  const targetComplexity   = update.complexity   !== undefined ? String(update.complexity) : (task.complexity ?? "medium");
+
+  if ((changingAssignee || changingComplexity) && targetAssignee && task.status !== "rascunho" && task.taskType !== "multi_task") {
+    const score = await editorScore(targetAssignee, id); // exclui a própria tarefa do score
+    const newW  = COMPLEXITY_WEIGHT[targetComplexity] ?? 6;
+    if (score + newW > 12) {
+      const [ed] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, targetAssignee));
+      res.status(422).json({ error: `${ed?.name ?? "Editor"} está no limite de capacidade (${score} pts). Reduza a complexidade ou escolha outro editor.` });
+      return;
     }
   }
 
@@ -1515,6 +1543,21 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
 
 // ── Workload ──────────────────────────────────────────────────────────────────
 const COMPLEXITY_WEIGHT: Record<string, number> = { low: 3, medium: 6, high: 12 };
+
+/** Score atual de um editor (todas as tarefas ativas, excluindo opcionalmente uma tarefa) */
+async function editorScore(editorId: number, excludeTaskId?: number): Promise<number> {
+  const conds = [
+    eq(tasksTable.assignedToId, editorId),
+    ne(tasksTable.status, "completed"),
+    ne(tasksTable.status, "cancelled"),
+    ne(tasksTable.status, "paused"),
+    ne(tasksTable.status, "rascunho"),
+    ne(tasksTable.taskType, "multi_task"),
+  ];
+  if (excludeTaskId) conds.push(ne(tasksTable.id, excludeTaskId));
+  const rows = await db.select({ complexity: tasksTable.complexity }).from(tasksTable).where(and(...conds));
+  return rows.reduce((s, r) => s + (COMPLEXITY_WEIGHT[r.complexity ?? "medium"] ?? 6), 0);
+}
 
 router.get("/workload", requireCoordinator, async (req, res): Promise<void> => {
   const editors = await db
