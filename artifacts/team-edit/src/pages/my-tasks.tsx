@@ -432,21 +432,29 @@ export default function MyTasks() {
               {scheduledTasks.map((t, i) => {
                 const startParts = t.startDate ? fmtDateParts(t.startDate) : null;
                 const dueParts   = t.dueDate   ? fmtDateParts(t.dueDate)   : null;
+                const sameDay    = startParts && dueParts && startParts.date === dueParts.date;
+                const schedOverdue = isOverdue(t.dueDate);
                 return (
                   <div
                     key={t.id}
                     onClick={() => openTask(t.id)}
                     className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[hsl(var(--muted))]/30 transition-colors ${i > 0 ? "border-t border-[hsl(var(--border))]" : ""}`}
                   >
-                    {/* Pill com data de início */}
-                    <div className="shrink-0 flex flex-col items-center justify-center w-11 h-11 rounded-xl bg-sky-50 border border-sky-200 text-sky-600 dark:bg-sky-950/40 dark:border-sky-800 dark:text-sky-400">
+                    {/* Pill de período início → prazo */}
+                    <div className="shrink-0 flex items-center gap-1 px-2.5 py-2 rounded-xl bg-sky-50 border border-sky-200 dark:bg-sky-950/40 dark:border-sky-800">
                       {startParts ? (
-                        <>
-                          <span className="text-[13px] font-bold leading-none">{startParts.date.split("/")[0]}</span>
-                          <span className="text-[9px] leading-none opacity-60">/{startParts.date.split("/")[1]}</span>
-                        </>
+                        <span className="text-[11px] font-bold text-sky-600 dark:text-sky-400 tabular-nums leading-none whitespace-nowrap">{startParts.date}</span>
                       ) : (
-                        <Clock className="h-4 w-4 opacity-50" />
+                        <Clock className="h-3.5 w-3.5 text-sky-500 opacity-50" />
+                      )}
+                      {startParts && dueParts && !sameDay && (
+                        <>
+                          <span className="text-[10px] text-sky-400/50 leading-none">→</span>
+                          <span className={`text-[11px] font-bold tabular-nums leading-none whitespace-nowrap ${schedOverdue ? "text-red-500" : "text-slate-600 dark:text-slate-300"}`}>{dueParts.date}</span>
+                        </>
+                      )}
+                      {!startParts && dueParts && (
+                        <span className={`text-[11px] font-bold tabular-nums leading-none whitespace-nowrap ${schedOverdue ? "text-red-500" : "text-sky-600 dark:text-sky-400"}`}>{dueParts.date}</span>
                       )}
                     </div>
 
@@ -461,15 +469,9 @@ export default function MyTasks() {
                       )}
                     </div>
 
-                    {/* Prioridade + prazo */}
-                    <div className="shrink-0 flex flex-col items-end gap-1">
+                    {/* Prioridade */}
+                    <div className="shrink-0">
                       <PriorityBadge priority={t.priority} />
-                      {dueParts && (
-                        <span className="flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))]">
-                          <Calendar className="h-2.5 w-2.5" />
-                          {dueParts.date}{dueParts.time ? ` ${dueParts.time}` : ""}
-                        </span>
-                      )}
                     </div>
 
                     {/* Avatar do coordenador */}

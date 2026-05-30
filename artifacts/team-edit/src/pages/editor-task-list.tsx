@@ -287,8 +287,10 @@ export default function EditorTaskList() {
           <div className="flex-1 min-w-0 pl-4 pr-3">Tarefa</div>
           <div className="w-36 shrink-0 px-2">Status</div>
           <div className="w-28 shrink-0 hidden lg:block pl-6">Prioridade</div>
-          {viewTab === "scheduled" && <div className="w-28 shrink-0 hidden lg:block pl-6">Início</div>}
-          <div className="w-28 shrink-0 hidden lg:block pl-6">Prazo</div>
+          {viewTab === "scheduled"
+            ? <div className="w-44 shrink-0 hidden lg:block pl-6">Período</div>
+            : <div className="w-28 shrink-0 hidden lg:block pl-6">Prazo</div>
+          }
           <div className="w-20 shrink-0 hidden xl:block pl-6">Coord.</div>
           <div className="w-28 shrink-0 pl-6">Ação</div>
           <div className="w-8 shrink-0" />
@@ -391,23 +393,26 @@ export default function EditorTaskList() {
                     </p>
                   )}
 
-                  {/* Início chip — mobile, only in "Agendadas" tab */}
-                  {viewTab === "scheduled" && t.startDate && (
-                    <div className="flex items-center gap-1 mt-2">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]/50">Início</span>
-                      <span className="text-xs font-medium text-sky-500 tabular-nums">
-                        {t.startDate.split("T")[0].split("-").slice(1).reverse().join("/")}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* status + priority + due date */}
+                  {/* status + priority + período / prazo */}
                   <div className="flex items-center gap-2 mt-2.5 flex-wrap">
                     <Badge className={`text-xs px-2 py-0.5 font-medium shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
                       {STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
                     <PriorityBadge priority={t.priority} />
-                    {(() => {
+                    {viewTab === "scheduled" ? (
+                      (t.startDate || t.dueDate) && (() => {
+                        const fmtD = (d: string) => d.split("T")[0].split("-").slice(1).reverse().join("/");
+                        const s = t.startDate ? fmtD(t.startDate) : null;
+                        const e = t.dueDate   ? fmtD(t.dueDate)   : null;
+                        return (
+                          <span className="flex items-center gap-1 text-xs tabular-nums shrink-0 font-semibold">
+                            {s && <span className="text-sky-500">{s}</span>}
+                            {s && e && s !== e && <span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span>}
+                            {e && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/75"}>{e}</span>}
+                          </span>
+                        );
+                      })()
+                    ) : (() => {
                       const closed = fmtClosedCycle(t.status, t.dueDate, t.updatedAt);
                       if (closed) return (
                         <span className={`text-xs font-semibold shrink-0 ${closed.cls}`}>
@@ -483,19 +488,28 @@ export default function EditorTaskList() {
                 <PriorityBadge priority={t.priority} />
               </div>
 
-              {/* Início — only in "Agendadas" tab, lg+ */}
-              {viewTab === "scheduled" && (
+              {/* Período / Prazo — desktop lg+ */}
+              {viewTab === "scheduled" ? (
+                <div className="hidden lg:flex w-44 shrink-0 items-center pl-6 gap-1 tabular-nums text-xs font-semibold">
+                  {(() => {
+                    const fmtD = (d: string) => d.split("T")[0].split("-").slice(1).reverse().join("/");
+                    const s = t.startDate ? fmtD(t.startDate) : null;
+                    const e = t.dueDate   ? fmtD(t.dueDate)   : null;
+                    return (
+                      <>
+                        {s && <span className="text-sky-500">{s}</span>}
+                        {s && e && s !== e && <span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span>}
+                        {e && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/80"}>{e}</span>}
+                        {!s && !e && <span className="text-[hsl(var(--muted-foreground))]/30">—</span>}
+                      </>
+                    );
+                  })()}
+                </div>
+              ) : (
                 <div className="hidden lg:flex w-28 shrink-0 items-center pl-6">
-                  <span className="text-xs font-medium text-sky-500 tabular-nums">
-                    {t.startDate ? t.startDate.split("T")[0].split("-").slice(1).reverse().join("/") : "—"}
-                  </span>
+                  <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} />
                 </div>
               )}
-
-              {/* Due date */}
-              <div className="hidden lg:flex w-28 shrink-0 items-center pl-6">
-                <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} />
-              </div>
 
               {/* Coordinator */}
               <div className="hidden xl:flex w-20 shrink-0 items-center gap-1.5 pl-6">

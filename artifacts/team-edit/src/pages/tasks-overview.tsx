@@ -735,8 +735,10 @@ export default function TasksOverview() {
               <div className="w-32 shrink-0"><Th col="status" label="Status" /></div>
               <div className="w-20 shrink-0 hidden lg:block"><Th col="priority" label="Prior." /></div>
               <div className="w-32 shrink-0"><Th col="assignee" label="Editor" /></div>
-              {viewTab === "scheduled" && <div className="w-28 shrink-0 hidden lg:block"><Th col="startDate" label="Início" /></div>}
-              <div className="w-28 shrink-0 hidden lg:block"><Th col="dueDate" label="Prazo" /></div>
+              {viewTab === "scheduled"
+                ? <div className="w-44 shrink-0 hidden lg:block"><Th col="startDate" label="Período" /></div>
+                : <div className="w-28 shrink-0 hidden lg:block"><Th col="dueDate" label="Prazo" /></div>
+              }
               <div className="w-24 shrink-0 hidden xl:block"><Th col="coordinator" label="Coord." /></div>
               <div className="w-52 shrink-0" />
             </div>
@@ -984,14 +986,27 @@ export default function TasksOverview() {
                         </p>
                       )}
 
-                      {/* Row 3: status + priority + due date */}
+                      {/* Row 3: status + priority + due date / período */}
                       <div className="flex items-center gap-2 mt-2.5 flex-wrap">
                         <Badge className={`text-xs px-2 py-0.5 font-medium shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
                           {STATUS_LABEL[t.status] ?? t.status}
                         </Badge>
                         {isUnassigned && <span className="text-[11px] text-slate-400 shrink-0">sem editor</span>}
                         <PriorityBadge priority={t.priority} />
-                        {(() => {
+                        {viewTab === "scheduled" ? (
+                          (t.startDate || t.dueDate) && (() => {
+                            const fmtD = (d: string) => d.split("T")[0].split("-").slice(1).reverse().join("/");
+                            const s = t.startDate ? fmtD(t.startDate) : null;
+                            const e = t.dueDate   ? fmtD(t.dueDate)   : null;
+                            return (
+                              <span className="flex items-center gap-1 text-xs tabular-nums shrink-0 font-semibold">
+                                {s && <span className="text-sky-500">{s}</span>}
+                                {s && e && s !== e && <span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span>}
+                                {e && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/75"}>{e}</span>}
+                              </span>
+                            );
+                          })()
+                        ) : (() => {
                           const closed = fmtClosedCycle(t.status, t.dueDate, t.updatedAt);
                           if (closed) return (
                             <span className={`text-xs font-semibold shrink-0 ${closed.cls}`}>
@@ -1007,16 +1022,6 @@ export default function TasksOverview() {
                           );
                         })()}
                       </div>
-
-                      {/* Início chip — mobile, only in "Agendadas" tab */}
-                      {viewTab === "scheduled" && t.startDate && (
-                        <div className="flex items-center gap-1 mt-2">
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]/50">Início</span>
-                          <span className="text-xs font-medium text-sky-500 tabular-nums">
-                            {t.startDate.split("T")[0].split("-").slice(1).reverse().join("/")}
-                          </span>
-                        </div>
-                      )}
 
                       {/* Row 4: editors */}
                       {t.editors && t.editors.length > 0 && (
@@ -1169,19 +1174,28 @@ export default function TasksOverview() {
                     )}
                   </div>
 
-                  {/* Início — only on lg+, only in "Agendadas" tab */}
-                  {viewTab === "scheduled" && (
+                  {/* Período / Prazo — desktop lg+ */}
+                  {viewTab === "scheduled" ? (
+                    <div className="hidden lg:flex w-44 shrink-0 items-center gap-1 tabular-nums text-xs font-semibold">
+                      {(() => {
+                        const fmtD = (d: string) => d.split("T")[0].split("-").slice(1).reverse().join("/");
+                        const s = t.startDate ? fmtD(t.startDate) : null;
+                        const e = t.dueDate   ? fmtD(t.dueDate)   : null;
+                        return (
+                          <>
+                            {s && <span className="text-sky-500">{s}</span>}
+                            {s && e && s !== e && <span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span>}
+                            {e && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/80"}>{e}</span>}
+                            {!s && !e && <span className="text-[hsl(var(--muted-foreground))]/30">—</span>}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  ) : (
                     <div className="hidden lg:flex w-28 shrink-0 items-center">
-                      <span className="text-xs font-medium text-sky-500 tabular-nums">
-                        {t.startDate ? t.startDate.split("T")[0].split("-").slice(1).reverse().join("/") : "—"}
-                      </span>
+                      <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} />
                     </div>
                   )}
-
-                  {/* Prazo — only on lg+ */}
-                  <div className="hidden lg:flex w-28 shrink-0 items-center">
-                    <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} />
-                  </div>
 
                   {/* Coordenador — only on xl+ */}
                   <div className="hidden xl:flex w-24 shrink-0 items-center gap-1.5">
