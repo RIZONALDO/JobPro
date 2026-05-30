@@ -2,13 +2,12 @@ import { useEffect, useState, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { fmtDate, fmtDateHuman } from "@/lib/utils";
 import {
-  Clock, FolderOpen, RotateCcw, Calendar,
-  AlertTriangle, Layers, Copy, ChevronRight, Tag,
+  Clock, FolderOpen, RotateCcw, Calendar, AlertTriangle,
+  Layers, Copy, ChevronRight, Hash, Tag, Zap,
 } from "lucide-react";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { SubtaskProgressBar } from "@/components/ui/subtask-progress-bar";
@@ -42,18 +41,15 @@ const COMPLEXITY_LABEL: Record<string, string> = { low: "Simples", medium: "Mode
 const COMPLEXITY_CLS:   Record<string, string> = {
   low: "text-slate-400", medium: "text-blue-500", high: "text-purple-500",
 };
+const STATUS_DOT: Record<string, string> = {
+  pending: "bg-slate-400", in_progress: "bg-blue-500", review: "bg-violet-500",
+  in_revision: "bg-amber-500", completed: "bg-emerald-500",
+  cancelled: "bg-red-500", paused: "bg-purple-400",
+};
 
 function isOverdue(dueDate: string | null, status: string) {
   if (!dueDate || ["completed","cancelled","paused"].includes(status)) return false;
   return new Date(dueDate) < new Date(new Date().toDateString());
-}
-
-function SideLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 mb-1.5">
-      {children}
-    </p>
-  );
 }
 
 interface Props { taskId: number; onClose: () => void; onOpenTask?: (id: number) => void; }
@@ -76,7 +72,7 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
 
   return (
     <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-2xl w-[calc(100vw-16px)] p-0 gap-0 overflow-hidden max-h-[92vh] sm:max-h-[88vh] flex flex-col rounded-2xl">
+      <DialogContent className="max-w-lg w-[calc(100vw-16px)] p-0 gap-0 overflow-hidden max-h-[92vh] flex flex-col rounded-2xl border border-[hsl(var(--border))] shadow-2xl bg-[hsl(var(--card))]">
 
         {loading || !task ? (
           <>
@@ -90,258 +86,232 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
           <>
             <DialogTitle className="sr-only">{task.title}</DialogTitle>
 
-            {/* ── BARRA DE COR + CABEÇALHO ── */}
-            <div className="shrink-0">
-              <div className="h-[3px] w-full" style={{ background: task.color }} />
-              <div className="px-5 sm:px-6 py-4 border-b border-[hsl(var(--border))]">
-                {task.taskType === "subtask" && task.parentTask && (
-                  <div className="mb-2">
-                    <ParentTaskBreadcrumb parentTask={task.parentTask} onClickParent={onOpenTask} />
-                  </div>
-                )}
-                <div className="flex items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <h2 className="text-lg font-bold leading-snug text-[hsl(var(--foreground))]">
-                      {task.title}
-                    </h2>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0 pt-0.5">
-                    <Badge className={`${STATUS_CLASS[task.status] ?? ""} text-xs px-2.5 py-0.5 shrink-0`}>
-                      {STATUS_LABEL[task.status] ?? task.status}
-                    </Badge>
-                    <MultiTaskBadge taskType={task.taskType} />
-                  </div>
+            {/* ── HEADER ── */}
+            <div className="shrink-0 px-6 pt-6 pb-5 border-b border-[hsl(var(--border))]">
+              {/* breadcrumb subtarefa */}
+              {task.taskType === "subtask" && task.parentTask && (
+                <div className="mb-3">
+                  <ParentTaskBreadcrumb parentTask={task.parentTask} onClickParent={onOpenTask} />
                 </div>
+              )}
+
+              {/* título */}
+              <h2 className="text-[20px] font-bold leading-snug tracking-tight text-[hsl(var(--foreground))] mb-3">
+                {task.title}
+              </h2>
+
+              {/* linha de metadados: código · status · tipo · alterações · cliente */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {task.taskCode && (
+                  <span className="font-mono text-[11px] text-[hsl(var(--muted-foreground))]/50">
+                    {task.taskCode}
+                  </span>
+                )}
+                {task.taskCode && <span className="text-[hsl(var(--border))]">·</span>}
+                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium ${STATUS_CLASS[task.status] ?? ""}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${STATUS_DOT[task.status] ?? "bg-slate-400"}`} />
+                  {STATUS_LABEL[task.status] ?? task.status}
+                </span>
+                <MultiTaskBadge taskType={task.taskType} />
+                {task.revisionCount > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40">
+                    <RotateCcw className="h-3 w-3" />{task.revisionCount} alt.
+                  </span>
+                )}
+                {task.client && (
+                  <>
+                    <span className="text-[hsl(var(--border))]">·</span>
+                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]/60 flex items-center gap-1">
+                      <Tag className="h-3 w-3" />{task.client}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
 
-            {/* ── SPLIT: coluna principal + sidebar ── */}
-            <div className="flex flex-col sm:flex-row flex-1 min-h-0 overflow-hidden">
+            {/* ── CORPO SCROLLÁVEL ── */}
+            <div className="flex-1 min-h-0 overflow-y-auto">
 
-              {/* ══ COLUNA PRINCIPAL ══ */}
-              <div className="flex-1 min-w-0 overflow-y-auto px-5 sm:px-6 py-5 space-y-5">
+              {/* PROPRIEDADES — grid 2×2 */}
+              <div className="grid grid-cols-2 divide-x divide-y divide-[hsl(var(--border))] border-b border-[hsl(var(--border))]">
 
-                {/* Descrição */}
-                <div className="space-y-1.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50">Descrição</p>
-                  {task.description ? (
-                    <p className="text-sm text-[hsl(var(--foreground))]/80 leading-relaxed whitespace-pre-wrap">
-                      {task.description}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-[hsl(var(--muted-foreground))]/30 italic">Sem descrição.</p>
-                  )}
-                </div>
-
-                {/* Subtarefas */}
-                {task.taskType === "multi_task" && task.subtasks && task.subtasks.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 flex items-center gap-1.5">
-                      <Layers className="h-3 w-3" /> Subtarefas ({task.subtasks.length})
-                    </p>
-                    <div className="rounded-xl border border-[hsl(var(--border))] overflow-hidden divide-y divide-[hsl(var(--border))]/60">
-                      {task.subtasks.map(sub => (
-                        <button
-                          key={sub.id}
-                          type="button"
-                          onClick={() => onOpenTask?.(sub.id)}
-                          className="w-full text-left flex items-center gap-3 px-3 py-2.5 hover:bg-[hsl(var(--muted))]/40 transition-colors group"
-                        >
-                          <div
-                            className="h-2 w-2 rounded-full shrink-0"
-                            style={{ backgroundColor: sub.status === "completed" ? "#22c55e" : sub.status === "in_progress" ? "#3b82f6" : sub.status === "cancelled" ? "#ef4444" : "#a1a1aa" }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{sub.title}</p>
-                            <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50 mt-0.5">
-                              {STATUS_LABEL[sub.status] ?? sub.status}
-                              {sub.assignedTo && ` · ${sub.assignedTo.name.split(" ")[0]}`}
-                            </p>
-                          </div>
-                          {sub.assignedTo && (
-                            <AvatarDisplay name={sub.assignedTo.name} avatarUrl={sub.assignedTo.avatarUrl} style={{ width: 22, height: 22, fontSize: 8, flexShrink: 0 }} />
-                          )}
-                          <ChevronRight className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]/25 group-hover:text-[hsl(var(--primary))] shrink-0 transition-colors" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Pasta */}
-                {task.folderUrl && (
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50">Pasta / Arquivos</p>
-                    <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-[hsl(var(--muted))]/30 border border-[hsl(var(--border))]">
-                      <FolderOpen className="h-4 w-4 shrink-0 mt-0.5 text-[hsl(var(--muted-foreground))]/50" />
-                      <span className="flex-1 text-sm text-[hsl(var(--foreground))]/70 break-all leading-snug select-all">{task.folderUrl}</span>
-                      <button
-                        type="button"
-                        onClick={() => { navigator.clipboard.writeText(task.folderUrl!); toast.success("Copiado!"); }}
-                        className="shrink-0 p-1 rounded-lg text-[hsl(var(--muted-foreground))]/40 hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] transition-colors"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Histórico de alterações */}
-                {task.revisions.length > 0 && (
-                  <div className="space-y-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 flex items-center gap-1.5">
-                      <RotateCcw className="h-3 w-3" /> Histórico de alterações
-                    </p>
-                    <div className="space-y-3">
-                      {task.revisions.map((r, idx) => (
-                        <div key={r.id} className="flex gap-3">
-                          <div className="flex flex-col items-center shrink-0">
-                            <div className="h-6 w-6 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 flex items-center justify-center text-[10px] font-bold text-amber-600">
-                              {r.revisionNumber}
-                            </div>
-                            {idx < task.revisions.length - 1 && (
-                              <div className="w-px flex-1 mt-1 bg-[hsl(var(--border))]" />
-                            )}
-                          </div>
-                          <div className="pb-2 min-w-0 flex-1">
-                            <p className="text-[10px] text-[hsl(var(--muted-foreground))]/40 mb-1">{fmtDate(r.createdAt)}</p>
-                            <p className="text-sm text-[hsl(var(--foreground))]/80 leading-relaxed">{r.comment}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Timestamps */}
-                <div className="flex items-center gap-2 text-[10px] text-[hsl(var(--muted-foreground))]/30 pt-1">
-                  <Clock className="h-3 w-3 shrink-0" />
-                  <span>Criado {fmtDate(task.createdAt)}</span>
-                  <span>·</span>
-                  <span>Atualizado {fmtDate(task.updatedAt)}</span>
-                </div>
-              </div>
-
-              {/* ══ SIDEBAR ══ */}
-              <div className="w-full sm:w-60 lg:w-64 shrink-0 border-t sm:border-t-0 sm:border-l border-[hsl(var(--border))]/60 bg-[hsl(var(--muted))]/15 overflow-y-auto px-4 py-5 space-y-5">
-
-                {/* Número sequencial */}
-                {task.taskCode && (
-                  <div>
-                    <SideLabel>Número</SideLabel>
-                    <span className="font-mono text-base font-bold text-[hsl(var(--foreground))]">
-                      {task.taskCode}
-                    </span>
-                  </div>
-                )}
-
-                {/* Cliente */}
-                <div>
-                  <SideLabel>Cliente</SideLabel>
-                  {task.client ? (
-                    <div className="flex items-center gap-1.5 text-sm font-medium">
-                      <Tag className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]/50 shrink-0" />
-                      {task.client}
+                <div className="px-5 py-3.5">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Prazo</p>
+                  {task.dueDate ? (
+                    <div className={`flex items-center gap-1.5 ${overdue ? "text-red-500" : "text-[hsl(var(--foreground))]"}`}>
+                      {overdue
+                        ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        : <Calendar className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]/60" />}
+                      <span className="text-sm font-semibold">{fmtDateHuman(task.dueDate)}</span>
                     </div>
                   ) : (
                     <span className="text-sm text-[hsl(var(--muted-foreground))]/30">—</span>
                   )}
+                  {overdue && <p className="text-[10px] font-bold text-red-500 mt-0.5">Atrasada</p>}
                 </div>
 
-                {/* Datas */}
-                <div>
-                  <SideLabel>Período</SideLabel>
-                  <div className="space-y-1">
-                    {task.startDate && (
-                      <div className="flex items-center gap-1.5 text-sm text-[hsl(var(--muted-foreground))]">
-                        <Calendar className="h-3.5 w-3.5 shrink-0" />
-                        <span className="text-[11px] text-[hsl(var(--muted-foreground))]/60 w-10 shrink-0">Início</span>
-                        <span className="font-medium text-[hsl(var(--foreground))]">{fmtDateHuman(task.startDate)}</span>
-                      </div>
-                    )}
-                    {task.dueDate ? (
-                      <div className={`flex items-center gap-1.5 text-sm ${overdue ? "text-red-500" : "text-[hsl(var(--muted-foreground))]"}`}>
-                        {overdue
-                          ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                          : <Calendar className="h-3.5 w-3.5 shrink-0" />}
-                        <span className="text-[11px] text-[hsl(var(--muted-foreground))]/60 w-10 shrink-0">Prazo</span>
-                        <span className={`font-medium ${overdue ? "text-red-500" : "text-[hsl(var(--foreground))]"}`}>{fmtDateHuman(task.dueDate)}</span>
-                      </div>
-                    ) : (
-                      <span className="text-sm text-[hsl(var(--muted-foreground))]/30">Sem prazo</span>
-                    )}
-                    {overdue && <p className="text-[10px] font-bold text-red-500 pl-5">Atrasada</p>}
-                  </div>
-                </div>
-
-                {/* Prioridade */}
-                <div>
-                  <SideLabel>Prioridade</SideLabel>
+                <div className="px-5 py-3.5">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Prioridade</p>
                   <PriorityBadge priority={task.priority} showLabel className="text-sm" />
                 </div>
 
-                {/* Complexidade */}
-                <div>
-                  <SideLabel>Complexidade</SideLabel>
-                  <div className={`flex items-center gap-1.5 text-sm font-semibold ${COMPLEXITY_CLS[task.complexity] ?? ""}`}>
+                <div className="px-5 py-3.5">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Complexidade</p>
+                  <div className={`flex items-center gap-1.5 ${COMPLEXITY_CLS[task.complexity] ?? ""}`}>
                     <Layers className="h-3.5 w-3.5 shrink-0" />
-                    {COMPLEXITY_LABEL[task.complexity] ?? task.complexity}
+                    <span className="text-sm font-semibold">{COMPLEXITY_LABEL[task.complexity] ?? task.complexity}</span>
                   </div>
                 </div>
 
-                {/* Equipe */}
-                {(task.createdBy || task.editors?.length > 0) && (
-                  <div>
-                    <SideLabel>Equipe</SideLabel>
-                    <div className="space-y-2">
-                      {task.createdBy && (
-                        <div className="flex items-center gap-2">
-                          <AvatarDisplay name={task.createdBy.name} avatarUrl={task.createdBy.avatarUrl ?? null} size={28} />
-                          <div className="min-w-0">
-                            <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50 leading-none mb-0.5">Coordenador</p>
-                            <p className="text-xs font-semibold truncate">{task.createdBy.name}</p>
-                          </div>
-                        </div>
-                      )}
-                      {task.editors?.map(e => (
-                        <div key={e.id} className="flex items-center gap-2">
-                          <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl ?? null} size={28} />
-                          <div className="min-w-0">
-                            <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50 leading-none mb-0.5">Editor</p>
-                            <p className="text-xs font-semibold truncate">{e.name}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Progresso multi_task */}
-                {task.taskType === "multi_task" && task.subtaskProgress && (
-                  <div>
-                    <SideLabel>Progresso</SideLabel>
-                    <SubtaskProgressBar
-                      total={task.subtaskProgress.total}
-                      completed={task.subtaskProgress.completed}
-                      percentage={task.subtaskProgress.percentage}
-                    />
-                  </div>
-                )}
-
-                {/* Alterações */}
-                {task.revisionCount > 0 && (
-                  <div>
-                    <SideLabel>Alterações</SideLabel>
-                    <div className="flex items-center gap-1.5">
-                      <RotateCcw className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                      <span className="text-sm font-semibold text-amber-600 dark:text-amber-400">
-                        {task.revisionCount} solicitaç{task.revisionCount === 1 ? "ão" : "ões"}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
+                <div className="px-5 py-3.5">
+                  {task.taskType === "multi_task" && task.subtaskProgress ? (
+                    <>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Progresso</p>
+                      <SubtaskProgressBar
+                        total={task.subtaskProgress.total}
+                        completed={task.subtaskProgress.completed}
+                        percentage={task.subtaskProgress.percentage}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Criado em</p>
+                      <div className="flex items-center gap-1.5 text-[hsl(var(--muted-foreground))]">
+                        <Clock className="h-3.5 w-3.5 shrink-0" />
+                        <span className="text-sm font-medium">{fmtDate(task.createdAt)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
+
+              {/* EQUIPE */}
+              {(task.createdBy || task.editors?.length > 0) && (
+                <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-3">Equipe</p>
+                  <div className="flex flex-wrap gap-2">
+                    {task.createdBy && (
+                      <div className="flex items-center gap-2 bg-[hsl(var(--muted))]/40 border border-[hsl(var(--border))] rounded-xl px-3 py-2">
+                        <AvatarDisplay name={task.createdBy.name} avatarUrl={task.createdBy.avatarUrl ?? null} size={26} />
+                        <div>
+                          <p className="text-[9px] text-[hsl(var(--muted-foreground))]/50 leading-none mb-0.5">Coordenador</p>
+                          <p className="text-xs font-semibold leading-none">{task.createdBy.name.split(" ").slice(0,2).join(" ")}</p>
+                        </div>
+                      </div>
+                    )}
+                    {task.editors?.map(e => (
+                      <div key={e.id} className="flex items-center gap-2 bg-[hsl(var(--muted))]/40 border border-[hsl(var(--border))] rounded-xl px-3 py-2">
+                        <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl ?? null} size={26} />
+                        <div>
+                          <p className="text-[9px] text-[hsl(var(--muted-foreground))]/50 leading-none mb-0.5">Editor</p>
+                          <p className="text-xs font-semibold leading-none">{e.name.split(" ").slice(0,2).join(" ")}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* DESCRIÇÃO */}
+              <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-2">Descrição</p>
+                {task.description ? (
+                  <p className="text-sm text-[hsl(var(--foreground))]/80 leading-relaxed whitespace-pre-wrap">{task.description}</p>
+                ) : (
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]/30 italic">Sem descrição.</p>
+                )}
+              </div>
+
+              {/* SUBTAREFAS */}
+              {task.taskType === "multi_task" && task.subtasks && task.subtasks.length > 0 && (
+                <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-3">
+                    Subtarefas · {task.subtasks.length}
+                  </p>
+                  <div className="space-y-1">
+                    {task.subtasks.map(sub => (
+                      <button
+                        key={sub.id}
+                        type="button"
+                        onClick={() => onOpenTask?.(sub.id)}
+                        className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/50 hover:border-[hsl(var(--primary))]/30 transition-all group"
+                      >
+                        <div
+                          className="h-2 w-2 rounded-full shrink-0"
+                          style={{ backgroundColor: sub.status === "completed" ? "#22c55e" : sub.status === "in_progress" ? "#3b82f6" : sub.status === "cancelled" ? "#ef4444" : "#a1a1aa" }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{sub.title}</p>
+                          <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50 mt-0.5">
+                            {STATUS_LABEL[sub.status] ?? sub.status}
+                            {sub.assignedTo && ` · ${sub.assignedTo.name.split(" ")[0]}`}
+                          </p>
+                        </div>
+                        {sub.assignedTo && (
+                          <AvatarDisplay name={sub.assignedTo.name} avatarUrl={sub.assignedTo.avatarUrl} style={{ width: 22, height: 22, fontSize: 8, flexShrink: 0 }} />
+                        )}
+                        <ChevronRight className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]/25 group-hover:text-[hsl(var(--primary))] shrink-0 transition-colors" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* PASTA */}
+              {task.folderUrl && (
+                <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-2">Pasta / Arquivos</p>
+                  <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-[hsl(var(--muted))]/40 border border-[hsl(var(--border))]">
+                    <FolderOpen className="h-4 w-4 shrink-0 mt-0.5 text-[hsl(var(--muted-foreground))]/50" />
+                    <span className="flex-1 text-sm text-[hsl(var(--foreground))]/70 break-all leading-snug select-all">{task.folderUrl}</span>
+                    <button
+                      type="button"
+                      title="Copiar"
+                      onClick={() => { navigator.clipboard.writeText(task.folderUrl!); toast.success("Copiado!"); }}
+                      className="shrink-0 p-1 rounded-lg text-[hsl(var(--muted-foreground))]/40 hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] transition-colors"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ALTERAÇÕES */}
+              {task.revisions.length > 0 && (
+                <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <Zap className="h-3 w-3 text-amber-500" />
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40">Histórico de alterações</p>
+                  </div>
+                  <div className="space-y-4">
+                    {task.revisions.map((r, idx) => (
+                      <div key={r.id} className="flex gap-3">
+                        <div className="flex flex-col items-center shrink-0">
+                          <div className="h-6 w-6 rounded-full bg-amber-100 dark:bg-amber-950/50 border border-amber-300/70 dark:border-amber-700/60 flex items-center justify-center text-[10px] font-bold text-amber-600 shrink-0">
+                            {r.revisionNumber}
+                          </div>
+                          {idx < task.revisions.length - 1 && (
+                            <div className="w-px flex-1 mt-1.5 bg-[hsl(var(--border))]" />
+                          )}
+                        </div>
+                        <div className="pb-2 min-w-0 flex-1">
+                          <p className="text-[10px] text-[hsl(var(--muted-foreground))]/40 mb-1">{fmtDate(r.createdAt)}</p>
+                          <p className="text-sm text-[hsl(var(--foreground))]/80 leading-relaxed">{r.comment}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* FOOTER timestamps */}
+              <div className="px-5 py-3 flex items-center gap-2 text-[10px] text-[hsl(var(--muted-foreground))]/30">
+                <Clock className="h-3 w-3 shrink-0" />
+                <span>Criado {fmtDate(task.createdAt)}</span>
+                <span>·</span>
+                <span>Atualizado {fmtDate(task.updatedAt)}</span>
+              </div>
+
             </div>
           </>
         )}
