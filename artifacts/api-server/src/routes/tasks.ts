@@ -608,7 +608,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   const role = req.session.userRole!;
   const userId = req.session.userId!;
 
-  const { title, description, startDate, dueDate, priority, complexity, assignedToId, folderUrl, status, revisionComment, client, color } = req.body ?? {};
+  const { title, description, startDate, dueDate, priority, complexity, assignedToId, folderUrl, status, revisionComment, startComment, client, color } = req.body ?? {};
   const update: Record<string, unknown> = {};
   let eventComment: string | undefined;
 
@@ -654,12 +654,13 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           const newWeight    = COMPLEXITY_WEIGHT[editorComplexity] ?? 6;
           const totalScore   = currentScore + newWeight;
 
+          const commentNote = startComment ? ` — "${String(startComment).slice(0, 120)}"` : "";
           if (totalScore > 12) {
             await notify(
               task.createdById,
               "complexity_conflict",
               "⚠️ Conflito de capacidade",
-              `${editorName} ajustou "${task.title}" de ${fromLbl} → ${toLbl}. Editor agora com ${totalScore} pts — revise as tarefas atribuídas.`,
+              `${editorName} ajustou "${task.title}" de ${fromLbl} → ${toLbl}${commentNote}. Editor agora com ${totalScore} pts — revise as tarefas atribuídas.`,
               { taskId: id }
             );
           } else {
@@ -667,7 +668,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
               task.createdById,
               "complexity_adjusted",
               "Complexidade ajustada",
-              `${editorName} ajustou "${task.title}" de ${fromLbl} → ${toLbl}.`,
+              `${editorName} ajustou "${task.title}" de ${fromLbl} → ${toLbl}${commentNote}.`,
               { taskId: id }
             );
           }
@@ -845,12 +846,14 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   const [updated] = await db.update(tasksTable).set(update).where(eq(tasksTable.id, id)).returning();
 
   if (update.status && update.status !== task.status) {
+    const resolvedComment = eventComment
+      || (update.status === "in_progress" && startComment ? String(startComment).slice(0, 500) : undefined);
     await db.insert(taskEventsTable).values({
       taskId: id,
       fromStatus: task.status,
       toStatus: String(update.status),
       changedById: userId,
-      ...(eventComment ? { revisionComment: eventComment } : {}),
+      ...(resolvedComment ? { revisionComment: resolvedComment } : {}),
     });
   }
 

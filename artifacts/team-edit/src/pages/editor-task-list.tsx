@@ -164,11 +164,11 @@ export default function EditorTaskList() {
   // Reserva de slot: intercepta "Iniciar" para confirmar/ajustar complexidade
   const handleIniciar = (task: Task) => setComplexityTarget(task);
 
-  const confirmStart = async (complexity: string) => {
+  const confirmStart = async (complexity: string, comment: string) => {
     if (!complexityTarget) return;
     setStartingSaving(true);
     try {
-      await apiPut(`/api/tasks/${complexityTarget.id}`, { status: "in_progress", complexity });
+      await apiPut(`/api/tasks/${complexityTarget.id}`, { status: "in_progress", complexity, startComment: comment });
       setComplexityTarget(null);
       load();
     } catch (err: unknown) {
