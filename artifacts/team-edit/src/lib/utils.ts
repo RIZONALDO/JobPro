@@ -12,16 +12,16 @@ export function toLocalDate(d: Date): string {
 
 export function fmtDate(date: string | null | undefined): string | null {
   if (!date) return null;
-  if (date.includes("T")) {
-    const dt = new Date(date);
-    const d = String(dt.getDate()).padStart(2, "0");
-    const m = String(dt.getMonth() + 1).padStart(2, "0");
-    const h = String(dt.getHours()).padStart(2, "0");
-    const min = String(dt.getMinutes()).padStart(2, "0");
-    return `${d}/${m}/${dt.getFullYear()} às ${h}:${min}`;
-  }
-  const [y, m, d] = date.split("-");
-  return `${d}/${m}/${y}`;
+  const hasTime = date.includes("T");
+  const dt = hasTime ? new Date(date) : (() => { const [y, m, d] = date.split("-").map(Number); return new Date(y, m - 1, d); })();
+  const day = String(dt.getDate()).padStart(2, "0");
+  const mon = String(dt.getMonth() + 1).padStart(2, "0");
+  const base = `${day}/${mon}`;
+  if (!hasTime) return base;
+  const h = dt.getHours();
+  const min = dt.getMinutes();
+  if (h === 0 && min === 0) return base;
+  return min === 0 ? `${base} às ${h}h` : `${base} às ${h}h${String(min).padStart(2, "0")}`;
 }
 
 /** "05/05 às 12:30" — para timestamps curtos (criação de revisões etc.) */
