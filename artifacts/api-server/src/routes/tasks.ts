@@ -1436,12 +1436,12 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
   let endDate:   Date;
 
   if (fromParam && toParam) {
-    startDate = new Date(fromParam + "T00:00:00");
-    endDate   = new Date(toParam   + "T00:00:00");
+    startDate = new Date(fromParam + "T00:00:00Z");
+    endDate   = new Date(toParam   + "T00:00:00Z");
   } else {
     let weekStart: Date;
     if (weekParam) {
-      weekStart = new Date(weekParam + "T00:00:00");
+      weekStart = new Date(weekParam + "T00:00:00Z");
     } else {
       weekStart = new Date();
       const day = weekStart.getDay();
@@ -1525,7 +1525,7 @@ router.get("/workload", requireCoordinator, async (req, res): Promise<void> => {
 
   // projected date from query param (default = today)
   const projDateStr = typeof req.query.date === "string" ? req.query.date : todayStr;
-  const projDate = new Date(projDateStr + "T23:59:59");
+  const projDate = new Date(projDateStr + "T23:59:59Z");
   const isProjFuture = projDateStr > todayStr;
 
   const open = await db
@@ -1547,7 +1547,7 @@ router.get("/workload", requireCoordinator, async (req, res): Promise<void> => {
       isNotNull(tasksTable.assignedToId),
     ));
 
-  const todayEnd = new Date(todayStr + "T23:59:59");
+  const todayEnd = new Date(todayStr + "T23:59:59Z");
 
   const result = editors.map(editor => {
     const all = open.filter(t => t.assignedToId === editor.id);
@@ -1638,14 +1638,15 @@ router.get("/workload/calendar", requireCoordinator, async (req, res): Promise<v
 
   for (let d = 1; d <= daysInMonth; d++) {
     const dayStr = `${monthStr}-${String(d).padStart(2, "0")}`;
-    const dayEnd = new Date(dayStr + "T23:59:59");
+    const dayEnd   = new Date(dayStr + "T23:59:59Z"); // UTC explícito
+    const dayStart = new Date(dayStr + "T00:00:00Z"); // UTC explícito
 
     const active = tasks.filter(t => {
       // Task is active on this day if:
-      // startDate <= day (or null = already started)
-      const started = !t.startDate || new Date(t.startDate) <= dayEnd;
-      // dueDate >= day (or null = no deadline = always counts)
-      const notDone = !t.dueDate || new Date(t.dueDate) >= new Date(dayStr + "T00:00:00");
+      // startDate <= end-of-day (or null = already started)
+      const started = !t.startDate || t.startDate <= dayEnd;
+      // dueDate >= start-of-day (or null = no deadline = always counts)
+      const notDone = !t.dueDate || t.dueDate >= dayStart;
       return started && notDone;
     });
 
