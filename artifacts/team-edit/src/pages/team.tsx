@@ -317,11 +317,9 @@ export default function Team() {
                                   )}
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
-                                  {task.dueDate && (() => {
-                                    return <span className="flex flex-col items-end gap-0">
-                                      <span className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(task.dueDate)}</span></span>}
-                                    </span>;
-                                  })()}
+                                  {task.dueDate && (
+                                    <span className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(task.dueDate)}</span>
+                                  )}
                                   <PriorityBadge priority={task.priority} />
                                   <Badge className={`text-xs px-1.5 ${STATUS_CLASS[task.status] ?? ""}`}>
                                     {STATUS_LABEL[task.status] ?? task.status}
