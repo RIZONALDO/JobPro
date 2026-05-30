@@ -2,9 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, ChevronRight, CalendarDays, Calendar as CalIcon, Plus, X, ChevronDown } from "lucide-react";
-import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { toLocalDate } from "@/lib/utils";
 import { TaskFormModal } from "@/components/task-form-modal";
 
@@ -563,23 +561,15 @@ function TaskChip({ t, isCoord, onClick }: { t: CalendarTask; isCoord: boolean; 
   return (
     <div
       onClick={onClick}
-      className={`rounded-lg border bg-[hsl(var(--card))] dark:bg-[hsl(217,33%,14%)] px-2 py-1.5 border-l-2 shadow-sm dark:shadow-[0_1px_6px_rgba(0,0,0,0.5)] dark:border-white/10 ${isCoord ? "cursor-pointer hover:shadow-md hover:border-[hsl(var(--primary))]/40 transition-all" : ""}`}
-      style={{ borderLeftColor: t.color }}
+      className={`flex items-center gap-1.5 rounded border bg-[hsl(var(--card))] dark:bg-[hsl(217,33%,14%)] px-2 shadow-sm overflow-hidden ${isCoord ? "cursor-pointer hover:opacity-80 transition-opacity" : ""}`}
+      style={{ borderLeft: `3px solid ${t.color}`, minHeight: 20, paddingTop: 2, paddingBottom: 2 }}
     >
-      <p className="text-xs font-medium leading-tight line-clamp-2">{t.title}</p>
-      {t.client && (
-        <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 truncate">{t.client}</p>
+      <span className="text-[11px] font-medium leading-tight truncate flex-1">{t.title}</span>
+      {t.assigneeName && isCoord && (
+        <span className="text-[10px] text-[hsl(var(--muted-foreground))]/60 truncate shrink-0 hidden xl:block">
+          {t.assigneeName.split(" ")[0]}
+        </span>
       )}
-      <div className="flex items-center justify-between mt-1 gap-1 flex-wrap">
-        <Badge className={`text-xs px-1 py-0 leading-4 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
-          {STATUS_LABEL[t.status] ?? t.status}
-        </Badge>
-        {isCoord && t.assigneeName && (
-          <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">
-            {t.assigneeName.split(" ")[0]}
-          </span>
-        )}
-      </div>
     </div>
   );
 }
