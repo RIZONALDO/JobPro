@@ -618,6 +618,15 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
       const allowed = editorTransitions[task.status] ?? [];
       if (!allowed.includes(s)) { res.status(400).json({ error: "Transição de status não permitida" }); return; }
       update.status = s;
+      // Se o editor adiantou uma tarefa agendada, ancora o startDate em hoje
+      // para que a tarefa entre imediatamente na carga atual (não fique no pool "agendado")
+      if (s === "in_progress" && task.startDate) {
+        const todayMidnight = new Date();
+        todayMidnight.setHours(0, 0, 0, 0);
+        if (task.startDate > todayMidnight) {
+          update.startDate = todayMidnight;
+        }
+      }
     }
     if (folderUrl !== undefined) update.folderUrl = folderUrl ? String(folderUrl) : null;
   } else {
