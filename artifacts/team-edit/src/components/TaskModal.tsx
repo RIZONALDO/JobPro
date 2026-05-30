@@ -95,19 +95,19 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
                 </div>
               )}
 
-              {/* título */}
-              <h2 className="text-[20px] font-bold leading-snug tracking-tight text-[hsl(var(--foreground))] mb-3">
-                {task.title}
+              {/* número sequencial + título */}
+              <h2 className="text-[20px] font-bold leading-snug tracking-tight text-[hsl(var(--foreground))] mb-3 flex items-baseline gap-2 flex-wrap">
+                {task.taskCode && (
+                  <>
+                    <span className="font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">{task.taskCode}</span>
+                    <span className="text-[hsl(var(--muted-foreground))]/30 shrink-0">|</span>
+                  </>
+                )}
+                <span>{task.title}</span>
               </h2>
 
-              {/* linha de metadados: código · status · tipo · alterações · cliente */}
+              {/* linha de metadados: status · tipo · alterações · cliente */}
               <div className="flex items-center gap-2 flex-wrap">
-                {task.taskCode && (
-                  <span className="font-mono text-[11px] text-[hsl(var(--muted-foreground))]/50">
-                    {task.taskCode}
-                  </span>
-                )}
-                {task.taskCode && <span className="text-[hsl(var(--border))]">·</span>}
                 <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium ${STATUS_CLASS[task.status] ?? ""}`}>
                   <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${STATUS_DOT[task.status] ?? "bg-slate-400"}`} />
                   {STATUS_LABEL[task.status] ?? task.status}
