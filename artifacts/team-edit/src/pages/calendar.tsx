@@ -113,10 +113,6 @@ export default function Calendar() {
   const [fCoord,    setFCoord]    = useState(defaultCoord);
 
   const monthGridStart = useMemo(() => getMonthGridStart(monthDate), [monthDate]);
-  const monthGridCells = useMemo(() =>
-    Array.from({ length: 42 }, (_, i) => addDays(monthGridStart, i)),
-    [monthGridStart]
-  );
 
   const loadCalendar = useCallback(() => {
     setLoading(true);
@@ -197,39 +193,24 @@ export default function Calendar() {
       // Sobrepõe com a semana
       return start <= wEnd && due >= wStart;
     }).map(t => {
-      const start = t.startDate!.slice(0, 10);
-      const due   = t.dueDate.slice(0, 10);
+      const start  = t.startDate!.slice(0, 10);
+      const due    = t.dueDate.slice(0, 10);
       const wStart = weekDayStrs[0];
       const wEnd   = weekDayStrs[6];
-      // Posição na grade (0-6), clampado à semana
-      const colStart = Math.max(0, weekDayStrs.indexOf(weekDayStrs.find(d => d >= start) ?? weekDayStrs[0]));
-      const colEnd   = Math.min(6, weekDayStrs.indexOf(weekDayStrs.find(d => d >= due)   ?? weekDayStrs[6]));
-      const clampedStart = start < wStart ? wStart : start;
-      const clampedEnd   = due   > wEnd   ? wEnd   : due;
-      const startIdx = weekDayStrs.findIndex(d => d === clampedStart);
-      const endIdx   = weekDayStrs.findIndex(d => d === clampedEnd);
+      const cs = start < wStart ? wStart : start;
+      const ce = due   > wEnd   ? wEnd   : due;
+      const si = weekDayStrs.findIndex(d => d === cs);
+      const ei = weekDayStrs.findIndex(d => d === ce);
       return {
         task: t,
-        startIdx: startIdx < 0 ? 0 : startIdx,
-        endIdx:   endIdx   < 0 ? 6 : endIdx,
+        startIdx: si < 0 ? 0 : si,
+        endIdx:   ei < 0 ? 6 : ei,
         cutLeft:  start < wStart,
         cutRight: due   > wEnd,
       };
     });
   }, [filteredTasks, weekStart]);
 
-  // Tarefas com duração para a view de mês (aparece em cada dia do intervalo)
-  const tasksByDayMonth = (day: Date) => {
-    const dayStr = fmt(day);
-    return filteredTasks.filter(t => {
-      const due   = t.dueDate ? t.dueDate.slice(0, 10) : null;
-      const start = t.startDate ? t.startDate.slice(0, 10) : null;
-      if (start && due && start !== due) {
-        return dayStr >= start && dayStr <= due;
-      }
-      return due === dayStr || start === dayStr;
-    });
-  };
 
   const prev = () => {
     if (view === "week") setWeekStart(d => addDays(d, -7));
@@ -425,6 +406,7 @@ export default function Calendar() {
         {/* ── MONTH VIEW ── */}
         {view === "month" && (
           <div className="flex flex-col flex-1 min-h-0">
+            {/* Weekday headers */}
             <div className="grid grid-cols-7 border-b shrink-0 bg-[hsl(var(--muted))]/30">
               {DAYS_PT.map(d => (
                 <div key={d} className="px-2 py-2 text-center border-r last:border-r-0">
@@ -432,74 +414,132 @@ export default function Calendar() {
                 </div>
               ))}
             </div>
-            <div className="flex-1 grid grid-cols-7" style={{ gridTemplateRows: "repeat(6, 1fr)" }}>
-              {monthGridCells.map((day, i) => {
-                const isToday     = fmt(day) === today;
-                const isThisMonth = day.getMonth() === monthDate.getMonth();
-                const dayTasks    = tasksByDay(day);
+
+            {/* 6 week rows — each with its own spanning bars + day cells */}
+            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
+              {Array.from({ length: 6 }, (_, weekIdx) => {
+                const wDays = Array.from({ length: 7 }, (_, i) => addDays(monthGridStart, weekIdx * 7 + i));
+                const wStrs = wDays.map(d => fmt(d));
+                const wS = wStrs[0], wE = wStrs[6];
+
+                // Spanning tasks that overlap this week (startDate !== dueDate)
+                const wSpanning = filteredTasks
+                  .filter(t => {
+                    if (!t.startDate) return false;
+                    const s = t.startDate.slice(0, 10), e = t.dueDate.slice(0, 10);
+                    return s !== e && s <= wE && e >= wS;
+                  })
+                  .sort((a, b) => a.startDate!.localeCompare(b.startDate!));
+
+                // Greedy lane assignment: pack tasks into rows without overlap
+                const laneEnds: string[] = [];
+                const taskLane = new Map<number, number>();
+                wSpanning.forEach(t => {
+                  const ts = t.startDate!.slice(0, 10) < wS ? wS : t.startDate!.slice(0, 10);
+                  let lane = laneEnds.findIndex(end => end < ts);
+                  if (lane < 0) { lane = laneEnds.length; laneEnds.push(""); }
+                  laneEnds[lane] = t.dueDate.slice(0, 10) > wE ? wE : t.dueDate.slice(0, 10);
+                  taskLane.set(t.id, lane);
+                });
+                const nLanes = laneEnds.length;
+
                 return (
-                  <div
-                    key={i}
-                    className={`group border-r border-b p-1.5 flex flex-col gap-1
-                      ${(i % 7) === 6 ? "border-r-0" : ""}
-                      ${i >= 35 ? "border-b-0" : ""}
-                      ${isToday ? "bg-[hsl(var(--primary))]/5" : !isThisMonth ? "bg-[hsl(var(--muted))]/20" : ""}
-                    `}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full
-                        ${isToday
-                          ? "bg-[hsl(var(--primary))] text-white"
-                          : isThisMonth
-                            ? "text-[hsl(var(--foreground))]"
-                            : "text-[hsl(var(--muted-foreground))]/40"
-                        }`}>
-                        {day.getDate()}
-                      </span>
-                      {isCoord && isThisMonth && (
-                        <button type="button" onClick={() => openCreate(fmt(day))} title="Nova tarefa"
-                          className="h-5 w-5 rounded flex items-center justify-center text-[hsl(var(--muted-foreground))]/30 hover:text-[hsl(var(--primary))]/70 hover:bg-[hsl(var(--primary))]/10 transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                          <Plus className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
-                    {loading ? (
-                      i < 7 && <div className="h-4 rounded bg-[hsl(var(--muted))]/50 animate-pulse" />
-                    ) : (
-                      <div className="flex flex-col gap-0.5 overflow-hidden">
-                        {tasksByDayMonth(day).slice(0, 3).map(t => {
-                          const dayStr   = fmt(day);
-                          const start    = t.startDate ? t.startDate.slice(0,10) : null;
-                          const due      = t.dueDate.slice(0,10);
-                          const isStart  = start === dayStr;
-                          const isEnd    = due === dayStr;
-                          const spanning = start && due && start !== due;
-                          const isMid    = spanning && !isStart && !isEnd;
+                  <div key={weekIdx} className="flex-1 border-b last:border-b-0 flex flex-col" style={{ minHeight: 90 }}>
+
+                    {/* Spanning bars — rendered as absolute bars within a fixed-height band */}
+                    {nLanes > 0 && (
+                      <div className="relative shrink-0 border-b border-[hsl(var(--border))]/30" style={{ height: nLanes * 22 + 6 }}>
+                        {/* Column ticks */}
+                        <div className="absolute inset-0 grid grid-cols-7 pointer-events-none">
+                          {wDays.map((d, i) => (
+                            <div key={i} className={`border-r last:border-r-0 ${fmt(d) === today ? "bg-[hsl(var(--primary))]/5" : ""}`} />
+                          ))}
+                        </div>
+                        {/* Bars */}
+                        {wSpanning.map(t => {
+                          const s = t.startDate!.slice(0, 10);
+                          const e = t.dueDate.slice(0, 10);
+                          const cs = s < wS ? wS : s;
+                          const ce = e > wE ? wE : e;
+                          const si = wStrs.indexOf(cs);
+                          const ei = wStrs.indexOf(ce);
+                          if (si < 0 || ei < 0) return null;
+                          const span = ei - si + 1;
+                          const lane = taskLane.get(t.id) ?? 0;
+                          const cutL = s < wS, cutR = e > wE;
                           return (
                             <button
                               key={t.id}
                               type="button"
                               onClick={() => isCoord && openEdit(t)}
-                              className={`text-left w-full text-xs leading-tight truncate ${isCoord ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+                              title={`${t.title} · ${s} → ${e}`}
+                              className={`absolute flex items-center px-2 text-[11px] font-medium leading-none truncate ${isCoord ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
                               style={{
-                                padding: "1px 6px",
-                                backgroundColor: spanning ? t.color + "cc" : t.color + "18",
-                                color: spanning ? "#fff" : "hsl(var(--foreground))",
-                                borderRadius: isStart ? "4px 0 0 4px" : isEnd ? "0 4px 4px 0" : isMid ? 0 : 4,
-                                borderLeft: !spanning ? `2px solid ${t.color}` : undefined,
+                                top: 3 + lane * 22,
+                                height: 18,
+                                left:  `calc(${si / 7 * 100}% + ${cutL ? 0 : 2}px)`,
+                                width: `calc(${span / 7 * 100}% - ${cutL ? 0 : 2}px - ${cutR ? 0 : 2}px)`,
+                                backgroundColor: t.color + "cc",
+                                color: "#fff",
+                                borderRadius: `${cutL ? 0 : 5}px ${cutR ? 0 : 5}px ${cutR ? 0 : 5}px ${cutL ? 0 : 5}px`,
+                                boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
                               }}
-                              title={`${t.title}${start && due && start !== due ? ` · ${start} → ${due}` : ""}`}
                             >
-                              {isStart || !spanning ? t.title : ""}
+                              {cutL
+                                ? <span className="truncate opacity-80">···{t.title}</span>
+                                : <span className="truncate">{t.title}</span>}
                             </button>
                           );
                         })}
-                        {tasksByDayMonth(day).length > 3 && (
-                          <span className="text-[10px] text-[hsl(var(--muted-foreground))] pl-1">+{tasksByDayMonth(day).length - 3} mais</span>
-                        )}
                       </div>
                     )}
+
+                    {/* Day cells — only point tasks (no periods) */}
+                    <div className="grid grid-cols-7 flex-1">
+                      {wDays.map((day, i) => {
+                        const dayStr      = fmt(day);
+                        const isToday     = dayStr === today;
+                        const isThisMonth = day.getMonth() === monthDate.getMonth();
+                        const pts         = tasksByDay(day);
+                        return (
+                          <div key={i} className={`group border-r last:border-r-0 p-1.5 flex flex-col gap-0.5
+                            ${isToday ? "bg-[hsl(var(--primary))]/5" : !isThisMonth ? "bg-[hsl(var(--muted))]/20" : ""}`}>
+                            <div className="flex items-center justify-between">
+                              <span className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full
+                                ${isToday ? "bg-[hsl(var(--primary))] text-white" : isThisMonth ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]/40"}`}>
+                                {day.getDate()}
+                              </span>
+                              {isCoord && isThisMonth && (
+                                <button type="button" onClick={() => openCreate(dayStr)} title="Nova tarefa"
+                                  className="h-5 w-5 rounded flex items-center justify-center text-[hsl(var(--muted-foreground))]/30 hover:text-[hsl(var(--primary))]/70 hover:bg-[hsl(var(--primary))]/10 transition-colors opacity-0 group-hover:opacity-100"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </button>
+                              )}
+                            </div>
+                            {loading ? (
+                              weekIdx === 0 && i === 0 && <div className="h-4 rounded bg-[hsl(var(--muted))]/50 animate-pulse" />
+                            ) : (
+                              <>
+                                {pts.slice(0, 2).map(t => (
+                                  <button key={t.id} type="button"
+                                    onClick={() => isCoord && openEdit(t)}
+                                    className={`w-full text-left text-[11px] leading-tight truncate rounded ${isCoord ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+                                    style={{ padding: "2px 6px", backgroundColor: t.color + "18", borderLeft: `2px solid ${t.color}`, color: "hsl(var(--foreground))" }}
+                                    title={t.title}
+                                  >
+                                    {t.title}
+                                  </button>
+                                ))}
+                                {pts.length > 2 && (
+                                  <span className="text-[10px] text-[hsl(var(--muted-foreground))] pl-1">+{pts.length - 2} mais</span>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}
