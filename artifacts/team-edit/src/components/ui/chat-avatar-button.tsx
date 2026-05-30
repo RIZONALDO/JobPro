@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, Zap } from "lucide-react";
+import { MessageCircle, Zap, CalendarDays } from "lucide-react";
 import { AvatarDisplay } from "./avatar-display";
 import { useChatContext } from "@/contexts/ChatContext";
 import { apiPost } from "@/lib/api";
@@ -14,9 +14,10 @@ interface Props {
   taskId?: number;
   taskCode?: string;
   taskTitle?: string;
+  onOpenAvailability?: () => void;
 }
 
-export function ChatAvatarButton({ userId, name, avatarUrl, size = 30, taskId, taskCode, taskTitle }: Props) {
+export function ChatAvatarButton({ userId, name, avatarUrl, size = 30, taskId, taskCode, taskTitle, onOpenAvailability }: Props) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -114,6 +115,16 @@ export function ChatAvatarButton({ userId, name, avatarUrl, size = 30, taskId, t
                 <Zap className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                 Cutucar
               </button>
+              {onOpenAvailability && (
+                <button
+                  type="button"
+                  onClick={() => { setOpen(false); onOpenAvailability(); }}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-[hsl(var(--muted))] transition-colors text-left border-t"
+                >
+                  <CalendarDays className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                  Mapa de disponibilidade
+                </button>
+              )}
             </motion.div>
           )}
         </AnimatePresence>,

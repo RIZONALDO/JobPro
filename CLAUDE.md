@@ -25,7 +25,7 @@ JobPro-git/
 │   └── team-edit/         # Frontend React + Vite
 │       └── src/
 │           ├── pages/     # dashboard, tasks-overview, my-tasks, pipeline, calendar...
-│           ├── components/ # task-form-modal, TaskModal, reassign-editor-modal...
+│           ├── components/ # task-form-modal, TaskModal, reassign-editor-modal, editor-availability-modal...
 │           ├── components/ui/  # shadcn/ui + componentes próprios
 │           ├── contexts/  # AuthContext, TaskModalContext, ChatContext...
 │           └── hooks/     # use-realtime.ts, use-size.ts...
@@ -119,7 +119,7 @@ Cada tarefa tem um **peso por complexidade**:
 | 7–11 | laranja `#f97316` | Muito ocupado |
 | ≥12 | vermelho `#ef4444` | No limite |
 
-**Regra:** score ≥ 12 **bloqueia** a atribuição de novas tarefas em todos os modais.
+**Regra:** score ≥ 12 exibe aviso visual (cor vermelha) mas **não bloqueia** a atribuição — coordenador tem controle total. O sistema apenas informa.
 
 ### startDate — Agendamento futuro
 Tarefas podem ter `startDate` no futuro. Isso significa que o editor vai começar depois.
@@ -129,6 +129,7 @@ Tarefas podem ter `startDate` no futuro. Isso significa que o editor vai começa
 - **Carga projetada** = atual + agendada até uma data alvo
 - O endpoint `/api/workload?date=YYYY-MM-DD` retorna a carga projetada para aquela data
 - No modal de criação, se `startDate` é futuro, a carga exibida é a projetada (não a atual)
+- **Buffer de 5 dias:** ao projetar para data futura, tarefas com `dueDate` que termina ≥ 5 dias antes da data alvo são excluídas do score (assumidas entregues)
 
 ### Multi-tarefas
 - `taskType = 'multi_task'` é o pai
@@ -149,6 +150,7 @@ GET  /api/my-tasks          — tarefas do usuário logado
 GET  /api/pipeline          — dados para o kanban
 GET  /api/calendar          — tarefas por período (suporta startDate → dueDate)
 GET  /api/workload          — carga dos editores (?date=YYYY-MM-DD para projeção)
+GET  /api/workload/calendar — disponibilidade diária de um editor (?editorId=X&month=YYYY-MM)
 GET  /api/dashboard-extras  — dados extras do dashboard
 POST /api/tasks             — criar tarefa (simples ou multi_task)
 PUT  /api/tasks/:id         — editar tarefa (inclui mudança de status)
@@ -282,6 +284,13 @@ Editar no Cowork → git add + commit → git push → ssh deploy na VPS
 - Badge de revisões: chip âmbar pequeno — `bg-amber-50 border-amber-200 text-amber-600`
 - Borda colorida no avatar do editor reflete score de carga
 - `scoreColor(score)` e `scoreLabel(score)` são funções definidas em cada arquivo que precisa
+- **Nunca mostrar valores numéricos de pts na UI** — usar apenas os rótulos (Disponível, Ocupado, Muito ocupado, No limite)
+- **Sem bloqueio por carga** — sistema exibe cores/alertas mas coordenador sempre pode atribuir
+
+### DateRangePicker (`components/ui/date-range-picker.tsx`)
+- Clique em **uma data** define `startDate` E `dueDate` para o mesmo dia (sinaliza job nesse dia específico)
+- Clique em **duas datas** define intervalo `startDate → dueDate`
+- Display omite a seta quando início = prazo (mesmo dia)
 
 ---
 
@@ -289,3 +298,19 @@ Editar no Cowork → git add + commit → git push → ssh deploy na VPS
 
 - **#37** — Push API + Service Worker (notificações nativas do OS)
 - Qualquer nova feature: sempre conferir se precisa de migração SQL na VPS
+
+---
+
+## Funcionalidades Implementadas (referência rápida)
+
+| Feature | Arquivo(s) |
+|---------|-----------|
+| Modal calendário de disponibilidade do editor | `editor-availability-modal.tsx` + `GET /api/workload/calendar` |
+| DateRangePicker (início → prazo, clique único = mesmo dia) | `components/ui/date-range-picker.tsx` |
+| Tabs "Pauta do dia / Agendadas" no kanban do editor | `my-tasks.tsx` |
+| Tabs "Todas / Tarefas do dia / Agendadas" na lista do coordenador | `tasks-overview.tsx` |
+| Coluna "Início" visível apenas na tab Agendadas | `tasks-overview.tsx`, `editor-task-list.tsx` |
+| Projeção de carga por `startDate` + buffer 5 dias | `GET /api/workload?date=` |
+| Multi-tarefa com subtarefas expansíveis | `task-form-modal.tsx`, `tasks-overview.tsx`, backend `tasks.ts` |
+| Chat DM com paginação e scroll inteligente | `ChatWidget`, `dm.ts` |
+| Sistema de rascunhos de tarefa | `tasks-rascunho.tsx`, lógica de status `rascunho` |

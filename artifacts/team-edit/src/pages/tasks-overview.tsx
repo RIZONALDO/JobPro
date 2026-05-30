@@ -29,6 +29,7 @@ import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
 import { TaskFormModal } from "@/components/task-form-modal";
 import { ReassignEditorModal } from "@/components/reassign-editor-modal";
+import { EditorAvailabilityModal } from "@/components/editor-availability-modal";
 import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
 import { SubtaskProgressBar } from "@/components/ui/subtask-progress-bar";
 import { RefreshCw, UserPlus } from "lucide-react";
@@ -226,6 +227,8 @@ export default function TasksOverview() {
 
   // Reassign / add editor modal
   const [reassignTarget, setReassignTarget] = useState<{ taskId: number; taskTitle: string; assignedTo: Person | null; mode: "reassign" | "add" } | null>(null);
+  // Availability modal
+  const [availEditor, setAvailEditor] = useState<{ id: number; name: string; avatarUrl?: string | null } | null>(null);
   const [deleting,     setDeleting]     = useState(false);
 
   // Approve confirmation
@@ -1144,6 +1147,7 @@ export default function TasksOverview() {
                                 taskId={t.id}
                                 taskCode={t.taskCode}
                                 taskTitle={t.title}
+                                onOpenAvailability={() => setAvailEditor({ id: e.id, name: e.name, avatarUrl: e.avatarUrl })}
                               />
                             </div>
                           ))}
@@ -1288,6 +1292,7 @@ export default function TasksOverview() {
                                 taskId={sub.id}
                                 taskCode={sub.taskCode}
                                 taskTitle={sub.title}
+                                onOpenAvailability={() => setAvailEditor({ id: person.id, name: person.name, avatarUrl: person.avatarUrl })}
                               />
                             );
                           })()}
@@ -1601,6 +1606,12 @@ export default function TasksOverview() {
           mode={reassignTarget.mode}
         />
       )}
+
+      <EditorAvailabilityModal
+        open={availEditor !== null}
+        onOpenChange={v => { if (!v) setAvailEditor(null); }}
+        editor={availEditor}
+      />
 
 
       <TaskFormModal
