@@ -328,7 +328,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
                 {/* Direcionamento */}
                 <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Direcionamento</Label>
+                  <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Direcionamento *</Label>
                   <Textarea value={form.description} onChange={e => f({ description: e.target.value })}
                     rows={4} placeholder="Briefing, referências ou observações…" className="text-sm resize-none rounded-xl" />
                 </div>
@@ -337,7 +337,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-1.5">
                     <Link2 className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
-                    <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Pasta / Arquivos</Label>
+                    <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Pasta / Arquivos *</Label>
                   </div>
                   <div className="flex gap-1.5">
                     <div className="relative flex-1">
@@ -358,7 +358,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                 {isMultiTask && !editMode && (
                   <div className="space-y-2.5">
                     <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))] flex items-center gap-1.5">
-                      <Layers className="h-3.5 w-3.5" />Subtarefas
+                      <Layers className="h-3.5 w-3.5" />Subtarefas *
                     </Label>
                     <div className="rounded-xl border border-[hsl(var(--border))] overflow-hidden divide-y divide-[hsl(var(--border))]/60">
                       {subtasks.map((row, i) => (
@@ -382,7 +382,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                 {isMultiTask && editMode && subtasks.length > 0 && (
                   <div className="space-y-2.5">
                     <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))] flex items-center gap-1.5">
-                      <Layers className="h-3.5 w-3.5" />Subtarefas
+                      <Layers className="h-3.5 w-3.5" />Subtarefas *
                     </Label>
                     <div className="rounded-xl border border-[hsl(var(--border))] overflow-hidden divide-y divide-[hsl(var(--border))]/60">
                       {subtasks.map((row, i) => (
@@ -497,7 +497,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
                 {/* Cliente */}
                 <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Cliente</Label>
+                  <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Cliente *</Label>
                   <ClientCombobox value={form.client} onChange={v => f({ client: v })} />
                 </div>
 
@@ -530,7 +530,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
                 {/* Prioridade */}
                 <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Prioridade</Label>
+                  <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Prioridade *</Label>
                   <Select value={form.priority} onValueChange={v => f({ priority: v })}>
                     <SelectTrigger className="h-9 rounded-xl text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -545,7 +545,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-1.5">
                     <Tag className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
-                    <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Complexidade</Label>
+                    <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Complexidade *</Label>
                   </div>
                   <Select value={form.complexity} onValueChange={v => f({ complexity: v })}>
                     <SelectTrigger className="h-9 rounded-xl text-sm"><SelectValue /></SelectTrigger>
