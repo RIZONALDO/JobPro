@@ -87,50 +87,44 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
             <DialogTitle className="sr-only">{task.title}</DialogTitle>
 
             {/* ── HEADER ── */}
-            <div className="shrink-0 flex border-b border-[hsl(var(--border))]">
-              {/* acento colorido na lateral esquerda */}
-              <div className="w-1 shrink-0 rounded-tl-2xl" style={{ background: task.color }} />
-
-              <div className="flex-1 min-w-0 px-5 pt-5 pb-4">
-                {/* breadcrumb subtarefa */}
-                {task.taskType === "subtask" && task.parentTask && (
-                  <div className="mb-2">
-                    <ParentTaskBreadcrumb parentTask={task.parentTask} onClickParent={onOpenTask} />
-                  </div>
-                )}
-
-                {/* código · tipo · status */}
-                <div className="flex items-center gap-2 flex-wrap mb-3">
-                  {task.taskCode && (
-                    <span className="inline-flex items-center gap-1 font-mono text-[11px] text-[hsl(var(--muted-foreground))]/60 bg-[hsl(var(--muted))]/60 px-2 py-0.5 rounded-md border border-[hsl(var(--border))]/60">
-                      <Hash className="h-2.5 w-2.5" />{task.taskCode}
-                    </span>
-                  )}
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${STATUS_CLASS[task.status] ?? ""}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${STATUS_DOT[task.status] ?? "bg-slate-400"}`} />
-                    {STATUS_LABEL[task.status] ?? task.status}
-                  </span>
-                  <MultiTaskBadge taskType={task.taskType} />
-                  {task.revisionCount > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50">
-                      <RotateCcw className="h-3 w-3" />{task.revisionCount}
-                    </span>
-                  )}
+            <div className="shrink-0 px-6 pt-6 pb-5 border-b border-[hsl(var(--border))]">
+              {/* breadcrumb subtarefa */}
+              {task.taskType === "subtask" && task.parentTask && (
+                <div className="mb-3">
+                  <ParentTaskBreadcrumb parentTask={task.parentTask} onClickParent={onOpenTask} />
                 </div>
+              )}
 
-                {/* título */}
-                <h2 className="text-xl font-bold leading-snug tracking-tight text-[hsl(var(--foreground))] mb-1.5">
-                  {task.title}
-                </h2>
+              {/* título */}
+              <h2 className="text-[20px] font-bold leading-snug tracking-tight text-[hsl(var(--foreground))] mb-3">
+                {task.title}
+              </h2>
 
-                {/* cliente */}
-                {task.client ? (
-                  <div className="flex items-center gap-1.5 text-[hsl(var(--muted-foreground))]">
-                    <Tag className="h-3 w-3 shrink-0" />
-                    <span className="text-sm">{task.client}</span>
-                  </div>
-                ) : (
-                  <span className="text-xs text-[hsl(var(--muted-foreground))]/30 italic">Sem cliente</span>
+              {/* linha de metadados: código · status · tipo · alterações · cliente */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {task.taskCode && (
+                  <span className="font-mono text-[11px] text-[hsl(var(--muted-foreground))]/50">
+                    {task.taskCode}
+                  </span>
+                )}
+                {task.taskCode && <span className="text-[hsl(var(--border))]">·</span>}
+                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium ${STATUS_CLASS[task.status] ?? ""}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${STATUS_DOT[task.status] ?? "bg-slate-400"}`} />
+                  {STATUS_LABEL[task.status] ?? task.status}
+                </span>
+                <MultiTaskBadge taskType={task.taskType} />
+                {task.revisionCount > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40">
+                    <RotateCcw className="h-3 w-3" />{task.revisionCount} alt.
+                  </span>
+                )}
+                {task.client && (
+                  <>
+                    <span className="text-[hsl(var(--border))]">·</span>
+                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]/60 flex items-center gap-1">
+                      <Tag className="h-3 w-3" />{task.client}
+                    </span>
+                  </>
                 )}
               </div>
             </div>
