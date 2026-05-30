@@ -1002,7 +1002,7 @@ export default function TasksOverview() {
                             return (
                               <span className="flex items-center gap-1 text-xs tabular-nums shrink-0 font-semibold">
                                 {s && <span className="text-sky-500">{s}</span>}
-                                {s && e && s !== e && <><span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span><span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/75"}>{e}</span></> }
+                                {s && e && <><span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span><span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/75"}>{e}</span></> }
                                 {!s && e && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/75"}>{e}</span>}
                               </span>
                             );
@@ -1185,7 +1185,7 @@ export default function TasksOverview() {
                         return (
                           <>
                             {s && <span className="text-sky-500">{s}</span>}
-                            {s && e && s !== e && <><span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span><span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/80"}>{e}</span></> }
+                            {s && e && <><span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span><span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/80"}>{e}</span></> }
                             {!s && e && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/80"}>{e}</span>}
                             {!s && !e && <span className="text-[hsl(var(--muted-foreground))]/30">—</span>}
                           </>
