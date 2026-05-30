@@ -3,7 +3,7 @@ import { apiFetch } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, LockKeyhole } from "lucide-react";
 
 interface DayData { date: string; score: number; count: number; }
 
@@ -157,9 +157,7 @@ export function EditorAvailabilityModal({ open, onOpenChange, editor }: Props) {
                   >
                     <span className={`leading-none ${scoreText(score)}`}>{day}</span>
                     {count > 0 && (
-                      <span className={`text-[8px] leading-none mt-0.5 font-semibold ${scoreText(score)}`}>
-                        {count}
-                      </span>
+                      <LockKeyhole className={`h-2.5 w-2.5 mt-0.5 shrink-0 ${scoreText(score)}`} />
                     )}
                   </div>
                 );
@@ -183,7 +181,7 @@ export function EditorAvailabilityModal({ open, onOpenChange, editor }: Props) {
           </div>
 
           <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 text-center leading-snug pb-1">
-            Número = tarefas ativas no dia · baseado em início→prazo de cada tarefa
+            Cadeado = editor com tarefas ativas · baseado em início→prazo de cada tarefa
           </p>
         </div>
       </DialogContent>
