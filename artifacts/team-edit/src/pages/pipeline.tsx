@@ -90,6 +90,7 @@ export default function Pipeline() {
   const [fClient,   setFClient]   = useState("all");
   const [fEditor,   setFEditor]   = useState("all");
   const [fCoord,    setFCoord]    = useState(defaultCoord);
+  const [fPeriod,   setFPeriod]   = useState<7 | 15 | 30>(7);
 
   const load = useCallback(() => {
     apiFetch<PipelineTask[]>("/api/pipeline")
@@ -120,6 +121,13 @@ export default function Pipeline() {
   const hasFilters = search || fPriority !== "all" || fClient !== "all" || fEditor !== "all" || fCoord !== defaultCoord;
   const clearAll = () => { setSearch(""); setFPriority("all"); setFClient("all"); setFEditor("all"); setFCoord(defaultCoord); };
 
+  const periodCutoff = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - fPeriod);
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  }, [fPeriod]);
+
   const filteredTasks = useMemo(() => tasks.filter(t => {
     if (fPriority !== "all" && t.priority !== fPriority) return false;
     if (fClient   !== "all" && t.client   !== fClient)   return false;
@@ -129,8 +137,10 @@ export default function Pipeline() {
       const q = search.toLowerCase();
       if (!t.title.toLowerCase().includes(q) && !(t.client ?? "").toLowerCase().includes(q)) return false;
     }
+    // Tarefas terminais: limitar pelo período selecionado
+    if (isTerminal(t.status) && t.createdAt < periodCutoff) return false;
     return true;
-  }), [tasks, fPriority, fClient, fEditor, fCoord, search]);
+  }), [tasks, fPriority, fClient, fEditor, fCoord, search, periodCutoff]);
 
   if (loading) return <div className="text-[hsl(var(--muted-foreground))] text-sm">Carregando...</div>;
 
@@ -182,9 +192,27 @@ export default function Pipeline() {
             <X className="h-3 w-3" /> Limpar
           </button>
         )}
-        <span className="ml-auto text-xs text-[hsl(var(--muted-foreground))]">
-          {total} {total === 1 ? "tarefa" : "tarefas"}
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          {/* Período */}
+          <div className="flex items-center rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 p-0.5 shrink-0">
+            {([7, 15, 30] as const).map(d => (
+              <button
+                key={d}
+                onClick={() => setFPeriod(d)}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                  fPeriod === d
+                    ? "bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm"
+                    : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                }`}
+              >
+                {d === 7 ? "7d" : d === 15 ? "15d" : "30d"}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-[hsl(var(--muted-foreground))]">
+            {total} {total === 1 ? "tarefa" : "tarefas"}
+          </span>
+        </div>
       </div>
 
       {/* Kanban card */}
