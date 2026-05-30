@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { MessageSquare, Calendar, AlertCircle, Undo2, MoreVertical, Info, PauseCircle, XCircle, Clock } from "lucide-react";
+import { MessageSquare, Calendar, AlertCircle, Undo2, MoreVertical, Info, PauseCircle, XCircle, Clock, Play } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { StackedAvatars } from "@/components/ui/avatar-display";
 import { usePageTitle } from "@/lib/use-page-title";
@@ -18,6 +18,7 @@ import { useTaskModal } from "@/contexts/TaskModalContext";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
 import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
+import { ComplexityConfirmDialog } from "@/components/ui/complexity-confirm-dialog";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
@@ -85,6 +86,8 @@ export default function MyTasks() {
   const [revisionSubmitting, setRevisionSubmitting] = useState(false);
   const [returnTarget, setReturnTarget] = useState<Task | null>(null);
   const [returning, setReturning] = useState(false);
+  const [complexityTarget, setComplexityTarget] = useState<Task | null>(null);
+  const [startingSaving,   setStartingSaving]   = useState(false);
   const load = useCallback(() => {
     apiFetch<Task[]>("/api/my-tasks")
       .then(setTasks)
@@ -95,6 +98,18 @@ export default function MyTasks() {
   useEffect(() => { load(); }, [load]);
 
   useRealtime({ onTasksChanged: load });
+
+  const confirmStart = async (complexity: string) => {
+    if (!complexityTarget) return;
+    setStartingSaving(true);
+    try {
+      await apiPut(`/api/tasks/${complexityTarget.id}`, { status: "in_progress", complexity });
+      setComplexityTarget(null);
+      load();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao iniciar tarefa");
+    } finally { setStartingSaving(false); }
+  };
 
   const updateStatus = async (task: Task, status: string) => {
     try {
@@ -318,6 +333,21 @@ export default function MyTasks() {
           {t.createdBy && (
             <StackedAvatars people={[t.createdBy]} size={30} max={1} />
           )}
+          {/* Botão Iniciar para tarefas pending */}
+          {isEditor && t.status === "pending" && (
+            <button
+              onClick={e => { e.stopPropagation(); setComplexityTarget(t); }}
+              style={{
+                display: "flex", alignItems: "center", gap: 3,
+                fontSize: 9, fontWeight: 600, padding: "2px 7px", borderRadius: 99,
+                background: "hsl(var(--primary))", color: "white",
+                border: "none", cursor: "pointer", flexShrink: 0,
+              }}
+            >
+              <Play style={{ width: 7, height: 7 }} />
+              Iniciar
+            </button>
+          )}
         </div>
       </div>
     );
@@ -538,6 +568,17 @@ export default function MyTasks() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmação de complexidade ao iniciar */}
+      {complexityTarget && (
+        <ComplexityConfirmDialog
+          open={!!complexityTarget}
+          task={complexityTarget}
+          onConfirm={confirmStart}
+          onCancel={() => setComplexityTarget(null)}
+          saving={startingSaving}
+        />
+      )}
     </div>
   );
 }

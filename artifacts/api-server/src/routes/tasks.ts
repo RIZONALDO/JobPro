@@ -630,12 +630,47 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
       if (!allowed.includes(s)) { res.status(400).json({ error: "Transição de status não permitida" }); return; }
       update.status = s;
       // Se o editor adiantou uma tarefa agendada, ancora o startDate em hoje
-      // para que a tarefa entre imediatamente na carga atual (não fique no pool "agendado")
       if (s === "in_progress" && task.startDate) {
         const todayMidnight = new Date();
         todayMidnight.setHours(0, 0, 0, 0);
-        if (task.startDate > todayMidnight) {
-          update.startDate = todayMidnight;
+        if (task.startDate > todayMidnight) update.startDate = todayMidnight;
+      }
+
+      // ── Reserva de slot: editor confirma/ajusta a complexidade ao iniciar ──
+      if (s === "in_progress" && complexity && ["low","medium","high"].includes(String(complexity))) {
+        const editorComplexity  = String(complexity);
+        const coordComplexity   = task.complexity ?? "medium";
+        update.complexity       = editorComplexity;
+
+        if (editorComplexity !== coordComplexity && task.createdById) {
+          const LABEL: Record<string,string> = { low: "Baixa", medium: "Média", high: "Alta" };
+          const [editor]  = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
+          const editorName = editor?.name ?? "Editor";
+          const fromLbl    = LABEL[coordComplexity]   ?? coordComplexity;
+          const toLbl      = LABEL[editorComplexity]  ?? editorComplexity;
+
+          // Verifica se o ajuste gerou conflito de carga
+          const currentScore = await editorScore(userId, id);
+          const newWeight    = COMPLEXITY_WEIGHT[editorComplexity] ?? 6;
+          const totalScore   = currentScore + newWeight;
+
+          if (totalScore > 12) {
+            await notify(
+              task.createdById,
+              "complexity_conflict",
+              "⚠️ Conflito de capacidade",
+              `${editorName} ajustou "${task.title}" de ${fromLbl} → ${toLbl}. Editor agora com ${totalScore} pts — revise as tarefas atribuídas.`,
+              { taskId: id }
+            );
+          } else {
+            await notify(
+              task.createdById,
+              "complexity_adjusted",
+              "Complexidade ajustada",
+              `${editorName} ajustou "${task.title}" de ${fromLbl} → ${toLbl}.`,
+              { taskId: id }
+            );
+          }
         }
       }
     }

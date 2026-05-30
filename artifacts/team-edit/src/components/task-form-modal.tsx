@@ -609,7 +609,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-1.5">
                     <Tag className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
-                    <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Complexidade *</Label>
+                    <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Complexidade estimada *</Label>
                   </div>
                   <Select value={form.complexity} onValueChange={v => f({ complexity: v })}>
                     <SelectTrigger className="h-9 rounded-xl text-sm"><SelectValue /></SelectTrigger>
@@ -619,6 +619,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       <SelectItem value="high">Complexa</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 leading-snug">
+                    O editor confirmará ou ajustará ao iniciar.
+                  </p>
                 </div>
 
 

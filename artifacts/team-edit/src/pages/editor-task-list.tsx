@@ -26,6 +26,7 @@ import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
 import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
+import { ComplexityConfirmDialog } from "@/components/ui/complexity-confirm-dialog";
 
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
 interface Task {
@@ -34,6 +35,7 @@ interface Task {
   title: string;
   status: string;
   priority: string;
+  complexity: string;
   dueDate: string | null;
   startDate?: string | null;
   revisionCount: number;
@@ -110,6 +112,8 @@ export default function EditorTaskList() {
   const [search,       setSearch]       = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [viewTab,      setViewTab]      = useState<"today" | "scheduled" | "all">("today");
+  const [complexityTarget, setComplexityTarget] = useState<Task | null>(null);
+  const [startingSaving,   setStartingSaving]   = useState(false);
 
   const urlSearch = useSearch();
   const [highlighted, setHighlighted] = useState<number | null>(() => {
@@ -147,7 +151,6 @@ export default function EditorTaskList() {
   useRealtime({ onTasksChanged: load });
 
   const updateStatus = async (task: Task, status: string) => {
-    // Optimistic: update status locally before waiting for server
     setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status } : t));
     try {
       await apiPut(`/api/tasks/${task.id}`, { status });
@@ -156,6 +159,21 @@ export default function EditorTaskList() {
       setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: task.status } : t));
       toast.error("Erro ao atualizar status");
     }
+  };
+
+  // Reserva de slot: intercepta "Iniciar" para confirmar/ajustar complexidade
+  const handleIniciar = (task: Task) => setComplexityTarget(task);
+
+  const confirmStart = async (complexity: string) => {
+    if (!complexityTarget) return;
+    setStartingSaving(true);
+    try {
+      await apiPut(`/api/tasks/${complexityTarget.id}`, { status: "in_progress", complexity });
+      setComplexityTarget(null);
+      load();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao iniciar tarefa");
+    } finally { setStartingSaving(false); }
   };
 
   const confirmReturn = async () => {
@@ -437,7 +455,7 @@ export default function EditorTaskList() {
                 <div className="flex flex-col items-end gap-2 shrink-0" onClick={e => e.stopPropagation()}>
                   {trans && (
                     <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap"
-                      onClick={e => { e.stopPropagation(); updateStatus(t, trans.next); }}>
+                      onClick={e => { e.stopPropagation(); trans.next === "in_progress" ? handleIniciar(t) : updateStatus(t, trans.next); }}>
                       {trans.shortLabel}
                     </Button>
                   )}
@@ -537,7 +555,7 @@ export default function EditorTaskList() {
               <div className="hidden md:flex w-28 shrink-0 items-center pl-6" onClick={e => e.stopPropagation()}>
                 {trans ? (
                   <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full"
-                    onClick={() => updateStatus(t, trans.next)}>
+                    onClick={() => trans.next === "in_progress" ? handleIniciar(t) : updateStatus(t, trans.next)}>
                     {trans.shortLabel}
                   </Button>
                 ) : (
@@ -598,6 +616,17 @@ export default function EditorTaskList() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmação de complexidade ao iniciar */}
+      {complexityTarget && (
+        <ComplexityConfirmDialog
+          open={!!complexityTarget}
+          task={complexityTarget}
+          onConfirm={confirmStart}
+          onCancel={() => setComplexityTarget(null)}
+          saving={startingSaving}
+        />
+      )}
 
     </div>
   );
