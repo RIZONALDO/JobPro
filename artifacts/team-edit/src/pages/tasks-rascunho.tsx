@@ -138,7 +138,7 @@ export default function TasksRascunho() {
         <div className="hidden md:flex shrink-0 items-center px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
           <div className="flex-1 pr-3">Tarefa</div>
           <div className="w-32 shrink-0">Editor</div>
-          <div className="w-28 shrink-0 hidden lg:flex items-center gap-1"><Clock className="h-3 w-3" />Entrega</div>
+          <div className="w-28 shrink-0 hidden lg:flex items-center gap-1"><Clock className="h-3 w-3 shrink-0 text-current" />Entrega</div>
           <div className="w-20 shrink-0 hidden lg:block">Prior.</div>
           <div className="w-10 shrink-0" />
         </div>
