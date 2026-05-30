@@ -91,36 +91,36 @@ export function EditorAvailabilityModal({ open, onOpenChange, editor }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm w-[calc(100vw-16px)] p-0 gap-0 overflow-hidden rounded-2xl">
-        <DialogHeader className="px-5 pt-4 pb-3 border-b">
-          <div className="flex items-center gap-2.5">
+      <DialogContent className="max-w-2xl w-[calc(100vw-24px)] p-0 gap-0 overflow-hidden rounded-2xl">
+        <DialogHeader className="px-6 pt-5 pb-4 border-b">
+          <div className="flex items-center gap-3">
             {editor && (
-              <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={28} className="shrink-0" />
+              <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={36} className="shrink-0" />
             )}
-            <DialogTitle className="text-sm font-semibold">
-              {editor?.name ?? "Editor"} — Disponibilidade
+            <DialogTitle className="text-base font-semibold">
+              {editor?.name ?? "Editor"} — Mapa de disponibilidade
             </DialogTitle>
           </div>
         </DialogHeader>
 
-        <div className="px-4 py-3 space-y-3">
+        <div className="px-6 py-5 space-y-4">
           {/* Month navigation */}
           <div className="flex items-center justify-between">
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={prevMonth}>
-              <ChevronLeft className="h-4 w-4" />
+            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={prevMonth}>
+              <ChevronLeft className="h-5 w-5" />
             </Button>
-            <span className="text-sm font-semibold">
+            <span className="text-base font-bold">
               {MONTH_NAMES[month - 1]} {year}
             </span>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={nextMonth}>
-              <ChevronRight className="h-4 w-4" />
+            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={nextMonth}>
+              <ChevronRight className="h-5 w-5" />
             </Button>
           </div>
 
           {/* Weekday headers */}
-          <div className="grid grid-cols-7 gap-0.5">
+          <div className="grid grid-cols-7 gap-1">
             {WEEKDAYS.map(d => (
-              <div key={d} className="text-center text-[10px] font-semibold text-[hsl(var(--muted-foreground))] py-1">
+              <div key={d} className="text-center text-xs font-semibold text-[hsl(var(--muted-foreground))] py-1.5 uppercase tracking-wide">
                 {d}
               </div>
             ))}
@@ -128,13 +128,13 @@ export function EditorAvailabilityModal({ open, onOpenChange, editor }: Props) {
 
           {/* Calendar grid */}
           {loading ? (
-            <div className="grid grid-cols-7 gap-0.5">
+            <div className="grid grid-cols-7 gap-1">
               {Array.from({ length: 35 }).map((_, i) => (
-                <div key={i} className="h-9 rounded-lg bg-[hsl(var(--muted))]/40 animate-pulse" />
+                <div key={i} className="h-16 rounded-xl bg-[hsl(var(--muted))]/40 animate-pulse" />
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-7 gap-0.5">
+            <div className="grid grid-cols-7 gap-1">
               {cells.map((day, i) => {
                 if (day === null) return <div key={i} />;
                 const monthStr = `${year}-${String(month).padStart(2, "0")}`;
@@ -149,16 +149,16 @@ export function EditorAvailabilityModal({ open, onOpenChange, editor }: Props) {
                     key={i}
                     title={`${day}/${month}: ${scoreLabel(score)}${count > 0 ? ` (${count} tarefa${count !== 1 ? "s" : ""})` : ""}`}
                     className={`
-                      relative flex flex-col items-center justify-center h-9 rounded-lg text-[11px] font-medium
+                      relative flex flex-col items-center justify-center h-16 rounded-xl text-sm font-semibold
                       transition-colors cursor-default select-none
-                      ${isPast ? "opacity-40" : ""}
+                      ${isPast ? "opacity-35" : ""}
                       ${score > 0 ? scoreBg(score) : "hover:bg-[hsl(var(--muted))]/40"}
-                      ${isToday ? "ring-2 ring-[hsl(var(--primary))] ring-offset-1" : ""}
+                      ${isToday ? "ring-2 ring-[hsl(var(--primary))] ring-offset-2" : ""}
                     `}
                   >
                     <span className={`leading-none ${scoreText(score)}`}>{day}</span>
                     {count > 0 && (
-                      <LockKeyhole className={`h-2.5 w-2.5 mt-0.5 shrink-0 ${scoreText(score)}`} />
+                      <LockKeyhole className={`h-3.5 w-3.5 mt-1 shrink-0 ${scoreText(score)}`} />
                     )}
                   </div>
                 );
@@ -167,21 +167,21 @@ export function EditorAvailabilityModal({ open, onOpenChange, editor }: Props) {
           )}
 
           {/* Legend */}
-          <div className="flex items-center gap-3 pt-1 flex-wrap justify-center">
+          <div className="flex items-center gap-4 pt-1 flex-wrap justify-center">
             {[
               { color: "bg-[hsl(var(--muted))]/50", label: "Livre" },
               { color: "bg-yellow-100 dark:bg-yellow-950/50", label: "Ocupado" },
               { color: "bg-orange-100 dark:bg-orange-950/50", label: "Muito ocupado" },
               { color: "bg-red-100 dark:bg-red-950/50", label: "No limite" },
             ].map(({ color, label }) => (
-              <div key={label} className="flex items-center gap-1">
-                <div className={`h-3 w-3 rounded-sm shrink-0 ${color} border border-[hsl(var(--border))]/40`} />
-                <span className="text-[10px] text-[hsl(var(--muted-foreground))]">{label}</span>
+              <div key={label} className="flex items-center gap-1.5">
+                <div className={`h-3.5 w-3.5 rounded shrink-0 ${color} border border-[hsl(var(--border))]/40`} />
+                <span className="text-xs text-[hsl(var(--muted-foreground))]">{label}</span>
               </div>
             ))}
           </div>
 
-          <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 text-center leading-snug pb-1">
+          <p className="text-xs text-[hsl(var(--muted-foreground))]/50 text-center leading-snug pb-1">
             Cadeado = editor com tarefas ativas · baseado em início→prazo de cada tarefa
           </p>
         </div>
