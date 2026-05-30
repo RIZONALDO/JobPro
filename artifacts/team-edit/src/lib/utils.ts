@@ -52,11 +52,11 @@ export function fmtDaysLeft(date: string | null | undefined): { text: string; cl
     return `${months} ${months === 1 ? "mês" : "meses"} e ${days} ${days === 1 ? "dia" : "dias"}`;
   };
 
-  if (diff < 0)   return { text: `atrasado ${fmt(abs)}`, cls: "text-red-500" };
-  if (diff === 0) return { text: "vence hoje", cls: "text-amber-500 font-semibold" };
-  if (diff === 1) return { text: "falta 1 dia", cls: "text-amber-500" };
-  if (diff <= 3)  return { text: `faltam ${fmt(diff)}`, cls: "text-amber-400" };
-  return { text: `faltam ${fmt(diff)}`, cls: "text-[hsl(var(--muted-foreground))]" };
+  if (diff < 0)   return { text: `${abs}d em atraso`, cls: "text-red-500" };
+  if (diff === 0) return { text: "entrega hoje", cls: "text-amber-500 font-semibold" };
+  if (diff === 1) return { text: "entrega amanhã", cls: "text-amber-500" };
+  if (diff <= 7)  return { text: `${diff} dias`, cls: "text-amber-400" };
+  return { text: `${diff} dias`, cls: "text-[hsl(var(--muted-foreground))]" };
 }
 
 /** Returns { date: "12/05", time: "14:30" | null } for compact two-line display */
@@ -105,11 +105,10 @@ export function fmtClosedCycle(
   const lateDays = Math.round((closedDay.getTime() - dueDay.getTime()) / 86_400_000);
 
   if (lateDays <= 0) {
-    return { line1, line2: "No prazo ✓", cls: "text-emerald-600" };
+    return { line1, line2: "no prazo", cls: "text-emerald-600" };
   }
 
-  const plural = lateDays === 1 ? "dia" : "dias";
-  return { line1, line2: `${lateDays} ${plural} de atraso`, cls: "text-amber-600" };
+  return { line1, line2: `${lateDays}d após o prazo`, cls: "text-amber-600" };
 }
 
 export function fmtDateHuman(date: string | null | undefined): string | null {

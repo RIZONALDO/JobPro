@@ -1170,7 +1170,7 @@ function EditorWeekCard({ tasks }: { tasks: Task[] }) {
         <span className="text-[11px] text-[hsl(var(--muted-foreground))] shrink-0">
           {totalDue > 0
             ? <><strong className="text-[hsl(var(--foreground))]">{totalDue}</strong> entrega{totalDue !== 1 ? "s" : ""} esta semana</>
-            : "Sem entregas nos próximos 7 dias"
+            : "Nenhuma entrega nos próximos 7 dias"
           }
         </span>
       </div>
@@ -1344,7 +1344,7 @@ function MiniGanttCard({ items, onOpenTask, menu }: {
       {due.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-1.5 text-[hsl(var(--muted-foreground))]">
           <CalendarClock className="h-8 w-8 opacity-15" />
-          <p className="text-xs">Sem entregas nos próximos 7 dias</p>
+          <p className="text-xs">Nenhuma entrega nos próximos 7 dias</p>
         </div>
       ) : (
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -1470,7 +1470,7 @@ function OverdueCard({ items, onOpenTask, emptyStats }: {
             <span className="text-3xl font-bold tabular-nums leading-none text-green-500">0</span>
             <span className="text-xs text-[hsl(var(--muted-foreground))]">atrasadas</span>
           </div>
-          <p className="text-[11px] font-semibold text-green-600 mt-0.5 shrink-0">Tudo dentro do prazo</p>
+          <p className="text-[11px] font-semibold text-green-600 mt-0.5 shrink-0">Tudo em dia</p>
 
           {emptyStats && emptyStats.active > 0 && (
             <div className="flex-1 min-h-0 flex flex-col justify-end gap-1.5">
@@ -1488,7 +1488,7 @@ function OverdueCard({ items, onOpenTask, emptyStats }: {
                   <span>
                     {emptyStats.nextDueIn <= 0 ? "Entrega hoje"
                       : emptyStats.nextDueIn === 1 ? "Próxima entrega amanhã"
-                      : `Próxima entrega em ${emptyStats.nextDueIn} dias`}
+                      : `Próxima em ${emptyStats.nextDueIn} dias`}
                   </span>
                 </div>
               )}
@@ -1625,7 +1625,7 @@ function WeeklyHeatmapCard({ heatmapTasks, workload, menu }: {
         <span className="text-[11px] text-[hsl(var(--muted-foreground))] shrink-0">
           {totalDue > 0
             ? <><strong className="text-[hsl(var(--foreground))]">{totalDue}</strong> entrega{totalDue !== 1 ? "s" : ""} esta semana</>
-            : "Sem entregas nos próximos 7 dias"
+            : "Nenhuma entrega nos próximos 7 dias"
           }
         </span>
         {menu}
@@ -1813,7 +1813,7 @@ function TaskDeadlineCard({ data, onOpenJob }: {
                 <div className="shrink-0 w-[120px] flex flex-col justify-center gap-3">
                   <div className="flex items-center gap-1.5">
                     <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                    <p className="text-[11px] font-semibold text-green-600">Tudo no prazo</p>
+                    <p className="text-[11px] font-semibold text-green-600">Tudo em dia</p>
                   </div>
                   <div className="flex flex-col gap-1.5">
                     {data.buckets.filter(b => b.count > 0).map(b => (
@@ -2009,7 +2009,7 @@ export default function Dashboard() {
     return dt >= todayStart && dt <= inWeek;
   }).length;
   const deadlineValue = overdueCount > 0 ? overdueCount : dueSoonCount;
-  const deadlineLabel = overdueCount > 0 ? "Atrasadas" : dueSoonCount > 0 ? "Vencem esta semana" : "Sem prazo urgente";
+  const deadlineLabel = overdueCount > 0 ? "Atrasadas" : dueSoonCount > 0 ? "Entregas esta semana" : "Sem urgências";
 
   const duePerDay = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(todayStart);
@@ -2263,7 +2263,7 @@ export default function Dashboard() {
             </div>
             <div className="overflow-y-auto max-h-[280px] divide-y">
               {coordOverdue.length === 0 ? (
-                <p className="text-sm text-green-600 text-center py-10">Tudo dentro do prazo.</p>
+                <p className="text-sm text-green-600 text-center py-10">Tudo em dia.</p>
               ) : coordOverdue.map(t => (
                 <div key={t.id} className="flex items-center gap-4 px-5 py-3 hover:bg-[hsl(var(--muted))]/20 transition-colors cursor-pointer"
                   style={{ borderLeft: `4px solid ${t.color ?? "#6366f1"}88` }}
