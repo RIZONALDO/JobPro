@@ -1515,9 +1515,6 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
 
 // ── Workload ──────────────────────────────────────────────────────────────────
 const COMPLEXITY_WEIGHT: Record<string, number> = { low: 3, medium: 6, high: 12 };
-// Buffer: tasks whose dueDate ends at least this many ms before the projected date
-// are excluded from the projected score (assumed delivered by then).
-const WORKLOAD_BUFFER_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
 
 router.get("/workload", requireCoordinator, async (req, res): Promise<void> => {
   const editors = await db
@@ -1556,21 +1553,28 @@ router.get("/workload", requireCoordinator, async (req, res): Promise<void> => {
     const all = open.filter(t => t.assignedToId === editor.id);
 
     // Current score: tasks with no startDate OR startDate <= today.
-    // Buffer fix (future projections only): exclude tasks whose dueDate ends
-    // at least WORKLOAD_BUFFER_MS before projDate — they're expected to be done by then.
-    // Tasks with no dueDate are always included (can't predict when they end).
+    // When projecting: exclude tasks whose dueDate is strictly before the projection day
+    // (they're expected to be delivered by then).
     const current = all.filter(t => {
       if (!(!t.startDate || t.startDate <= todayEnd)) return false;
       if (isProjFuture && t.dueDate) {
-        const dueTime = new Date(t.dueDate).getTime();
-        if (dueTime < projDate.getTime() - WORKLOAD_BUFFER_MS) return false;
+        const dueStr = t.dueDate.toISOString().slice(0, 10);
+        if (dueStr < projDateStr) return false;
       }
       return true;
     });
     const score = current.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
 
-    // Scheduled score: tasks starting after today up to projDate
-    const scheduled = all.filter(t => t.startDate && t.startDate > todayEnd && t.startDate <= projDate);
+    // Scheduled score: tasks starting after today up to projDate,
+    // but only if they're still active on the projection day (dueDate >= projDate or no dueDate).
+    const scheduled = all.filter(t => {
+      if (!t.startDate || t.startDate <= todayEnd || t.startDate > projDate) return false;
+      if (t.dueDate) {
+        const dueStr = t.dueDate.toISOString().slice(0, 10);
+        if (dueStr < projDateStr) return false;
+      }
+      return true;
+    });
     const scheduledScore = scheduled.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
 
     // Projected = current + scheduled (all tasks up to projDate)
