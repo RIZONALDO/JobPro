@@ -737,7 +737,7 @@ export default function TasksOverview() {
               <div className="w-20 shrink-0 hidden lg:block"><Th col="priority" label="Prior." /></div>
               <div className="w-32 shrink-0"><Th col="assignee" label="Editor" /></div>
               {viewTab === "scheduled"
-                ? <div className="w-44 shrink-0 hidden lg:block"><Th col="startDate" label="Período" /></div>
+                ? <div className="w-44 shrink-0 hidden lg:flex items-center gap-1"><Clock className="h-3 w-3 shrink-0 text-current" /><Th col="startDate" label="Entrega" /></div>
                 : <div className="w-28 shrink-0 hidden lg:flex items-center gap-1"><Clock className="h-3 w-3 shrink-0 text-current" /><Th col="dueDate" label="Entrega" /></div>
               }
               <div className="w-24 shrink-0 hidden xl:block"><Th col="coordinator" label="Coord." /></div>
@@ -1002,8 +1002,8 @@ export default function TasksOverview() {
                             return (
                               <span className="flex items-center gap-1 text-xs tabular-nums shrink-0 font-semibold">
                                 {s && <span className="text-sky-500">{s}</span>}
-                                {s && e && s !== e && <span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span>}
-                                {e && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/75"}>{e}</span>}
+                                {s && e && s !== e && <><span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span><span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/75"}>{e}</span></> }
+                                {!s && e && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/75"}>{e}</span>}
                               </span>
                             );
                           })()
@@ -1185,8 +1185,8 @@ export default function TasksOverview() {
                         return (
                           <>
                             {s && <span className="text-sky-500">{s}</span>}
-                            {s && e && s !== e && <span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span>}
-                            {e && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/80"}>{e}</span>}
+                            {s && e && s !== e && <><span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span><span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/80"}>{e}</span></> }
+                            {!s && e && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/80"}>{e}</span>}
                             {!s && !e && <span className="text-[hsl(var(--muted-foreground))]/30">—</span>}
                           </>
                         );
