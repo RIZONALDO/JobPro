@@ -110,9 +110,9 @@ export function DateRangePicker({
   // Dia sob o cursor — para preview animado do range
   const [hoveredDay, setHoveredDay] = useState<Date | undefined>();
 
-  // Range exibido no calendário: sempre mostra o hover como fim enquanto from estiver definido
+  // Range exibido: hover preview só quando to ainda não foi clicado
   const displayRange = useMemo((): DateRange => {
-    if (range.from && hoveredDay) {
+    if (range.from && !range.to && hoveredDay) {
       const [a, b] = range.from <= hoveredDay
         ? [range.from, hoveredDay]
         : [hoveredDay, range.from];
