@@ -351,16 +351,15 @@ export default function Calendar() {
                       key={t.id}
                       onClick={() => isCoord && openEdit(t)}
                       title={`${t.title}${t.startDate ? ` · Início: ${t.startDate.slice(0,10)}` : ""} · Prazo: ${t.dueDate.slice(0,10)}`}
-                      className={`absolute flex items-center px-2 text-xs font-medium leading-none truncate ${isCoord ? "cursor-pointer hover:brightness-90" : ""}`}
+                      className={`absolute flex items-center px-2 text-xs font-medium leading-none truncate border bg-[hsl(var(--card))] dark:bg-[hsl(217,33%,14%)] shadow-sm ${isCoord ? "cursor-pointer hover:opacity-80" : ""}`}
                       style={{
                         top: 4 + idx * 24,
                         height: 20,
-                        left: `calc(${startIdx / 7 * 100}% + ${cutLeft ? 0 : 2}px)`,
+                        left:  `calc(${startIdx / 7 * 100}% + ${cutLeft ? 0 : 2}px)`,
                         width: `calc(${span / 7 * 100}% - ${cutLeft ? 0 : 2}px - ${cutRight ? 0 : 2}px)`,
-                        backgroundColor: t.color + "cc",
-                        color: "#fff",
-                        borderRadius: `${cutLeft ? 0 : 6}px ${cutRight ? 0 : 6}px ${cutRight ? 0 : 6}px ${cutLeft ? 0 : 6}px`,
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.18)",
+                        borderLeft: cutLeft ? undefined : `3px solid ${t.color}`,
+                        borderRadius: `${cutLeft ? 0 : 4}px ${cutRight ? 0 : 4}px ${cutRight ? 0 : 4}px ${cutLeft ? 0 : 4}px`,
+                        color: "hsl(var(--foreground))",
                       }}
                     >
                       {!cutLeft && <span className="truncate">{t.title}</span>}
@@ -473,16 +472,15 @@ export default function Calendar() {
                               type="button"
                               onClick={() => isCoord && openEdit(t)}
                               title={`${t.title} · ${s} → ${e}`}
-                              className={`absolute flex items-center px-2 text-[11px] font-medium leading-none truncate ${isCoord ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+                              className={`absolute flex items-center px-2 text-[11px] font-medium leading-none truncate border bg-[hsl(var(--card))] dark:bg-[hsl(217,33%,14%)] shadow-sm ${isCoord ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
                               style={{
                                 top: 3 + lane * 22,
                                 height: 18,
                                 left:  `calc(${si / 7 * 100}% + ${cutL ? 0 : 2}px)`,
                                 width: `calc(${span / 7 * 100}% - ${cutL ? 0 : 2}px - ${cutR ? 0 : 2}px)`,
-                                backgroundColor: t.color + "cc",
-                                color: "#fff",
-                                borderRadius: `${cutL ? 0 : 5}px ${cutR ? 0 : 5}px ${cutR ? 0 : 5}px ${cutL ? 0 : 5}px`,
-                                boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
+                                borderLeft: cutL ? undefined : `3px solid ${t.color}`,
+                                borderRadius: `${cutL ? 0 : 4}px ${cutR ? 0 : 4}px ${cutR ? 0 : 4}px ${cutL ? 0 : 4}px`,
+                                color: "hsl(var(--foreground))",
                               }}
                             >
                               {cutL
@@ -524,8 +522,8 @@ export default function Calendar() {
                                 {pts.slice(0, 2).map(t => (
                                   <button key={t.id} type="button"
                                     onClick={() => isCoord && openEdit(t)}
-                                    className={`w-full text-left text-[11px] leading-tight truncate rounded ${isCoord ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
-                                    style={{ padding: "2px 6px", backgroundColor: t.color + "18", borderLeft: `2px solid ${t.color}`, color: "hsl(var(--foreground))" }}
+                                    className={`w-full text-left text-[11px] leading-tight truncate rounded border bg-[hsl(var(--card))] dark:bg-[hsl(217,33%,14%)] shadow-sm ${isCoord ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+                                    style={{ padding: "2px 6px", borderLeft: `3px solid ${t.color}`, color: "hsl(var(--foreground))" }}
                                     title={t.title}
                                   >
                                     {t.title}
