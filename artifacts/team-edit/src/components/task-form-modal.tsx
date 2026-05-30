@@ -148,7 +148,16 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   const removeEditor = (id: number) => setSelectedEditorIds(prev => prev.filter(x => x !== id));
 
   const save = async (publishStatus?: "rascunho" | "pending") => {
-    if (!form.title.trim()) { toast.error("Título obrigatório"); return; }
+    // ── Validações globais — todos os campos obrigatórios ──────────────────
+    if (!form.title.trim())       { toast.error("Título obrigatório");              return; }
+    if (!form.description.trim()) { toast.error("Direcionamento obrigatório");      return; }
+    if (!form.client?.trim())     { toast.error("Cliente obrigatório");             return; }
+    if (!form.dueDateTime)        { toast.error("Entrega obrigatória");             return; }
+    if (!form.folderUrl?.trim())  { toast.error("Pasta / Arquivos obrigatório");    return; }
+    if (!isMultiTask && selectedEditorIds.length === 0) {
+      toast.error("Atribua ao menos um editor"); return;
+    }
+
     const isPublishing = publishStatus === "pending" || (editMode && taskStatus !== "rascunho");
 
     // ── Multi-task create ──────────────────────────────────────────────────
@@ -156,8 +165,6 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
       const filledSubtasks = subtasks.filter(s => s.title.trim());
       if (filledSubtasks.length < 1) { toast.error("Adicione ao menos uma subtarefa"); return; }
       if (publishStatus === "pending") {
-        if (!form.client?.trim()) { toast.error("Cliente obrigatório para publicar"); return; }
-        if (!form.dueDateTime) { toast.error("Informe o prazo da multi-tarefa"); return; }
         const missing = filledSubtasks.filter(s => !s.editorId);
         if (missing.length > 0) { toast.error("Atribua um editor a cada subtarefa"); return; }
       }
@@ -189,8 +196,6 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
     // ── Multi-task edit ────────────────────────────────────────────────────
     if (isMultiTask && editMode) {
-      if (isPublishing && !form.client?.trim()) { toast.error("Cliente obrigatório para publicar"); return; }
-      if (isPublishing && !form.dueDateTime) { toast.error("Informe o prazo"); return; }
       const payload: Record<string, unknown> = {
         title: form.title, description: form.description || null,
         startDate: form.startDateTime || null,
@@ -211,11 +216,6 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
     }
 
     // ── Tarefa simples ─────────────────────────────────────────────────────
-    if (isPublishing && !form.client?.trim()) { toast.error("Cliente obrigatório para publicar"); return; }
-    if (isPublishing && !form.dueDateTime) { toast.error("Informe o prazo"); return; }
-    if (isPublishing && selectedEditorIds.length === 0) {
-      toast.error("Atribua ao menos um editor para publicar"); return;
-    }
     const dueDatePayload = form.dueDateTime ? form.dueDateTime
       : (editMode && taskStatus !== "rascunho" ? undefined : null);
     const payload: Record<string, unknown> = {
