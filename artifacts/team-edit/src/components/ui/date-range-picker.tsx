@@ -110,9 +110,9 @@ export function DateRangePicker({
   // Dia sob o cursor — para preview animado do range
   const [hoveredDay, setHoveredDay] = useState<Date | undefined>();
 
-  // Range exibido no calendário: inclui preview hover quando só "from" está selecionado
+  // Range exibido no calendário: sempre mostra o hover como fim enquanto from estiver definido
   const displayRange = useMemo((): DateRange => {
-    if (range.from && !range.to && hoveredDay) {
+    if (range.from && hoveredDay) {
       const [a, b] = range.from <= hoveredDay
         ? [range.from, hoveredDay]
         : [hoveredDay, range.from];
@@ -329,11 +329,11 @@ export function DateRangePicker({
                 "--rdp-nav_button-width": "1.75rem",
                 "--rdp-disabled-opacity": "0.25",
               } as React.CSSProperties}
-              // Hover-to-select: ao passar o cursor após clicar o início, confirma o fim
+              // Hover-to-select: atualiza o fim em tempo real ao mover o cursor
               onDayMouseEnter={(day) => {
                 if (isBefore(day, today)) return;
                 setHoveredDay(day);
-                if (range.from && !range.to) {
+                if (range.from) {
                   const d1 = range.from;
                   const d2 = day;
                   const [from, to] = d1 <= d2 ? [d1, d2] : [d2, d1];
