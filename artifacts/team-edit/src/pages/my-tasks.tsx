@@ -66,8 +66,9 @@ function getLocalToday(): string {
 }
 const TODAY_STR = getLocalToday();
 
+const SCHEDULED_STATUSES = new Set(["pending", "in_progress", "paused"]);
 function isScheduled(task: Task): boolean {
-  // Referência: usa startDate se existir, senão usa dueDate (para tarefas pendentes sem início explícito)
+  if (!SCHEDULED_STATUSES.has(task.status)) return false;
   const ref = task.startDate ?? (task.status === "pending" ? task.dueDate : null);
   if (!ref) return false;
   return ref.split("T")[0] > TODAY_STR;

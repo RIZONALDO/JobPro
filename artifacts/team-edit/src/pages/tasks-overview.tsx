@@ -398,9 +398,10 @@ export default function TasksOverview() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   })();
 
-  // Uma tarefa é "agendada" se sua data de referência for amanhã ou depois.
-  // Usa startDate quando disponível; caso contrário, usa dueDate (só para pendentes sem início explícito).
+  // Uma tarefa é "agendada" se: status pré-execução E data de referência > hoje.
+  const SCHEDULED_STATUSES = new Set(["pending", "in_progress", "paused"]);
   const isTaskScheduled = (t: OverviewTask) => {
+    if (!SCHEDULED_STATUSES.has(t.status)) return false;
     const ref = t.startDate ?? (t.status === "pending" ? t.dueDate : null);
     if (!ref) return false;
     return ref.split("T")[0] > TAB_TODAY_STR;

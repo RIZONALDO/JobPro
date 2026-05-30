@@ -54,7 +54,9 @@ const TAB_TODAY_STR = (() => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 })();
 const ACTIVE_STATUSES = new Set(["pending", "in_progress", "in_revision", "review"]);
+const SCHEDULED_STATUSES = new Set(["pending", "in_progress", "paused"]);
 function isTaskScheduled(t: Task): boolean {
+  if (!SCHEDULED_STATUSES.has(t.status)) return false;
   const ref = t.startDate ?? (t.status === "pending" ? t.dueDate : null);
   if (!ref) return false;
   return ref.split("T")[0] > TAB_TODAY_STR;
