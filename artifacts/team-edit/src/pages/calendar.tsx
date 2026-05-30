@@ -352,10 +352,11 @@ export default function Calendar() {
                       className={`absolute flex items-center px-2 text-xs font-medium leading-none truncate border bg-[hsl(var(--card))] dark:bg-[hsl(217,33%,14%)] shadow-sm ${isCoord ? "cursor-pointer hover:opacity-80" : ""}`}
                       style={{
                         top: 4 + idx * 24,
-                        height: 20,
+                        height: 24,
                         left:  `calc(${startIdx / 7 * 100}% + ${cutLeft ? 0 : 2}px)`,
                         width: `calc(${span / 7 * 100}% - ${cutLeft ? 0 : 2}px - ${cutRight ? 0 : 2}px)`,
                         borderLeft: cutLeft ? undefined : `3px solid ${t.color}`,
+                        backgroundColor: t.color + "18",
                         borderRadius: `${cutLeft ? 0 : 4}px ${cutRight ? 0 : 4}px ${cutRight ? 0 : 4}px ${cutLeft ? 0 : 4}px`,
                         color: "hsl(var(--foreground))",
                       }}
@@ -445,7 +446,7 @@ export default function Calendar() {
 
                     {/* Spanning bars — rendered as absolute bars within a fixed-height band */}
                     {nLanes > 0 && (
-                      <div className="relative shrink-0 border-b border-[hsl(var(--border))]/30" style={{ height: nLanes * 22 + 6 }}>
+                      <div className="relative shrink-0 border-b border-[hsl(var(--border))]/30" style={{ height: nLanes * 26 + 6 }}>
                         {/* Column ticks */}
                         <div className="absolute inset-0 grid grid-cols-7 pointer-events-none">
                           {wDays.map((d, i) => (
@@ -473,10 +474,11 @@ export default function Calendar() {
                               className={`absolute flex items-center px-2 text-[11px] font-medium leading-none truncate border bg-[hsl(var(--card))] dark:bg-[hsl(217,33%,14%)] shadow-sm ${isCoord ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
                               style={{
                                 top: 3 + lane * 22,
-                                height: 18,
+                                height: 22,
                                 left:  `calc(${si / 7 * 100}% + ${cutL ? 0 : 2}px)`,
                                 width: `calc(${span / 7 * 100}% - ${cutL ? 0 : 2}px - ${cutR ? 0 : 2}px)`,
                                 borderLeft: cutL ? undefined : `3px solid ${t.color}`,
+                                backgroundColor: t.color + "18",
                                 borderRadius: `${cutL ? 0 : 4}px ${cutR ? 0 : 4}px ${cutR ? 0 : 4}px ${cutL ? 0 : 4}px`,
                                 color: "hsl(var(--foreground))",
                               }}
@@ -521,7 +523,7 @@ export default function Calendar() {
                                   <button key={t.id} type="button"
                                     onClick={() => isCoord && openEdit(t)}
                                     className={`w-full text-left text-[11px] leading-tight truncate rounded border bg-[hsl(var(--card))] dark:bg-[hsl(217,33%,14%)] shadow-sm ${isCoord ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
-                                    style={{ padding: "2px 6px", borderLeft: `3px solid ${t.color}`, color: "hsl(var(--foreground))" }}
+                                    style={{ padding: "3px 6px", borderLeft: `3px solid ${t.color}`, backgroundColor: t.color + "18", color: "hsl(var(--foreground))" }}
                                     title={t.title}
                                   >
                                     {t.title}
@@ -561,8 +563,8 @@ function TaskChip({ t, isCoord, onClick }: { t: CalendarTask; isCoord: boolean; 
   return (
     <div
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded border bg-[hsl(var(--card))] dark:bg-[hsl(217,33%,14%)] px-2 shadow-sm overflow-hidden ${isCoord ? "cursor-pointer hover:opacity-80 transition-opacity" : ""}`}
-      style={{ borderLeft: `3px solid ${t.color}`, minHeight: 20, paddingTop: 2, paddingBottom: 2 }}
+      className={`flex items-center gap-1.5 rounded border px-2 shadow-sm overflow-hidden ${isCoord ? "cursor-pointer hover:opacity-80 transition-opacity" : ""}`}
+      style={{ borderLeft: `3px solid ${t.color}`, backgroundColor: t.color + "18", minHeight: 26, paddingTop: 3, paddingBottom: 3 }}
     >
       <span className="text-[11px] font-medium leading-tight truncate flex-1">{t.title}</span>
       {t.assigneeName && isCoord && (
