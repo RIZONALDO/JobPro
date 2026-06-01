@@ -220,9 +220,8 @@ export default function AgendaGeral() {
                 </div>
                 {/* Score da semana (maior score da semana) */}
                 {(() => {
-                  const peak = Math.max(...scores);
+                  const peak = Math.max(0, ...scores);
                   const color = scoreColor(peak);
-                  if (peak === 0) return null;
                   return (
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full w-fit"
                       style={{ background: `${color}22`, color }}>

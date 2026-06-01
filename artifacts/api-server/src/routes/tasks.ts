@@ -1874,7 +1874,7 @@ router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
         startDate: t.startDate ? t.startDate.toISOString() : null,
         dueDate:   t.dueDate   ? t.dueDate.toISOString()   : null,
       })),
-  })).filter(e => e.tasks.length > 0);
+  }));
 
   res.json(result);
 });
