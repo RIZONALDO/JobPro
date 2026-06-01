@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "./dialog";
 import { Button } from "./button";
 import { Textarea } from "./textarea";
-import { Minus, Layers, Zap } from "lucide-react";
 
 export const COMPLEXITY_MESSAGES: Record<string, string> = {
   low:    "Processo operacional padrão, sem demandas técnicas especiais.",
@@ -11,14 +10,14 @@ export const COMPLEXITY_MESSAGES: Record<string, string> = {
 };
 
 const LEVELS = [
-  { key: "low",    label: "Baixa",  Icon: Minus  },
-  { key: "medium", label: "Média",  Icon: Layers },
-  { key: "high",   label: "Alta",   Icon: Zap    },
+  { key: "low",    label: "Baixa"  },
+  { key: "medium", label: "Média"  },
+  { key: "high",   label: "Alta"   },
 ] as const;
 
 interface Props {
   open: boolean;
-  task: { id: number; title: string; complexity: string };
+  task: { id: number; taskCode?: string; title: string; complexity: string };
   onSave: (complexity: string, comment: string) => void;
   onCancel: () => void;
   saving?: boolean;
@@ -53,7 +52,14 @@ export function ComplexityConfirmDialog({ open, task, onSave, onCancel, saving }
           {/* Tarefa */}
           <div className="rounded-lg border bg-[hsl(var(--muted))]/30 px-3 py-2">
             <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">Tarefa</p>
-            <p className="text-sm font-medium truncate">{task.title}</p>
+            <div className="flex items-baseline gap-2 min-w-0">
+              {task.taskCode && (
+                <span className="shrink-0 font-mono text-xs font-semibold text-[hsl(var(--primary))]/70">
+                  {task.taskCode}
+                </span>
+              )}
+              <span className="text-sm font-medium truncate">{task.title}</span>
+            </div>
           </div>
 
           {/* Opções */}
@@ -62,7 +68,7 @@ export function ComplexityConfirmDialog({ open, task, onSave, onCancel, saving }
               Nível
             </p>
             <div className="space-y-1">
-              {LEVELS.map(({ key, label, Icon }) => {
+              {LEVELS.map(({ key, label }) => {
                 const active = selected === key;
                 return (
                   <button
@@ -75,7 +81,6 @@ export function ComplexityConfirmDialog({ open, task, onSave, onCancel, saving }
                         : "border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/40",
                     ].join(" ")}
                   >
-                    {/* Radio */}
                     <div className={[
                       "h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all",
                       active
@@ -84,12 +89,6 @@ export function ComplexityConfirmDialog({ open, task, onSave, onCancel, saving }
                     ].join(" ")}>
                       {active && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
                     </div>
-
-                    <Icon className={[
-                      "h-3.5 w-3.5 shrink-0",
-                      active ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--muted-foreground))]",
-                    ].join(" ")} />
-
                     <span className={[
                       "text-sm font-medium",
                       active ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--foreground))]",
