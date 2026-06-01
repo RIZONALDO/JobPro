@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { ClientCombobox } from "@/components/ui/client-combobox";
 import { SubtaskFormRow, type SubtaskRow } from "@/components/ui/subtask-form-row";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   FolderOpen, ExternalLink, AlertTriangle, X,
   Layers, FileText, Plus, Users, Calendar, Tag, Link2, Send, Save, SquarePen, CalendarDays, Clock,
@@ -581,11 +582,10 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                         <span className="ml-1 text-[10px] font-normal normal-case text-[hsl(var(--muted-foreground))]/60">opcional</span>
                       </Label>
                     </div>
-                    <Input
-                      type="date"
+                    <DatePicker
                       value={form.startDateTime ? form.startDateTime.split("T")[0] : ""}
-                      onChange={e => f({ startDateTime: e.target.value })}
-                      className="h-9 rounded-xl text-sm"
+                      onChange={v => f({ startDateTime: v })}
+                      placeholder="DD/MM/AAAA"
                     />
                     {isFutureStart && (
                       <p className="text-[10px] text-[hsl(var(--muted-foreground))]/70 leading-snug">
@@ -604,11 +604,10 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                         {isMultiTask && !editMode && <span className="ml-1 text-[10px] font-normal normal-case text-[hsl(var(--muted-foreground))]/60">opcional</span>}
                       </Label>
                     </div>
-                    <Input
-                      type="date"
+                    <DatePicker
                       value={form.dueDateTime ? form.dueDateTime.split("T")[0] : ""}
-                      onChange={e => f({ dueDateTime: e.target.value })}
-                      className="h-9 rounded-xl text-sm"
+                      onChange={v => f({ dueDateTime: v })}
+                      placeholder="DD/MM/AAAA"
                     />
                   </div>
                 </div>
