@@ -53,7 +53,7 @@ function scoreColor(s: number): string {
   return "#ef4444";
 }
 function scoreLabel(s: number): string {
-  if (s===0) return "Livre";
+  if (s===0) return "Disponível";
   if (s<=6)  return "Ocupado";
   if (s<=11) return "Muito ocupado";
   return "No limite";
