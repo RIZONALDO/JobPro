@@ -26,7 +26,7 @@ import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
 import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
-import { ComplexityConfirmDialog } from "@/components/ui/complexity-confirm-dialog";
+import { ComplexityConfirmDialog, COMPLEXITY_MESSAGES } from "@/components/ui/complexity-confirm-dialog";
 
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
 interface Task {
@@ -45,6 +45,7 @@ interface Task {
   createdBy: { id: number; name: string; avatarUrl?: string | null } | null;
   revisions: Revision[];
   updatedAt: string;
+  editorComplexitySet?: boolean;
   // multi-task
   taskType?: string;
   parentTask?: { id: number; title: string; taskCode?: string } | null;
@@ -114,6 +115,7 @@ export default function EditorTaskList() {
   const [viewTab,      setViewTab]      = useState<"today" | "scheduled" | "all">("today");
   const [complexityTarget, setComplexityTarget] = useState<Task | null>(null);
   const [startingSaving,   setStartingSaving]   = useState(false);
+  const [definingSaving,   setDefiningSaving]   = useState(false);
 
   const urlSearch = useSearch();
   const [highlighted, setHighlighted] = useState<number | null>(() => {
@@ -161,15 +163,24 @@ export default function EditorTaskList() {
     }
   };
 
-  // Reserva de slot: intercepta "Iniciar" para confirmar/ajustar complexidade
-  const handleIniciar = (task: Task) => setComplexityTarget(task);
-
-  const confirmStart = async (complexity: string, comment: string) => {
+  const saveComplexity = async (complexity: string, comment: string) => {
     if (!complexityTarget) return;
+    setDefiningSaving(true);
+    try {
+      await apiPut(`/api/tasks/${complexityTarget.id}`, { complexity, startComment: comment });
+      setComplexityTarget(null);
+      load();
+      toast.success("Complexidade definida");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar complexidade");
+    } finally { setDefiningSaving(false); }
+  };
+
+  const handleIniciarDireto = async (task: Task) => {
     setStartingSaving(true);
     try {
-      await apiPut(`/api/tasks/${complexityTarget.id}`, { status: "in_progress", complexity, startComment: comment });
-      setComplexityTarget(null);
+      const startComment = COMPLEXITY_MESSAGES[task.complexity] ?? COMPLEXITY_MESSAGES.medium;
+      await apiPut(`/api/tasks/${task.id}`, { status: "in_progress", startComment });
       load();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao iniciar tarefa");
@@ -453,9 +464,21 @@ export default function EditorTaskList() {
 
                 {/* Right: action + dropdown */}
                 <div className="flex flex-col items-end gap-2 shrink-0" onClick={e => e.stopPropagation()}>
-                  {trans && (
+                  {t.status === "pending" && !t.editorComplexitySet && (
                     <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap"
-                      onClick={e => { e.stopPropagation(); trans.next === "in_progress" ? handleIniciar(t) : updateStatus(t, trans.next); }}>
+                      onClick={e => { e.stopPropagation(); setComplexityTarget(t); }}>
+                      Definir complexidade
+                    </Button>
+                  )}
+                  {t.status === "pending" && t.editorComplexitySet && (
+                    <Button size="sm" variant="default" className="h-8 text-xs px-3 whitespace-nowrap"
+                      onClick={e => { e.stopPropagation(); handleIniciarDireto(t); }}>
+                      Iniciar
+                    </Button>
+                  )}
+                  {trans && t.status !== "pending" && (
+                    <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap"
+                      onClick={e => { e.stopPropagation(); updateStatus(t, trans.next); }}>
                       {trans.shortLabel}
                     </Button>
                   )}
@@ -552,13 +575,26 @@ export default function EditorTaskList() {
               </div>
 
               {/* Primary action */}
-              <div className="hidden md:flex w-28 shrink-0 items-center pl-6" onClick={e => e.stopPropagation()}>
-                {trans ? (
+              <div className="hidden md:flex w-32 shrink-0 items-center pl-6" onClick={e => e.stopPropagation()}>
+                {t.status === "pending" && !t.editorComplexitySet && (
                   <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full"
-                    onClick={() => trans.next === "in_progress" ? handleIniciar(t) : updateStatus(t, trans.next)}>
+                    onClick={() => setComplexityTarget(t)}>
+                    Definir
+                  </Button>
+                )}
+                {t.status === "pending" && t.editorComplexitySet && (
+                  <Button size="sm" variant="default" className="h-7 text-xs px-3 w-full"
+                    onClick={() => handleIniciarDireto(t)}>
+                    Iniciar
+                  </Button>
+                )}
+                {trans && t.status !== "pending" && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full"
+                    onClick={() => updateStatus(t, trans.next)}>
                     {trans.shortLabel}
                   </Button>
-                ) : (
+                )}
+                {!trans && t.status !== "pending" && (
                   <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30 pl-1">—</span>
                 )}
               </div>
@@ -617,14 +653,13 @@ export default function EditorTaskList() {
         </DialogContent>
       </Dialog>
 
-      {/* Confirmação de complexidade ao iniciar */}
       {complexityTarget && (
         <ComplexityConfirmDialog
           open={!!complexityTarget}
           task={complexityTarget}
-          onConfirm={confirmStart}
+          onSave={saveComplexity}
           onCancel={() => setComplexityTarget(null)}
-          saving={startingSaving}
+          saving={definingSaving}
         />
       )}
 

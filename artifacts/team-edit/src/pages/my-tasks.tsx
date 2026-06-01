@@ -18,7 +18,7 @@ import { useTaskModal } from "@/contexts/TaskModalContext";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
 import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
-import { ComplexityConfirmDialog } from "@/components/ui/complexity-confirm-dialog";
+import { ComplexityConfirmDialog, COMPLEXITY_MESSAGES } from "@/components/ui/complexity-confirm-dialog";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
@@ -32,6 +32,7 @@ interface Task {
   status: string;
   priority: string;
   complexity: string;
+  editorComplexitySet?: boolean;
   folderUrl: string | null;
   revisionCount: number;
   revisions: Revision[];
@@ -88,6 +89,7 @@ export default function MyTasks() {
   const [returning, setReturning] = useState(false);
   const [complexityTarget, setComplexityTarget] = useState<Task | null>(null);
   const [startingSaving,   setStartingSaving]   = useState(false);
+  const [definingSaving,   setDefiningSaving]   = useState(false);
   const load = useCallback(() => {
     apiFetch<Task[]>("/api/my-tasks")
       .then(setTasks)
@@ -99,12 +101,26 @@ export default function MyTasks() {
 
   useRealtime({ onTasksChanged: load });
 
-  const confirmStart = async (complexity: string, comment: string) => {
+  // Define complexidade sem iniciar (tarefa permanece pending)
+  const saveComplexity = async (complexity: string, comment: string) => {
     if (!complexityTarget) return;
+    setDefiningSaving(true);
+    try {
+      await apiPut(`/api/tasks/${complexityTarget.id}`, { complexity, startComment: comment });
+      setComplexityTarget(null);
+      load();
+      toast.success("Complexidade definida");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar complexidade");
+    } finally { setDefiningSaving(false); }
+  };
+
+  // Inicia diretamente (complexidade já foi definida)
+  const handleIniciarDireto = async (task: Task) => {
     setStartingSaving(true);
     try {
-      await apiPut(`/api/tasks/${complexityTarget.id}`, { status: "in_progress", complexity, startComment: comment });
-      setComplexityTarget(null);
+      const startComment = COMPLEXITY_MESSAGES[task.complexity] ?? COMPLEXITY_MESSAGES.medium;
+      await apiPut(`/api/tasks/${task.id}`, { status: "in_progress", startComment });
       load();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao iniciar tarefa");
@@ -333,10 +349,23 @@ export default function MyTasks() {
           {t.createdBy && (
             <StackedAvatars people={[t.createdBy]} size={30} max={1} />
           )}
-          {/* Botão Iniciar para tarefas pending */}
-          {isEditor && t.status === "pending" && (
+          {/* Botões pending: Definir complexidade → Iniciar */}
+          {isEditor && t.status === "pending" && !t.editorComplexitySet && (
             <button
               onClick={e => { e.stopPropagation(); setComplexityTarget(t); }}
+              style={{
+                display: "flex", alignItems: "center", gap: 3,
+                fontSize: 9, fontWeight: 600, padding: "2px 7px", borderRadius: 99,
+                background: "hsl(var(--muted))", color: "hsl(var(--foreground))",
+                border: "1px solid hsl(var(--border))", cursor: "pointer", flexShrink: 0,
+              }}
+            >
+              Definir
+            </button>
+          )}
+          {isEditor && t.status === "pending" && t.editorComplexitySet && (
+            <button
+              onClick={e => { e.stopPropagation(); handleIniciarDireto(t); }}
               style={{
                 display: "flex", alignItems: "center", gap: 3,
                 fontSize: 9, fontWeight: 600, padding: "2px 7px", borderRadius: 99,
@@ -569,14 +598,13 @@ export default function MyTasks() {
         </DialogContent>
       </Dialog>
 
-      {/* Confirmação de complexidade ao iniciar */}
       {complexityTarget && (
         <ComplexityConfirmDialog
           open={!!complexityTarget}
           task={complexityTarget}
-          onConfirm={confirmStart}
+          onSave={saveComplexity}
           onCancel={() => setComplexityTarget(null)}
-          saving={startingSaving}
+          saving={definingSaving}
         />
       )}
     </div>

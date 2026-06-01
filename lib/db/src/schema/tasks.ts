@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, smallint, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, smallint, boolean, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 
 export const tasksTable = pgTable("te_tasks", {
@@ -23,6 +23,7 @@ export const tasksTable = pgTable("te_tasks", {
   taskType: text("task_type").notNull().default("task"), // 'task' | 'multi_task' | 'subtask'
   parentTaskId: integer("parent_task_id").references((): AnyPgColumn => tasksTable.id, { onDelete: "cascade" }),
   subtaskOrder: integer("subtask_order").notNull().default(0),
+  editorComplexitySet: boolean("editor_complexity_set").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -642,7 +642,8 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
       if (s === "in_progress" && complexity && ["low","medium","high"].includes(String(complexity))) {
         const editorComplexity  = String(complexity);
         const coordComplexity   = task.complexity ?? "medium";
-        update.complexity       = editorComplexity;
+        update.complexity            = editorComplexity;
+        update.editorComplexitySet   = true;
 
         if (editorComplexity !== coordComplexity && task.createdById) {
           const LABEL: Record<string,string> = { low: "Baixa", medium: "Média", high: "Alta" };
@@ -651,7 +652,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           const fromLbl    = LABEL[coordComplexity]   ?? coordComplexity;
           const toLbl      = LABEL[editorComplexity]  ?? editorComplexity;
 
-          // Verifica se o ajuste gerou conflito de carga
           const currentScore = await editorScore(userId, id);
           const newWeight    = COMPLEXITY_WEIGHT[editorComplexity] ?? 6;
           const totalScore   = currentScore + newWeight;
@@ -676,7 +676,38 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           }
         }
       }
+      // Se está iniciando sem complexity no body, marca como definido
+      if (s === "in_progress") update.editorComplexitySet = true;
     }
+
+    // ── Editor define complexidade sem iniciar (tarefa permanece pending) ──
+    if (!status && complexity && ["low","medium","high"].includes(String(complexity))) {
+      const editorComplexity = String(complexity);
+      const coordComplexity  = task.complexity ?? "medium";
+      update.complexity          = editorComplexity;
+      update.editorComplexitySet = true;
+
+      if (editorComplexity !== coordComplexity && task.createdById) {
+        const LABEL: Record<string,string> = { low: "Baixa", medium: "Média", high: "Alta" };
+        const [editor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
+        const editorName = editor?.name ?? "Editor";
+        const fromLbl   = LABEL[coordComplexity]  ?? coordComplexity;
+        const toLbl     = LABEL[editorComplexity] ?? editorComplexity;
+        const currentScore = await editorScore(userId, id);
+        const totalScore   = currentScore + (COMPLEXITY_WEIGHT[editorComplexity] ?? 6);
+        const commentNote  = startComment ? ` — "${String(startComment).slice(0, 120)}"` : "";
+        await notify(
+          task.createdById,
+          totalScore > 12 ? "complexity_conflict" : "complexity_adjusted",
+          totalScore > 12 ? "⚠️ Conflito de capacidade" : "Complexidade ajustada",
+          totalScore > 12
+            ? `${editorName} definiu "${task.title}" como ${toLbl}${commentNote}. Editor com ${totalScore} pts — revise as tarefas atribuídas.`
+            : `${editorName} definiu "${task.title}" como ${toLbl}${commentNote}.`,
+          { taskId: id }
+        );
+      }
+    }
+
     if (folderUrl !== undefined) update.folderUrl = folderUrl ? String(folderUrl) : null;
   } else {
     if (role === "coordinator" && task.createdById !== userId) {
