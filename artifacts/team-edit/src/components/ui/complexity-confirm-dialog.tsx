@@ -11,9 +11,21 @@ export const COMPLEXITY_MESSAGES: Record<string, string> = {
 };
 
 const LEVELS = [
-  { key: "low",    label: "Baixa",  Icon: Minus  },
-  { key: "medium", label: "Média",  Icon: Layers },
-  { key: "high",   label: "Alta",   Icon: Zap    },
+  {
+    key: "low",    label: "Baixa",  Icon: Minus,
+    color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0",
+    activeBg: "#16a34a", activeText: "#ffffff",
+  },
+  {
+    key: "medium", label: "Média",  Icon: Layers,
+    color: "#ca8a04", bg: "#fefce8", border: "#fde68a",
+    activeBg: "#ca8a04", activeText: "#ffffff",
+  },
+  {
+    key: "high",   label: "Alta",   Icon: Zap,
+    color: "#dc2626", bg: "#fef2f2", border: "#fecaca",
+    activeBg: "#dc2626", activeText: "#ffffff",
+  },
 ] as const;
 
 interface Props {
@@ -29,6 +41,7 @@ export function ComplexityConfirmDialog({ open, task, onSave, onCancel, saving }
   const [showExtra, setShowExtra] = useState(false);
   const [extra,     setExtra]     = useState("");
 
+  const level  = LEVELS.find(l => l.key === selected) ?? LEVELS[1];
   const message = COMPLEXITY_MESSAGES[selected] ?? COMPLEXITY_MESSAGES.medium;
   const finalComment = extra.trim()
     ? `${message}\n\nObservação: ${extra.trim()}`
@@ -42,46 +55,49 @@ export function ComplexityConfirmDialog({ open, task, onSave, onCancel, saving }
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v && !saving) onCancel(); }}>
-      <DialogContent className="max-w-[300px] gap-0 p-0 overflow-hidden">
+      <DialogContent className="max-w-sm gap-0 p-0 overflow-hidden">
 
         {/* Cabeçalho */}
-        <div className="px-5 pt-5 pb-4">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 mb-1">
+        <div className="px-6 pt-6 pb-5">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">
             Complexidade
           </p>
-          <p className="text-[13px] font-semibold text-[hsl(var(--foreground))] leading-snug truncate">
+          <p className="text-sm font-semibold text-[hsl(var(--foreground))] leading-snug truncate">
             {task.title}
           </p>
         </div>
 
-        {/* Seletor */}
+        {/* Seletor compacto */}
         <div className="grid grid-cols-3 gap-0 border-y border-[hsl(var(--border))]">
-          {LEVELS.map(({ key, label, Icon }, i) => {
+          {LEVELS.map(({ key, label, Icon, color, bg, border, activeBg, activeText }, i) => {
             const active = selected === key;
             return (
               <button
                 key={key}
                 onClick={() => handleSelect(key)}
+                style={active
+                  ? { background: activeBg, color: activeText, borderColor: "transparent" }
+                  : { background: bg, color, borderColor: "transparent" }
+                }
                 className={[
-                  "flex flex-col items-center gap-1.5 py-4 text-center transition-all relative",
+                  "flex items-center justify-center gap-1.5 py-2.5 transition-all",
                   i > 0 ? "border-l border-[hsl(var(--border))]" : "",
-                  active
-                    ? "bg-[hsl(var(--primary))] text-white"
-                    : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/50 hover:text-[hsl(var(--foreground))]",
                 ].join(" ")}
               >
-                <Icon className="w-3.5 h-3.5" strokeWidth={active ? 2.5 : 1.8} />
-                <span className="text-[11px] font-semibold">{label}</span>
+                <Icon style={{ width: 11, height: 11 }} strokeWidth={active ? 2.5 : 2} />
+                <span className="text-[11px] font-bold">{label}</span>
               </button>
             );
           })}
         </div>
 
         {/* Mensagem + observação */}
-        <div className="px-5 py-4 flex flex-col gap-3">
-          <div className="flex gap-2.5">
-            <div className="w-[2px] rounded-full bg-[hsl(var(--primary))]/25 shrink-0 mt-0.5" />
-            <p className="text-[11px] text-[hsl(var(--muted-foreground))] leading-relaxed">
+        <div className="px-6 py-5 flex flex-col gap-4">
+
+          <div className="flex gap-3">
+            <div className="w-[3px] rounded-full shrink-0 mt-1"
+              style={{ background: level.activeBg, opacity: 0.4 }} />
+            <p className="text-[13px] font-medium text-[hsl(var(--foreground))]/80 leading-relaxed">
               {message}
             </p>
           </div>
@@ -89,7 +105,7 @@ export function ComplexityConfirmDialog({ open, task, onSave, onCancel, saving }
           {!showExtra ? (
             <button
               onClick={() => setShowExtra(true)}
-              className="text-[11px] text-[hsl(var(--muted-foreground))]/50 hover:text-[hsl(var(--primary))] text-left transition-colors"
+              className="text-[11px] text-[hsl(var(--muted-foreground))]/40 hover:text-[hsl(var(--muted-foreground))] text-left transition-colors"
             >
               + Adicionar observação
             </button>
@@ -99,20 +115,20 @@ export function ComplexityConfirmDialog({ open, task, onSave, onCancel, saving }
               placeholder="Detalhes adicionais, se necessário..."
               value={extra}
               onChange={e => setExtra(e.target.value)}
-              className="resize-none text-[11px] leading-relaxed min-h-0 border-[hsl(var(--border))]"
+              className="resize-none text-[12px] leading-relaxed min-h-0"
               rows={3}
             />
           )}
         </div>
 
         {/* Rodapé */}
-        <DialogFooter className="px-5 pb-4 pt-0">
+        <DialogFooter className="px-6 pb-5 pt-0">
           <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}
-            className="text-[11px] h-8 text-[hsl(var(--muted-foreground))]">
+            className="text-xs h-8 text-[hsl(var(--muted-foreground))]">
             Cancelar
           </Button>
           <Button size="sm" onClick={() => onSave(selected, finalComment)} disabled={saving}
-            className="text-[11px] h-8">
+            className="text-xs h-8">
             {saving ? "Salvando..." : "Salvar"}
           </Button>
         </DialogFooter>
