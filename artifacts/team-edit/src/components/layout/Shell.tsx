@@ -641,7 +641,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                                       )}
                                       {n.title}
                                     </p>
-                                    <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 leading-snug line-clamp-2">{n.message}</p>
+                                    <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 leading-snug">{n.message}</p>
                                     <p className="text-xs text-[hsl(var(--muted-foreground))]/60 mt-1">{timeAgo(n.createdAt)}</p>
                                   </div>
                                   <div className="flex flex-col items-end gap-1 shrink-0">
