@@ -649,8 +649,9 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           const LABEL: Record<string,string> = { low: "Baixa", medium: "Média", high: "Alta" };
           const [editor]  = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
           const editorName = editor?.name ?? "Editor";
-          const fromLbl    = LABEL[coordComplexity]   ?? coordComplexity;
           const toLbl      = LABEL[editorComplexity]  ?? editorComplexity;
+          const taskCode   = fmtCode(task.taskNumber ?? 0, task.taskYear ?? 0);
+          const considera  = startComment ? ` por considerar: ${String(startComment).slice(0, 200)}` : "";
 
           const fromDate     = task.startDate ?? undefined;
           const currentScore = await editorScore(userId, id, fromDate);
@@ -662,7 +663,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
               task.createdById,
               "complexity_conflict",
               "Capacidade excedida",
-              `${editorName} definiu complexidade ${toLbl} para "${task.title}". A carga do editor excede o limite recomendado — verifique a distribuição de tarefas.`,
+              `${editorName} definiu complexidade ${toLbl} para "${taskCode} ${task.title}"${considera}. A carga do editor excede o limite recomendado — verifique a distribuição de tarefas.`,
               { taskId: id }
             );
           } else {
@@ -670,7 +671,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
               task.createdById,
               "complexity_adjusted",
               "Complexidade definida",
-              `${editorName} definiu complexidade ${toLbl} para "${task.title}".`,
+              `${editorName} definiu complexidade ${toLbl} para "${taskCode} ${task.title}"${considera}.`,
               { taskId: id }
             );
           }
@@ -691,8 +692,9 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         const LABEL: Record<string,string> = { low: "Baixa", medium: "Média", high: "Alta" };
         const [editor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
         const editorName = editor?.name ?? "Editor";
-        const fromLbl   = LABEL[coordComplexity]  ?? coordComplexity;
-        const toLbl     = LABEL[editorComplexity] ?? editorComplexity;
+        const toLbl      = LABEL[editorComplexity] ?? editorComplexity;
+        const taskCode   = fmtCode(task.taskNumber ?? 0, task.taskYear ?? 0);
+        const considera  = startComment ? ` por considerar: ${String(startComment).slice(0, 200)}` : "";
         const fromDate     = task.startDate ?? undefined;
         const currentScore = await editorScore(userId, id, fromDate);
         const totalScore   = currentScore + (COMPLEXITY_WEIGHT[editorComplexity] ?? 6);
@@ -701,8 +703,8 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           totalScore > 12 ? "complexity_conflict" : "complexity_adjusted",
           totalScore > 12 ? "Capacidade excedida" : "Complexidade definida",
           totalScore > 12
-            ? `${editorName} definiu complexidade ${toLbl} para "${task.title}". A carga do editor excede o limite recomendado — verifique a distribuição de tarefas.`
-            : `${editorName} definiu complexidade ${toLbl} para "${task.title}".`,
+            ? `${editorName} definiu complexidade ${toLbl} para "${taskCode} ${task.title}"${considera}. A carga do editor excede o limite recomendado — verifique a distribuição de tarefas.`
+            : `${editorName} definiu complexidade ${toLbl} para "${taskCode} ${task.title}"${considera}.`,
           { taskId: id }
         );
       }
