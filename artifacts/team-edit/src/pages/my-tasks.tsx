@@ -363,20 +363,31 @@ export default function MyTasks() {
               Definir
             </button>
           )}
-          {isEditor && t.status === "pending" && t.editorComplexitySet && (
-            <button
-              onClick={e => { e.stopPropagation(); handleIniciarDireto(t); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 3,
-                fontSize: 9, fontWeight: 600, padding: "2px 7px", borderRadius: 99,
-                background: "hsl(var(--primary))", color: "white",
-                border: "none", cursor: "pointer", flexShrink: 0,
-              }}
-            >
-              <Play style={{ width: 7, height: 7 }} />
-              Iniciar
-            </button>
-          )}
+          {isEditor && t.status === "pending" && t.editorComplexitySet && (() => {
+            const startAllowed = !t.startDate || t.startDate.split("T")[0] <= TODAY_STR;
+            return startAllowed ? (
+              <button
+                onClick={e => { e.stopPropagation(); handleIniciarDireto(t); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 3,
+                  fontSize: 9, fontWeight: 600, padding: "2px 7px", borderRadius: 99,
+                  background: "hsl(var(--primary))", color: "white",
+                  border: "none", cursor: "pointer", flexShrink: 0,
+                }}
+              >
+                <Play style={{ width: 7, height: 7 }} />
+                Iniciar
+              </button>
+            ) : (
+              <span style={{
+                fontSize: 9, fontWeight: 500, padding: "2px 7px", borderRadius: 99,
+                background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))",
+                border: "1px solid hsl(var(--border))", flexShrink: 0,
+              }}>
+                Agendada
+              </span>
+            );
+          })()}
         </div>
       </div>
     );

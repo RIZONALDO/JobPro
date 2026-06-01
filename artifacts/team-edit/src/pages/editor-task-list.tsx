@@ -470,12 +470,19 @@ export default function EditorTaskList() {
                       Definir complexidade
                     </Button>
                   )}
-                  {t.status === "pending" && t.editorComplexitySet && (
-                    <Button size="sm" variant="default" className="h-8 text-xs px-3 whitespace-nowrap"
-                      onClick={e => { e.stopPropagation(); handleIniciarDireto(t); }}>
-                      Iniciar
-                    </Button>
-                  )}
+                  {t.status === "pending" && t.editorComplexitySet && (() => {
+                    const startAllowed = !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR;
+                    return startAllowed ? (
+                      <Button size="sm" variant="default" className="h-8 text-xs px-3 whitespace-nowrap"
+                        onClick={e => { e.stopPropagation(); handleIniciarDireto(t); }}>
+                        Iniciar
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap" disabled>
+                        Agendada
+                      </Button>
+                    );
+                  })()}
                   {trans && t.status !== "pending" && (
                     <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap"
                       onClick={e => { e.stopPropagation(); updateStatus(t, trans.next); }}>
@@ -582,12 +589,19 @@ export default function EditorTaskList() {
                     Definir
                   </Button>
                 )}
-                {t.status === "pending" && t.editorComplexitySet && (
-                  <Button size="sm" variant="default" className="h-7 text-xs px-3 w-full"
-                    onClick={() => handleIniciarDireto(t)}>
-                    Iniciar
-                  </Button>
-                )}
+                {t.status === "pending" && t.editorComplexitySet && (() => {
+                  const startAllowed = !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR;
+                  return startAllowed ? (
+                    <Button size="sm" variant="default" className="h-7 text-xs px-3 w-full"
+                      onClick={() => handleIniciarDireto(t)}>
+                      Iniciar
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full" disabled>
+                      Agendada
+                    </Button>
+                  );
+                })()}
                 {trans && t.status !== "pending" && (
                   <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full"
                     onClick={() => updateStatus(t, trans.next)}>
