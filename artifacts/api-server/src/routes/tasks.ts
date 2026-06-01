@@ -828,12 +828,13 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
 
   // ── Bloqueio server-side de capacidade em edições ─────────────────────────
   // Aplica quando muda editor OU complexidade, para tarefas reais (não rascunho, não multi_task)
+  // Editores estão excluídos: ao iniciar uma tarefa eles declaram a própria carga — nunca são bloqueados aqui
   const changingAssignee   = update.assignedToId !== undefined && update.assignedToId !== task.assignedToId;
   const changingComplexity = update.complexity   !== undefined && update.complexity   !== task.complexity;
   const targetAssignee     = update.assignedToId !== undefined ? (update.assignedToId as number | null) : task.assignedToId;
   const targetComplexity   = update.complexity   !== undefined ? String(update.complexity) : (task.complexity ?? "medium");
 
-  if ((changingAssignee || changingComplexity) && targetAssignee && task.status !== "rascunho" && task.taskType !== "multi_task") {
+  if (role !== "editor" && (changingAssignee || changingComplexity) && targetAssignee && task.status !== "rascunho" && task.taskType !== "multi_task") {
     const score = await editorScore(targetAssignee, id); // exclui a própria tarefa do score
     const newW  = COMPLEXITY_WEIGHT[targetComplexity] ?? 6;
     if (score + newW > 12) {
