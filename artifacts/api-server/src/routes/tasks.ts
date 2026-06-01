@@ -656,13 +656,12 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           const newWeight    = COMPLEXITY_WEIGHT[editorComplexity] ?? 6;
           const totalScore   = currentScore + newWeight;
 
-          const commentNote = startComment ? ` — "${String(startComment).slice(0, 120)}"` : "";
           if (totalScore > 12) {
             await notify(
               task.createdById,
               "complexity_conflict",
               "⚠️ Conflito de capacidade",
-              `${editorName} ajustou "${task.title}" de ${fromLbl} → ${toLbl}${commentNote}. Editor agora com ${totalScore} pts — revise as tarefas atribuídas.`,
+              `${editorName} iniciou "${task.title}" como ${toLbl} (era ${fromLbl}). Editor agora com ${totalScore} pts — revise as tarefas atribuídas.`,
               { taskId: id }
             );
           } else {
@@ -670,7 +669,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
               task.createdById,
               "complexity_adjusted",
               "Complexidade ajustada",
-              `${editorName} ajustou "${task.title}" de ${fromLbl} → ${toLbl}${commentNote}.`,
+              `${editorName} iniciou "${task.title}" como ${toLbl} (era ${fromLbl}).`,
               { taskId: id }
             );
           }
@@ -695,14 +694,13 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         const toLbl     = LABEL[editorComplexity] ?? editorComplexity;
         const currentScore = await editorScore(userId, id);
         const totalScore   = currentScore + (COMPLEXITY_WEIGHT[editorComplexity] ?? 6);
-        const commentNote  = startComment ? ` — "${String(startComment).slice(0, 120)}"` : "";
         await notify(
           task.createdById,
           totalScore > 12 ? "complexity_conflict" : "complexity_adjusted",
           totalScore > 12 ? "⚠️ Conflito de capacidade" : "Complexidade ajustada",
           totalScore > 12
-            ? `${editorName} definiu "${task.title}" como ${toLbl}${commentNote}. Editor com ${totalScore} pts — revise as tarefas atribuídas.`
-            : `${editorName} definiu "${task.title}" como ${toLbl}${commentNote}.`,
+            ? `${editorName} definiu "${task.title}" como ${toLbl} (era ${fromLbl}). Editor com ${totalScore} pts — revise as tarefas atribuídas.`
+            : `${editorName} definiu "${task.title}" como ${toLbl} (era ${fromLbl}).`,
           { taskId: id }
         );
       }
