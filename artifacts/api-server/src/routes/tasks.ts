@@ -1619,8 +1619,10 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
 // ── Workload ──────────────────────────────────────────────────────────────────
 const COMPLEXITY_WEIGHT: Record<string, number> = { low: 3, medium: 6, high: 12 };
 
-/** Score de um editor. Se fromDate fornecido, exclui tarefas cujo dueDate termina antes dessa data
- *  (usada para agendamento futuro: tarefa que encerra antes do início da nova não conta). */
+/** Score de um editor na data fromDate (ou hoje se omitido).
+ *  Conta apenas tarefas que estão ativas nessa data:
+ *  - dueDate >= fromDate (não terminou antes)
+ *  - startDate <= fromDate ou sem startDate (já começou)  */
 async function editorScore(editorId: number, excludeTaskId?: number, fromDate?: Date): Promise<number> {
   const conds = [
     eq(tasksTable.assignedToId, editorId),
@@ -1631,9 +1633,14 @@ async function editorScore(editorId: number, excludeTaskId?: number, fromDate?: 
     ne(tasksTable.taskType, "multi_task"),
   ];
   if (excludeTaskId) conds.push(ne(tasksTable.id, excludeTaskId));
-  const rows = await db.select({ complexity: tasksTable.complexity, dueDate: tasksTable.dueDate }).from(tasksTable).where(and(...conds));
+  const rows = await db.select({ complexity: tasksTable.complexity, dueDate: tasksTable.dueDate, startDate: tasksTable.startDate }).from(tasksTable).where(and(...conds));
   return rows
-    .filter(r => !fromDate || !r.dueDate || r.dueDate >= fromDate)
+    .filter(r => {
+      if (!fromDate) return true;
+      if (r.dueDate   && r.dueDate   < fromDate) return false; // terminou antes da data alvo
+      if (r.startDate && r.startDate > fromDate) return false; // ainda não começou na data alvo
+      return true;
+    })
     .reduce((s, r) => s + (COMPLEXITY_WEIGHT[r.complexity ?? "medium"] ?? 6), 0);
 }
 
