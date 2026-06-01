@@ -41,17 +41,22 @@ export function ComplexityConfirmDialog({ open, task, onSave, onCancel, saving }
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v && !saving) onCancel(); }}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-xs">
 
-        <DialogHeader className="pb-0">
-          <DialogTitle className="text-sm font-semibold">Definir complexidade</DialogTitle>
-          <p className="text-xs text-[hsl(var(--muted-foreground))] truncate pt-0.5">{task.title}</p>
+        {/* Cabeçalho */}
+        <DialogHeader className="gap-0.5 pb-1">
+          <DialogTitle className="text-[13px] font-semibold tracking-tight">
+            Definir complexidade
+          </DialogTitle>
+          <p className="text-[11px] text-[hsl(var(--muted-foreground))] truncate leading-snug">
+            {task.title}
+          </p>
         </DialogHeader>
 
-        <div className="space-y-3 py-1">
+        <div className="flex flex-col gap-3">
 
-          {/* Seletor */}
-          <div className="grid grid-cols-3 gap-2">
+          {/* Seletor de nível */}
+          <div className="grid grid-cols-3 gap-1.5">
             {LEVELS.map(({ key, label }) => {
               const active = selected === key;
               return (
@@ -59,10 +64,10 @@ export function ComplexityConfirmDialog({ open, task, onSave, onCancel, saving }
                   key={key}
                   onClick={() => handleSelect(key)}
                   className={[
-                    "rounded-lg border-2 py-2 text-xs font-semibold transition-all",
+                    "rounded-md border py-2 text-[11px] font-semibold transition-all",
                     active
                       ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
-                      : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--primary))]/40",
+                      : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--primary))]/50 hover:text-[hsl(var(--foreground))]",
                   ].join(" ")}
                 >
                   {label}
@@ -72,15 +77,15 @@ export function ComplexityConfirmDialog({ open, task, onSave, onCancel, saving }
           </div>
 
           {/* Mensagem padrão */}
-          <div className="rounded-lg bg-[hsl(var(--muted))]/40 border border-[hsl(var(--border))]/50 px-3 py-2.5">
-            <p className="text-xs text-[hsl(var(--muted-foreground))] leading-relaxed">{message}</p>
-          </div>
+          <p className="text-[11px] text-[hsl(var(--muted-foreground))] leading-relaxed px-0.5">
+            {message}
+          </p>
 
           {/* Observação opcional */}
           {!showExtra ? (
             <button
               onClick={() => setShowExtra(true)}
-              className="text-xs text-[hsl(var(--primary))] hover:underline"
+              className="text-[11px] text-[hsl(var(--primary))]/70 hover:text-[hsl(var(--primary))] text-left transition-colors"
             >
               + Adicionar observação
             </button>
@@ -90,17 +95,20 @@ export function ComplexityConfirmDialog({ open, task, onSave, onCancel, saving }
               placeholder="Detalhes adicionais, se necessário..."
               value={extra}
               onChange={e => setExtra(e.target.value)}
-              className="resize-none text-xs"
+              className="resize-none text-[11px] leading-relaxed min-h-0"
               rows={3}
             />
           )}
+
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}>
+        <DialogFooter className="pt-1">
+          <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}
+            className="text-xs h-8">
             Cancelar
           </Button>
-          <Button size="sm" onClick={() => onSave(selected, finalComment)} disabled={saving}>
+          <Button size="sm" onClick={() => onSave(selected, finalComment)} disabled={saving}
+            className="text-xs h-8">
             {saving ? "Salvando..." : "Salvar"}
           </Button>
         </DialogFooter>
