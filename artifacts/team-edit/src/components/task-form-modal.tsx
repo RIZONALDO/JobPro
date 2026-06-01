@@ -583,9 +583,10 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       </Label>
                     </div>
                     <DatePicker
-                      value={form.startDateTime ? form.startDateTime.split("T")[0] : ""}
+                      value={form.startDateTime}
                       onChange={v => f({ startDateTime: v })}
-                      placeholder="DD/MM/AAAA"
+                      placeholder="DD/MM/AAAA HH:MM"
+                      withTime
                     />
                     {isFutureStart && (
                       <p className="text-[10px] text-[hsl(var(--muted-foreground))]/70 leading-snug">
@@ -605,9 +606,10 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       </Label>
                     </div>
                     <DatePicker
-                      value={form.dueDateTime ? form.dueDateTime.split("T")[0] : ""}
+                      value={form.dueDateTime}
                       onChange={v => f({ dueDateTime: v })}
-                      placeholder="DD/MM/AAAA"
+                      placeholder="DD/MM/AAAA HH:MM"
+                      withTime
                     />
                   </div>
                 </div>
