@@ -158,8 +158,10 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
   }
 
   // ── Bloqueio server-side de capacidade (fecha race condition) ─────────────
+  // Se a tarefa tem startDate futuro, tarefas do editor que encerram antes dessa data não contam
   if (resolvedType !== "multi_task" && parsedAssignee && initialStatus !== "rascunho") {
-    const score = await editorScore(parsedAssignee);
+    const fromDate = startDate ? new Date(String(startDate)) : undefined;
+    const score = await editorScore(parsedAssignee, undefined, fromDate);
     const newW   = COMPLEXITY_WEIGHT[String(complexity ?? "medium")] ?? 6;
     if (score + newW > 12) {
       const [ed] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, parsedAssignee));
@@ -835,7 +837,8 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   const targetComplexity   = update.complexity   !== undefined ? String(update.complexity) : (task.complexity ?? "medium");
 
   if (role !== "editor" && (changingAssignee || changingComplexity) && targetAssignee && task.status !== "rascunho" && task.taskType !== "multi_task") {
-    const score = await editorScore(targetAssignee, id); // exclui a própria tarefa do score
+    const taskFromDate = task.startDate ?? undefined;
+    const score = await editorScore(targetAssignee, id, taskFromDate); // exclui a própria tarefa; considera startDate
     const newW  = COMPLEXITY_WEIGHT[targetComplexity] ?? 6;
     if (score + newW > 12) {
       const [ed] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, targetAssignee));
@@ -1583,8 +1586,9 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
 // ── Workload ──────────────────────────────────────────────────────────────────
 const COMPLEXITY_WEIGHT: Record<string, number> = { low: 3, medium: 6, high: 12 };
 
-/** Score atual de um editor (todas as tarefas ativas, excluindo opcionalmente uma tarefa) */
-async function editorScore(editorId: number, excludeTaskId?: number): Promise<number> {
+/** Score de um editor. Se fromDate fornecido, exclui tarefas cujo dueDate termina antes dessa data
+ *  (usada para agendamento futuro: tarefa que encerra antes do início da nova não conta). */
+async function editorScore(editorId: number, excludeTaskId?: number, fromDate?: Date): Promise<number> {
   const conds = [
     eq(tasksTable.assignedToId, editorId),
     ne(tasksTable.status, "completed"),
@@ -1594,8 +1598,10 @@ async function editorScore(editorId: number, excludeTaskId?: number): Promise<nu
     ne(tasksTable.taskType, "multi_task"),
   ];
   if (excludeTaskId) conds.push(ne(tasksTable.id, excludeTaskId));
-  const rows = await db.select({ complexity: tasksTable.complexity }).from(tasksTable).where(and(...conds));
-  return rows.reduce((s, r) => s + (COMPLEXITY_WEIGHT[r.complexity ?? "medium"] ?? 6), 0);
+  const rows = await db.select({ complexity: tasksTable.complexity, dueDate: tasksTable.dueDate }).from(tasksTable).where(and(...conds));
+  return rows
+    .filter(r => !fromDate || !r.dueDate || r.dueDate >= fromDate)
+    .reduce((s, r) => s + (COMPLEXITY_WEIGHT[r.complexity ?? "medium"] ?? 6), 0);
 }
 
 router.get("/workload", requireCoordinator, async (req, res): Promise<void> => {
