@@ -652,7 +652,8 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           const fromLbl    = LABEL[coordComplexity]   ?? coordComplexity;
           const toLbl      = LABEL[editorComplexity]  ?? editorComplexity;
 
-          const currentScore = await editorScore(userId, id);
+          const fromDate     = task.startDate ?? undefined;
+          const currentScore = await editorScore(userId, id, fromDate);
           const newWeight    = COMPLEXITY_WEIGHT[editorComplexity] ?? 6;
           const totalScore   = currentScore + newWeight;
 
@@ -660,15 +661,15 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
             await notify(
               task.createdById,
               "complexity_conflict",
-              "⚠️ Conflito de capacidade",
-              `${editorName} iniciou "${task.title}" como ${toLbl} (era ${fromLbl}). Editor agora com ${totalScore} pts — revise as tarefas atribuídas.`,
+              "Capacidade excedida",
+              `${editorName} iniciou "${task.title}" como ${toLbl} (era ${fromLbl}). A carga do editor excede o limite recomendado — verifique a distribuição de tarefas.`,
               { taskId: id }
             );
           } else {
             await notify(
               task.createdById,
               "complexity_adjusted",
-              "Complexidade ajustada",
+              "Complexidade definida",
               `${editorName} iniciou "${task.title}" como ${toLbl} (era ${fromLbl}).`,
               { taskId: id }
             );
@@ -692,14 +693,15 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         const editorName = editor?.name ?? "Editor";
         const fromLbl   = LABEL[coordComplexity]  ?? coordComplexity;
         const toLbl     = LABEL[editorComplexity] ?? editorComplexity;
-        const currentScore = await editorScore(userId, id);
+        const fromDate     = task.startDate ?? undefined;
+        const currentScore = await editorScore(userId, id, fromDate);
         const totalScore   = currentScore + (COMPLEXITY_WEIGHT[editorComplexity] ?? 6);
         await notify(
           task.createdById,
           totalScore > 12 ? "complexity_conflict" : "complexity_adjusted",
-          totalScore > 12 ? "⚠️ Conflito de capacidade" : "Complexidade ajustada",
+          totalScore > 12 ? "Capacidade excedida" : "Complexidade definida",
           totalScore > 12
-            ? `${editorName} definiu "${task.title}" como ${toLbl} (era ${fromLbl}). Editor com ${totalScore} pts — revise as tarefas atribuídas.`
+            ? `${editorName} definiu "${task.title}" como ${toLbl} (era ${fromLbl}). A carga do editor excede o limite recomendado — verifique a distribuição de tarefas.`
             : `${editorName} definiu "${task.title}" como ${toLbl} (era ${fromLbl}).`,
           { taskId: id }
         );
