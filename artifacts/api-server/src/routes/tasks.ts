@@ -662,7 +662,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
               task.createdById,
               "complexity_conflict",
               "Capacidade excedida",
-              `${editorName} iniciou "${task.title}" como ${toLbl} (era ${fromLbl}). A carga do editor excede o limite recomendado — verifique a distribuição de tarefas.`,
+              `${editorName} definiu complexidade ${toLbl} para "${task.title}". A carga do editor excede o limite recomendado — verifique a distribuição de tarefas.`,
               { taskId: id }
             );
           } else {
@@ -670,7 +670,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
               task.createdById,
               "complexity_adjusted",
               "Complexidade definida",
-              `${editorName} iniciou "${task.title}" como ${toLbl} (era ${fromLbl}).`,
+              `${editorName} definiu complexidade ${toLbl} para "${task.title}".`,
               { taskId: id }
             );
           }
@@ -701,8 +701,8 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           totalScore > 12 ? "complexity_conflict" : "complexity_adjusted",
           totalScore > 12 ? "Capacidade excedida" : "Complexidade definida",
           totalScore > 12
-            ? `${editorName} definiu "${task.title}" como ${toLbl} (era ${fromLbl}). A carga do editor excede o limite recomendado — verifique a distribuição de tarefas.`
-            : `${editorName} definiu "${task.title}" como ${toLbl} (era ${fromLbl}).`,
+            ? `${editorName} definiu complexidade ${toLbl} para "${task.title}". A carga do editor excede o limite recomendado — verifique a distribuição de tarefas.`
+            : `${editorName} definiu complexidade ${toLbl} para "${task.title}".`,
           { taskId: id }
         );
       }
