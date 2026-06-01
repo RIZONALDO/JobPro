@@ -264,8 +264,8 @@ export default function AgendaGeral() {
                     return (
                       <div key={di} className="flex items-center justify-center pt-1.5"
                         style={{ gridRow: 1, gridColumn: di+1 }}>
-                        <div className={`w-2.5 h-2.5 rounded-full ${isToday ? "ring-2 ring-[hsl(var(--primary))] ring-offset-1" : ""}`}
-                          style={sc > 0 ? { background: color } : { background: "hsl(var(--border))", opacity: 0.4 }}
+                        <div className={`w-2 h-2 rounded-full ${isToday ? "ring-2 ring-[hsl(var(--primary))] ring-offset-1" : ""}`}
+                          style={sc > 0 ? { background: `${color}66` } : { background: "hsl(var(--border))", opacity: 0.25 }}
                         />
                       </div>
                     );
