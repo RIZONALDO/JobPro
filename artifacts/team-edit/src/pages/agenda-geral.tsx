@@ -1,6 +1,7 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import { usePageTitle } from "@/lib/use-page-title";
+import { useRealtime } from "@/hooks/use-realtime";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -64,11 +65,11 @@ interface Seg { task: AgendaTask; colStart: number; colEnd: number; isStart: boo
 function buildSegments(tasks: AgendaTask[], wStart: Date, wEnd: Date, today: Date): Seg[] {
   const segs = tasks
     .map(t => {
-      const startStr = t.startDate?.split("T")[0] ?? t.dueDate?.split("T")[0];
-      const endStr   = t.dueDate?.split("T")[0]   ?? startStr;
-      if (!startStr && !endStr) return null;
-      const start = startStr ? d0(parseLocal(startStr)) : d0(today);
-      const end   = endStr   ? d0(parseLocal(endStr))   : start;
+      // Tarefa sem datas: aparece a partir de hoje, sem fim definido (estende até fim da semana visível)
+      const startStr = t.startDate?.split("T")[0] ?? t.dueDate?.split("T")[0] ?? today.toISOString().split("T")[0];
+      const endStr   = t.dueDate?.split("T")[0] ?? null;
+      const start = d0(parseLocal(startStr));
+      const end   = endStr ? d0(parseLocal(endStr)) : wEnd;
       if (start > wEnd || end < wStart) return null;
       return {
         task: t,
@@ -115,14 +116,17 @@ export default function AgendaGeral() {
 
   const [rows,    setRows]    = useState<EditorRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [weekOffset, setWeekOffset] = useState(0); // 0 = semana atual
+  const [weekOffset, setWeekOffset] = useState(0);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     setLoading(true);
     apiFetch<EditorRow[]>("/api/agenda")
       .then(r => { setRows(r); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useRealtime({ onTasksChanged: load });
 
   const today = useMemo(() => d0(new Date()), []);
 
@@ -261,10 +265,9 @@ export default function AgendaGeral() {
                     return (
                       <div key={di} className="flex items-center justify-center pt-1.5"
                         style={{ gridRow: 1, gridColumn: di+1 }}>
-                        <div className={`w-5 h-5 flex items-center justify-center rounded-full text-[9px] font-bold leading-none ${isToday ? "ring-2 ring-[hsl(var(--primary))] ring-offset-1" : ""}`}
-                          style={sc > 0 ? { background: `${color}22`, color } : { color: "hsl(var(--muted-foreground))", opacity: 0.3 }}>
-                          {sc > 0 ? sc : "·"}
-                        </div>
+                        <div className={`w-2.5 h-2.5 rounded-full ${isToday ? "ring-2 ring-[hsl(var(--primary))] ring-offset-1" : ""}`}
+                          style={sc > 0 ? { background: color } : { background: "hsl(var(--border))", opacity: 0.4 }}
+                        />
                       </div>
                     );
                   })}
