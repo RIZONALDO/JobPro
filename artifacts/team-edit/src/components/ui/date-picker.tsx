@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Calendar, ChevronLeft, ChevronRight, X, Clock } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Clock, ArrowLeft } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 import { Button } from "./button";
 
@@ -11,8 +11,9 @@ interface Props {
   className?: string;
 }
 
-const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-const WEEK   = ["D","S","T","Q","Q","S","S"];
+const MONTHS     = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+const MONTHS_SH  = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+const WEEK       = ["D","S","T","Q","Q","S","S"];
 
 function toStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
@@ -37,18 +38,22 @@ function parseParts(value: string) {
   const [d, t] = value.split("T");
   return { date: d ?? "", time: t ? t.slice(0,5) : "08:00" };
 }
+function labelDate(dateStr: string): string {
+  if (!dateStr) return "";
+  const [y, m, d] = dateStr.split("-");
+  return `${parseInt(d)} de ${MONTHS[parseInt(m)-1]} de ${y}`;
+}
 
 export function DatePicker({ value, onChange, placeholder = "Selecionar data", withTime, className }: Props) {
-  const today     = useMemo(() => new Date(), []);
-  const todayStr  = useMemo(() => toStr(today), [today]);
+  const today    = useMemo(() => new Date(), []);
+  const todayStr = useMemo(() => toStr(today), [today]);
 
-  const { date: initDate, time: initTime } = useMemo(() => parseParts(value), [value]);
-
-  const [open, setOpen]   = useState(false);
-  const [viewY, setViewY] = useState(() => initDate ? parseInt(initDate.slice(0,4)) : today.getFullYear());
-  const [viewM, setViewM] = useState(() => initDate ? parseInt(initDate.slice(5,7)) - 1 : today.getMonth());
-  const [selDate, setSelDate] = useState(initDate);  // date part while editing
-  const [selTime, setSelTime] = useState(initTime);  // time part while editing
+  const [open,    setOpen]    = useState(false);
+  const [step,    setStep]    = useState<"date"|"time">("date");
+  const [viewY,   setViewY]   = useState(() => { const { date } = parseParts(value); return date ? parseInt(date.slice(0,4)) : today.getFullYear(); });
+  const [viewM,   setViewM]   = useState(() => { const { date } = parseParts(value); return date ? parseInt(date.slice(5,7)) - 1 : today.getMonth(); });
+  const [selDate, setSelDate] = useState(() => parseParts(value).date);
+  const [selTime, setSelTime] = useState(() => parseParts(value).time);
 
   const days = useMemo(() => calDays(viewY, viewM), [viewY, viewM]);
 
@@ -58,29 +63,30 @@ export function DatePicker({ value, onChange, placeholder = "Selecionar data", w
   function pickDay(d: Date) {
     const s = toStr(d);
     setSelDate(s);
-    if (!withTime) {
+    if (withTime) {
+      setStep("time");   // fecha calendário, abre seletor de hora
+    } else {
       onChange(s);
       setOpen(false);
     }
-    // com hora: mantém popover aberto para ajustar o horário
   }
 
   function confirm() {
     if (!selDate) return;
     onChange(withTime ? `${selDate}T${selTime}` : selDate);
     setOpen(false);
+    setStep("date");
   }
 
   function handleOpen(v: boolean) {
     if (v) {
-      // re-sync estado interno ao abrir
       const { date, time } = parseParts(value);
       setSelDate(date);
       setSelTime(time);
-      if (date) {
-        setViewY(parseInt(date.slice(0,4)));
-        setViewM(parseInt(date.slice(5,7)) - 1);
-      }
+      setStep("date");
+      if (date) { setViewY(parseInt(date.slice(0,4))); setViewM(parseInt(date.slice(5,7)) - 1); }
+    } else {
+      setStep("date");
     }
     setOpen(v);
   }
@@ -110,11 +116,8 @@ export function DatePicker({ value, onChange, placeholder = "Selecionar data", w
             {value ? display(value, withTime) : placeholder}
           </span>
           {value && (
-            <span
-              role="button"
-              onClick={clear}
-              className="h-4 w-4 flex items-center justify-center rounded text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors shrink-0"
-            >
+            <span role="button" onClick={clear}
+              className="h-4 w-4 flex items-center justify-center rounded text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors shrink-0">
               <X className="h-3 w-3" />
             </span>
           )}
@@ -123,62 +126,68 @@ export function DatePicker({ value, onChange, placeholder = "Selecionar data", w
 
       <PopoverContent className="w-60 p-3" align="start">
 
-        {/* Navegação de mês */}
-        <div className="flex items-center justify-between mb-3">
-          <button type="button" onClick={prev}
-            className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-[hsl(var(--muted))] transition-colors">
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <span className="text-xs font-semibold text-[hsl(var(--foreground))]">
-            {MONTHS[viewM]} {viewY}
-          </span>
-          <button type="button" onClick={next}
-            className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-[hsl(var(--muted))] transition-colors">
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* Cabeçalho dias da semana */}
-        <div className="grid grid-cols-7 mb-1">
-          {WEEK.map((w, i) => (
-            <div key={i} className="text-center text-[9px] font-bold text-[hsl(var(--muted-foreground))]/40 uppercase py-1">
-              {w}
-            </div>
-          ))}
-        </div>
-
-        {/* Grid de dias */}
-        <div className="grid grid-cols-7 gap-px">
-          {days.map((d, i) => {
-            if (!d) return <div key={i} />;
-            const s   = toStr(d);
-            const sel = s === selDate;
-            const tod = s === todayStr;
-            return (
-              <button
-                key={i}
-                type="button"
-                onClick={() => pickDay(d)}
-                className={[
-                  "h-7 w-full rounded-lg text-[11px] font-medium transition-all",
-                  sel
-                    ? "bg-[hsl(var(--primary))] text-white shadow-sm"
-                    : tod
-                      ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] font-bold"
-                      : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]",
-                ].join(" ")}
-              >
-                {d.getDate()}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Hora — só com withTime e data selecionada */}
-        {withTime && selDate && (
+        {/* ── Etapa 1: Calendário ── */}
+        {step === "date" && (
           <>
-            <div className="mt-3 pt-3 border-t border-[hsl(var(--border))]/60">
-              <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center justify-between mb-3">
+              <button type="button" onClick={prev}
+                className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-[hsl(var(--muted))] transition-colors">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-xs font-semibold">{MONTHS[viewM]} {viewY}</span>
+              <button type="button" onClick={next}
+                className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-[hsl(var(--muted))] transition-colors">
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-7 mb-1">
+              {WEEK.map((w, i) => (
+                <div key={i} className="text-center text-[9px] font-bold text-[hsl(var(--muted-foreground))]/40 uppercase py-1">{w}</div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-px">
+              {days.map((d, i) => {
+                if (!d) return <div key={i} />;
+                const s   = toStr(d);
+                const sel = s === selDate;
+                const tod = s === todayStr;
+                return (
+                  <button key={i} type="button" onClick={() => pickDay(d)}
+                    className={[
+                      "h-7 w-full rounded-lg text-[11px] font-medium transition-all",
+                      sel ? "bg-[hsl(var(--primary))] text-white shadow-sm"
+                          : tod ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] font-bold"
+                               : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]",
+                    ].join(" ")}
+                  >
+                    {d.getDate()}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* ── Etapa 2: Horário ── */}
+        {step === "time" && (
+          <div className="space-y-4">
+
+            {/* Referência da data selecionada */}
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setStep("date")}
+                className="h-6 w-6 flex items-center justify-center rounded-lg hover:bg-[hsl(var(--muted))] transition-colors shrink-0">
+                <ArrowLeft className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
+              </button>
+              <span className="text-xs font-semibold text-[hsl(var(--foreground))]">
+                {labelDate(selDate)}
+              </span>
+            </div>
+
+            {/* Seletor de hora */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-1.5">
                 <Clock className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
                 <span className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
                   Horário
@@ -188,18 +197,15 @@ export function DatePicker({ value, onChange, placeholder = "Selecionar data", w
                 type="time"
                 value={selTime}
                 onChange={e => setSelTime(e.target.value)}
-                className="w-full h-8 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 text-sm text-center focus:outline-none focus:border-[hsl(var(--primary))] focus:ring-1 focus:ring-[hsl(var(--primary))]/20 transition-all"
+                autoFocus
+                className="w-full h-10 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-center font-semibold tracking-widest focus:outline-none focus:border-[hsl(var(--primary))] focus:ring-2 focus:ring-[hsl(var(--primary))]/15 transition-all"
               />
             </div>
-            <Button
-              type="button"
-              size="sm"
-              className="w-full mt-2 h-8 text-xs"
-              onClick={confirm}
-            >
+
+            <Button type="button" size="sm" className="w-full h-8 text-xs" onClick={confirm}>
               Confirmar
             </Button>
-          </>
+          </div>
         )}
 
       </PopoverContent>
