@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Send, MessageCircle, X, ExternalLink, Check, CheckCheck, ChevronLeft, SmilePlus } from "lucide-react";
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
@@ -81,11 +82,13 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const [showDrop, setShowDrop] = useState(false);
   const [query, setQuery] = useState("");
   const [atIndex, setAtIndex] = useState(-1);
   const [selIdx, setSelIdx] = useState(0);
   const [showPicker, setShowPicker] = useState(false);
+  const [pickerPos, setPickerPos] = useState({ bottom: 0, right: 0 });
   const { theme } = useTheme();
 
   const filtered = users.filter(u => !query || u.name.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
@@ -164,15 +167,26 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
         className="resize-none overflow-hidden border-none shadow-none focus-visible:ring-0 bg-transparent p-0 text-[15px] placeholder:text-[hsl(var(--muted-foreground))] flex-1 leading-relaxed"
       />
       <button
+        ref={emojiButtonRef}
         type="button"
-        onMouseDown={e => { e.preventDefault(); setShowPicker(v => !v); }}
+        onMouseDown={e => {
+          e.preventDefault();
+          if (!showPicker && emojiButtonRef.current) {
+            const r = emojiButtonRef.current.getBoundingClientRect();
+            setPickerPos({ bottom: window.innerHeight - r.top + 8, right: window.innerWidth - r.right });
+          }
+          setShowPicker(v => !v);
+        }}
         className="shrink-0 h-7 w-7 flex items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted-foreground))]/10 transition-colors"
         title="Emoji"
       >
         <SmilePlus className="h-4 w-4" />
       </button>
-      {showPicker && (
-        <div ref={pickerRef} className="absolute bottom-[calc(100%+8px)] right-0 z-[400]">
+      {showPicker && createPortal(
+        <div
+          ref={pickerRef}
+          style={{ position: "fixed", bottom: pickerPos.bottom, right: pickerPos.right, zIndex: 9999 }}
+        >
           <Picker
             data={data}
             onEmojiSelect={insertEmoji}
@@ -183,7 +197,8 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
             maxFrequentRows={2}
             perLine={8}
           />
-        </div>
+        </div>,
+        document.body
       )}
       {showDrop && filtered.length > 0 && (
         <div className="absolute bottom-[calc(100%+8px)] left-0 w-52 rounded-2xl border bg-[hsl(var(--card))] shadow-xl z-[300] overflow-hidden">
