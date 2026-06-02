@@ -631,21 +631,21 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
       const allowed = editorTransitions[task.status] ?? [];
       if (!allowed.includes(s)) { res.status(400).json({ error: "Transição de status não permitida" }); return; }
 
-      // Bloqueia iniciar tarefa antes do startDate agendado
+      // Bloqueia iniciar tarefa antes do startDate agendado (compara só a data, sem hora)
       if (s === "in_progress" && task.startDate) {
-        const todayMidnight = new Date();
-        todayMidnight.setHours(0, 0, 0, 0);
-        if (task.startDate > todayMidnight) {
-          res.status(400).json({ error: "Esta tarefa está agendada para iniciar em " + task.startDate.toISOString().slice(0, 10) + ". Aguarde a data para iniciá-la." });
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const startStr = task.startDate.toISOString().slice(0, 10);
+        if (startStr > todayStr) {
+          res.status(400).json({ error: "Esta tarefa está agendada para iniciar em " + startStr + ". Aguarde a data para iniciá-la." });
           return;
         }
       }
 
       update.status = s;
       if (s === "in_progress" && task.startDate) {
-        const todayMidnight = new Date();
-        todayMidnight.setHours(0, 0, 0, 0);
-        if (task.startDate > todayMidnight) update.startDate = todayMidnight;
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const startStr = task.startDate.toISOString().slice(0, 10);
+        if (startStr > todayStr) update.startDate = new Date(todayStr + "T00:00:00Z");
       }
 
       // ── Reserva de slot: editor confirma/ajusta a complexidade ao iniciar ──
