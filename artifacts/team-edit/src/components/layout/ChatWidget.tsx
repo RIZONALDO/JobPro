@@ -164,7 +164,7 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
         onBlur={() => setTimeout(() => setShowDrop(false), 150)}
         placeholder={placeholder}
         rows={1}
-        className="resize-none overflow-hidden border-none shadow-none focus-visible:ring-0 bg-transparent p-0 text-[15px] placeholder:text-[hsl(var(--muted-foreground))] flex-1 leading-relaxed"
+        className="resize-none overflow-hidden border-none shadow-none focus-visible:ring-0 bg-transparent p-0 text-[17px] placeholder:text-[hsl(var(--muted-foreground))] flex-1 leading-relaxed"
       />
       <button
         ref={emojiButtonRef}
@@ -217,6 +217,20 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
       )}
     </div>
   );
+}
+
+// ── Emoji helpers ────────────────────────────────────────────────
+
+const EMOJI_ONLY_RE = /^[\p{Extended_Pictographic}‍️︎\s]+$/u;
+function isEmojiOnly(text: string): boolean {
+  const clean = text.trim();
+  return clean.length > 0 && EMOJI_ONLY_RE.test(clean);
+}
+function emojiOnlySize(text: string): string {
+  const count = [...text.matchAll(/\p{Extended_Pictographic}/gu)].length;
+  if (count <= 3) return "text-5xl";
+  if (count <= 6) return "text-4xl";
+  return "text-3xl";
 }
 
 // ── Task link renderer ───────────────────────────────────────────
@@ -954,17 +968,27 @@ export function ChatWidget() {
                         return (
                           <div key={msg.id} className={cn("flex gap-2 items-end", mine && "flex-row-reverse")}>
                             {!mine && <Avatar name={msg.userName} url={msg.userAvatar} size="xs" />}
-                            <div
-                              className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
-                              style={mine
-                                ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
-                                : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
-                              }
-                            >
-                              {!mine && <p className="text-[12px] font-semibold mb-0.5 opacity-60">{msg.userName}</p>}
-                              <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
-                              <p className="text-[11px] mt-1 opacity-40 text-right">{fmtTime(msg.createdAt)}</p>
-                            </div>
+                            {isEmojiOnly(msg.content) ? (
+                              <div className="max-w-[78%] flex flex-col items-end gap-0.5">
+                                {!mine && <p className="text-[12px] font-semibold opacity-60 self-start">{msg.userName}</p>}
+                                <div className={cn("whitespace-pre-wrap leading-tight", emojiOnlySize(msg.content))}>
+                                  {msg.content}
+                                </div>
+                                <p className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</p>
+                              </div>
+                            ) : (
+                              <div
+                                className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
+                                style={mine
+                                  ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
+                                  : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
+                                }
+                              >
+                                {!mine && <p className="text-[12px] font-semibold mb-0.5 opacity-60">{msg.userName}</p>}
+                                <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
+                                <p className="text-[11px] mt-1 opacity-40 text-right">{fmtTime(msg.createdAt)}</p>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -1046,23 +1070,37 @@ export function ChatWidget() {
                             )}
                             <div className={cn("flex gap-2 items-end", mine && "flex-row-reverse")}>
                               {!mine && <Avatar name={msg.fromName} url={msg.fromAvatar} size="xs" />}
-                              <div
-                                className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
-                                style={mine
-                                  ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
-                                  : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
-                                }
-                              >
-                                <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
-                                <div className="flex items-center justify-end gap-1 mt-1">
-                                  <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
-                                  {mine && (
-                                    msg.readAt
+                              {isEmojiOnly(msg.content) ? (
+                                <div className="max-w-[78%] flex flex-col items-end gap-0.5">
+                                  <div className={cn("whitespace-pre-wrap leading-tight", emojiOnlySize(msg.content))}>
+                                    {msg.content}
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
+                                    {mine && (msg.readAt
                                       ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-400" />
                                       : <Check className="h-3.5 w-3.5 shrink-0 opacity-40" />
-                                  )}
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
+                              ) : (
+                                <div
+                                  className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
+                                  style={mine
+                                    ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
+                                    : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
+                                  }
+                                >
+                                  <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
+                                  <div className="flex items-center justify-end gap-1 mt-1">
+                                    <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
+                                    {mine && (msg.readAt
+                                      ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-400" />
+                                      : <Check className="h-3.5 w-3.5 shrink-0 opacity-40" />
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
