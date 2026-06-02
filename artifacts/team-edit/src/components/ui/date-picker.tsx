@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Calendar, ChevronLeft, ChevronRight, X, Clock, ArrowLeft, ChevronUp, ChevronDown } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 import { Button } from "./button";
@@ -121,8 +121,6 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
   const [selH,    setSelH]    = useState(() => parseInt(parseParts(value).time.slice(0,2)));
   const [selMin,  setSelMin]  = useState(() => parseInt(parseParts(value).time.slice(3,5)));
 
-  // ── Input mask state ──
-  const inputRef = useRef<HTMLInputElement>(null);
   const [inputVal, setInputVal] = useState(() => display(value, withTime));
 
   // Sync input when value changes from outside (popover or parent)
@@ -176,10 +174,6 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
     setOpen(v);
   }
 
-  function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Escape") inputRef.current?.blur();
-  }
-
   function clear(e: React.MouseEvent) {
     e.stopPropagation();
     onChange("");
@@ -192,43 +186,36 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
 
-      {/* ── Trigger: ícone + input + clear ── */}
-      <div className={[
-        "flex items-center h-9 w-full rounded-xl border bg-[hsl(var(--background))] px-3 gap-2 transition-all",
-        open
-          ? "border-[hsl(var(--primary))] ring-2 ring-[hsl(var(--primary))]/15"
-          : "border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/40",
-        className,
-      ].filter(Boolean).join(" ")}>
-
-        {/* Ícone abre o popover */}
-        <PopoverTrigger asChild>
-          <button type="button" onClick={openPopover}
-            className="shrink-0 flex items-center justify-center h-5 w-5 hover:opacity-70 transition-opacity">
-            <Calendar className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
-          </button>
-        </PopoverTrigger>
-
-        {/* Input — sempre abre o popover ao clicar */}
-        <input
-          ref={inputRef}
-          type="text"
-          readOnly
-          value={inputVal}
-          placeholder={withTime ? "__/__/____ __:__" : "__/__/____"}
+      {/* ── Trigger: campo inteiro é clicável ── */}
+      <PopoverTrigger asChild>
+        <button
+          type="button"
           onClick={openPopover}
-          onKeyDown={handleInputKeyDown}
-          className="flex-1 min-w-0 text-sm bg-transparent outline-none placeholder:text-[hsl(var(--muted-foreground))]/50 cursor-pointer select-none"
-        />
+          className={[
+            "flex items-center h-9 w-full rounded-xl border bg-[hsl(var(--background))] px-3 gap-2 transition-all text-left",
+            open
+              ? "border-[hsl(var(--primary))] ring-2 ring-[hsl(var(--primary))]/15"
+              : "border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/40",
+            className,
+          ].filter(Boolean).join(" ")}
+        >
+          <Calendar className="h-3.5 w-3.5 text-[hsl(var(--primary))] shrink-0" />
 
-        {/* Limpar */}
-        {value && (
-          <button type="button" onClick={clear}
-            className="h-4 w-4 flex items-center justify-center rounded text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors shrink-0">
-            <X className="h-3 w-3" />
-          </button>
-        )}
-      </div>
+          <span className={`flex-1 text-sm min-w-0 ${inputVal ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]/50"}`}>
+            {inputVal || (withTime ? "__/__/____ __:__" : "__/__/____")}
+          </span>
+
+          {value && (
+            <span
+              role="button"
+              onClick={clear}
+              className="h-4 w-4 flex items-center justify-center rounded text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors shrink-0"
+            >
+              <X className="h-3 w-3" />
+            </span>
+          )}
+        </button>
+      </PopoverTrigger>
 
       {/* ── Popover ── */}
       <PopoverContent className="p-3 overflow-hidden" style={{ width: 240 }} align="start">
