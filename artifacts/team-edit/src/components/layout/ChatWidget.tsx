@@ -364,35 +364,33 @@ function ReplyBar({ replyTo, authorName, onCancel }: { replyTo: { content: strin
 function QuotedReply({ replyTo, authorName, mine: _mine = false, quoteIsFromMe = false }: {
   replyTo: { content: string }; authorName: string | null; mine?: boolean; quoteIsFromMe?: boolean;
 }) {
+  const inner = (
+    <div className="min-w-0 px-1.5 py-0.5">
+      <p className={cn("text-xs font-semibold leading-snug truncate",
+        quoteIsFromMe ? "text-[hsl(var(--primary-foreground))]" : "text-[hsl(var(--foreground))]/75")}>
+        {authorName ?? "?"}
+      </p>
+      <p className={cn("text-xs leading-snug line-clamp-2",
+        quoteIsFromMe ? "text-[hsl(var(--primary-foreground))]/75" : "text-[hsl(var(--foreground))]/60")}>
+        {replyTo.content}
+      </p>
+    </div>
+  );
+
   if (quoteIsFromMe) {
-    // Citando MINHA mensagem → fundo primary (igual ao meu balão, levemente mais escuro)
     return (
-      <div className="flex items-stretch gap-0 mb-1.5 rounded-md overflow-hidden"
-        style={{ backgroundColor: "hsl(var(--primary) / 0.65)" }}>
-        <div className="w-[3px] shrink-0" style={{ backgroundColor: "hsl(var(--primary-foreground) / 0.7)" }} />
-        <div className="min-w-0 px-2 py-1">
-          <p className="text-[10px] font-semibold leading-none mb-0.5 truncate text-[hsl(var(--primary-foreground))]">
-            {authorName ?? "?"}
-          </p>
-          <p className="text-[11px] leading-tight line-clamp-1 text-[hsl(var(--primary-foreground))]/70">
-            {replyTo.content}
-          </p>
-        </div>
+      <div className="flex items-stretch gap-0 mb-1 rounded overflow-hidden"
+        style={{ backgroundColor: "hsl(var(--primary) / 0.55)" }}>
+        <div className="w-[2px] shrink-0" style={{ backgroundColor: "hsl(var(--primary-foreground) / 0.6)" }} />
+        {inner}
       </div>
     );
   }
-  // Citando mensagem do AMIGO → fundo muted (igual ao balão dele)
   return (
-    <div className="flex items-stretch gap-0 mb-1.5 rounded-md overflow-hidden bg-[hsl(var(--muted))]">
-      <div className="w-[3px] shrink-0 bg-[hsl(var(--muted-foreground))]/50" />
-      <div className="min-w-0 px-2 py-1">
-        <p className="text-[10px] font-semibold leading-none mb-0.5 truncate text-[hsl(var(--foreground))]/70">
-          {authorName ?? "?"}
-        </p>
-        <p className="text-[11px] leading-tight line-clamp-1 text-[hsl(var(--foreground))]/55">
-          {replyTo.content}
-        </p>
-      </div>
+    <div className="flex items-stretch gap-0 mb-1 rounded overflow-hidden"
+      style={{ backgroundColor: "hsl(var(--muted))" }}>
+      <div className="w-[2px] shrink-0 bg-[hsl(var(--muted-foreground))]/40" />
+      {inner}
     </div>
   );
 }
