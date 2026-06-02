@@ -48,8 +48,8 @@ export function PrazoCell({ dueDate, status, updatedAt, overdue, reviewedAt, cla
     : false;
   const daysCls = (!inReview && diff < 0) ? "text-red-400" : diff === 0 ? "text-amber-600" : "text-[hsl(var(--muted-foreground))]/55";
 
-  const lineColor  = overdue ? "text-red-500" : "text-[hsl(var(--muted-foreground))]";
-  const lineWeight = overdue ? "font-semibold" : "font-normal";
+  const lineColor  = (overdue && !inReview) ? "text-red-500" : "text-[hsl(var(--muted-foreground))]";
+  const lineWeight = (overdue && !inReview) ? "font-semibold" : "font-normal";
 
   return (
     <div className={cn("flex flex-col gap-0.5", className)}>

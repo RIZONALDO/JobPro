@@ -1218,7 +1218,7 @@ export default function TasksOverview() {
                     </div>
                   ) : (
                     <div className="hidden lg:flex w-28 shrink-0 items-center">
-                      <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} />
+                      <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} reviewedAt={t.reviewedAt} />
                     </div>
                   )}
 
