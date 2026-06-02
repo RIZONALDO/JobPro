@@ -4,7 +4,7 @@ import {
   feedItemsTable, feedReactionsTable, feedCommentsTable,
   chatMessagesTable, chatReactionsTable, userPresenceTable, usersTable,
 } from "@workspace/db";
-import { eq, desc, asc, and, gt, inArray, sql } from "drizzle-orm"; // gt used in presence query
+import { eq, desc, asc, and, gt, lt, inArray, sql } from "drizzle-orm"; // gt used in presence query
 import { requireAuth } from "../lib/auth.js";
 import {
   broadcastFeedReaction, broadcastFeedComment, broadcastFeedCommentDeleted,
@@ -310,7 +310,11 @@ async function enrichChatMessages(msgs: { id: number; userId: number; content: s
 
 router.get("/chat/messages", requireAuth, async (req, res): Promise<void> => {
   const myId = req.session.userId!;
-  const messages = await db
+  const LIMIT = 50;
+  const beforeRaw = Array.isArray(req.query.before) ? req.query.before[0] : req.query.before;
+  const beforeId = beforeRaw ? parseInt(String(beforeRaw), 10) : null;
+
+  const rows = await db
     .select({
       id: chatMessagesTable.id,
       userId: chatMessagesTable.userId,
@@ -322,10 +326,14 @@ router.get("/chat/messages", requireAuth, async (req, res): Promise<void> => {
     })
     .from(chatMessagesTable)
     .leftJoin(usersTable, eq(chatMessagesTable.userId, usersTable.id))
+    .where(beforeId ? lt(chatMessagesTable.id, beforeId) : undefined)
     .orderBy(desc(chatMessagesTable.createdAt))
-    .limit(100);
+    .limit(LIMIT + 1);
 
-  res.json(await enrichChatMessages(messages.reverse(), myId));
+  const hasMore = rows.length > LIMIT;
+  const messages = rows.slice(0, LIMIT).reverse();
+
+  res.json({ messages: await enrichChatMessages(messages, myId), hasMore });
 });
 
 router.post("/chat/messages", requireAuth, async (req, res): Promise<void> => {

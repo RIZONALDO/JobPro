@@ -425,6 +425,8 @@ export function ChatWidget() {
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingChat, setLoadingChat] = useState(true);
+  const [chatHasMore, setChatHasMore] = useState(false);
+  const [chatLoadingMore, setChatLoadingMore] = useState(false);
   const [msgText, setMsgText] = useState("");
   const [sending, setSending] = useState(false);
   const [generalUnread, setGeneralUnread] = useState(0);
@@ -455,6 +457,7 @@ export function ChatWidget() {
   const [unreadSnapshot, setUnreadSnapshot] = useState<Record<number, number>>({});
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const dmEndRef = useRef<HTMLDivElement>(null);
   const firstUnreadRef = useRef<HTMLDivElement>(null);
   const dmScrollRef = useRef<HTMLDivElement>(null);
@@ -626,7 +629,9 @@ export function ChatWidget() {
   }, [dmMessages]);
 
   useEffect(() => {
-    apiFetch<ChatMessage[]>("/api/chat/messages").then(setMessages).catch(() => {}).finally(() => setLoadingChat(false));
+    apiFetch<{ messages: ChatMessage[]; hasMore: boolean }>("/api/chat/messages")
+      .then(({ messages: msgs, hasMore }) => { setMessages(msgs); setChatHasMore(hasMore); })
+      .catch(() => {}).finally(() => setLoadingChat(false));
     apiFetch<OnlineUser[]>("/api/presence").then(setOnlineUsers).catch(() => {});
     apiFetch<MentionUser[]>("/api/users").then(setAllUsers).catch(() => {});
     loadConversations();
@@ -635,15 +640,45 @@ export function ChatWidget() {
     return () => { if (pingRef.current) clearInterval(pingRef.current); };
   }, []);
 
+  const loadMoreChat = useCallback(async () => {
+    if (chatLoadingMore || !chatHasMore || !messages.length) return;
+    setChatLoadingMore(true);
+    const firstId = messages[0].id;
+    const scrollEl = chatScrollRef.current;
+    const prevScrollHeight = scrollEl?.scrollHeight ?? 0;
+    try {
+      const { messages: older, hasMore } = await apiFetch<{ messages: ChatMessage[]; hasMore: boolean }>(
+        `/api/chat/messages?before=${firstId}`
+      );
+      setChatHasMore(hasMore);
+      setMessages(prev => [...older, ...prev]);
+      if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight - prevScrollHeight;
+    } finally { setChatLoadingMore(false); }
+  }, [chatLoadingMore, chatHasMore, messages]);
+
+  // Detecta scroll no topo do chat geral para carregar mais
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (!el || activeView !== "general") return;
+    const onScroll = () => {
+      if (el.scrollTop < 80 && chatHasMore && !chatLoadingMore) loadMoreChat();
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [activeView, chatHasMore, chatLoadingMore, loadMoreChat]);
+
   // Scroll canal geral — suave em novas mensagens, instantâneo ao abrir a view
   useEffect(() => {
     if (activeView !== "general") return;
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = chatScrollRef.current;
+    if (el) { const d = el.scrollHeight - el.scrollTop - el.clientHeight; if (d < 120) el.scrollTop = el.scrollHeight; }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
   useEffect(() => {
     if (activeView !== "general") return;
-    const t = setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "instant" }), 120);
+    const t = setTimeout(() => {
+      if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }, 120);
     return () => clearTimeout(t);
   }, [activeView]);
 
@@ -1147,7 +1182,23 @@ export function ChatWidget() {
                     className="absolute inset-0 flex flex-col"
                     style={{ backgroundColor: "hsl(var(--card))" }}
                   >
-                    <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                    <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                      {chatLoadingMore && (
+                        <div className="flex justify-center py-2">
+                          <span className="text-xs px-3 py-1 rounded-full" style={{ color: "hsl(var(--muted-foreground))", backgroundColor: "hsl(var(--muted))" }}>
+                            Carregando mensagens anteriores…
+                          </span>
+                        </div>
+                      )}
+                      {chatHasMore && !chatLoadingMore && (
+                        <div className="flex justify-center py-1">
+                          <button onClick={loadMoreChat}
+                            className="text-xs px-3 py-1 rounded-full transition-colors"
+                            style={{ color: "hsl(var(--primary))", backgroundColor: "hsl(var(--primary) / 0.08)" }}>
+                            ↑ Ver mensagens anteriores
+                          </button>
+                        </div>
+                      )}
                       {loadingChat ? (
                         <p className="text-sm text-center py-10" style={{ color: "hsl(var(--muted-foreground))" }}>Carregando...</p>
                       ) : messages.length === 0 ? (
