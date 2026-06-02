@@ -1030,6 +1030,16 @@ export default function TasksOverview() {
                           }
                           if (!t.dueDate) return null;
                           const { label } = fmtPrazoWeek(t.dueDate);
+                          if (t.status === "review") return (
+                            <span className="flex flex-col gap-1 shrink-0">
+                              <span className="text-xs text-[hsl(var(--muted-foreground))]/60 tabular-nums leading-tight">{label}</span>
+                              {overdue && (
+                                <span className="inline-flex w-fit items-center px-1.5 py-0.5 rounded-md border text-[10px] font-medium leading-none bg-amber-50 border-amber-200/80 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800/50 dark:text-amber-400">
+                                  Aguarda aprovação
+                                </span>
+                              )}
+                            </span>
+                          );
                           return (
                             <span className={`text-xs shrink-0 tabular-nums ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]/60"}`}>
                               {label}
