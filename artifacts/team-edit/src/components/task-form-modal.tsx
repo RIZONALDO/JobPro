@@ -302,7 +302,8 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   const removeSubtask = (id: string) => setSubtasks(prev => prev.filter(s => s.id !== id));
   const addSubtask = () => setSubtasks(prev => [...prev, newSubtaskRow()]);
   // Se há startDate futura, usa carga projetada; senão, usa carga atual
-  const todayIso = new Date().toISOString().split("T")[0];
+  // Usa data local (não UTC) para evitar diferença de fuso — ex: Brasil UTC-3
+  const todayIso = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
   const isFutureStart = !!form.startDateTime && form.startDateTime.split("T")[0] > todayIso;
   const activeWorkload = (isFutureStart && projectedWorkload.length > 0) ? projectedWorkload : workload;
   const primaryWorkload = activeWorkload.find(w => w.id === selectedEditorIds[0]);
