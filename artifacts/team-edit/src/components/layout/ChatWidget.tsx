@@ -458,6 +458,7 @@ export function ChatWidget() {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const chatScrollAttemptRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dmEndRef = useRef<HTMLDivElement>(null);
   const firstUnreadRef = useRef<HTMLDivElement>(null);
   const dmScrollRef = useRef<HTMLDivElement>(null);
@@ -630,7 +631,11 @@ export function ChatWidget() {
 
   useEffect(() => {
     apiFetch<{ messages: ChatMessage[]; hasMore: boolean }>("/api/chat/messages")
-      .then(({ messages: msgs, hasMore }) => { setMessages(msgs); setChatHasMore(hasMore); })
+      .then(({ messages: msgs, hasMore }) => {
+        setMessages(msgs);
+        setChatHasMore(hasMore);
+        scrollChatToBottom(60);
+      })
       .catch(() => {}).finally(() => setLoadingChat(false));
     apiFetch<OnlineUser[]>("/api/presence").then(setOnlineUsers).catch(() => {});
     apiFetch<MentionUser[]>("/api/users").then(setAllUsers).catch(() => {});
@@ -638,6 +643,24 @@ export function ChatWidget() {
     ping();
     pingRef.current = setInterval(ping, 30_000);
     return () => { if (pingRef.current) clearInterval(pingRef.current); };
+  }, []);
+
+  // Mesmo padrão de retry do scrollDmToTarget — aguarda AnimatePresence terminar
+  const scrollChatToBottom = useCallback((delay = 50) => {
+    if (chatScrollAttemptRef.current) clearTimeout(chatScrollAttemptRef.current);
+    let retries = 0;
+    const MAX_RETRIES = 14;
+    const attempt = () => {
+      chatScrollAttemptRef.current = setTimeout(() => {
+        const el = chatScrollRef.current;
+        if (!el || el.scrollHeight <= el.clientHeight + 5) {
+          if (retries < MAX_RETRIES) { retries++; attempt(); }
+          return;
+        }
+        el.scrollTop = el.scrollHeight;
+      }, delay);
+    };
+    attempt();
   }, []);
 
   const loadMoreChat = useCallback(async () => {
@@ -652,8 +675,10 @@ export function ChatWidget() {
       );
       setChatHasMore(hasMore);
       setMessages(prev => [...older, ...prev]);
-      if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight - prevScrollHeight;
-    } finally { setChatLoadingMore(false); }
+      requestAnimationFrame(() => {
+        if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight - prevScrollHeight;
+      });
+    } catch { /* silencioso */ } finally { setChatLoadingMore(false); }
   }, [chatLoadingMore, chatHasMore, messages]);
 
   // Detecta scroll no topo do chat geral para carregar mais
@@ -667,20 +692,21 @@ export function ChatWidget() {
     return () => el.removeEventListener("scroll", onScroll);
   }, [activeView, chatHasMore, chatLoadingMore, loadMoreChat]);
 
-  // Scroll canal geral — suave em novas mensagens, instantâneo ao abrir a view
+  // Scroll para o fim ao trocar para general (com retry)
+  useEffect(() => {
+    if (activeView !== "general") return;
+    scrollChatToBottom(60);
+  }, [activeView, scrollChatToBottom]);
+
+  // Scroll suave ao chegar nova mensagem — só se perto do fim
   useEffect(() => {
     if (activeView !== "general") return;
     const el = chatScrollRef.current;
-    if (el) { const d = el.scrollHeight - el.scrollTop - el.clientHeight; if (d < 120) el.scrollTop = el.scrollHeight; }
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distFromBottom < 120) el.scrollTop = el.scrollHeight;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
-  useEffect(() => {
-    if (activeView !== "general") return;
-    const t = setTimeout(() => {
-      if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-    }, 120);
-    return () => clearTimeout(t);
-  }, [activeView]);
 
   // Detecta scroll no topo para carregar mensagens anteriores
   useEffect(() => {
