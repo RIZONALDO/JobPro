@@ -93,10 +93,11 @@ function buildSegments(tasks: AgendaTask[], wStart: Date, wEnd: Date, today: Dat
   return segs;
 }
 
-// Score de um editor num dia específico
+// Score de um editor num dia específico (tarefas em review não contam)
 function dayScore(tasks: AgendaTask[], day: Date): number {
   const dayEnd = new Date(day.getTime() + 86_400_000 - 1);
   return tasks.reduce((sum, t) => {
+    if (t.status === "review") return sum;
     const startStr = t.startDate?.split("T")[0];
     const endStr   = t.dueDate?.split("T")[0];
     const start = startStr ? d0(parseLocal(startStr)) : null;
