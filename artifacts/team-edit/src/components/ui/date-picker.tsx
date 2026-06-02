@@ -177,9 +177,13 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
         >
           <Calendar className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
 
-          <span className={`flex-1 text-sm truncate ${displayed ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]"}`}>
-            {displayed || (placeholder ?? (withTime ? "Selecionar data e hora" : "Selecionar data"))}
-          </span>
+          {displayed ? (
+            <span className="flex-1 text-sm text-[hsl(var(--foreground))] truncate">{displayed}</span>
+          ) : (
+            <span className="flex-1 text-sm text-[hsl(var(--muted-foreground))]/50 tracking-wide font-normal">
+              {placeholder ?? (withTime ? "dd / mm / aaaa  hh:mm" : "dd / mm / aaaa")}
+            </span>
+          )}
 
           {value && (
             <span role="button" onClick={clear}
