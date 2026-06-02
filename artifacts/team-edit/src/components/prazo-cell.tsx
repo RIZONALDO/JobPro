@@ -29,7 +29,9 @@ export function PrazoCell({ dueDate, status, updatedAt, overdue, className }: Pr
   const dt    = new Date(dueDate.includes("T") ? dueDate : dueDate + "T00:00");
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const diff  = Math.round((new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime() - today.getTime()) / 86_400_000);
-  const daysCls = diff < 0 ? "text-red-400" : diff === 0 ? "text-amber-600" : "text-[hsl(var(--muted-foreground))]/55";
+
+  const inReview = status === "review";
+  const daysCls  = (!inReview && diff < 0) ? "text-red-400" : diff === 0 ? "text-amber-600" : "text-[hsl(var(--muted-foreground))]/55";
 
   const lineColor  = overdue ? "text-red-500" : "text-[hsl(var(--muted-foreground))]";
   const lineWeight = overdue ? "font-semibold" : "font-normal";
@@ -37,7 +39,10 @@ export function PrazoCell({ dueDate, status, updatedAt, overdue, className }: Pr
   return (
     <div className={cn("flex flex-col gap-0.5", className)}>
       <span className={`text-xs ${lineWeight} leading-tight ${lineColor}`}>{label}</span>
-      {days && <span className={`leading-tight ${daysCls}`} style={{ fontSize: "9px" }}>{days.text}</span>}
+      {inReview && diff < 0
+        ? <span className="leading-tight text-amber-500" style={{ fontSize: "9px" }}>Em aprovação</span>
+        : days && <span className={`leading-tight ${daysCls}`} style={{ fontSize: "9px" }}>{days.text}</span>
+      }
     </div>
   );
 }
