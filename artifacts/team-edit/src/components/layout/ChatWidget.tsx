@@ -262,16 +262,18 @@ function MsgMenu({ mine, onReply, onReact, onDelete }: {
 }) {
   const [open, setOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const [pickerPos, setPickerPos] = useState({ bottom: 0, right: 0 });
-  const menuRef = useRef<HTMLDivElement>(null);
-  const pickerBtnRef = useRef<HTMLButtonElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuPortalRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
 
   useEffect(() => {
     if (!open && !pickerOpen) return;
     const h = (e: MouseEvent) => {
       if ((e.target as HTMLElement).closest("[data-emoji-picker]")) return;
-      if (menuRef.current?.contains(e.target as Node)) return;
+      if (menuPortalRef.current?.contains(e.target as Node)) return;
+      if (btnRef.current?.contains(e.target as Node)) return;
       setOpen(false);
       setPickerOpen(false);
     };
@@ -279,44 +281,52 @@ function MsgMenu({ mine, onReply, onReact, onDelete }: {
     return () => document.removeEventListener("mousedown", h);
   }, [open, pickerOpen]);
 
+  const openMenu = () => {
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setMenuPos({ top: r.bottom + 4, left: r.right - 160 });
+    }
+    setOpen(v => !v);
+  };
+
   return (
-    <div ref={menuRef} className="relative">
+    <>
       <button
-        onClick={() => setOpen(v => !v)}
-        className="opacity-0 group-hover:opacity-100 absolute top-1 right-1 flex items-center justify-center h-5 w-5 rounded-full bg-black/10 hover:bg-black/20 text-white transition-all"
+        ref={btnRef}
+        onClick={openMenu}
+        className="opacity-0 group-hover:opacity-100 absolute top-1.5 right-1.5 flex items-center justify-center h-5 w-5 rounded-full bg-black/20 hover:bg-black/35 text-white transition-all"
       >
         <ChevronDown className="h-3 w-3" />
       </button>
 
-      {open && (
-        <div className="absolute top-6 right-1 w-40 rounded-xl border bg-[hsl(var(--card))] shadow-xl z-[500] overflow-hidden">
+      {open && createPortal(
+        <div ref={menuPortalRef} style={{ position: "fixed", top: menuPos.top, left: menuPos.left, zIndex: 9999, width: 160 }}
+          className="rounded-xl border bg-[hsl(var(--card))] shadow-xl overflow-hidden">
           <button onClick={() => { onReply(); setOpen(false); }}
-            className="flex items-center gap-2 w-full px-3 py-2.5 text-sm hover:bg-[hsl(var(--muted))] transition-colors text-left">
+            className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-[hsl(var(--muted))] transition-colors text-left">
             <Reply className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" /> Responder
           </button>
           <button
-            ref={pickerBtnRef}
             onClick={() => {
-              if (pickerBtnRef.current) {
-                const r = pickerBtnRef.current.getBoundingClientRect();
-                setPickerPos({ bottom: window.innerHeight - r.top + 8, right: window.innerWidth - r.right });
+              if (btnRef.current) {
+                const r = btnRef.current.getBoundingClientRect();
+                setPickerPos({ bottom: window.innerHeight - r.bottom + 28, right: window.innerWidth - r.right });
               }
               setPickerOpen(v => !v);
               setOpen(false);
             }}
-            className="flex items-center gap-2 w-full px-3 py-2.5 text-sm hover:bg-[hsl(var(--muted))] transition-colors text-left">
+            className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-[hsl(var(--muted))] transition-colors text-left">
             <SmilePlus className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" /> Reagir
           </button>
-          {mine && (
-            <>
-              <div className="h-px bg-[hsl(var(--border))]" />
-              <button onClick={() => { onDelete(); setOpen(false); }}
-                className="flex items-center gap-2 w-full px-3 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-left">
-                <Trash2 className="h-3.5 w-3.5 shrink-0" /> Apagar
-              </button>
-            </>
-          )}
-        </div>
+          {mine && <>
+            <div className="h-px bg-[hsl(var(--border))]" />
+            <button onClick={() => { onDelete(); setOpen(false); }}
+              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-left">
+              <Trash2 className="h-3.5 w-3.5 shrink-0" /> Apagar
+            </button>
+          </>}
+        </div>,
+        document.body
       )}
 
       {pickerOpen && createPortal(
@@ -326,7 +336,7 @@ function MsgMenu({ mine, onReply, onReact, onDelete }: {
         </div>,
         document.body
       )}
-    </div>
+    </>
   );
 }
 
