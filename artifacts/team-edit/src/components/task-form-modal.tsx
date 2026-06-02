@@ -181,14 +181,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
     if (!form.title.trim())       { toast.error("Título obrigatório");              return; }
     if (!form.description.trim()) { toast.error("Direcionamento obrigatório");      return; }
     if (!form.client?.trim())     { toast.error("Cliente obrigatório");             return; }
-    if (!form.dueDateTime)        { toast.error("Entrega obrigatória");             return; }
+    if (!form.startDateTime)      { toast.error("Data de início obrigatória");      return; }
+    if (!form.dueDateTime)        { toast.error("Data de entrega obrigatória");      return; }
     if (!form.folderUrl?.trim())  { toast.error("Pasta / Arquivos obrigatório");    return; }
-
-    // ── Se Início não foi preenchido, usa a data de Entrega (tarefa de 1 dia) ─
-    // Evita que a tarefa ocupe um range invisível desde hoje até a entrega
-    if (!form.startDateTime && form.dueDateTime) {
-      f({ startDateTime: form.dueDateTime });
-    }
     if (!isMultiTask && selectedEditorIds.length === 0) {
       toast.error("Atribua ao menos um editor"); return;
     }
@@ -584,8 +579,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                     <div className="flex items-center gap-1.5">
                       <Calendar className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
                       <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
-                        Início
-                        <span className="ml-1 text-[10px] font-normal normal-case text-[hsl(var(--muted-foreground))]/60">padrão: mesmo dia da entrega</span>
+                        Início <span className="text-destructive">*</span>
                       </Label>
                     </div>
                     <DatePicker
