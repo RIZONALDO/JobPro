@@ -89,9 +89,9 @@ router.get("/dm/:userId", requireAuth, async (req, res): Promise<void> => {
   }
 
   const replyIds = msgs.map(m => m.replyToId).filter((id): id is number => id !== null);
-  const replyMap = new Map<number, { id: number; content: string; fromName: string | null }>();
+  const replyMap = new Map<number, { id: number; content: string; fromName: string | null; fromUserId: number | null }>();
   if (replyIds.length) {
-    const replies = await db.select({ id: directMessagesTable.id, content: directMessagesTable.content, fromName: usersTable.name })
+    const replies = await db.select({ id: directMessagesTable.id, content: directMessagesTable.content, fromName: usersTable.name, fromUserId: directMessagesTable.fromUserId })
       .from(directMessagesTable).leftJoin(usersTable, eq(directMessagesTable.fromUserId, usersTable.id))
       .where(inArray(directMessagesTable.id, replyIds));
     for (const r of replies) replyMap.set(r.id, r);

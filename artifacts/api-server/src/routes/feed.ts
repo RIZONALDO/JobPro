@@ -293,9 +293,9 @@ async function enrichChatMessages(msgs: { id: number; userId: number; content: s
 
   // Reply context
   const replyIds = msgs.map(m => m.replyToId).filter((id): id is number => id !== null);
-  const replyMap = new Map<number, { id: number; content: string; userName: string | null }>();
+  const replyMap = new Map<number, { id: number; content: string; userName: string | null; userId: number | null }>();
   if (replyIds.length) {
-    const replies = await db.select({ id: chatMessagesTable.id, content: chatMessagesTable.content, userName: usersTable.name })
+    const replies = await db.select({ id: chatMessagesTable.id, content: chatMessagesTable.content, userName: usersTable.name, userId: chatMessagesTable.userId })
       .from(chatMessagesTable).leftJoin(usersTable, eq(chatMessagesTable.userId, usersTable.id))
       .where(inArray(chatMessagesTable.id, replyIds));
     for (const r of replies) replyMap.set(r.id, r);

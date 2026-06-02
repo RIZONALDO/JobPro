@@ -20,7 +20,7 @@ import { playSound } from "@/lib/sounds";
 
 interface MentionUser { id: number; name: string; avatarUrl: string | null; }
 interface Reaction { emoji: string; count: number; mine: boolean; users: string[]; }
-interface ReplyContext { id: number; content: string; userName?: string | null; fromName?: string | null; }
+interface ReplyContext { id: number; content: string; userName?: string | null; fromName?: string | null; userId?: number | null; fromUserId?: number | null; }
 interface ChatMessage {
   id: number; userId: number; content: string; createdAt: string;
   userName: string | null; userAvatar: string | null;
@@ -359,22 +359,36 @@ function ReplyBar({ replyTo, authorName, onCancel }: { replyTo: { content: strin
 }
 
 // ── Quoted reply context ──────────────────────────────────────────
-function QuotedReply({ replyTo, authorName, mine = false }: {
-  replyTo: { content: string }; authorName: string | null; mine?: boolean;
+// mine        = o balão ATUAL é meu
+// quoteIsFromMe = a mensagem CITADA foi enviada por mim
+function QuotedReply({ replyTo, authorName, mine = false, quoteIsFromMe = false }: {
+  replyTo: { content: string }; authorName: string | null; mine?: boolean; quoteIsFromMe?: boolean;
 }) {
+  // Dentro do MEU balão (primary):
+  //   citando EU mesmo → bar branca + fundo mais opaco
+  //   citando OUTRO   → bar branca 40% + fundo sutil
+  // Dentro do balão do OUTRO (muted):
+  //   citando EU mesmo → bar primary + fundo primary tinted
+  //   citando OUTRO   → bar muted-foreground + fundo muted darker
+  const barCls = mine
+    ? "bg-white/80"
+    : quoteIsFromMe ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted-foreground))]/50";
+  const bgCls = mine
+    ? quoteIsFromMe ? "bg-white/20" : "bg-white/10"
+    : quoteIsFromMe ? "bg-[hsl(var(--primary))]/10" : "bg-black/8 dark:bg-white/8";
+  const nameCls = mine
+    ? "text-white/90"
+    : quoteIsFromMe ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--foreground))]/70";
+  const textCls = mine ? "text-white/60" : "text-[hsl(var(--foreground))]/55";
+
   return (
-    <div className={cn(
-      "flex items-stretch gap-0 mb-1.5 rounded-md overflow-hidden",
-      mine ? "bg-white/15" : "bg-black/8 dark:bg-white/10"
-    )}>
-      <div className={cn("w-[3px] shrink-0", mine ? "bg-white/70" : "bg-[hsl(var(--primary))]")} />
+    <div className={cn("flex items-stretch gap-0 mb-1.5 rounded-md overflow-hidden", bgCls)}>
+      <div className={cn("w-[3px] shrink-0", barCls)} />
       <div className="min-w-0 px-2 py-1">
-        <p className={cn("text-[10px] font-semibold leading-none mb-0.5 truncate",
-          mine ? "text-white/80" : "text-[hsl(var(--primary))]")}>
+        <p className={cn("text-[10px] font-semibold leading-none mb-0.5 truncate", nameCls)}>
           {authorName ?? "?"}
         </p>
-        <p className={cn("text-[11px] leading-tight line-clamp-1",
-          mine ? "text-white/60" : "text-[hsl(var(--foreground))]/60")}>
+        <p className={cn("text-[11px] leading-tight line-clamp-1", textCls)}>
           {replyTo.content}
         </p>
       </div>
@@ -1254,7 +1268,7 @@ export function ChatWidget() {
                               {emojiOnly ? (
                                 <div className="relative flex flex-col gap-0.5">
                                   {!mine && <p className="text-[12px] font-semibold opacity-60">{msg.userName}</p>}
-                                  {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.userName ?? null} mine={mine} />}
+                                  {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.userName ?? null} mine={mine} quoteIsFromMe={msg.replyTo.userId === user?.id} />}
                                   <div className={cn("whitespace-pre-wrap leading-tight", emojiOnlySize(msg.content))}>{msg.content}</div>
                                   <p className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</p>
                                   <MsgMenu mine={mine} onReply={() => setChatReplyTo(msg)} onReact={e => reactMsg(msg.id, e)} onDelete={() => deleteMsg(msg.id)} />
@@ -1267,7 +1281,7 @@ export function ChatWidget() {
                                   }
                                 >
                                   {!mine && <p className="text-[12px] font-semibold mb-0.5 opacity-60">{msg.userName}</p>}
-                                  {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.userName ?? null} mine={mine} />}
+                                  {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.userName ?? null} mine={mine} quoteIsFromMe={msg.replyTo.userId === user?.id} />}
                                   <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
                                   <p className="text-[11px] mt-1 opacity-40 text-right">{fmtTime(msg.createdAt)}</p>
                                   <MsgMenu mine={mine} onReply={() => setChatReplyTo(msg)} onReact={e => reactMsg(msg.id, e)} onDelete={() => deleteMsg(msg.id)} />
@@ -1362,7 +1376,7 @@ export function ChatWidget() {
                               <div className={cn("flex flex-col max-w-[78%]", mine && "items-end")}>
                                 {isEmojiOnly(msg.content) ? (
                                   <div className="relative flex flex-col gap-0.5">
-                                    {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.fromName ?? null} mine={mine} />}
+                                    {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.fromName ?? null} mine={mine} quoteIsFromMe={msg.replyTo.fromUserId === user?.id} />}
                                     <div className={cn("whitespace-pre-wrap leading-tight", emojiOnlySize(msg.content))}>{msg.content}</div>
                                     <div className="flex items-center gap-1">
                                       <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
@@ -1377,7 +1391,7 @@ export function ChatWidget() {
                                       : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
                                     }
                                   >
-                                    {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.fromName ?? null} mine={mine} />}
+                                    {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.fromName ?? null} mine={mine} quoteIsFromMe={msg.replyTo.fromUserId === user?.id} />}
                                     <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
                                     <div className="flex items-center justify-end gap-1 mt-1">
                                       <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
