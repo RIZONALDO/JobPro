@@ -5,6 +5,7 @@ export const chatMessagesTable = pgTable("te_chat_messages", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
+  replyToId: integer("reply_to_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

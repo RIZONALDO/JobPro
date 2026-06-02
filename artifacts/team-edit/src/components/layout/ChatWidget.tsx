@@ -1,12 +1,12 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Send, MessageCircle, X, ExternalLink, Check, CheckCheck, ChevronLeft, SmilePlus } from "lucide-react";
+import { Send, MessageCircle, X, ExternalLink, Check, CheckCheck, ChevronLeft, SmilePlus, Reply, Trash2, ChevronDown } from "lucide-react";
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
-import { apiFetch, apiPost } from "@/lib/api";
+import { apiFetch, apiPost, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { getSocket } from "@/lib/socket";
 import { Button } from "@/components/ui/button";
@@ -19,14 +19,18 @@ import { playSound } from "@/lib/sounds";
 // ── Types ────────────────────────────────────────────────────────
 
 interface MentionUser { id: number; name: string; avatarUrl: string | null; }
+interface Reaction { emoji: string; count: number; mine: boolean; users: string[]; }
+interface ReplyContext { id: number; content: string; userName?: string | null; fromName?: string | null; }
 interface ChatMessage {
   id: number; userId: number; content: string; createdAt: string;
   userName: string | null; userAvatar: string | null;
+  reactions?: Reaction[]; replyTo?: ReplyContext | null; replyToId?: number | null;
 }
 interface DmMessage {
   id: number; fromUserId: number; toUserId: number; content: string;
   createdAt: string; readAt: string | null;
   fromName: string | null; fromAvatar: string | null;
+  reactions?: Reaction[]; replyTo?: ReplyContext | null; replyToId?: number | null;
 }
 interface Conversation {
   userId: number; userName: string | null; userAvatar: string | null;
@@ -233,6 +237,142 @@ function emojiOnlySize(text: string): string {
   return "text-2xl";
 }
 
+// ── Quick reactions ──────────────────────────────────────────────
+const QUICK = ["👍","❤️","😂","😮","😢","🔥"];
+
+function ReactionBar({ reactions, onReact }: { reactions: Reaction[]; onReact: (emoji: string) => void }) {
+  if (!reactions.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {reactions.map(r => (
+        <button
+          key={r.emoji}
+          onClick={() => onReact(r.emoji)}
+          title={r.users.join(", ")}
+          className={cn(
+            "flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] font-medium border transition-all",
+            r.mine
+              ? "bg-[hsl(var(--primary))]/15 border-[hsl(var(--primary))]/40 text-[hsl(var(--primary))]"
+              : "bg-[hsl(var(--muted))] border-[hsl(var(--border))] text-[hsl(var(--foreground))]/70 hover:border-[hsl(var(--primary))]/40"
+          )}
+        >
+          <span>{r.emoji}</span>
+          <span>{r.count}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Message action menu ──────────────────────────────────────────
+function MsgActions({ mine, onReply, onReact, onDelete }: {
+  mine: boolean;
+  onReply: () => void;
+  onReact: (emoji: string) => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerPos, setPickerPos] = useState({ bottom: 0, right: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const { theme } = useTheme();
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const h = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest("[data-emoji-picker]")) return;
+      setPickerOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [pickerOpen]);
+
+  return (
+    <div className="relative flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Quick react */}
+      <div className="flex items-center gap-0.5 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-full px-1 py-0.5 shadow-sm">
+        {QUICK.map(e => (
+          <button key={e} onClick={() => onReact(e)} className="text-[14px] hover:scale-125 transition-transform px-0.5" title={e}>
+            {e}
+          </button>
+        ))}
+        <button
+          onClick={() => { if (btnRef.current) { const r = btnRef.current.getBoundingClientRect(); setPickerPos({ bottom: window.innerHeight - r.top + 8, right: window.innerWidth - r.right }); } setPickerOpen(v => !v); }}
+          className="flex items-center justify-center w-5 h-5 rounded-full hover:bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] transition-colors"
+        >
+          <SmilePlus className="h-3 w-3" />
+        </button>
+      </div>
+
+      {/* Reply */}
+      <button onClick={onReply} className="flex items-center justify-center h-7 w-7 rounded-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] shadow-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors" title="Responder">
+        <Reply className="h-3.5 w-3.5" />
+      </button>
+
+      {/* More (delete) */}
+      {mine && (
+        <div className="relative">
+          <button
+            ref={btnRef}
+            onClick={() => setOpen(v => !v)}
+            className="flex items-center justify-center h-7 w-7 rounded-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] shadow-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
+            title="Mais opções"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+          {open && (
+            <div className="absolute bottom-full right-0 mb-1 w-36 rounded-xl border bg-[hsl(var(--card))] shadow-xl z-[500] overflow-hidden">
+              <button
+                onClick={() => { onDelete(); setOpen(false); }}
+                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Apagar
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {pickerOpen && createPortal(
+        <div data-emoji-picker="true" style={{ position: "fixed", bottom: pickerPos.bottom, right: pickerPos.right, zIndex: 9999 }}>
+          <Picker data={data} onEmojiSelect={(e: { native: string }) => { onReact(e.native); setPickerOpen(false); }} locale="pt" theme={theme} previewPosition="none" skinTonePosition="none" maxFrequentRows={2} perLine={8} />
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+// ── Reply preview bar ─────────────────────────────────────────────
+function ReplyBar({ replyTo, authorName, onCancel }: { replyTo: { content: string }; authorName: string | null; onCancel: () => void }) {
+  const preview = replyTo.content.slice(0, 80) + (replyTo.content.length > 80 ? "…" : "");
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 rounded-xl border-l-2 border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/5 mx-2 mb-1">
+      <Reply className="h-3.5 w-3.5 text-[hsl(var(--primary))] shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] font-semibold text-[hsl(var(--primary))] leading-none mb-0.5">{authorName ?? "Mensagem"}</p>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] truncate leading-tight">{preview}</p>
+      </div>
+      <button onClick={onCancel} className="shrink-0 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors">
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+// ── Quoted reply context ──────────────────────────────────────────
+function QuotedReply({ replyTo, authorName }: { replyTo: { content: string }; authorName: string | null }) {
+  const preview = replyTo.content.slice(0, 60) + (replyTo.content.length > 60 ? "…" : "");
+  return (
+    <div className="flex items-start gap-1.5 mb-1.5 pl-2 border-l-2 border-current opacity-60">
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold leading-none mb-0.5">{authorName ?? "?"}</p>
+        <p className="text-xs leading-tight truncate">{preview}</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Task link renderer ───────────────────────────────────────────
 
 const TASK_REF = /\[([^\]|]+)\|id:(\d+)\]/g;
@@ -306,6 +446,10 @@ export function ChatWidget() {
   const [slideDir, setSlideDir] = useState<1 | -1>(1);
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
   const [allUsers, setAllUsers] = useState<MentionUser[]>([]);
+
+  // Reply state
+  const [chatReplyTo, setChatReplyTo] = useState<ChatMessage | null>(null);
+  const [dmReplyTo, setDmReplyTo] = useState<DmMessage | null>(null);
 
   const [typingUsers, setTypingUsers] = useState<Set<number>>(new Set());
 
@@ -596,14 +740,39 @@ export function ChatWidget() {
       });
     };
 
+    const onChatDeleted = ({ messageId }: { messageId: number }) =>
+      setMessages(prev => prev.filter(m => m.id !== messageId));
+    const onChatReaction = ({ messageId, reactions }: { messageId: number; reactions: Reaction[] }) =>
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions } : m));
+    const onDmDeleted = ({ messageId }: { messageId: number }) =>
+      setDmMessages(prev => {
+        const next = { ...prev };
+        for (const k of Object.keys(next)) next[+k] = (next[+k] ?? []).filter(m => m.id !== messageId);
+        return next;
+      });
+    const onDmReaction = ({ messageId, reactions }: { messageId: number; reactions: Reaction[] }) =>
+      setDmMessages(prev => {
+        const next = { ...prev };
+        for (const k of Object.keys(next)) next[+k] = (next[+k] ?? []).map(m => m.id === messageId ? { ...m, reactions } : m);
+        return next;
+      });
+
     socket.on("chat:message", onChatMessage);
+    socket.on("chat:deleted", onChatDeleted);
+    socket.on("chat:reaction", onChatReaction);
     socket.on("dm:message", onDmMessage);
+    socket.on("dm:deleted", onDmDeleted);
+    socket.on("dm:reaction", onDmReaction);
     socket.on("presence:update", onPresence);
     socket.on("dm:read", onDmRead);
     socket.on("dm:typing", onDmTyping);
     return () => {
       socket.off("chat:message", onChatMessage);
+      socket.off("chat:deleted", onChatDeleted);
+      socket.off("chat:reaction", onChatReaction);
       socket.off("dm:message", onDmMessage);
+      socket.off("dm:deleted", onDmDeleted);
+      socket.off("dm:reaction", onDmReaction);
       socket.off("presence:update", onPresence);
       socket.off("dm:read", onDmRead);
       socket.off("dm:typing", onDmTyping);
@@ -613,25 +782,34 @@ export function ChatWidget() {
   const sendMsg = async () => {
     if (!msgText.trim() || !user) return;
     const text = msgText.trim();
+    const replyToId = chatReplyTo?.id ?? null;
+    setChatReplyTo(null);
     const optimisticId = -Date.now();
     setMessages(prev => [...prev, {
-      id: optimisticId,
-      userId: user.id,
-      content: text,
+      id: optimisticId, userId: user.id, content: text,
       createdAt: new Date().toISOString(),
-      userName: user.name ?? null,
-      userAvatar: user.avatarUrl ?? null,
+      userName: user.name ?? null, userAvatar: user.avatarUrl ?? null,
+      replyToId, replyTo: chatReplyTo ? { id: chatReplyTo.id, content: chatReplyTo.content, userName: chatReplyTo.userName } : null,
+      reactions: [],
     }]);
     setMsgText("");
     try {
-      await apiPost("/api/chat/messages", { content: text });
-      // Socket handler already replaced the optimistic msg with the real one;
-      // ensure cleanup in case socket is delayed
+      await apiPost("/api/chat/messages", { content: text, replyToId });
       setMessages(prev => prev.filter(m => m.id !== optimisticId));
     } catch {
       setMessages(prev => prev.filter(m => m.id !== optimisticId));
       setMsgText(text);
     }
+  };
+
+  const deleteMsg = async (id: number) => {
+    setMessages(prev => prev.filter(m => m.id !== id));
+    await apiDelete(`/api/chat/messages/${id}`).catch(() => {});
+  };
+
+  const reactMsg = async (messageId: number, emoji: string) => {
+    const updated = await apiPost<Reaction[]>(`/api/chat/messages/${messageId}/reactions`, { emoji });
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions: updated } : m));
   };
 
   const sendDm = async () => {
@@ -660,10 +838,12 @@ export function ChatWidget() {
     }));
     setDmText("");
     setDmTaskRef(null);
+    const dmReplyToId = dmReplyTo?.id ?? null;
+    setDmReplyTo(null);
 
     setDmSending(true);
     try {
-      await apiPost(`/api/dm/${toUserId}`, { content });
+      await apiPost(`/api/dm/${toUserId}`, { content, replyToId: dmReplyToId });
       // O socket (onDmMessage) já limpa o placeholder ao chegar; este filter é fallback
       setDmMessages(prev => ({
         ...prev,
@@ -678,6 +858,16 @@ export function ChatWidget() {
       }));
       setDmText(content);
     } finally { setDmSending(false); }
+  };
+
+  const deleteDm = async (id: number, otherId: number) => {
+    setDmMessages(prev => ({ ...prev, [otherId]: (prev[otherId] ?? []).filter(m => m.id !== id) }));
+    await apiDelete(`/api/dm/${id}`).catch(() => {});
+  };
+
+  const reactDm = async (messageId: number, emoji: string, otherId: number) => {
+    const updated = await apiPost<Reaction[]>(`/api/dm/${messageId}/reactions`, { emoji });
+    setDmMessages(prev => ({ ...prev, [otherId]: (prev[otherId] ?? []).map(m => m.id === messageId ? { ...m, reactions: updated } : m) }));
   };
 
   const openChat = () => {
@@ -965,41 +1155,50 @@ export function ChatWidget() {
                         <p className="text-sm text-center py-10" style={{ color: "hsl(var(--muted-foreground))" }}>Sem mensagens. Diga olá! 👋</p>
                       ) : messages.map(msg => {
                         const mine = msg.userId === user?.id;
+                        const emojiOnly = isEmojiOnly(msg.content);
                         return (
-                          <div key={msg.id} className={cn("flex gap-2 items-end", mine && "flex-row-reverse")}>
+                          <div key={msg.id} className={cn("group flex gap-2 items-end", mine && "flex-row-reverse")}>
                             {!mine && <Avatar name={msg.userName} url={msg.userAvatar} size="xs" />}
-                            {isEmojiOnly(msg.content) ? (
-                              <div className="max-w-[78%] flex flex-col items-end gap-0.5">
-                                {!mine && <p className="text-[12px] font-semibold opacity-60 self-start">{msg.userName}</p>}
-                                <div className={cn("whitespace-pre-wrap leading-tight", emojiOnlySize(msg.content))}>
-                                  {msg.content}
+                            <div className={cn("flex flex-col max-w-[78%]", mine && "items-end")}>
+                              {emojiOnly ? (
+                                <div className="flex flex-col gap-0.5">
+                                  {!mine && <p className="text-[12px] font-semibold opacity-60">{msg.userName}</p>}
+                                  {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.userName ?? null} />}
+                                  <div className={cn("whitespace-pre-wrap leading-tight", emojiOnlySize(msg.content))}>{msg.content}</div>
+                                  <p className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</p>
                                 </div>
-                                <p className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</p>
-                              </div>
-                            ) : (
-                              <div
-                                className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
-                                style={mine
-                                  ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
-                                  : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
-                                }
-                              >
-                                {!mine && <p className="text-[12px] font-semibold mb-0.5 opacity-60">{msg.userName}</p>}
-                                <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
-                                <p className="text-[11px] mt-1 opacity-40 text-right">{fmtTime(msg.createdAt)}</p>
-                              </div>
-                            )}
+                              ) : (
+                                <div className="rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
+                                  style={mine
+                                    ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
+                                    : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
+                                  }
+                                >
+                                  {!mine && <p className="text-[12px] font-semibold mb-0.5 opacity-60">{msg.userName}</p>}
+                                  {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.userName ?? null} />}
+                                  <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
+                                  <p className="text-[11px] mt-1 opacity-40 text-right">{fmtTime(msg.createdAt)}</p>
+                                </div>
+                              )}
+                              <ReactionBar reactions={msg.reactions ?? []} onReact={e => reactMsg(msg.id, e)} />
+                            </div>
+                            <div className={cn("shrink-0 flex items-center", mine ? "order-first mr-1" : "ml-1")}>
+                              <MsgActions mine={mine} onReply={() => setChatReplyTo(msg)} onReact={e => reactMsg(msg.id, e)} onDelete={() => deleteMsg(msg.id)} />
+                            </div>
                           </div>
                         );
                       })}
                       <div ref={chatEndRef} />
                     </div>
-                    <div className="shrink-0 p-3 border-t" style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
-                      <div className="flex gap-2 items-end rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: "hsl(var(--muted))" }}>
-                        <ChatTextarea value={msgText} onChange={setMsgText} onSend={sendMsg} users={allUsers} placeholder="Mensagem..." />
-                        <Button size="sm" onClick={sendMsg} disabled={!msgText.trim()} className="h-8 w-8 p-0 shrink-0 rounded-xl">
-                          <Send className="h-3.5 w-3.5" />
-                        </Button>
+                    <div className="shrink-0 border-t" style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+                      {chatReplyTo && <ReplyBar replyTo={chatReplyTo} authorName={chatReplyTo.userName} onCancel={() => setChatReplyTo(null)} />}
+                      <div className="p-3">
+                        <div className="flex gap-2 items-end rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: "hsl(var(--muted))" }}>
+                          <ChatTextarea value={msgText} onChange={setMsgText} onSend={sendMsg} users={allUsers} placeholder="Mensagem..." />
+                          <Button size="sm" onClick={sendMsg} disabled={!msgText.trim()} className="h-8 w-8 p-0 shrink-0 rounded-xl">
+                            <Send className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </motion.div>
@@ -1068,39 +1267,38 @@ export function ChatWidget() {
                                 <div className="flex-1 h-px" style={{ backgroundColor: "hsl(var(--primary) / 0.3)" }} />
                               </div>
                             )}
-                            <div className={cn("flex gap-2 items-end", mine && "flex-row-reverse")}>
+                            <div className={cn("group flex gap-2 items-end", mine && "flex-row-reverse")}>
                               {!mine && <Avatar name={msg.fromName} url={msg.fromAvatar} size="xs" />}
-                              {isEmojiOnly(msg.content) ? (
-                                <div className="max-w-[78%] flex flex-col items-end gap-0.5">
-                                  <div className={cn("whitespace-pre-wrap leading-tight", emojiOnlySize(msg.content))}>
-                                    {msg.content}
+                              <div className={cn("flex flex-col max-w-[78%]", mine && "items-end")}>
+                                {isEmojiOnly(msg.content) ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.fromName ?? null} />}
+                                    <div className={cn("whitespace-pre-wrap leading-tight", emojiOnlySize(msg.content))}>{msg.content}</div>
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
+                                      {mine && (msg.readAt ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-400" /> : <Check className="h-3.5 w-3.5 shrink-0 opacity-40" />)}
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
-                                    {mine && (msg.readAt
-                                      ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-400" />
-                                      : <Check className="h-3.5 w-3.5 shrink-0 opacity-40" />
-                                    )}
+                                ) : (
+                                  <div className="rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
+                                    style={mine
+                                      ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
+                                      : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
+                                    }
+                                  >
+                                    {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.fromName ?? null} />}
+                                    <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
+                                    <div className="flex items-center justify-end gap-1 mt-1">
+                                      <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
+                                      {mine && (msg.readAt ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-400" /> : <Check className="h-3.5 w-3.5 shrink-0 opacity-40" />)}
+                                    </div>
                                   </div>
-                                </div>
-                              ) : (
-                                <div
-                                  className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
-                                  style={mine
-                                    ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
-                                    : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
-                                  }
-                                >
-                                  <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
-                                  <div className="flex items-center justify-end gap-1 mt-1">
-                                    <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
-                                    {mine && (msg.readAt
-                                      ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-400" />
-                                      : <Check className="h-3.5 w-3.5 shrink-0 opacity-40" />
-                                    )}
-                                  </div>
-                                </div>
-                              )}
+                                )}
+                                <ReactionBar reactions={msg.reactions ?? []} onReact={e => reactDm(msg.id, e, activeView as number)} />
+                              </div>
+                              <div className={cn("shrink-0 flex items-center", mine ? "order-first mr-1" : "ml-1")}>
+                                <MsgActions mine={mine} onReply={() => setDmReplyTo(msg)} onReact={e => reactDm(msg.id, e, activeView as number)} onDelete={() => deleteDm(msg.id, activeView as number)} />
+                              </div>
                             </div>
                           </div>
                         );
@@ -1123,7 +1321,9 @@ export function ChatWidget() {
                     )}
 
                     {/* DM input */}
-                    <div className="shrink-0 p-3 border-t" style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+                    <div className="shrink-0 border-t" style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+                      {dmReplyTo && <ReplyBar replyTo={dmReplyTo} authorName={dmReplyTo.fromName} onCancel={() => setDmReplyTo(null)} />}
+                      <div className="p-3">
                       {dmTaskRef && (
                         <div className="mb-2 flex items-stretch rounded-xl overflow-hidden" style={{ backgroundColor: "hsl(220 20% 16%)" }}>
                           <div className="w-[3px] shrink-0" style={{ backgroundColor: "hsl(var(--primary))" }} />
@@ -1168,6 +1368,7 @@ export function ChatWidget() {
                         <Button size="sm" onClick={sendDm} disabled={dmSending || (!dmText.trim() && !dmTaskRef)} className="h-8 w-8 p-0 shrink-0 rounded-xl">
                           <Send className="h-3.5 w-3.5" />
                         </Button>
+                      </div>
                       </div>
                     </div>
                   </motion.div>

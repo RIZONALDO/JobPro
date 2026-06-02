@@ -2,13 +2,13 @@ import { Router } from "express";
 import {
   db,
   feedItemsTable, feedReactionsTable, feedCommentsTable,
-  chatMessagesTable, userPresenceTable, usersTable,
+  chatMessagesTable, chatReactionsTable, userPresenceTable, usersTable,
 } from "@workspace/db";
 import { eq, desc, asc, and, gt, inArray, sql } from "drizzle-orm"; // gt used in presence query
 import { requireAuth } from "../lib/auth.js";
 import {
   broadcastFeedReaction, broadcastFeedComment, broadcastFeedCommentDeleted,
-  broadcastChatMessage, broadcastPresence,
+  broadcastChatMessage, broadcastChatDeleted, broadcastChatReaction, broadcastPresence,
 } from "../lib/broadcast.js";
 import { createFeedItem } from "../lib/feed.js";
 import { notify } from "../lib/notify.js";
@@ -269,12 +269,53 @@ router.delete("/feed/comments/:id", requireAuth, async (req, res): Promise<void>
 
 // ── Chat ───────────────────────────────────────────────────────
 
-router.get("/chat/messages", requireAuth, async (_req, res): Promise<void> => {
+async function enrichChatMessages(msgs: { id: number; userId: number; content: string; replyToId: number | null; createdAt: Date; userName: string | null; userAvatar: string | null }[], myId: number) {
+  if (!msgs.length) return [];
+  const ids = msgs.map(m => m.id);
+
+  // Reactions
+  const rawReactions = await db.select({
+    messageId: chatReactionsTable.messageId,
+    emoji: chatReactionsTable.emoji,
+    userId: chatReactionsTable.userId,
+    userName: usersTable.name,
+  }).from(chatReactionsTable)
+    .leftJoin(usersTable, eq(chatReactionsTable.userId, usersTable.id))
+    .where(inArray(chatReactionsTable.messageId, ids));
+
+  const reactMap = new Map<number, { emoji: string; count: number; mine: boolean; users: string[] }[]>();
+  for (const r of rawReactions) {
+    if (!reactMap.has(r.messageId)) reactMap.set(r.messageId, []);
+    const group = reactMap.get(r.messageId)!.find(g => g.emoji === r.emoji);
+    if (group) { group.count++; group.users.push(r.userName ?? "?"); if (r.userId === myId) group.mine = true; }
+    else reactMap.get(r.messageId)!.push({ emoji: r.emoji, count: 1, mine: r.userId === myId, users: [r.userName ?? "?"] });
+  }
+
+  // Reply context
+  const replyIds = msgs.map(m => m.replyToId).filter((id): id is number => id !== null);
+  const replyMap = new Map<number, { id: number; content: string; userName: string | null }>();
+  if (replyIds.length) {
+    const replies = await db.select({ id: chatMessagesTable.id, content: chatMessagesTable.content, userName: usersTable.name })
+      .from(chatMessagesTable).leftJoin(usersTable, eq(chatMessagesTable.userId, usersTable.id))
+      .where(inArray(chatMessagesTable.id, replyIds));
+    for (const r of replies) replyMap.set(r.id, r);
+  }
+
+  return msgs.map(m => ({
+    ...m,
+    reactions: reactMap.get(m.id) ?? [],
+    replyTo: m.replyToId ? (replyMap.get(m.replyToId) ?? null) : null,
+  }));
+}
+
+router.get("/chat/messages", requireAuth, async (req, res): Promise<void> => {
+  const myId = req.session.userId!;
   const messages = await db
     .select({
       id: chatMessagesTable.id,
       userId: chatMessagesTable.userId,
       content: chatMessagesTable.content,
+      replyToId: chatMessagesTable.replyToId,
       createdAt: chatMessagesTable.createdAt,
       userName: usersTable.name,
       userAvatar: usersTable.avatarUrl,
@@ -284,29 +325,31 @@ router.get("/chat/messages", requireAuth, async (_req, res): Promise<void> => {
     .orderBy(desc(chatMessagesTable.createdAt))
     .limit(100);
 
-  res.json(messages.reverse());
+  res.json(await enrichChatMessages(messages.reverse(), myId));
 });
 
 router.post("/chat/messages", requireAuth, async (req, res): Promise<void> => {
-  const { content, mentions } = req.body ?? {};
+  const { content, mentions, replyToId } = req.body ?? {};
   if (!content?.trim()) { res.status(400).json({ error: "Mensagem obrigatória" }); return; }
 
   const userId = req.session.userId!;
   const contentTrimmed = String(content).trim();
+  const parsedReplyTo = replyToId ? parseInt(String(replyToId), 10) : null;
 
   const result = await db.execute<{
-    id: number; userId: number; content: string; createdAt: Date;
+    id: number; userId: number; content: string; replyToId: number | null; createdAt: Date;
     userName: string | null; userAvatar: string | null;
   }>(sql`
     WITH inserted AS (
-      INSERT INTO te_chat_messages (user_id, content)
-      VALUES (${userId}, ${contentTrimmed})
-      RETURNING id, user_id, content, created_at
+      INSERT INTO te_chat_messages (user_id, content, reply_to_id)
+      VALUES (${userId}, ${contentTrimmed}, ${parsedReplyTo})
+      RETURNING id, user_id, content, reply_to_id, created_at
     )
     SELECT
       i.id::int,
       i.user_id::int        AS "userId",
       i.content,
+      i.reply_to_id::int    AS "replyToId",
       i.created_at          AS "createdAt",
       u.name                AS "userName",
       u.avatar_url          AS "userAvatar"
@@ -314,10 +357,53 @@ router.post("/chat/messages", requireAuth, async (req, res): Promise<void> => {
     JOIN te_users u ON u.id = i.user_id
   `);
 
-  const enriched = result.rows[0];
+  const [enriched] = await enrichChatMessages([result.rows[0]], userId);
   broadcastChatMessage(enriched);
   await notifyMentions(mentions, userId, "no chat");
   res.status(201).json(enriched);
+});
+
+router.delete("/chat/messages/:id", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.session.userId!;
+  const id = parseInt(req.params.id, 10);
+  const [msg] = await db.select({ userId: chatMessagesTable.userId }).from(chatMessagesTable).where(eq(chatMessagesTable.id, id));
+  if (!msg) { res.status(404).json({ error: "Mensagem não encontrada" }); return; }
+  if (msg.userId !== userId) { res.status(403).json({ error: "Sem permissão" }); return; }
+  await db.delete(chatMessagesTable).where(eq(chatMessagesTable.id, id));
+  broadcastChatDeleted(id);
+  res.sendStatus(204);
+});
+
+router.post("/chat/messages/:id/reactions", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.session.userId!;
+  const messageId = parseInt(req.params.id, 10);
+  const { emoji } = req.body ?? {};
+  if (!emoji) { res.status(400).json({ error: "Emoji obrigatório" }); return; }
+
+  const existing = await db.select({ id: chatReactionsTable.id })
+    .from(chatReactionsTable)
+    .where(and(eq(chatReactionsTable.messageId, messageId), eq(chatReactionsTable.userId, userId), eq(chatReactionsTable.emoji, String(emoji))));
+
+  if (existing.length) {
+    await db.delete(chatReactionsTable).where(eq(chatReactionsTable.id, existing[0].id));
+  } else {
+    await db.insert(chatReactionsTable).values({ messageId, userId, emoji: String(emoji) });
+  }
+
+  const reactions = await db.select({ emoji: chatReactionsTable.emoji, userId: chatReactionsTable.userId, userName: usersTable.name })
+    .from(chatReactionsTable).leftJoin(usersTable, eq(chatReactionsTable.userId, usersTable.id))
+    .where(eq(chatReactionsTable.messageId, messageId));
+
+  const grouped = Object.values(reactions.reduce((acc, r) => {
+    if (!acc[r.emoji]) acc[r.emoji] = { emoji: r.emoji, count: 0, mine: false, users: [] };
+    acc[r.emoji].count++;
+    acc[r.emoji].users.push(r.userName ?? "?");
+    if (r.userId === userId) acc[r.emoji].mine = true;
+    return acc;
+  }, {} as Record<string, { emoji: string; count: number; mine: boolean; users: string[] }>));
+
+  broadcastChatReaction(messageId, grouped);
+  res.json(grouped);
 });
 
 // ── Presence ───────────────────────────────────────────────────

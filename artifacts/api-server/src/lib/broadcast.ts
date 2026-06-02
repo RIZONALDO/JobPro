@@ -53,3 +53,25 @@ export function broadcastSubtaskProgress(parentTaskId: number, progress: { total
 export function broadcastSubtaskChanged(subtaskId: number, parentTaskId: number) {
   try { getIo().emit("subtask:changed", { subtaskId, parentTaskId }); } catch {}
 }
+
+export function broadcastChatDeleted(messageId: number) {
+  try { getIo().emit("chat:deleted", { messageId }); } catch {}
+}
+
+export function broadcastChatReaction(messageId: number, reactions: unknown[]) {
+  try { getIo().emit("chat:reaction", { messageId, reactions }); } catch {}
+}
+
+export function broadcastDmDeleted(toUserId: number, fromUserId: number, messageId: number) {
+  try {
+    getIo().to(`user:${toUserId}`).emit("dm:deleted", { messageId });
+    getIo().to(`user:${fromUserId}`).emit("dm:deleted", { messageId });
+  } catch {}
+}
+
+export function broadcastDmReaction(toUserId: number, fromUserId: number, messageId: number, reactions: unknown[]) {
+  try {
+    getIo().to(`user:${toUserId}`).emit("dm:reaction", { messageId, reactions });
+    getIo().to(`user:${fromUserId}`).emit("dm:reaction", { messageId, reactions });
+  } catch {}
+}

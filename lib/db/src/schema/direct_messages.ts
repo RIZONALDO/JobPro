@@ -6,6 +6,7 @@ export const directMessagesTable = pgTable("te_direct_messages", {
   fromUserId: integer("from_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   toUserId: integer("to_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
+  replyToId: integer("reply_to_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   readAt: timestamp("read_at", { withTimezone: true }),
 });
