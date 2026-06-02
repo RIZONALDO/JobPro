@@ -1640,6 +1640,7 @@ async function editorScore(editorId: number, excludeTaskId?: number, fromDate?: 
     ne(tasksTable.status, "cancelled"),
     ne(tasksTable.status, "paused"),
     ne(tasksTable.status, "rascunho"),
+    ne(tasksTable.status, "review"),
     ne(tasksTable.taskType, "multi_task"),
   ];
   if (excludeTaskId) conds.push(ne(tasksTable.id, excludeTaskId));
@@ -1681,6 +1682,7 @@ router.get("/workload", requireCoordinator, async (req, res): Promise<void> => {
       ne(tasksTable.status, "cancelled"),
       ne(tasksTable.status, "paused"),
       ne(tasksTable.status, "rascunho"),
+      ne(tasksTable.status, "review"),
       ne(tasksTable.taskType, "multi_task"),
       isNotNull(tasksTable.assignedToId),
     ));
@@ -1766,6 +1768,7 @@ router.get("/workload/calendar", requireCoordinator, async (req, res): Promise<v
       ne(tasksTable.status, "cancelled"),
       ne(tasksTable.status, "paused"),
       ne(tasksTable.status, "rascunho"),
+      ne(tasksTable.status, "review"),
       ne(tasksTable.taskType, "multi_task"),
     ));
 
@@ -1818,6 +1821,7 @@ router.get("/workload/period-check", requireCoordinator, async (req, res): Promi
     ne(tasksTable.status, "cancelled"),
     ne(tasksTable.status, "paused"),
     ne(tasksTable.status, "rascunho"),
+    ne(tasksTable.status, "review"),
     ne(tasksTable.taskType, "multi_task"),
   ];
   if (excludeTaskId) conds.push(ne(tasksTable.id, excludeTaskId));
