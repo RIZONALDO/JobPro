@@ -1010,12 +1010,24 @@ export default function TasksOverview() {
                           })()
                         ) : (() => {
                           const closed = fmtClosedCycle(t.status, t.dueDate, t.updatedAt, t.reviewedAt);
-                          if (closed) return (
-                            <span className="text-xs font-normal shrink-0 flex items-baseline gap-1">
-                              <span className={closed.cls}>{closed.line1}</span>
-                              {closed.line2 && <span className={`${closed.cls2}`} style={{ fontSize: "9px" }}>{closed.line2}</span>}
-                            </span>
-                          );
+                          if (closed) {
+                            const badgeCls: Record<string, string> = {
+                              success:   "bg-emerald-50 border-emerald-200/80 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-800/50 dark:text-emerald-400",
+                              late:      "bg-amber-50 border-amber-200/80 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800/50 dark:text-amber-400",
+                              cancelled: "bg-[hsl(var(--muted))]/40 border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]/60",
+                              neutral:   "bg-[hsl(var(--muted))]/40 border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]/60",
+                            };
+                            return (
+                              <span className="flex flex-col gap-1 shrink-0">
+                                <span className="text-xs text-[hsl(var(--muted-foreground))]/60 tabular-nums leading-tight">{closed.date}</span>
+                                {closed.badge && (
+                                  <span className={`inline-flex w-fit items-center px-1.5 py-0.5 rounded-md border text-[10px] font-medium leading-none ${badgeCls[closed.variant]}`}>
+                                    {closed.badge}
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          }
                           if (!t.dueDate) return null;
                           const { label } = fmtPrazoWeek(t.dueDate);
                           return (

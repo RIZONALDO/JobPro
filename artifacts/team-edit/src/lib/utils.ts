@@ -85,20 +85,17 @@ export function fmtClosedCycle(
   dueDate: string | null,
   updatedAt: string,
   _reviewedAt?: string | null,
-): { line1: string; line2: string | null; cls: string; cls2: string } | null {
+): { date: string; badge: string | null; variant: "success" | "late" | "cancelled" | "neutral" } | null {
   if (status !== "completed" && status !== "cancelled") return null;
 
-  const closedLabel = fmtDate(updatedAt) ?? "";
-  const mutedCls = "text-[hsl(var(--muted-foreground))]/50";
+  const date = fmtDate(updatedAt) ?? "";
 
   if (status === "cancelled") {
-    return { line1: `Cancelada ${closedLabel}`, line2: null, cls: mutedCls, cls2: mutedCls };
+    return { date, badge: "Cancelada", variant: "cancelled" };
   }
 
-  const line1 = `Aprovado ${closedLabel}`;
-
   if (!dueDate) {
-    return { line1, line2: null, cls: mutedCls, cls2: mutedCls };
+    return { date, badge: null, variant: "neutral" };
   }
 
   // Normaliza ambos para meia-noite para evitar bug de arredondamento com horários
@@ -106,14 +103,10 @@ export function fmtClosedCycle(
   const approvalDay = new Date(a.getFullYear(), a.getMonth(), a.getDate());
   const d = new Date(dueDate.includes("T") ? dueDate : dueDate + "T00:00");
   const dueDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-
   const lateDays = Math.round((approvalDay.getTime() - dueDay.getTime()) / 86_400_000);
 
-  if (lateDays <= 0) {
-    return { line1, line2: "no prazo", cls: mutedCls, cls2: "text-emerald-600/70" };
-  }
-
-  return { line1, line2: `${lateDays}d após o prazo`, cls: mutedCls, cls2: "text-amber-500/80" };
+  if (lateDays <= 0) return { date, badge: "no prazo", variant: "success" };
+  return { date, badge: `${lateDays}d após o prazo`, variant: "late" };
 }
 
 export function fmtDateHuman(date: string | null | undefined): string | null {
