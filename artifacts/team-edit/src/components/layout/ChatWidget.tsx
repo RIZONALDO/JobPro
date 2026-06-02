@@ -283,13 +283,13 @@ function MsgMenu({ mine, onReply, onReact, onDelete }: {
     <div ref={menuRef} className="relative">
       <button
         onClick={() => setOpen(v => !v)}
-        className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-5 w-5 rounded-full bg-[hsl(var(--muted-foreground))]/15 hover:bg-[hsl(var(--muted-foreground))]/25 text-[hsl(var(--muted-foreground))] transition-all"
+        className="opacity-0 group-hover:opacity-100 absolute top-1 right-1 flex items-center justify-center h-5 w-5 rounded-full bg-black/10 hover:bg-black/20 text-white transition-all"
       >
         <ChevronDown className="h-3 w-3" />
       </button>
 
       {open && (
-        <div className="absolute bottom-full mb-1 right-0 w-40 rounded-xl border bg-[hsl(var(--card))] shadow-xl z-[500] overflow-hidden">
+        <div className="absolute top-6 right-1 w-40 rounded-xl border bg-[hsl(var(--card))] shadow-xl z-[500] overflow-hidden">
           <button onClick={() => { onReply(); setOpen(false); }}
             className="flex items-center gap-2 w-full px-3 py-2.5 text-sm hover:bg-[hsl(var(--muted))] transition-colors text-left">
             <Reply className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" /> Responder
@@ -1152,10 +1152,8 @@ export function ChatWidget() {
                                   {!mine && <p className="text-[12px] font-semibold opacity-60">{msg.userName}</p>}
                                   {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.userName ?? null} />}
                                   <div className={cn("whitespace-pre-wrap leading-tight", emojiOnlySize(msg.content))}>{msg.content}</div>
-                                  <div className="flex items-center gap-1">
-                                    <p className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</p>
-                                    <MsgMenu mine={mine} onReply={() => setChatReplyTo(msg)} onReact={e => reactMsg(msg.id, e)} onDelete={() => deleteMsg(msg.id)} />
-                                  </div>
+                                  <p className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</p>
+                                  <MsgMenu mine={mine} onReply={() => setChatReplyTo(msg)} onReact={e => reactMsg(msg.id, e)} onDelete={() => deleteMsg(msg.id)} />
                                 </div>
                               ) : (
                                 <div className="relative rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
@@ -1167,10 +1165,8 @@ export function ChatWidget() {
                                   {!mine && <p className="text-[12px] font-semibold mb-0.5 opacity-60">{msg.userName}</p>}
                                   {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.userName ?? null} />}
                                   <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
-                                  <div className="flex items-center justify-end gap-1 mt-1">
-                                    <p className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</p>
-                                    <MsgMenu mine={mine} onReply={() => setChatReplyTo(msg)} onReact={e => reactMsg(msg.id, e)} onDelete={() => deleteMsg(msg.id)} />
-                                  </div>
+                                  <p className="text-[11px] mt-1 opacity-40 text-right">{fmtTime(msg.createdAt)}</p>
+                                  <MsgMenu mine={mine} onReply={() => setChatReplyTo(msg)} onReact={e => reactMsg(msg.id, e)} onDelete={() => deleteMsg(msg.id)} />
                                 </div>
                               )}
                               <ReactionBar reactions={msg.reactions ?? []} onReact={e => reactMsg(msg.id, e)} />
@@ -1261,17 +1257,17 @@ export function ChatWidget() {
                               {!mine && <Avatar name={msg.fromName} url={msg.fromAvatar} size="xs" />}
                               <div className={cn("flex flex-col max-w-[78%]", mine && "items-end")}>
                                 {isEmojiOnly(msg.content) ? (
-                                  <div className="flex flex-col gap-0.5">
+                                  <div className="relative flex flex-col gap-0.5">
                                     {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.fromName ?? null} />}
                                     <div className={cn("whitespace-pre-wrap leading-tight", emojiOnlySize(msg.content))}>{msg.content}</div>
                                     <div className="flex items-center gap-1">
                                       <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
                                       {mine && (msg.readAt ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-400" /> : <Check className="h-3.5 w-3.5 shrink-0 opacity-40" />)}
-                                      <MsgMenu mine={mine} onReply={() => setDmReplyTo(msg)} onReact={e => reactDm(msg.id, e, activeView as number)} onDelete={() => deleteDm(msg.id, activeView as number)} />
                                     </div>
+                                    <MsgMenu mine={mine} onReply={() => setDmReplyTo(msg)} onReact={e => reactDm(msg.id, e, activeView as number)} onDelete={() => deleteDm(msg.id, activeView as number)} />
                                   </div>
                                 ) : (
-                                  <div className="rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
+                                  <div className="relative rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
                                     style={mine
                                       ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
                                       : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
@@ -1282,8 +1278,8 @@ export function ChatWidget() {
                                     <div className="flex items-center justify-end gap-1 mt-1">
                                       <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
                                       {mine && (msg.readAt ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-400" /> : <Check className="h-3.5 w-3.5 shrink-0 opacity-40" />)}
-                                      <MsgMenu mine={mine} onReply={() => setDmReplyTo(msg)} onReact={e => reactDm(msg.id, e, activeView as number)} onDelete={() => deleteDm(msg.id, activeView as number)} />
                                     </div>
+                                    <MsgMenu mine={mine} onReply={() => setDmReplyTo(msg)} onReact={e => reactDm(msg.id, e, activeView as number)} onDelete={() => deleteDm(msg.id, activeView as number)} />
                                   </div>
                                 )}
                                 <ReactionBar reactions={msg.reactions ?? []} onReact={e => reactDm(msg.id, e, activeView as number)} />
