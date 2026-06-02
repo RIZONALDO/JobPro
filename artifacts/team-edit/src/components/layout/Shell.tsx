@@ -365,19 +365,19 @@ export function Shell({ children }: { children: React.ReactNode }) {
           {collapsed ? (
             <button
               onClick={() => setCollapsed(false)}
-              className="h-7 w-7 rounded-lg bg-[hsl(var(--primary))]/10 flex items-center justify-center shrink-0 hover:bg-[hsl(var(--primary))]/20 transition-colors"
+              className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
               title="Expandir menu"
             >
-              <Menu style={{ height: 16, width: 16 }} className="text-[hsl(var(--primary))]" />
+              <Menu style={{ height: 16, width: 16 }} />
             </button>
           ) : (
             <div className="min-w-0 flex-1 flex items-center gap-2.5">
               <button
                 onClick={() => setCollapsed(true)}
-                className="h-7 w-7 rounded-lg bg-[hsl(var(--primary))]/10 flex items-center justify-center shrink-0 hover:bg-[hsl(var(--primary))]/20 transition-colors"
+                className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
                 title="Recolher menu"
               >
-                <Menu style={{ height: 16, width: 16 }} className="text-[hsl(var(--primary))]" />
+                <Menu style={{ height: 16, width: 16 }} />
               </button>
               <div className="min-w-0 flex-1">
                 {settings.logo_url
