@@ -13,9 +13,9 @@ export function PrazoCell({ dueDate, status, updatedAt, overdue, reviewedAt, cla
   const closed = fmtClosedCycle(status, dueDate, updatedAt, reviewedAt);
   if (closed) return (
     <div className={cn("flex flex-col gap-0.5", className)}>
-      <span className={`text-xs font-semibold leading-tight ${closed.cls}`}>{closed.line1}</span>
+      <span className={`text-xs font-normal leading-tight ${closed.cls}`}>{closed.line1}</span>
       {closed.line2 && (
-        <span className={`leading-tight ${closed.cls} opacity-70`} style={{ fontSize: "9px" }}>{closed.line2}</span>
+        <span className={`leading-tight ${closed.cls2}`} style={{ fontSize: "9px" }}>{closed.line2}</span>
       )}
     </div>
   );

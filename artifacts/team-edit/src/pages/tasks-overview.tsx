@@ -1011,8 +1011,9 @@ export default function TasksOverview() {
                         ) : (() => {
                           const closed = fmtClosedCycle(t.status, t.dueDate, t.updatedAt, t.reviewedAt);
                           if (closed) return (
-                            <span className={`text-xs font-semibold shrink-0 ${closed.cls}`}>
-                              {closed.line1}{closed.line2 ? ` · ${closed.line2}` : ""}
+                            <span className="text-xs font-normal shrink-0 flex items-baseline gap-1">
+                              <span className={closed.cls}>{closed.line1}</span>
+                              {closed.line2 && <span className={`${closed.cls2}`} style={{ fontSize: "9px" }}>{closed.line2}</span>}
                             </span>
                           );
                           if (!t.dueDate) return null;
