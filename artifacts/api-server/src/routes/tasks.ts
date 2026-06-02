@@ -340,6 +340,18 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
   // Get subtask progress for multi_tasks
   const progressMap = await getSubtaskProgressMap(multiTaskIds);
 
+  // reviewedAt: quando a tarefa foi enviada para review pela última vez
+  const overviewReviewEvents = taskIds.length
+    ? await db.select({ taskId: taskEventsTable.taskId, createdAt: taskEventsTable.createdAt })
+        .from(taskEventsTable)
+        .where(and(inArray(taskEventsTable.taskId, taskIds), eq(taskEventsTable.toStatus, "review")))
+        .orderBy(desc(taskEventsTable.createdAt))
+    : [];
+  const overviewReviewedAtMap = new Map<number, Date>();
+  for (const e of overviewReviewEvents) {
+    if (!overviewReviewedAtMap.has(e.taskId)) overviewReviewedAtMap.set(e.taskId, e.createdAt);
+  }
+
   // Fetch editors from subtasks for multi_task parents (item 8)
   const subtaskEditorRows = multiTaskIds.length
     ? await db
@@ -394,6 +406,7 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     coordinator: r.createdById ? (personMap.get(r.createdById) ?? null) : null,
     isOwn: r.createdById === userId,
     updatedAt: r.updatedAt,
+    reviewedAt: overviewReviewedAtMap.get(r.id)?.toISOString() ?? null,
     subtaskProgress: r.taskType === "multi_task" ? (progressMap.get(r.id) ?? { total: 0, completed: 0, inProgress: 0, pending: 0 }) : null,
   })));
 });

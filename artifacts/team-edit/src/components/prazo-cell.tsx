@@ -10,7 +10,7 @@ interface Props {
 }
 
 export function PrazoCell({ dueDate, status, updatedAt, overdue, reviewedAt, className }: Props) {
-  const closed = fmtClosedCycle(status, dueDate, updatedAt);
+  const closed = fmtClosedCycle(status, dueDate, updatedAt, reviewedAt);
   if (closed) return (
     <div className={cn("flex flex-col gap-0.5", className)}>
       <span className={`text-xs font-semibold leading-tight ${closed.cls}`}>{closed.line1}</span>
