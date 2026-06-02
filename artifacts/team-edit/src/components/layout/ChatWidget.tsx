@@ -360,34 +360,33 @@ function ReplyBar({ replyTo, authorName, onCancel }: { replyTo: { content: strin
 
 // ── Quoted reply context ──────────────────────────────────────────
 // quoteIsFromMe = a mensagem CITADA foi enviada por mim
-// A cor do bloco = cor do balão original de quem enviou a msg citada
+// Usa cores OPACAS para que o bloco seja visível em qualquer balão
 function QuotedReply({ replyTo, authorName, mine: _mine = false, quoteIsFromMe = false }: {
   replyTo: { content: string }; authorName: string | null; mine?: boolean; quoteIsFromMe?: boolean;
 }) {
-  // quoteIsFromMe=true  → balão original era primary (meu) → usa tom primary
-  // quoteIsFromMe=false → balão original era muted (amigo) → usa tom muted
+  if (quoteIsFromMe) {
+    // Citando MINHA mensagem → fundo primary (igual ao meu balão, levemente mais escuro)
+    return (
+      <div className="flex items-stretch gap-0 mb-1.5 rounded-md overflow-hidden"
+        style={{ backgroundColor: "hsl(var(--primary) / 0.65)" }}>
+        <div className="w-[3px] shrink-0" style={{ backgroundColor: "hsl(var(--primary-foreground) / 0.7)" }} />
+        <div className="min-w-0 px-2 py-1">
+          <p className="text-[10px] font-semibold leading-none mb-0.5 truncate text-[hsl(var(--primary-foreground))]">
+            {authorName ?? "?"}
+          </p>
+          <p className="text-[11px] leading-tight line-clamp-1 text-[hsl(var(--primary-foreground))]/70">
+            {replyTo.content}
+          </p>
+        </div>
+      </div>
+    );
+  }
+  // Citando mensagem do AMIGO → fundo muted (igual ao balão dele)
   return (
-    <div
-      className="flex items-stretch gap-0 mb-1.5 rounded-md overflow-hidden"
-      style={{
-        backgroundColor: quoteIsFromMe
-          ? "hsl(var(--primary) / 0.18)"
-          : "hsl(var(--muted-foreground) / 0.12)",
-      }}
-    >
-      <div
-        className="w-[3px] shrink-0"
-        style={{
-          backgroundColor: quoteIsFromMe
-            ? "hsl(var(--primary))"
-            : "hsl(var(--muted-foreground) / 0.5)",
-        }}
-      />
+    <div className="flex items-stretch gap-0 mb-1.5 rounded-md overflow-hidden bg-[hsl(var(--muted))]">
+      <div className="w-[3px] shrink-0 bg-[hsl(var(--muted-foreground))]/50" />
       <div className="min-w-0 px-2 py-1">
-        <p
-          className="text-[10px] font-semibold leading-none mb-0.5 truncate"
-          style={{ color: quoteIsFromMe ? "hsl(var(--primary))" : "hsl(var(--foreground) / 0.65)" }}
-        >
+        <p className="text-[10px] font-semibold leading-none mb-0.5 truncate text-[hsl(var(--foreground))]/70">
           {authorName ?? "?"}
         </p>
         <p className="text-[11px] leading-tight line-clamp-1 text-[hsl(var(--foreground))]/55">
