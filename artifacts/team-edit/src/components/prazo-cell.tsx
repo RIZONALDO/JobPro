@@ -55,7 +55,7 @@ export function PrazoCell({ dueDate, status, updatedAt, overdue, reviewedAt, cla
     <div className={cn("flex flex-col gap-0.5", className)}>
       <span className={`text-xs ${lineWeight} leading-tight ${lineColor}`}>{label}</span>
       {inReview && diff < 0 && !editorWasLate
-        ? <span className="leading-tight text-amber-500" style={{ fontSize: "9px" }}>Em aprovação</span>
+        ? <span className="inline-flex w-fit items-center px-1.5 py-0.5 rounded-md border text-[10px] font-medium leading-none bg-amber-50 border-amber-200/80 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800/50 dark:text-amber-400">Em aprovação</span>
         : days && <span className={`leading-tight ${daysCls}`} style={{ fontSize: "9px" }}>{days.text}</span>
       }
     </div>
