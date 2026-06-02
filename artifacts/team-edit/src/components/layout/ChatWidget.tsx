@@ -379,17 +379,17 @@ function QuotedReply({ replyTo, authorName, mine: _mine = false, quoteIsFromMe =
 
   if (quoteIsFromMe) {
     return (
-      <div className="flex items-stretch gap-0 mb-1 rounded overflow-hidden"
+      <div className="flex items-stretch gap-0 mb-1 rounded-xl overflow-hidden"
         style={{ backgroundColor: "hsl(var(--primary) / 0.55)" }}>
-        <div className="w-[2px] shrink-0" style={{ backgroundColor: "hsl(var(--primary-foreground) / 0.6)" }} />
+        <div className="w-[3.5px] shrink-0 rounded-l-xl" style={{ backgroundColor: "hsl(var(--primary-foreground) / 0.85)" }} />
         {inner}
       </div>
     );
   }
   return (
-    <div className="flex items-stretch gap-0 mb-1 rounded overflow-hidden"
+    <div className="flex items-stretch gap-0 mb-1 rounded-xl overflow-hidden"
       style={{ backgroundColor: "hsl(var(--muted))" }}>
-      <div className="w-[2px] shrink-0 bg-[hsl(var(--muted-foreground))]/40" />
+      <div className="w-[3.5px] shrink-0 rounded-l-xl bg-[hsl(var(--muted-foreground))]/70" />
       {inner}
     </div>
   );
