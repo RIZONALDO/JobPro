@@ -228,9 +228,9 @@ function isEmojiOnly(text: string): boolean {
 }
 function emojiOnlySize(text: string): string {
   const count = [...text.matchAll(/\p{Extended_Pictographic}/gu)].length;
-  if (count <= 3) return "text-5xl";
-  if (count <= 6) return "text-4xl";
-  return "text-3xl";
+  if (count <= 3) return "text-4xl";
+  if (count <= 6) return "text-3xl";
+  return "text-2xl";
 }
 
 // ── Task link renderer ───────────────────────────────────────────
