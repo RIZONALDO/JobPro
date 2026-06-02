@@ -300,11 +300,12 @@ function MsgMenu({ mine, onReply, onReact, onDelete }: {
       </button>
 
       {open && createPortal(
-        <div ref={menuPortalRef} style={{ position: "fixed", top: menuPos.top, left: menuPos.left, zIndex: 9999, width: 160 }}
-          className="rounded-xl border bg-[hsl(var(--card))] shadow-xl overflow-hidden">
+        <div ref={menuPortalRef} data-msg-menu="true"
+          style={{ position: "fixed", top: menuPos.top, left: menuPos.left, zIndex: 9999, width: 140 }}
+          className="rounded-lg border bg-[hsl(var(--card))] shadow-lg overflow-hidden">
           <button onClick={() => { onReply(); setOpen(false); }}
-            className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-[hsl(var(--muted))] transition-colors text-left">
-            <Reply className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" /> Responder
+            className="flex items-center gap-2 w-full px-2.5 py-1.5 text-xs hover:bg-[hsl(var(--muted))] transition-colors text-left">
+            <Reply className="h-3 w-3 shrink-0 text-[hsl(var(--muted-foreground))]" /> Responder
           </button>
           <button
             onClick={() => {
@@ -315,14 +316,14 @@ function MsgMenu({ mine, onReply, onReact, onDelete }: {
               setPickerOpen(v => !v);
               setOpen(false);
             }}
-            className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-[hsl(var(--muted))] transition-colors text-left">
-            <SmilePlus className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" /> Reagir
+            className="flex items-center gap-2 w-full px-2.5 py-1.5 text-xs hover:bg-[hsl(var(--muted))] transition-colors text-left">
+            <SmilePlus className="h-3 w-3 shrink-0 text-[hsl(var(--muted-foreground))]" /> Reagir
           </button>
           {mine && <>
             <div className="h-px bg-[hsl(var(--border))]" />
             <button onClick={() => { onDelete(); setOpen(false); }}
-              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-left">
-              <Trash2 className="h-3.5 w-3.5 shrink-0" /> Apagar
+              className="flex items-center gap-2 w-full px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-left">
+              <Trash2 className="h-3 w-3 shrink-0" /> Apagar
             </button>
           </>}
         </div>,
@@ -509,7 +510,8 @@ export function ChatWidget() {
   useEffect(() => {
     if (!chatOpen) return;
     const handler = (e: MouseEvent) => {
-      if ((e.target as HTMLElement).closest("[data-emoji-picker]")) return;
+      const t = e.target as HTMLElement;
+      if (t.closest("[data-emoji-picker]") || t.closest("[data-msg-menu]")) return;
       if (
         panelRef.current && !panelRef.current.contains(e.target as Node) &&
         fabRef.current && !fabRef.current.contains(e.target as Node)
