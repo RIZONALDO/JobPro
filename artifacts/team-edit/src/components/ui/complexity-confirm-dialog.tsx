@@ -52,13 +52,13 @@ export function ComplexityConfirmDialog({ open, task, onSave, onCancel, saving }
           {/* Tarefa */}
           <div className="rounded-lg border bg-[hsl(var(--muted))]/30 px-3 py-2">
             <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">Tarefa</p>
-            <div className="flex items-baseline gap-2 min-w-0">
+            <div className="flex items-start gap-2 min-w-0">
               {task.taskCode && (
-                <span className="shrink-0 font-mono text-xs font-semibold text-[hsl(var(--primary))]/70">
+                <span className="shrink-0 font-mono text-xs font-semibold text-[hsl(var(--primary))]/70 mt-0.5">
                   {task.taskCode}
                 </span>
               )}
-              <span className="text-sm font-medium truncate">{task.title}</span>
+              <span className="text-sm font-medium leading-snug break-words min-w-0">{task.title}</span>
             </div>
           </div>
 
