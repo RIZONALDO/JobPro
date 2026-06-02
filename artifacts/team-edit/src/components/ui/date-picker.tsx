@@ -70,53 +70,6 @@ function localTzOffset(): string {
   return `${sign}${String(Math.floor(abs/60)).padStart(2,"0")}:${String(abs%60).padStart(2,"0")}`;
 }
 
-// ── Mask helpers ─────────────────────────────────────────────────────────────
-
-function applyMask(raw: string, withTime?: boolean): string {
-  const digits = raw.replace(/\D/g, "").slice(0, withTime ? 12 : 8);
-  let r = "";
-  // DD
-  if (digits.length >= 1) r += digits[0];
-  if (digits.length >= 2) r += digits[1];
-  if (digits.length >= 2) r += "/";
-  // MM
-  if (digits.length >= 3) r += digits[2];
-  if (digits.length >= 4) r += digits[3];
-  if (digits.length >= 4) r += "/";
-  // YYYY
-  for (let i = 4; i < Math.min(8, digits.length); i++) r += digits[i];
-  if (withTime && digits.length >= 8) {
-    r += " ";
-    if (digits.length >= 9)  r += digits[8];
-    if (digits.length >= 10) r += digits[9];
-    if (digits.length >= 10) r += ":";
-    if (digits.length >= 11) r += digits[10];
-    if (digits.length >= 12) r += digits[11];
-  }
-  return r;
-}
-
-function parseFromMask(masked: string, withTime?: boolean, minDate?: string): string | null {
-  const digits = masked.replace(/\D/g, "");
-  if (digits.length < 8) return null;
-  const dd   = digits.slice(0, 2);
-  const mm   = digits.slice(2, 4);
-  const yyyy = digits.slice(4, 8);
-  const day  = parseInt(dd), month = parseInt(mm), year = parseInt(yyyy);
-  if (day < 1 || day > 31 || month < 1 || month > 12 || year < 2020 || year > 2099) return null;
-  const check = new Date(year, month - 1, day);
-  if (check.getDate() !== day || check.getMonth() !== month - 1) return null;
-  const dateStr = `${yyyy}-${mm}-${dd}`;
-  if (minDate && dateStr < minDate) return null;
-  if (withTime) {
-    if (digits.length < 12) return null;
-    const hh  = digits.slice(8, 10);
-    const min = digits.slice(10, 12);
-    if (parseInt(hh) > 23 || parseInt(min) > 59) return null;
-    return `${dateStr}T${hh}:${min}:00${localTzOffset()}`;
-  }
-  return dateStr;
-}
 
 // ── Animated time drum ───────────────────────────────────────────────────────
 
@@ -223,23 +176,8 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
     setOpen(v);
   }
 
-  // ── Mask input handlers ──
-  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const masked = applyMask(e.target.value, withTime);
-    setInputVal(masked);
-    const digits = masked.replace(/\D/g, "");
-    const needed = withTime ? 12 : 8;
-    if (digits.length === needed) {
-      const parsed = parseFromMask(masked, withTime, minDate);
-      if (parsed) onChange(parsed);
-    } else if (value) {
-      onChange(""); // limpa o valor enquanto edita
-    }
-  }
-
   function handleInputClick() {
     if (!value) openPopover();
-    // se tem valor, deixa editar no próprio input
   }
 
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -254,8 +192,6 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
     setSelH(8);
     setSelMin(0);
   }
-
-  const maskPlaceholder = withTime ? "DD/MM/AAAA HH:MM" : "DD/MM/AAAA";
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -277,17 +213,16 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
           </button>
         </PopoverTrigger>
 
-        {/* Input com máscara */}
+        {/* Input — clique abre popover se vazio, editável se preenchido */}
         <input
           ref={inputRef}
           type="text"
-          inputMode="numeric"
+          readOnly={!value}
           value={inputVal}
-          placeholder={placeholder ?? maskPlaceholder}
-          onChange={handleInputChange}
+          placeholder={withTime ? "__/__/____ __:__" : "__/__/____"}
           onClick={handleInputClick}
           onKeyDown={handleInputKeyDown}
-          className="flex-1 min-w-0 text-sm bg-transparent outline-none placeholder:text-[hsl(var(--muted-foreground))]"
+          className="flex-1 min-w-0 text-sm bg-transparent outline-none placeholder:text-[hsl(var(--muted-foreground))]/50 cursor-default"
         />
 
         {/* Limpar */}
