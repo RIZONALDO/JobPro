@@ -340,12 +340,12 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
   // Get subtask progress for multi_tasks
   const progressMap = await getSubtaskProgressMap(multiTaskIds);
 
-  // reviewedAt: quando a tarefa foi enviada para review pela última vez
+  // reviewedAt: quando a tarefa foi enviada para review pela PRIMEIRA vez
   const overviewReviewEvents = taskIds.length
     ? await db.select({ taskId: taskEventsTable.taskId, createdAt: taskEventsTable.createdAt })
         .from(taskEventsTable)
         .where(and(inArray(taskEventsTable.taskId, taskIds), eq(taskEventsTable.toStatus, "review")))
-        .orderBy(desc(taskEventsTable.createdAt))
+        .orderBy(asc(taskEventsTable.createdAt))
     : [];
   const overviewReviewedAtMap = new Map<number, Date>();
   for (const e of overviewReviewEvents) {
@@ -1479,12 +1479,13 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
   const multiTaskIds = tasks.filter(t => t.taskType === "multi_task").map(t => t.id);
   const progressMap = await getSubtaskProgressMap(multiTaskIds);
 
-  // reviewedAt: quando a tarefa foi enviada para review pela última vez
+  // reviewedAt: quando a tarefa foi enviada para review pela PRIMEIRA vez
+  // (usado para determinar se o editor entregou no prazo originalmente)
   const reviewEvents = taskIds.length
     ? await db.select({ taskId: taskEventsTable.taskId, createdAt: taskEventsTable.createdAt })
         .from(taskEventsTable)
         .where(and(inArray(taskEventsTable.taskId, taskIds), eq(taskEventsTable.toStatus, "review")))
-        .orderBy(desc(taskEventsTable.createdAt))
+        .orderBy(asc(taskEventsTable.createdAt))
     : [];
   const reviewedAtMap = new Map<number, Date>();
   for (const e of reviewEvents) {
