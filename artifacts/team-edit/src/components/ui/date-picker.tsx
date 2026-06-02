@@ -22,12 +22,30 @@ const WEEK   = ["D","S","T","Q","Q","S","S"];
 function toStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
+
+// Converte qualquer ISO (UTC, com offset, ou sem tz) para Date local
+function parseToLocal(v: string): Date | null {
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Exibe no fuso local independente do formato recebido
 function display(v: string, withTime?: boolean): string {
   if (!v) return "";
-  const [dp, tp] = v.split("T");
-  const [y,m,d] = dp.split("-");
-  return withTime && tp ? `${d}/${m}/${y} ${tp.slice(0,5)}` : `${d}/${m}/${y}`;
+  const d = parseToLocal(v);
+  if (!d) return "";
+  const dd   = String(d.getDate()).padStart(2,"0");
+  const mm   = String(d.getMonth()+1).padStart(2,"0");
+  const yyyy = d.getFullYear();
+  if (withTime) {
+    const hh  = String(d.getHours()).padStart(2,"0");
+    const min = String(d.getMinutes()).padStart(2,"0");
+    return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+  }
+  return `${dd}/${mm}/${yyyy}`;
 }
+
 function calDays(year: number, month: number): (Date | null)[] {
   const first = new Date(year, month, 1).getDay();
   const total = new Date(year, month + 1, 0).getDate();
@@ -35,15 +53,30 @@ function calDays(year: number, month: number): (Date | null)[] {
   for (let i = 1; i <= total; i++) out.push(new Date(year, month, i));
   return out;
 }
-function parseParts(value: string) {
+
+// Extrai partes no fuso local (resolve UTC e offsets)
+function parseParts(value: string): { date: string; time: string } {
   if (!value) return { date: "", time: "08:00" };
-  const [d, t] = value.split("T");
-  return { date: d ?? "", time: t ? t.slice(0,5) : "08:00" };
+  const d = parseToLocal(value);
+  if (!d) return { date: "", time: "08:00" };
+  return {
+    date: toStr(d),
+    time: `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`,
+  };
 }
+
 function labelDate(s: string): string {
   if (!s) return "";
   const [y,m,d] = s.split("-");
   return `${parseInt(d)} de ${MONTHS[parseInt(m)-1]} de ${y}`;
+}
+
+// Offset local em formato "+HH:MM" ou "-HH:MM" para incluir no output
+function localTzOffset(): string {
+  const off  = new Date().getTimezoneOffset();
+  const sign = off <= 0 ? "+" : "-";
+  const abs  = Math.abs(off);
+  return `${sign}${String(Math.floor(abs/60)).padStart(2,"0")}:${String(abs%60).padStart(2,"0")}`;
 }
 
 // ── Animated time drum ───────────────────────────────────────────────────────
@@ -118,8 +151,10 @@ export function DatePicker({ value, onChange, placeholder = "Selecionar data", w
 
   function confirm() {
     if (!selDate) return;
-    const t = `${String(selH).padStart(2,"0")}:${String(selMin).padStart(2,"0")}`;
-    onChange(withTime ? `${selDate}T${t}` : selDate);
+    const hh = String(selH).padStart(2,"0");
+    const mm = String(selMin).padStart(2,"0");
+    // Inclui offset local para o backend armazenar no fuso correto
+    onChange(withTime ? `${selDate}T${hh}:${mm}:00${localTzOffset()}` : selDate);
     setOpen(false);
     setStep("date");
   }
