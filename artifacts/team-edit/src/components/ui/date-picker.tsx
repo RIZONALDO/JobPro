@@ -181,7 +181,7 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
             <span className="flex-1 text-sm text-[hsl(var(--foreground))] truncate">{displayed}</span>
           ) : (
             <span className="flex-1 text-sm text-[hsl(var(--muted-foreground))]/50 tracking-wide font-normal">
-              {placeholder ?? (withTime ? "dd / mm / aaaa  hh:mm" : "dd / mm / aaaa")}
+              {placeholder ?? (withTime ? "DD/MM/AAAA HH:MM" : "DD/MM/AAAA")}
             </span>
           )}
 
