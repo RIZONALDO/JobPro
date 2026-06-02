@@ -442,6 +442,7 @@ export function ChatWidget() {
   const [dmTaskRef, setDmTaskRef] = useState<{ code: string; id: string; title: string } | null>(null);
 
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatScrollReady, setChatScrollReady] = useState(false);
   const [activeView, setActiveView] = useState<"list" | "general" | number>("list");
   const [slideDir, setSlideDir] = useState<1 | -1>(1);
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
@@ -681,16 +682,17 @@ export function ChatWidget() {
     } catch { /* silencioso */ } finally { setChatLoadingMore(false); }
   }, [chatLoadingMore, chatHasMore, messages]);
 
-  // Detecta scroll no topo do chat geral para carregar mais
+  // Detecta scroll no topo — roda após animação confirmar que o DOM está pronto
   useEffect(() => {
+    if (!chatScrollReady || activeView !== "general") return;
     const el = chatScrollRef.current;
-    if (!el || activeView !== "general") return;
+    if (!el) return;
     const onScroll = () => {
       if (el.scrollTop < 80 && chatHasMore && !chatLoadingMore) loadMoreChat();
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, [activeView, chatHasMore, chatLoadingMore, loadMoreChat]);
+  }, [chatScrollReady, activeView, chatHasMore, chatLoadingMore, loadMoreChat]);
 
   // Scroll para o fim ao trocar para general (com retry)
   useEffect(() => {
@@ -1205,6 +1207,8 @@ export function ChatWidget() {
                     animate="center"
                     exit="exit"
                     transition={SLIDE_T}
+                    onAnimationComplete={(def) => { if (def === "center") { scrollChatToBottom(0); setChatScrollReady(true); } }}
+                    onAnimationStart={() => setChatScrollReady(false)}
                     className="absolute inset-0 flex flex-col"
                     style={{ backgroundColor: "hsl(var(--card))" }}
                   >
