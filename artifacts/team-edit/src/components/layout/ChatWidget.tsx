@@ -359,36 +359,38 @@ function ReplyBar({ replyTo, authorName, onCancel }: { replyTo: { content: strin
 }
 
 // ── Quoted reply context ──────────────────────────────────────────
-// mine        = o balão ATUAL é meu
 // quoteIsFromMe = a mensagem CITADA foi enviada por mim
-function QuotedReply({ replyTo, authorName, mine = false, quoteIsFromMe = false }: {
+// A cor do bloco = cor do balão original de quem enviou a msg citada
+function QuotedReply({ replyTo, authorName, mine: _mine = false, quoteIsFromMe = false }: {
   replyTo: { content: string }; authorName: string | null; mine?: boolean; quoteIsFromMe?: boolean;
 }) {
-  // Dentro do MEU balão (primary):
-  //   citando EU mesmo → bar branca + fundo mais opaco
-  //   citando OUTRO   → bar branca 40% + fundo sutil
-  // Dentro do balão do OUTRO (muted):
-  //   citando EU mesmo → bar primary + fundo primary tinted
-  //   citando OUTRO   → bar muted-foreground + fundo muted darker
-  const barCls = mine
-    ? "bg-white/80"
-    : quoteIsFromMe ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted-foreground))]/50";
-  const bgCls = mine
-    ? quoteIsFromMe ? "bg-white/20" : "bg-white/10"
-    : quoteIsFromMe ? "bg-[hsl(var(--primary))]/10" : "bg-black/8 dark:bg-white/8";
-  const nameCls = mine
-    ? "text-white/90"
-    : quoteIsFromMe ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--foreground))]/70";
-  const textCls = mine ? "text-white/60" : "text-[hsl(var(--foreground))]/55";
-
+  // quoteIsFromMe=true  → balão original era primary (meu) → usa tom primary
+  // quoteIsFromMe=false → balão original era muted (amigo) → usa tom muted
   return (
-    <div className={cn("flex items-stretch gap-0 mb-1.5 rounded-md overflow-hidden", bgCls)}>
-      <div className={cn("w-[3px] shrink-0", barCls)} />
+    <div
+      className="flex items-stretch gap-0 mb-1.5 rounded-md overflow-hidden"
+      style={{
+        backgroundColor: quoteIsFromMe
+          ? "hsl(var(--primary) / 0.18)"
+          : "hsl(var(--muted-foreground) / 0.12)",
+      }}
+    >
+      <div
+        className="w-[3px] shrink-0"
+        style={{
+          backgroundColor: quoteIsFromMe
+            ? "hsl(var(--primary))"
+            : "hsl(var(--muted-foreground) / 0.5)",
+        }}
+      />
       <div className="min-w-0 px-2 py-1">
-        <p className={cn("text-[10px] font-semibold leading-none mb-0.5 truncate", nameCls)}>
+        <p
+          className="text-[10px] font-semibold leading-none mb-0.5 truncate"
+          style={{ color: quoteIsFromMe ? "hsl(var(--primary))" : "hsl(var(--foreground) / 0.65)" }}
+        >
           {authorName ?? "?"}
         </p>
-        <p className={cn("text-[11px] leading-tight line-clamp-1", textCls)}>
+        <p className="text-[11px] leading-tight line-clamp-1 text-[hsl(var(--foreground))]/55">
           {replyTo.content}
         </p>
       </div>
