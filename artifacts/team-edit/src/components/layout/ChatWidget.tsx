@@ -169,9 +169,8 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
       <button
         ref={emojiButtonRef}
         type="button"
-        onMouseDown={e => {
-          e.preventDefault();
-          if (!showPicker && emojiButtonRef.current) {
+        onClick={() => {
+          if (emojiButtonRef.current) {
             const r = emojiButtonRef.current.getBoundingClientRect();
             setPickerPos({ bottom: window.innerHeight - r.top + 8, right: window.innerWidth - r.right });
           }
