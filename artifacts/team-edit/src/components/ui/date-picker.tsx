@@ -176,10 +176,6 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
     setOpen(v);
   }
 
-  function handleInputClick() {
-    if (!value) openPopover();
-  }
-
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Escape") inputRef.current?.blur();
   }
@@ -213,16 +209,16 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
           </button>
         </PopoverTrigger>
 
-        {/* Input — clique abre popover se vazio, editável se preenchido */}
+        {/* Input — sempre abre o popover ao clicar */}
         <input
           ref={inputRef}
           type="text"
-          readOnly={!value}
+          readOnly
           value={inputVal}
           placeholder={withTime ? "__/__/____ __:__" : "__/__/____"}
-          onClick={handleInputClick}
+          onClick={openPopover}
           onKeyDown={handleInputKeyDown}
-          className="flex-1 min-w-0 text-sm bg-transparent outline-none placeholder:text-[hsl(var(--muted-foreground))]/50 cursor-default"
+          className="flex-1 min-w-0 text-sm bg-transparent outline-none placeholder:text-[hsl(var(--muted-foreground))]/50 cursor-pointer select-none"
         />
 
         {/* Limpar */}
