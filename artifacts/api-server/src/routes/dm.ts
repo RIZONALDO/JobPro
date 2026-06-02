@@ -42,7 +42,7 @@ router.get("/dm/:userId", requireAuth, async (req, res): Promise<void> => {
   const otherId = parseInt(String(req.params.userId), 10);
   if (isNaN(otherId)) { res.status(400).json({ error: "ID inválido" }); return; }
 
-  const LIMIT = 50;
+  const LIMIT = 10;
   const beforeRaw = Array.isArray(req.query.before) ? req.query.before[0] : req.query.before;
   const beforeId = beforeRaw ? parseInt(String(beforeRaw), 10) : null;
 

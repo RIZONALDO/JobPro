@@ -310,7 +310,7 @@ async function enrichChatMessages(msgs: { id: number; userId: number; content: s
 
 router.get("/chat/messages", requireAuth, async (req, res): Promise<void> => {
   const myId = req.session.userId!;
-  const LIMIT = 50;
+  const LIMIT = 10;
   const beforeRaw = Array.isArray(req.query.before) ? req.query.before[0] : req.query.before;
   const beforeId = beforeRaw ? parseInt(String(beforeRaw), 10) : null;
 
