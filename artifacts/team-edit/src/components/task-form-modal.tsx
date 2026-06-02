@@ -600,9 +600,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       withTime
                     />
                     {isFutureStart && (
-                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]/70 leading-snug">
-                        Carga projetada para a data de início
-                      </p>
+                      <p className="text-[10px] text-sky-500 font-medium">Agendamento</p>
                     )}
                   </div>
 
