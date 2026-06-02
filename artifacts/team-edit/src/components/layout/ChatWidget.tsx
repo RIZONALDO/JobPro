@@ -1,6 +1,9 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Send, MessageCircle, X, ExternalLink, Check, CheckCheck, ChevronLeft } from "lucide-react";
+import { Send, MessageCircle, X, ExternalLink, Check, CheckCheck, ChevronLeft, SmilePlus } from "lucide-react";
+import Picker from "@emoji-mart/react";
+import data from "@emoji-mart/data";
+import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
 import { apiFetch, apiPost } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -77,10 +80,13 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
   users: MentionUser[]; placeholder?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
   const [showDrop, setShowDrop] = useState(false);
   const [query, setQuery] = useState("");
   const [atIndex, setAtIndex] = useState(-1);
   const [selIdx, setSelIdx] = useState(0);
+  const [showPicker, setShowPicker] = useState(false);
+  const { theme } = useTheme();
 
   const filtered = users.filter(u => !query || u.name.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
 
@@ -89,6 +95,29 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
     ref.current.style.height = "auto";
     ref.current.style.height = `${Math.min(ref.current.scrollHeight, 96)}px`;
   }, [value]);
+
+  useEffect(() => {
+    if (!showPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setShowPicker(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showPicker]);
+
+  const insertEmoji = (emoji: { native: string }) => {
+    const ta = ref.current;
+    if (!ta) { onChange(value + emoji.native); setShowPicker(false); return; }
+    const start = ta.selectionStart ?? value.length;
+    const end   = ta.selectionEnd   ?? value.length;
+    onChange(value.slice(0, start) + emoji.native + value.slice(end));
+    setShowPicker(false);
+    setTimeout(() => {
+      ta.focus();
+      const pos = start + emoji.native.length;
+      ta.setSelectionRange(pos, pos);
+    }, 0);
+  };
 
   const checkAt = (val: string, cursor: number) => {
     const before = val.slice(0, cursor);
@@ -123,7 +152,7 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
   };
 
   return (
-    <div className="relative flex-1 min-w-0">
+    <div className="relative flex-1 min-w-0 flex items-end gap-1">
       <Textarea
         ref={ref}
         value={value}
@@ -132,8 +161,30 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
         onBlur={() => setTimeout(() => setShowDrop(false), 150)}
         placeholder={placeholder}
         rows={1}
-        className="resize-none overflow-hidden border-none shadow-none focus-visible:ring-0 bg-transparent p-0 text-[15px] placeholder:text-[hsl(var(--muted-foreground))] w-full leading-relaxed"
+        className="resize-none overflow-hidden border-none shadow-none focus-visible:ring-0 bg-transparent p-0 text-[15px] placeholder:text-[hsl(var(--muted-foreground))] flex-1 leading-relaxed"
       />
+      <button
+        type="button"
+        onMouseDown={e => { e.preventDefault(); setShowPicker(v => !v); }}
+        className="shrink-0 h-7 w-7 flex items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted-foreground))]/10 transition-colors"
+        title="Emoji"
+      >
+        <SmilePlus className="h-4 w-4" />
+      </button>
+      {showPicker && (
+        <div ref={pickerRef} className="absolute bottom-[calc(100%+8px)] right-0 z-[400]">
+          <Picker
+            data={data}
+            onEmojiSelect={insertEmoji}
+            locale="pt"
+            theme={theme}
+            previewPosition="none"
+            skinTonePosition="none"
+            maxFrequentRows={2}
+            perLine={8}
+          />
+        </div>
+      )}
       {showDrop && filtered.length > 0 && (
         <div className="absolute bottom-[calc(100%+8px)] left-0 w-52 rounded-2xl border bg-[hsl(var(--card))] shadow-xl z-[300] overflow-hidden">
           <div className="px-3 py-2 border-b bg-[hsl(var(--muted))]">
