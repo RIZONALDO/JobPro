@@ -84,7 +84,7 @@ export function fmtClosedCycle(
   status: string,
   dueDate: string | null,
   updatedAt: string,
-  reviewedAt?: string | null,
+  _reviewedAt?: string | null,
 ): { line1: string; line2: string | null; cls: string } | null {
   if (status !== "completed" && status !== "cancelled") return null;
 
@@ -94,22 +94,19 @@ export function fmtClosedCycle(
     return { line1: `Cancelada ${closedLabel}`, line2: null, cls: "text-[hsl(var(--muted-foreground))]/60" };
   }
 
-  // Usa reviewedAt como data de entrega quando disponível (editor enviou para review)
-  const deliveryStr = reviewedAt ?? updatedAt;
-  const deliveryLabel = fmtDate(deliveryStr) ?? "";
-  const line1 = `Entregue ${deliveryLabel}`;
+  const line1 = `Aprovado ${closedLabel}`;
 
   if (!dueDate) {
     return { line1, line2: null, cls: "text-emerald-600" };
   }
 
   // Normaliza ambos para meia-noite para evitar bug de arredondamento com horários
-  const d = new Date(deliveryStr.includes("T") ? deliveryStr : deliveryStr + "T00:00");
-  const deliveryDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const dd = new Date(dueDate.includes("T") ? dueDate : dueDate + "T00:00");
-  const dueDay = new Date(dd.getFullYear(), dd.getMonth(), dd.getDate());
+  const a = new Date(updatedAt.includes("T") ? updatedAt : updatedAt + "T00:00");
+  const approvalDay = new Date(a.getFullYear(), a.getMonth(), a.getDate());
+  const d = new Date(dueDate.includes("T") ? dueDate : dueDate + "T00:00");
+  const dueDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
-  const lateDays = Math.round((deliveryDay.getTime() - dueDay.getTime()) / 86_400_000);
+  const lateDays = Math.round((approvalDay.getTime() - dueDay.getTime()) / 86_400_000);
 
   if (lateDays <= 0) {
     return { line1, line2: "no prazo", cls: "text-emerald-600" };
