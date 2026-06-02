@@ -184,6 +184,7 @@ function ChatTextarea({ value, onChange, onSend, users, placeholder }: {
       {showPicker && createPortal(
         <div
           ref={pickerRef}
+          data-emoji-picker="true"
           style={{ position: "fixed", bottom: pickerPos.bottom, right: pickerPos.right, zIndex: 9999 }}
         >
           <Picker
@@ -353,6 +354,7 @@ export function ChatWidget() {
   useEffect(() => {
     if (!chatOpen) return;
     const handler = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest("[data-emoji-picker]")) return;
       if (
         panelRef.current && !panelRef.current.contains(e.target as Node) &&
         fabRef.current && !fabRef.current.contains(e.target as Node)
