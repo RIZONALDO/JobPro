@@ -1466,6 +1466,18 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
   const multiTaskIds = tasks.filter(t => t.taskType === "multi_task").map(t => t.id);
   const progressMap = await getSubtaskProgressMap(multiTaskIds);
 
+  // reviewedAt: quando a tarefa foi enviada para review pela última vez
+  const reviewEvents = taskIds.length
+    ? await db.select({ taskId: taskEventsTable.taskId, createdAt: taskEventsTable.createdAt })
+        .from(taskEventsTable)
+        .where(and(inArray(taskEventsTable.taskId, taskIds), eq(taskEventsTable.toStatus, "review")))
+        .orderBy(desc(taskEventsTable.createdAt))
+    : [];
+  const reviewedAtMap = new Map<number, Date>();
+  for (const e of reviewEvents) {
+    if (!reviewedAtMap.has(e.taskId)) reviewedAtMap.set(e.taskId, e.createdAt);
+  }
+
   const tasksWithDetails = await Promise.all(tasks.map(async (t) => {
     const [createdBy] = t.createdById
       ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, t.createdById))
@@ -1489,6 +1501,7 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
       number: taskNumMap.get(t.id) ?? 0,
       parentTask: t.parentTaskId ? (parentMap.get(t.parentTaskId) ?? null) : null,
       subtaskProgress: t.taskType === "multi_task" ? (progressMap.get(t.id) ?? null) : null,
+      reviewedAt: reviewedAtMap.get(t.id)?.toISOString() ?? null,
     };
   }));
 

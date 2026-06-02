@@ -5,10 +5,11 @@ interface Props {
   status: string;
   updatedAt: string;
   overdue: boolean;
+  reviewedAt?: string | null;
   className?: string;
 }
 
-export function PrazoCell({ dueDate, status, updatedAt, overdue, className }: Props) {
+export function PrazoCell({ dueDate, status, updatedAt, overdue, reviewedAt, className }: Props) {
   const closed = fmtClosedCycle(status, dueDate, updatedAt);
   if (closed) return (
     <div className={cn("flex flex-col gap-0.5", className)}>
@@ -31,6 +32,9 @@ export function PrazoCell({ dueDate, status, updatedAt, overdue, className }: Pr
   const diff  = Math.round((new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime() - today.getTime()) / 86_400_000);
 
   const inReview = status === "review";
+  const editorWasLate = inReview && diff < 0 && reviewedAt
+    ? new Date(reviewedAt) > dt
+    : false;
   const daysCls  = (!inReview && diff < 0) ? "text-red-400" : diff === 0 ? "text-amber-600" : "text-[hsl(var(--muted-foreground))]/55";
 
   const lineColor  = overdue ? "text-red-500" : "text-[hsl(var(--muted-foreground))]";
@@ -39,7 +43,7 @@ export function PrazoCell({ dueDate, status, updatedAt, overdue, className }: Pr
   return (
     <div className={cn("flex flex-col gap-0.5", className)}>
       <span className={`text-xs ${lineWeight} leading-tight ${lineColor}`}>{label}</span>
-      {inReview && diff < 0
+      {inReview && diff < 0 && !editorWasLate
         ? <span className="leading-tight text-amber-500" style={{ fontSize: "9px" }}>Em aprovação</span>
         : days && <span className={`leading-tight ${daysCls}`} style={{ fontSize: "9px" }}>{days.text}</span>
       }

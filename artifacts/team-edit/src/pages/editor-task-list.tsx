@@ -45,6 +45,7 @@ interface Task {
   createdBy: { id: number; name: string; avatarUrl?: string | null } | null;
   revisions: Revision[];
   updatedAt: string;
+  reviewedAt?: string | null;
   editorComplexitySet?: boolean;
   // multi-task
   taskType?: string;
@@ -557,7 +558,7 @@ export default function EditorTaskList() {
                 </div>
               ) : (
                 <div className="hidden lg:flex w-28 shrink-0 items-center pl-6">
-                  <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} />
+                  <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} reviewedAt={t.reviewedAt} />
                 </div>
               )}
 

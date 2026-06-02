@@ -43,6 +43,7 @@ interface Task {
   number?: number;
   client?: string | null;
   color?: string;
+  reviewedAt?: string | null;
   // multi-task
   taskType?: string;
   parentTask?: { id: number; title: string; taskCode?: string } | null;
@@ -331,12 +332,16 @@ export default function MyTasks() {
           })()}
           {t.dueDate && (() => {
             const parts = fmtDateParts(t.dueDate);
-            const inReviewLate = t.status === "review" && isOverdue(t.dueDate);
+            const inReviewPastDue = t.status === "review" && isOverdue(t.dueDate);
+            const dueDt = t.dueDate ? new Date(t.dueDate.includes("T") ? t.dueDate : t.dueDate + "T00:00") : null;
+            const editorWasLate = inReviewPastDue && t.reviewedAt && dueDt
+              ? new Date(t.reviewedAt) > dueDt : false;
+            const inReviewLate = inReviewPastDue && !editorWasLate;
             return parts ? (
               <span style={{
                 display: "flex", alignItems: "center", gap: 2, flexShrink: 0,
-                color: overdue ? "#dc2626" : inReviewLate ? "#f59e0b" : "hsl(var(--muted-foreground))",
-                fontWeight: overdue || inReviewLate ? 600 : 400,
+                color: overdue || editorWasLate ? "#dc2626" : inReviewLate ? "#f59e0b" : "hsl(var(--muted-foreground))",
+                fontWeight: overdue || inReviewLate || editorWasLate ? 600 : 400,
               }}>
                 {overdue && <AlertCircle style={{ width: 8, height: 8, flexShrink: 0 }} />}
                 <Calendar style={{ width: 8, height: 8, flexShrink: 0, marginTop: 1 }} />
