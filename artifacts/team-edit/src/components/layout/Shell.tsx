@@ -91,16 +91,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [location, navigate] = useLocation();
   const [collapsed, setCollapsed] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleSidebarEnter = () => {
-    if (collapseTimer.current) clearTimeout(collapseTimer.current);
-    setCollapsed(false);
-  };
-  const handleSidebarLeave = () => {
-    collapseTimer.current = setTimeout(() => setCollapsed(true), 80);
-  };
-  useEffect(() => () => { if (collapseTimer.current) clearTimeout(collapseTimer.current); }, []);
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -361,28 +351,34 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       {/* ── Desktop Sidebar — full height ────────────────────────── */}
       <aside
-        onMouseEnter={handleSidebarEnter}
-        onMouseLeave={handleSidebarLeave}
         className={cn(
           "hidden md:flex flex-col border-r bg-[hsl(var(--card))] shrink-0 transition-all duration-200 z-20",
           collapsed ? "w-14" : "w-56"
         )}
       >
 
-        {/* Logo — alinhado com o header */}
+        {/* Logo + toggle — alinhado com o header */}
         <div className={cn(
           "h-14 flex items-center gap-2.5 border-b shrink-0 overflow-hidden",
           collapsed ? "justify-center px-0" : "px-3"
         )}>
           {collapsed ? (
-            <div className="h-7 w-7 rounded-lg bg-[hsl(var(--primary))]/10 flex items-center justify-center shrink-0">
+            <button
+              onClick={() => setCollapsed(false)}
+              className="h-7 w-7 rounded-lg bg-[hsl(var(--primary))]/10 flex items-center justify-center shrink-0 hover:bg-[hsl(var(--primary))]/20 transition-colors"
+              title="Expandir menu"
+            >
               <Menu style={{ height: 16, width: 16 }} className="text-[hsl(var(--primary))]" />
-            </div>
+            </button>
           ) : (
             <div className="min-w-0 flex-1 flex items-center gap-2.5">
-              <div className="h-7 w-7 rounded-lg bg-[hsl(var(--primary))]/10 flex items-center justify-center shrink-0">
+              <button
+                onClick={() => setCollapsed(true)}
+                className="h-7 w-7 rounded-lg bg-[hsl(var(--primary))]/10 flex items-center justify-center shrink-0 hover:bg-[hsl(var(--primary))]/20 transition-colors"
+                title="Recolher menu"
+              >
                 <Menu style={{ height: 16, width: 16 }} className="text-[hsl(var(--primary))]" />
-              </div>
+              </button>
               <div className="min-w-0 flex-1">
                 {settings.logo_url
                   ? <img src={settings.logo_url} alt={settings.company_name} className="h-6 object-contain" />
