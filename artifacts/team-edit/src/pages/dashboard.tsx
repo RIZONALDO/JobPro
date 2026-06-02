@@ -1962,7 +1962,7 @@ export default function Dashboard() {
 
   const editorOverdue: OverdueItem[] = tasks
     .filter(t => {
-      if (["completed", "cancelled", "paused", "rascunho"].includes(t.status) || !t.dueDate) return false;
+      if (["completed", "cancelled", "paused", "rascunho", "review"].includes(t.status) || !t.dueDate) return false;
       const dt = new Date(t.dueDate.includes("T") ? t.dueDate : t.dueDate + "T00:00:00");
       return dt < todayStart;
     })

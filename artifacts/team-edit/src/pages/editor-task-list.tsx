@@ -98,7 +98,7 @@ const TASK_GROUPS = [
 ];
 
 function isOverdue(dueDate: string | null, status: string) {
-  if (!dueDate || isTerminal(status)) return false;
+  if (!dueDate || isTerminal(status) || status === "review") return false;
   return new Date(dueDate) < new Date(new Date().toDateString());
 }
 

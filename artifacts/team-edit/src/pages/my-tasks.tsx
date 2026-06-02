@@ -179,7 +179,7 @@ export default function MyTasks() {
 
   /* ── Kanban Card ─────────────────────────────────────────────── */
   const KanbanCard = ({ t, col }: { t: Task; col: typeof KANBAN_COLS[0] }) => {
-    const overdue = isOverdue(t.dueDate) && !["completed","cancelled","paused"].includes(t.status);
+    const overdue = isOverdue(t.dueDate) && !["completed","cancelled","paused","review"].includes(t.status);
 
     return (
       <div
@@ -331,11 +331,12 @@ export default function MyTasks() {
           })()}
           {t.dueDate && (() => {
             const parts = fmtDateParts(t.dueDate);
+            const inReviewLate = t.status === "review" && isOverdue(t.dueDate);
             return parts ? (
               <span style={{
                 display: "flex", alignItems: "center", gap: 2, flexShrink: 0,
-                color: overdue ? "#dc2626" : "hsl(var(--muted-foreground))",
-                fontWeight: overdue ? 600 : 400,
+                color: overdue ? "#dc2626" : inReviewLate ? "#f59e0b" : "hsl(var(--muted-foreground))",
+                fontWeight: overdue || inReviewLate ? 600 : 400,
               }}>
                 {overdue && <AlertCircle style={{ width: 8, height: 8, flexShrink: 0 }} />}
                 <Calendar style={{ width: 8, height: 8, flexShrink: 0, marginTop: 1 }} />
@@ -504,7 +505,7 @@ export default function MyTasks() {
                 const startParts = t.startDate ? fmtDateParts(t.startDate) : null;
                 const dueParts   = t.dueDate   ? fmtDateParts(t.dueDate)   : null;
                 const sameDay    = startParts && dueParts && startParts.date === dueParts.date;
-                const schedOverdue = isOverdue(t.dueDate);
+                const schedOverdue = isOverdue(t.dueDate) && t.status !== "review";
                 return (
                   <div
                     key={t.id}
