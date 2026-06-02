@@ -11,6 +11,7 @@ interface Props {
   onChange: (v: string) => void;
   placeholder?: string;
   withTime?: boolean;
+  minDate?: string;        // YYYY-MM-DD — datas anteriores ficam bloqueadas
   className?: string;
 }
 
@@ -126,7 +127,7 @@ function TimeDrum({ value, label, onUp, onDown }: {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function DatePicker({ value, onChange, placeholder = "Selecionar data", withTime, className }: Props) {
+export function DatePicker({ value, onChange, placeholder = "Selecionar data", withTime, minDate, className }: Props) {
   const today    = useMemo(() => new Date(), []);
   const todayStr = useMemo(() => toStr(today), [today]);
 
@@ -140,10 +141,26 @@ export function DatePicker({ value, onChange, placeholder = "Selecionar data", w
 
   const days = useMemo(() => calDays(viewY, viewM), [viewY, viewM]);
 
-  function prev() { viewM === 0 ? (setViewM(11), setViewY(y => y-1)) : setViewM(m => m-1); }
+  // Verifica se o mês anterior ainda tem datas válidas
+  const canGoPrev = useMemo(() => {
+    if (!minDate) return true;
+    const lastDayPrev = new Date(viewY, viewM, 0); // último dia do mês anterior
+    return toStr(lastDayPrev) >= minDate;
+  }, [viewY, viewM, minDate]);
+
+  function prev() {
+    if (!canGoPrev) return;
+    viewM === 0 ? (setViewM(11), setViewY(y => y-1)) : setViewM(m => m-1);
+  }
   function next() { viewM === 11 ? (setViewM(0),  setViewY(y => y+1)) : setViewM(m => m+1); }
 
+  function isDisabled(d: Date): boolean {
+    if (!minDate) return false;
+    return toStr(d) < minDate;
+  }
+
   function pickDay(d: Date) {
+    if (isDisabled(d)) return;
     setSelDate(toStr(d));
     if (withTime) { setStep("time"); }
     else { onChange(toStr(d)); setOpen(false); }
@@ -226,7 +243,8 @@ export function DatePicker({ value, onChange, placeholder = "Selecionar data", w
               >
                 <div className="flex items-center justify-between mb-3">
                   <button type="button" onClick={prev}
-                    className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-[hsl(var(--muted))] transition-colors">
+                    disabled={!canGoPrev}
+                    className={`h-7 w-7 flex items-center justify-center rounded-lg transition-colors ${canGoPrev ? "hover:bg-[hsl(var(--muted))]" : "opacity-25 cursor-not-allowed"}`}>
                     <ChevronLeft className="h-4 w-4" />
                   </button>
                   <span className="text-xs font-semibold">{MONTHS[viewM]} {viewY}</span>
@@ -247,14 +265,20 @@ export function DatePicker({ value, onChange, placeholder = "Selecionar data", w
                     if (!d) return <div key={i} />;
                     const s   = toStr(d);
                     const sel = s === selDate;
-                    const tod = s === todayStr;
+                    const tod      = s === todayStr;
+                    const disabled = isDisabled(d);
                     return (
                       <button key={i} type="button" onClick={() => pickDay(d)}
+                        disabled={disabled}
                         className={[
                           "h-7 w-full rounded-lg text-[11px] font-medium transition-all",
-                          sel ? "bg-[hsl(var(--primary))] text-white shadow-sm"
-                              : tod ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] font-bold"
-                                   : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]",
+                          disabled
+                            ? "text-[hsl(var(--muted-foreground))]/25 cursor-not-allowed"
+                            : sel
+                              ? "bg-[hsl(var(--primary))] text-white shadow-sm"
+                              : tod
+                                ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] font-bold"
+                                : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]",
                         ].join(" ")}
                       >
                         {d.getDate()}

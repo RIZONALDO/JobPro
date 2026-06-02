@@ -584,8 +584,18 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                     </div>
                     <DatePicker
                       value={form.startDateTime}
-                      onChange={v => f({ startDateTime: v })}
+                      onChange={v => {
+                        // Se a entrega já foi definida e ficaria antes do novo início, limpa
+                        const newStart = v ? v.split("T")[0] : "";
+                        const curEnd   = form.dueDateTime ? form.dueDateTime.split("T")[0] : "";
+                        if (newStart && curEnd && newStart > curEnd) {
+                          f({ startDateTime: v, dueDateTime: "" });
+                        } else {
+                          f({ startDateTime: v });
+                        }
+                      }}
                       placeholder="DD/MM/AAAA HH:MM"
+                      minDate={todayIso}
                       withTime
                     />
                     {isFutureStart && (
@@ -609,6 +619,8 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       value={form.dueDateTime}
                       onChange={v => f({ dueDateTime: v })}
                       placeholder="DD/MM/AAAA HH:MM"
+                      // Entrega nunca antes do início (ou antes de hoje se não tem início)
+                      minDate={form.startDateTime ? form.startDateTime.split("T")[0] : todayIso}
                       withTime
                     />
                   </div>
