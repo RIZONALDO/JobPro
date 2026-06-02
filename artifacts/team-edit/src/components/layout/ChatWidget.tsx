@@ -237,105 +237,92 @@ function emojiOnlySize(text: string): string {
   return "text-2xl";
 }
 
-// ── Quick reactions ──────────────────────────────────────────────
-const QUICK = ["👍","❤️","😂","😮","😢","🔥"];
-
+// ── Reaction bar ─────────────────────────────────────────────────
 function ReactionBar({ reactions, onReact }: { reactions: Reaction[]; onReact: (emoji: string) => void }) {
   if (!reactions.length) return null;
   return (
     <div className="flex flex-wrap gap-1 mt-1">
       {reactions.map(r => (
-        <button
-          key={r.emoji}
-          onClick={() => onReact(r.emoji)}
-          title={r.users.join(", ")}
-          className={cn(
-            "flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] font-medium border transition-all",
+        <button key={r.emoji} onClick={() => onReact(r.emoji)} title={r.users.join(", ")}
+          className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] font-medium border transition-all",
             r.mine
               ? "bg-[hsl(var(--primary))]/15 border-[hsl(var(--primary))]/40 text-[hsl(var(--primary))]"
               : "bg-[hsl(var(--muted))] border-[hsl(var(--border))] text-[hsl(var(--foreground))]/70 hover:border-[hsl(var(--primary))]/40"
-          )}
-        >
-          <span>{r.emoji}</span>
-          <span>{r.count}</span>
+          )}>
+          <span>{r.emoji}</span><span>{r.count}</span>
         </button>
       ))}
     </div>
   );
 }
 
-// ── Message action menu ──────────────────────────────────────────
-function MsgActions({ mine, onReply, onReact, onDelete }: {
-  mine: boolean;
-  onReply: () => void;
-  onReact: (emoji: string) => void;
-  onDelete: () => void;
+// ── Chevron menu no balão ─────────────────────────────────────────
+function MsgMenu({ mine, onReply, onReact, onDelete }: {
+  mine: boolean; onReply: () => void; onReact: (emoji: string) => void; onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerPos, setPickerPos] = useState({ bottom: 0, right: 0 });
-  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const pickerBtnRef = useRef<HTMLButtonElement>(null);
   const { theme } = useTheme();
 
   useEffect(() => {
-    if (!pickerOpen) return;
+    if (!open && !pickerOpen) return;
     const h = (e: MouseEvent) => {
       if ((e.target as HTMLElement).closest("[data-emoji-picker]")) return;
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
       setPickerOpen(false);
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
-  }, [pickerOpen]);
+  }, [open, pickerOpen]);
 
   return (
-    <div className="relative flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-      {/* Quick react */}
-      <div className="flex items-center gap-0.5 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-full px-1 py-0.5 shadow-sm">
-        {QUICK.map(e => (
-          <button key={e} onClick={() => onReact(e)} className="text-[14px] hover:scale-125 transition-transform px-0.5" title={e}>
-            {e}
-          </button>
-        ))}
-        <button
-          onClick={() => { if (btnRef.current) { const r = btnRef.current.getBoundingClientRect(); setPickerPos({ bottom: window.innerHeight - r.top + 8, right: window.innerWidth - r.right }); } setPickerOpen(v => !v); }}
-          className="flex items-center justify-center w-5 h-5 rounded-full hover:bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] transition-colors"
-        >
-          <SmilePlus className="h-3 w-3" />
-        </button>
-      </div>
-
-      {/* Reply */}
-      <button onClick={onReply} className="flex items-center justify-center h-7 w-7 rounded-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] shadow-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors" title="Responder">
-        <Reply className="h-3.5 w-3.5" />
+    <div ref={menuRef} className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-5 w-5 rounded-full bg-[hsl(var(--muted-foreground))]/15 hover:bg-[hsl(var(--muted-foreground))]/25 text-[hsl(var(--muted-foreground))] transition-all"
+      >
+        <ChevronDown className="h-3 w-3" />
       </button>
 
-      {/* More (delete) */}
-      {mine && (
-        <div className="relative">
-          <button
-            ref={btnRef}
-            onClick={() => setOpen(v => !v)}
-            className="flex items-center justify-center h-7 w-7 rounded-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] shadow-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
-            title="Mais opções"
-          >
-            <ChevronDown className="h-3.5 w-3.5" />
+      {open && (
+        <div className="absolute bottom-full mb-1 right-0 w-40 rounded-xl border bg-[hsl(var(--card))] shadow-xl z-[500] overflow-hidden">
+          <button onClick={() => { onReply(); setOpen(false); }}
+            className="flex items-center gap-2 w-full px-3 py-2.5 text-sm hover:bg-[hsl(var(--muted))] transition-colors text-left">
+            <Reply className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" /> Responder
           </button>
-          {open && (
-            <div className="absolute bottom-full right-0 mb-1 w-36 rounded-xl border bg-[hsl(var(--card))] shadow-xl z-[500] overflow-hidden">
-              <button
-                onClick={() => { onDelete(); setOpen(false); }}
-                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-              >
-                <Trash2 className="h-3.5 w-3.5" /> Apagar
+          <button
+            ref={pickerBtnRef}
+            onClick={() => {
+              if (pickerBtnRef.current) {
+                const r = pickerBtnRef.current.getBoundingClientRect();
+                setPickerPos({ bottom: window.innerHeight - r.top + 8, right: window.innerWidth - r.right });
+              }
+              setPickerOpen(v => !v);
+              setOpen(false);
+            }}
+            className="flex items-center gap-2 w-full px-3 py-2.5 text-sm hover:bg-[hsl(var(--muted))] transition-colors text-left">
+            <SmilePlus className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" /> Reagir
+          </button>
+          {mine && (
+            <>
+              <div className="h-px bg-[hsl(var(--border))]" />
+              <button onClick={() => { onDelete(); setOpen(false); }}
+                className="flex items-center gap-2 w-full px-3 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-left">
+                <Trash2 className="h-3.5 w-3.5 shrink-0" /> Apagar
               </button>
-            </div>
+            </>
           )}
         </div>
       )}
 
       {pickerOpen && createPortal(
         <div data-emoji-picker="true" style={{ position: "fixed", bottom: pickerPos.bottom, right: pickerPos.right, zIndex: 9999 }}>
-          <Picker data={data} onEmojiSelect={(e: { native: string }) => { onReact(e.native); setPickerOpen(false); }} locale="pt" theme={theme} previewPosition="none" skinTonePosition="none" maxFrequentRows={2} perLine={8} />
+          <Picker data={data} onEmojiSelect={(e: { native: string }) => { onReact(e.native); setPickerOpen(false); }}
+            locale="pt" theme={theme} previewPosition="none" skinTonePosition="none" maxFrequentRows={2} perLine={8} />
         </div>,
         document.body
       )}
@@ -1161,14 +1148,17 @@ export function ChatWidget() {
                             {!mine && <Avatar name={msg.userName} url={msg.userAvatar} size="xs" />}
                             <div className={cn("flex flex-col max-w-[78%]", mine && "items-end")}>
                               {emojiOnly ? (
-                                <div className="flex flex-col gap-0.5">
+                                <div className="relative flex flex-col gap-0.5">
                                   {!mine && <p className="text-[12px] font-semibold opacity-60">{msg.userName}</p>}
                                   {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.userName ?? null} />}
                                   <div className={cn("whitespace-pre-wrap leading-tight", emojiOnlySize(msg.content))}>{msg.content}</div>
-                                  <p className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</p>
+                                  <div className="flex items-center gap-1">
+                                    <p className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</p>
+                                    <MsgMenu mine={mine} onReply={() => setChatReplyTo(msg)} onReact={e => reactMsg(msg.id, e)} onDelete={() => deleteMsg(msg.id)} />
+                                  </div>
                                 </div>
                               ) : (
-                                <div className="rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
+                                <div className="relative rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-sm"
                                   style={mine
                                     ? { backgroundColor: "hsl(var(--primary) / 0.82)", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "4px" }
                                     : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))", borderBottomLeftRadius: "4px" }
@@ -1177,13 +1167,13 @@ export function ChatWidget() {
                                   {!mine && <p className="text-[12px] font-semibold mb-0.5 opacity-60">{msg.userName}</p>}
                                   {msg.replyTo && <QuotedReply replyTo={msg.replyTo} authorName={msg.replyTo.userName ?? null} />}
                                   <div className="whitespace-pre-wrap break-words"><MsgContent text={msg.content} mine={mine} onClose={() => setChatOpen(false)} /></div>
-                                  <p className="text-[11px] mt-1 opacity-40 text-right">{fmtTime(msg.createdAt)}</p>
+                                  <div className="flex items-center justify-end gap-1 mt-1">
+                                    <p className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</p>
+                                    <MsgMenu mine={mine} onReply={() => setChatReplyTo(msg)} onReact={e => reactMsg(msg.id, e)} onDelete={() => deleteMsg(msg.id)} />
+                                  </div>
                                 </div>
                               )}
                               <ReactionBar reactions={msg.reactions ?? []} onReact={e => reactMsg(msg.id, e)} />
-                            </div>
-                            <div className={cn("shrink-0 flex items-center", mine ? "order-first mr-1" : "ml-1")}>
-                              <MsgActions mine={mine} onReply={() => setChatReplyTo(msg)} onReact={e => reactMsg(msg.id, e)} onDelete={() => deleteMsg(msg.id)} />
                             </div>
                           </div>
                         );
@@ -1277,6 +1267,7 @@ export function ChatWidget() {
                                     <div className="flex items-center gap-1">
                                       <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
                                       {mine && (msg.readAt ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-400" /> : <Check className="h-3.5 w-3.5 shrink-0 opacity-40" />)}
+                                      <MsgMenu mine={mine} onReply={() => setDmReplyTo(msg)} onReact={e => reactDm(msg.id, e, activeView as number)} onDelete={() => deleteDm(msg.id, activeView as number)} />
                                     </div>
                                   </div>
                                 ) : (
@@ -1291,13 +1282,11 @@ export function ChatWidget() {
                                     <div className="flex items-center justify-end gap-1 mt-1">
                                       <span className="text-[11px] opacity-40">{fmtTime(msg.createdAt)}</span>
                                       {mine && (msg.readAt ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-400" /> : <Check className="h-3.5 w-3.5 shrink-0 opacity-40" />)}
+                                      <MsgMenu mine={mine} onReply={() => setDmReplyTo(msg)} onReact={e => reactDm(msg.id, e, activeView as number)} onDelete={() => deleteDm(msg.id, activeView as number)} />
                                     </div>
                                   </div>
                                 )}
                                 <ReactionBar reactions={msg.reactions ?? []} onReact={e => reactDm(msg.id, e, activeView as number)} />
-                              </div>
-                              <div className={cn("shrink-0 flex items-center", mine ? "order-first mr-1" : "ml-1")}>
-                                <MsgActions mine={mine} onReply={() => setDmReplyTo(msg)} onReact={e => reactDm(msg.id, e, activeView as number)} onDelete={() => deleteDm(msg.id, activeView as number)} />
                               </div>
                             </div>
                           </div>
