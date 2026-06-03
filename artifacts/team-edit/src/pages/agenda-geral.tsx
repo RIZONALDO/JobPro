@@ -236,7 +236,7 @@ export default function AgendaGeral() {
                       className="flex flex-col items-center justify-center select-none transition-all duration-200 hover:scale-[1.03] cursor-default w-full"
                       style={{
                         height: 72,
-                        borderRadius: 14,
+                        borderRadius: 7,
                         background: cfg.bg,
                         border: `1px solid ${cfg.border}`,
                         boxShadow: isToday
