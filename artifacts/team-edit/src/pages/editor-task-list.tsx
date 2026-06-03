@@ -1,3 +1,7 @@
+import { useReactTable, getCoreRowModel, flexRender, type ColumnDef } from "@tanstack/react-table";
+import React, { useMemo } from "react";
+import { TaskFileUploadModal } from "@/components/TaskFileUploadModal";
+import { TaskFilesViewModal } from "@/components/TaskFilesViewModal";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerRow } from "@/lib/motion";
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -18,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   AlertCircle, MoreVertical,
-  Info, Undo2, Search, X, Clock,
+  Info, Undo2, Search, X, Clock, FileVideo,
 } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
@@ -47,6 +51,7 @@ interface Task {
   updatedAt: string;
   reviewedAt?: string | null;
   editorComplexitySet?: boolean;
+  fileCount?: number;
   // multi-task
   taskType?: string;
   parentTask?: { id: number; title: string; taskCode?: string } | null;
@@ -139,6 +144,8 @@ export default function EditorTaskList() {
     }
   }, [loading]);
 
+  const [uploadTarget,    setUploadTarget]    = useState<Task | null>(null);
+  const [filesViewTarget, setFilesViewTarget] = useState<Task | null>(null);
   const [returnTarget,  setReturnTarget]  = useState<Task | null>(null);
   const [returnComment, setReturnComment] = useState("");
   const [returning,     setReturning]     = useState(false);
@@ -228,6 +235,188 @@ export default function EditorTaskList() {
 
   const hasFilter = search || filterStatus !== "all";
 
+  // ── TanStack Table ─────────────────────────────────────────────────────────
+
+  const columns = useMemo<ColumnDef<Task, unknown>[]>(() => [
+    {
+      id: "tarefa",
+      accessorKey: "title",
+      header: "Tarefa",
+      cell: ({ row }) => {
+        const t = row.original;
+        return (
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2 min-w-0">
+              {t.taskCode && <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">{t.taskCode}</span>}
+              <span className="text-sm font-semibold truncate leading-snug">{t.title}</span>
+              {t.revisionCount > 0 && (
+                <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap">
+                  {t.revisionCount} {t.revisionCount === 1 ? "alt." : "alts."}
+                </span>
+              )}
+            </div>
+            {t.taskType === "subtask" && t.parentTask && <ParentTaskBreadcrumb parentTask={t.parentTask} className="mt-0.5" />}
+            {t.taskType === "multi_task" && <MultiTaskBadge taskType="multi_task" className="mt-0.5" />}
+            {t.client && <span className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5 block">{t.client}</span>}
+          </div>
+        );
+      },
+    },
+    {
+      id: "status",
+      accessorKey: "status",
+      header: "Status",
+      size: 144,
+      cell: ({ row }) => {
+        const t = row.original;
+        return (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Badge className={`${STATUS_CLASS[t.status] ?? ""} text-[11px] px-2 py-0.5 font-medium whitespace-nowrap shrink-0`}>
+              {STATUS_LABEL[t.status] ?? t.status}
+            </Badge>
+            <MultiTaskBadge taskType={t.taskType ?? "task"} />
+          </div>
+        );
+      },
+    },
+    {
+      id: "prioridade",
+      header: "Prioridade",
+      size: 112,
+      meta: { className: "hidden lg:table-cell" },
+      cell: ({ row }) => <PriorityBadge priority={row.original.priority} />,
+    },
+    {
+      id: "entrega",
+      header: () => viewTab === "scheduled"
+        ? <span>Período</span>
+        : <span className="flex items-center gap-1"><Clock className="h-3 w-3 shrink-0" />Entrega</span>,
+      size: viewTab === "scheduled" ? 176 : 112,
+      meta: { className: "hidden lg:table-cell" },
+      cell: ({ row }) => {
+        const t = row.original;
+        const overdue = isOverdue(t.dueDate, t.status);
+        if (viewTab === "scheduled") {
+          const fmtD = (d: string) => d.split("T")[0].split("-").slice(1).reverse().join("/");
+          const s = t.startDate ? fmtD(t.startDate) : null;
+          const e = t.dueDate   ? fmtD(t.dueDate)   : null;
+          return (
+            <span className="flex items-center gap-1 tabular-nums text-xs font-semibold">
+              {s && <span className="text-sky-500">{s}</span>}
+              {s && e && <><span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span><span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/80"}>{e}</span></>}
+              {!s && e && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/80"}>{e}</span>}
+              {!s && !e && <span className="text-[hsl(var(--muted-foreground))]/30">—</span>}
+            </span>
+          );
+        }
+        const closed = fmtClosedCycle(t.status, t.dueDate, t.updatedAt, t.reviewedAt);
+        if (closed) {
+          return (
+            <span className="flex flex-col gap-0.5">
+              <span className="text-xs tabular-nums text-[hsl(var(--muted-foreground))]/60">{closed.date}</span>
+              {closed.badge && <span className="text-[10px] font-medium text-[hsl(var(--muted-foreground))]/60">{closed.badge}</span>}
+            </span>
+          );
+        }
+        return <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} reviewedAt={t.reviewedAt} />;
+      },
+    },
+    {
+      id: "coordenador",
+      header: "Coord.",
+      size: 80,
+      meta: { className: "hidden xl:table-cell" },
+      cell: ({ row }) => {
+        const t = row.original;
+        if (!t.createdBy) return <span className="text-[hsl(var(--muted-foreground))]/30 text-sm">—</span>;
+        return (
+          <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+            <ChatAvatarButton userId={t.createdBy.id} name={t.createdBy.name} avatarUrl={t.createdBy.avatarUrl}
+              size={28} taskId={t.id} taskCode={t.taskCode} taskTitle={t.title} />
+            <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 truncate">{t.createdBy.name.split(" ")[0]}</span>
+          </div>
+        );
+      },
+    },
+    {
+      id: "midia",
+      header: "Mídia",
+      size: 40,
+      meta: { className: "text-center" },
+      cell: ({ row }) => {
+        const t = row.original;
+        return (t.fileCount ?? 0) > 0 ? (
+          <div className="flex justify-center" onClick={e => e.stopPropagation()}>
+            <button title="Ver mídia" onClick={() => setFilesViewTarget(t)}
+              className="h-7 w-7 flex items-center justify-center rounded-lg text-violet-500 hover:bg-violet-500/10 transition-colors">
+              <FileVideo className="h-4 w-4" />
+            </button>
+          </div>
+        ) : <span className="text-[hsl(var(--muted-foreground))]/30 flex justify-center">—</span>;
+      },
+    },
+    {
+      id: "acao",
+      header: "Ação",
+      size: 128,
+      cell: ({ row }) => {
+        const t = row.original;
+        const trans = transitions[t.status];
+        const startAllowed = !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR;
+        return (
+          <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+            {t.status === "pending" && !t.editorComplexitySet && (
+              <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full" onClick={() => setComplexityTarget(t)}>Definir</Button>
+            )}
+            {t.status === "pending" && t.editorComplexitySet && (
+              startAllowed
+                ? <Button size="sm" variant="default" className="h-7 text-xs px-3 w-full" onClick={() => handleIniciarDireto(t)}>Iniciar</Button>
+                : <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full" disabled>Agendada</Button>
+            )}
+            {trans && t.status !== "pending" && (
+              <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full"
+                onClick={() => trans.next === "review" ? setUploadTarget(t) : updateStatus(t, trans.next)}>
+                {trans.shortLabel}
+              </Button>
+            )}
+            {!trans && t.status !== "pending" && (
+              <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30 pl-1">—</span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      id: "menu",
+      header: "",
+      size: 32,
+      cell: ({ row }) => {
+        const t = row.original;
+        const canReturn = ["pending","in_progress","in_revision"].includes(t.status);
+        return (
+          <div onClick={e => e.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7"><MoreVertical className="h-3.5 w-3.5" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => openTask(t.id)}><Info className="h-3.5 w-3.5 mr-2" />Ver informações</DropdownMenuItem>
+                {canReturn && <DropdownMenuItem onClick={() => setReturnTarget(t)}><Undo2 className="h-3.5 w-3.5 mr-2" />Devolver</DropdownMenuItem>}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        );
+      },
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [viewTab, setFilesViewTarget, setComplexityTarget, setUploadTarget, setReturnTarget, openTask]);
+
+  const table = useReactTable({
+    data: tabFiltered,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
   if (loading) return (
     <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden animate-pulse">
       {[1,2,3,4,5].map(i => (
@@ -314,340 +503,143 @@ export default function EditorTaskList() {
           ))}
         </div>
 
-        {/* Header — desktop fixo */}
-        <div className="hidden md:flex shrink-0 items-center py-2.5 pl-[3px] bg-[hsl(var(--muted))]/30 border-b text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
-          <div className="flex-1 min-w-0 pl-4 pr-3">Tarefa</div>
-          <div className="w-36 shrink-0 px-2">Status</div>
-          <div className="w-28 shrink-0 hidden lg:block pl-6">Prioridade</div>
-          {viewTab === "scheduled"
-            ? <div className="w-44 shrink-0 hidden lg:block pl-6">Período</div>
-            : <div className="w-28 shrink-0 hidden lg:flex items-center gap-1 pl-6"><Clock className="h-3 w-3 shrink-0 text-current" />Entrega</div>
-          }
-          <div className="w-20 shrink-0 hidden xl:block pl-6">Coord.</div>
-          <div className="w-28 shrink-0 pl-6">Ação</div>
-          <div className="w-8 shrink-0" />
-        </div>
-
-        {/* Body scrollável */}
-        <div className="flex-1 overflow-y-auto overscroll-contain">
-
-        {tabFiltered.length === 0 ? (
-          <div className="py-16 text-center">
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              {viewTab === "today" ? "Nenhuma tarefa para hoje." : viewTab === "scheduled" ? "Nenhuma tarefa agendada." : search ? "Nenhuma tarefa encontrada." : "Nenhuma tarefa atribuída."}
-            </p>
-          </div>
-        ) : (
-          <>
-            {TASK_GROUPS.map(group => {
-              const groupTasks = tabFiltered.filter(t => group.statuses.includes(t.status));
-              if (!groupTasks.length) return null;
-              return (
-                <div key={group.key}>
-                  <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-2 mt-4 bg-[hsl(var(--card))]">
-                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] shrink-0" style={{ color: group.color, opacity: 0.75 }}>{group.label}</span>
-                    <span className="flex-1 border-t border-dashed" style={{ borderColor: `${group.color}30` }} />
-                    <span className="text-[10px] tabular-nums shrink-0" style={{ color: group.color, opacity: 0.5 }}>{groupTasks.length}</span>
-                  </div>
-                  {groupTasks.map(t => {
-                    const overdue = isOverdue(t.dueDate, t.status);
-                    const accent  = t.color ?? "#6366f1";
-                    const trans   = transitions[t.status];
-                    const canReturn = ["pending", "in_progress", "in_revision"].includes(t.status);
-                    const isHighlighted = highlighted === t.id;
-
-          const dropdownItems = (
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => openTask(t.id)}>
-                <Info className="h-3.5 w-3.5 mr-2" />Ver informações
-              </DropdownMenuItem>
-              {canReturn && (
-                <DropdownMenuItem onClick={() => setReturnTarget(t)}>
-                  <Undo2 className="h-3.5 w-3.5 mr-2" />Devolver
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          );
-
-          return (
-            <motion.div
-              key={t.id}
-              ref={isHighlighted ? highlightRef : null}
-              variants={staggerRow}
-              className="flex items-stretch border-b last:border-0 hover:bg-[hsl(var(--muted))]/20 transition-all cursor-pointer"
-              style={{
-                borderLeft: `3px solid ${accent}`,
-                backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.08)" : undefined,
-                boxShadow: isHighlighted ? "inset 0 0 0 1px hsl(var(--primary) / 0.25)" : undefined,
-              }}
-              onClick={() => openTask(t.id)}
-            >
-
-              {/* ── Mobile card (< md) ─────────────────────────────── */}
-              <div className="md:hidden flex items-start py-4 px-4 w-full min-w-0 gap-3">
-
-                {/* Left: all info */}
-                <div className="flex-1 min-w-0">
-
-                  {/* code + title + revision chip */}
-                  <div className="flex items-baseline gap-2 min-w-0">
-                    {t.taskCode && (
-                      <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">
-                        {t.taskCode}
-                      </span>
-                    )}
-                    <span className="text-sm font-semibold truncate flex-1 min-w-0 leading-snug">
-                      {t.title}
-                    </span>
-                    {t.revisionCount > 0 && (
-                      <span className="shrink-0 text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap leading-none">
-                        {t.revisionCount} {t.revisionCount === 1 ? "alteração" : "alterações"}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* subtarefa breadcrumb */}
-                  {t.taskType === "subtask" && t.parentTask && (
-                    <div className="mt-1">
-                      <ParentTaskBreadcrumb parentTask={t.parentTask} />
+        {/* Body — mobile cards + desktop TanStack table */}
+        <div className="flex-1 overflow-y-auto overscroll-contain min-h-0">
+          {tabFiltered.length === 0 ? (
+            <div className="py-16 text-center">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                {viewTab === "today" ? "Nenhuma tarefa para hoje." : viewTab === "scheduled" ? "Nenhuma tarefa agendada." : search ? "Nenhuma tarefa encontrada." : "Nenhuma tarefa atribuída."}
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* ── Mobile (< md) ────────────────────────────────────── */}
+              <div className="md:hidden">
+                {TASK_GROUPS.map(group => {
+                  const groupTasks = tabFiltered.filter(t => group.statuses.includes(t.status));
+                  if (!groupTasks.length) return null;
+                  return (
+                    <div key={group.key}>
+                      <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-2 mt-4 bg-[hsl(var(--card))]">
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] shrink-0" style={{ color: group.color, opacity: 0.75 }}>{group.label}</span>
+                        <span className="flex-1 border-t border-dashed" style={{ borderColor: `${group.color}30` }} />
+                        <span className="text-[10px] tabular-nums shrink-0" style={{ color: group.color, opacity: 0.5 }}>{groupTasks.length}</span>
+                      </div>
+                      {groupTasks.map(t => {
+                        const overdue = isOverdue(t.dueDate, t.status);
+                        const accent = t.color ?? "#6366f1";
+                        const trans = transitions[t.status];
+                        const canReturn = ["pending","in_progress","in_revision"].includes(t.status);
+                        const isHighlighted = highlighted === t.id;
+                        return (
+                          <motion.div key={t.id} ref={isHighlighted ? highlightRef : null} variants={staggerRow}
+                            className="flex items-stretch border-b last:border-0 hover:bg-[hsl(var(--muted))]/20 transition-all cursor-pointer"
+                            style={{ borderLeft: `3px solid ${accent}`, backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.08)" : undefined, boxShadow: isHighlighted ? "inset 0 0 0 1px hsl(var(--primary) / 0.25)" : undefined }}
+                            onClick={() => openTask(t.id)}
+                          >
+                            <div className="flex items-start py-4 px-4 w-full min-w-0 gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-baseline gap-2 min-w-0">
+                                  {t.taskCode && <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">{t.taskCode}</span>}
+                                  <span className="text-sm font-semibold truncate flex-1 min-w-0 leading-snug">{t.title}</span>
+                                  {t.revisionCount > 0 && <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap">{t.revisionCount} {t.revisionCount === 1 ? "alt." : "alts."}</span>}
+                                </div>
+                                {t.taskType === "subtask" && t.parentTask && <div className="mt-1"><ParentTaskBreadcrumb parentTask={t.parentTask} /></div>}
+                                {t.taskType === "multi_task" && <div className="mt-1"><MultiTaskBadge taskType="multi_task" /></div>}
+                                {t.client && <p className="text-xs text-[hsl(var(--muted-foreground))]/60 truncate mt-1">{t.client}</p>}
+                                <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                                  <Badge className={`text-xs px-2 py-0.5 font-medium shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>{STATUS_LABEL[t.status] ?? t.status}</Badge>
+                                  <PriorityBadge priority={t.priority} />
+                                  {!isTerminal(t.status) && t.dueDate && <span className={`text-xs shrink-0 tabular-nums ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]/60"}`}>{overdue && <AlertCircle className="inline h-3 w-3 mr-0.5" />}{fmtPrazoWeek(t.dueDate).label}</span>}
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-end gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                                {t.status === "pending" && !t.editorComplexitySet && <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap" onClick={e => { e.stopPropagation(); setComplexityTarget(t); }}>Definir complexidade</Button>}
+                                {t.status === "pending" && t.editorComplexitySet && (() => {
+                                  const ok = !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR;
+                                  return ok
+                                    ? <Button size="sm" variant="default" className="h-8 text-xs px-3 whitespace-nowrap" onClick={e => { e.stopPropagation(); handleIniciarDireto(t); }}>Iniciar</Button>
+                                    : <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap" disabled>Agendada</Button>;
+                                })()}
+                                {trans && t.status !== "pending" && <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap" onClick={e => { e.stopPropagation(); trans.next === "review" ? setUploadTarget(t) : updateStatus(t, trans.next); }}>{trans.shortLabel}</Button>}
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8" onClick={e => e.stopPropagation()}><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => openTask(t.id)}><Info className="h-3.5 w-3.5 mr-2" />Ver informações</DropdownMenuItem>
+                                    {canReturn && <DropdownMenuItem onClick={() => setReturnTarget(t)}><Undo2 className="h-3.5 w-3.5 mr-2" />Devolver</DropdownMenuItem>}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </div>
+                          </motion.div>
+                        );
+                      })}
                     </div>
-                  )}
-                  {/* multi-task badge */}
-                  {t.taskType === "multi_task" && (
-                    <div className="mt-1"><MultiTaskBadge taskType="multi_task" /></div>
-                  )}
-
-                  {/* client */}
-                  {t.client && (
-                    <p className="text-xs text-[hsl(var(--muted-foreground))]/60 truncate mt-1 leading-snug">
-                      {t.client}
-                    </p>
-                  )}
-
-                  {/* status + priority + período / prazo */}
-                  <div className="flex items-center gap-2 mt-2.5 flex-wrap">
-                    <Badge className={`text-xs px-2 py-0.5 font-medium shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
-                      {STATUS_LABEL[t.status] ?? t.status}
-                    </Badge>
-                    <PriorityBadge priority={t.priority} />
-                    {viewTab === "scheduled" ? (
-                      (t.startDate || t.dueDate) && (() => {
-                        const fmtD = (d: string) => d.split("T")[0].split("-").slice(1).reverse().join("/");
-                        const s = t.startDate ? fmtD(t.startDate) : null;
-                        const e = t.dueDate   ? fmtD(t.dueDate)   : null;
-                        return (
-                          <span className="flex items-center gap-1 text-xs tabular-nums shrink-0 font-semibold">
-                            {s && <span className="text-sky-500">{s}</span>}
-                            {s && e && <><span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span><span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/75"}>{e}</span></> }
-                            {!s && e && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/75"}>{e}</span>}
-                          </span>
-                        );
-                      })()
-                    ) : (() => {
-                      const closed = fmtClosedCycle(t.status, t.dueDate, t.updatedAt, t.reviewedAt);
-                      if (closed) {
-                        const badgeCls: Record<string, string> = {
-                          success:   "bg-emerald-50 border-emerald-200/80 text-emerald-700",
-                          late:      "bg-amber-50 border-amber-200/80 text-amber-700",
-                          cancelled: "bg-[hsl(var(--muted))]/40 border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]/60",
-                          neutral:   "bg-[hsl(var(--muted))]/40 border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]/60",
-                        };
-                        return (
-                          <span className="flex flex-col gap-1 shrink-0">
-                            <span className="text-xs text-[hsl(var(--muted-foreground))]/60 tabular-nums leading-tight">{closed.date}</span>
-                            {closed.badge && (
-                              <span className={`inline-flex w-fit items-center px-1.5 py-0.5 rounded-md border text-[10px] font-medium leading-none ${badgeCls[closed.variant]}`}>
-                                {closed.badge}
-                              </span>
-                            )}
-                          </span>
-                        );
-                      }
-                      if (!t.dueDate) return null;
-                      const { label } = fmtPrazoWeek(t.dueDate);
-                      return (
-                        <span className={`text-xs shrink-0 tabular-nums ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]/60"}`}>
-                          {overdue && <AlertCircle className="inline h-3 w-3 mr-0.5" />}
-                          {label}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                {/* Right: action + dropdown */}
-                <div className="flex flex-col items-end gap-2 shrink-0" onClick={e => e.stopPropagation()}>
-                  {t.status === "pending" && !t.editorComplexitySet && (
-                    <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap"
-                      onClick={e => { e.stopPropagation(); setComplexityTarget(t); }}>
-                      Definir complexidade
-                    </Button>
-                  )}
-                  {t.status === "pending" && t.editorComplexitySet && (() => {
-                    const startAllowed = !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR;
-                    return startAllowed ? (
-                      <Button size="sm" variant="default" className="h-8 text-xs px-3 whitespace-nowrap"
-                        onClick={e => { e.stopPropagation(); handleIniciarDireto(t); }}>
-                        Iniciar
-                      </Button>
-                    ) : (
-                      <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap" disabled>
-                        Agendada
-                      </Button>
-                    );
-                  })()}
-                  {trans && t.status !== "pending" && (
-                    <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap"
-                      onClick={e => { e.stopPropagation(); updateStatus(t, trans.next); }}>
-                      {trans.shortLabel}
-                    </Button>
-                  )}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    {dropdownItems}
-                  </DropdownMenu>
-                </div>
-              </div>
-
-              {/* ── Desktop table (md+) ────────────────────────────── */}
-
-              {/* Title + client + revision */}
-              <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-3 pl-4 pr-3">
-                <div className="flex items-baseline gap-2 min-w-0">
-                  {t.taskCode && (
-                    <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">{t.taskCode}</span>
-                  )}
-                  <p className="text-sm font-semibold truncate leading-snug">{t.title}</p>
-                  {t.revisionCount > 0 && (
-                    <span className="shrink-0 text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap leading-none">
-                      {t.revisionCount} {t.revisionCount === 1 ? "alteração" : "alterações"}
-                    </span>
-                  )}
-                </div>
-                {t.taskType === "subtask" && t.parentTask && (
-                  <div className="mt-0.5">
-                    <ParentTaskBreadcrumb parentTask={t.parentTask} />
-                  </div>
-                )}
-                {t.client && (
-                  <span className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</span>
-                )}
-              </div>
-
-              {/* Status */}
-              <div className="hidden md:flex w-36 shrink-0 items-center gap-1.5 flex-wrap px-2">
-                <Badge className={`${STATUS_CLASS[t.status] ?? ""} text-[11px] px-2 py-0.5 font-medium whitespace-nowrap shrink-0`}>
-                  {STATUS_LABEL[t.status] ?? t.status}
-                </Badge>
-                <MultiTaskBadge taskType={t.taskType ?? "task"} />
-              </div>
-
-              {/* Priority */}
-              <div className="hidden lg:flex w-28 shrink-0 items-center pl-6">
-                <PriorityBadge priority={t.priority} />
-              </div>
-
-              {/* Período / Prazo — desktop lg+ */}
-              {viewTab === "scheduled" ? (
-                <div className="hidden lg:flex w-44 shrink-0 items-center pl-6 gap-1 tabular-nums text-xs font-semibold">
-                  {(() => {
-                    const fmtD = (d: string) => d.split("T")[0].split("-").slice(1).reverse().join("/");
-                    const s = t.startDate ? fmtD(t.startDate) : null;
-                    const e = t.dueDate   ? fmtD(t.dueDate)   : null;
-                    return (
-                      <>
-                        {s && <span className="text-sky-500">{s}</span>}
-                        {s && e && <><span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span><span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/80"}>{e}</span></> }
-                        {!s && e && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/80"}>{e}</span>}
-                        {!s && !e && <span className="text-[hsl(var(--muted-foreground))]/30">—</span>}
-                      </>
-                    );
-                  })()}
-                </div>
-              ) : (
-                <div className="hidden lg:flex w-28 shrink-0 items-center pl-6">
-                  <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} reviewedAt={t.reviewedAt} />
-                </div>
-              )}
-
-              {/* Coordinator */}
-              <div className="hidden xl:flex w-20 shrink-0 items-center gap-1.5 pl-6">
-                {t.createdBy ? (
-                  <>
-                    <ChatAvatarButton
-                      userId={t.createdBy.id}
-                      name={t.createdBy.name}
-                      avatarUrl={t.createdBy.avatarUrl}
-                      size={30}
-                      taskId={t.id}
-                      taskCode={t.taskCode}
-                      taskTitle={t.title}
-                    />
-                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 truncate">{t.createdBy.name.split(" ")[0]}</span>
-                  </>
-                ) : (
-                  <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30">—</span>
-                )}
-              </div>
-
-              {/* Primary action */}
-              <div className="hidden md:flex w-32 shrink-0 items-center pl-6" onClick={e => e.stopPropagation()}>
-                {t.status === "pending" && !t.editorComplexitySet && (
-                  <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full"
-                    onClick={() => setComplexityTarget(t)}>
-                    Definir
-                  </Button>
-                )}
-                {t.status === "pending" && t.editorComplexitySet && (() => {
-                  const startAllowed = !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR;
-                  return startAllowed ? (
-                    <Button size="sm" variant="default" className="h-7 text-xs px-3 w-full"
-                      onClick={() => handleIniciarDireto(t)}>
-                      Iniciar
-                    </Button>
-                  ) : (
-                    <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full" disabled>
-                      Agendada
-                    </Button>
                   );
-                })()}
-                {trans && t.status !== "pending" && (
-                  <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full"
-                    onClick={() => updateStatus(t, trans.next)}>
-                    {trans.shortLabel}
-                  </Button>
-                )}
-                {!trans && t.status !== "pending" && (
-                  <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30 pl-1">—</span>
-                )}
+                })}
               </div>
 
-              {/* Dropdown */}
-              <div className="hidden md:flex w-8 shrink-0 items-center justify-center" onClick={e => e.stopPropagation()}>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-7 w-7">
-                      <MoreVertical className="h-3.5 w-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  {dropdownItems}
-                </DropdownMenu>
-              </div>
-
-            </motion.div>
-          );
-          })}
+              {/* ── Desktop (md+): TanStack table ───────────────────── */}
+              <table className="hidden md:table w-full border-collapse">
+                <thead className="sticky top-0 z-20 bg-[hsl(var(--muted))]/30 border-b border-[hsl(var(--border))]">
+                  {table.getHeaderGroups().map(hg => (
+                    <tr key={hg.id}>
+                      {hg.headers.map(h => (
+                        <th key={h.id}
+                          style={{ width: h.getSize() !== 150 && h.getSize() > 0 ? h.getSize() : undefined }}
+                          className={`h-10 px-3 text-left text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 whitespace-nowrap${(h.column.columnDef.meta as any)?.className ? ` ${(h.column.columnDef.meta as any).className}` : ""}`}
+                        >
+                          {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
+                        </th>
+                      ))}
+                    </tr>
+                  ))}
+                </thead>
+                <tbody>
+                  {TASK_GROUPS.map(group => {
+                    const groupRows = table.getRowModel().rows.filter(r => group.statuses.includes(r.original.status));
+                    if (!groupRows.length) return null;
+                    return (
+                      <React.Fragment key={group.key}>
+                        <tr className="sticky top-10 z-10">
+                          <td colSpan={columns.length} className="bg-[hsl(var(--card))] px-4 py-2 border-b border-[hsl(var(--border))]/30">
+                            <div className="flex items-center gap-3">
+                              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
+                              <span className="text-[10px] font-semibold uppercase tracking-[0.12em] shrink-0" style={{ color: group.color, opacity: 0.75 }}>{group.label}</span>
+                              <span className="flex-1 border-t border-dashed" style={{ borderColor: `${group.color}30` }} />
+                              <span className="text-[10px] tabular-nums shrink-0" style={{ color: group.color, opacity: 0.5 }}>{groupRows.length}</span>
+                            </div>
+                          </td>
+                        </tr>
+                        {groupRows.map(row => {
+                          const t = row.original;
+                          const isHighlighted = highlighted === t.id;
+                          return (
+                            <tr key={row.id}
+                              ref={isHighlighted ? (highlightRef as React.RefObject<HTMLTableRowElement>) : null}
+                              className="border-b border-[hsl(var(--border))]/40 last:border-0 hover:bg-[hsl(var(--muted))]/20 cursor-pointer transition-colors"
+                              style={{ borderLeft: `3px solid ${t.color ?? "#6366f1"}`, backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.08)" : undefined, boxShadow: isHighlighted ? "inset 0 0 0 1px hsl(var(--primary) / 0.25)" : undefined }}
+                              onClick={() => openTask(t.id)}
+                            >
+                              {row.getVisibleCells().map(cell => (
+                                <td key={cell.id}
+                                  className={`px-3 py-2.5 align-middle${(cell.column.columnDef.meta as any)?.className ? ` ${(cell.column.columnDef.meta as any).className}` : ""}`}
+                                >
+                                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                </td>
+                              ))}
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </>
+          )}
         </div>
-      );
-    })}
-  </>
-)}
-        </div>{/* fim body scrollável */}
       </div>
 
       {/* Devolver dialog */}
@@ -688,6 +680,27 @@ export default function EditorTaskList() {
           onSave={saveComplexity}
           onCancel={() => setComplexityTarget(null)}
           saving={definingSaving}
+        />
+      )}
+
+      {uploadTarget && (
+        <TaskFileUploadModal
+          open={!!uploadTarget}
+          taskId={uploadTarget.id}
+          taskCode={uploadTarget.taskCode}
+          taskTitle={uploadTarget.title}
+          onDone={() => { setUploadTarget(null); load(); }}
+          onCancel={() => setUploadTarget(null)}
+        />
+      )}
+
+      {filesViewTarget && (
+        <TaskFilesViewModal
+          open={!!filesViewTarget}
+          onClose={() => setFilesViewTarget(null)}
+          taskId={filesViewTarget.id}
+          taskCode={filesViewTarget.taskCode}
+          taskTitle={filesViewTarget.title}
         />
       )}
 

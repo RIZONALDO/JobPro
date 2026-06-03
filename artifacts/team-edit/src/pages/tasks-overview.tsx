@@ -1,3 +1,5 @@
+import { useReactTable, getCoreRowModel, getSortedRowModel, flexRender, type ColumnDef, type SortingState } from "@tanstack/react-table";
+import React, { useMemo as reactUseMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { staggerContainer, staggerRow } from "@/lib/motion";
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
@@ -21,8 +23,9 @@ import {
   ArrowUpRight, X, PauseCircle, XCircle,
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
   SlidersHorizontal, Search, CalendarClock, ChevronRight,
-  CheckCircle2, RotateCcw, AlertTriangle, Clock,
+  CheckCircle2, RotateCcw, AlertTriangle, Clock, FileVideo,
 } from "lucide-react";
+import { TaskFilesViewModal } from "@/components/TaskFilesViewModal";
 import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
@@ -74,6 +77,7 @@ interface OverviewTask {
   isOwn: boolean;
   updatedAt: string;
   reviewedAt?: string | null;
+  fileCount?: number;
   // multi-task
   taskType?: string;
   subtaskProgress?: { total: number; completed: number; percentage: number };
@@ -171,6 +175,7 @@ export default function TasksOverview() {
   };
 
   // Revision dialog
+  const [filesViewTarget, setFilesViewTarget] = useState<OverviewTask | null>(null);
   const [revisionTask,    setRevisionTask]    = useState<OverviewTask | null>(null);
   const [revisionComment, setRevisionComment] = useState("");
 
@@ -546,6 +551,271 @@ export default function TasksOverview() {
     } finally { setSendingRevisionSubtask(false); }
   };
 
+  // ── TanStack Table ────────────────────────────────────────────────────────
+
+  const [tanSorting, setTanSorting] = useState<SortingState>([]);
+
+  const overviewColumns = reactUseMemo<ColumnDef<OverviewTask, unknown>[]>(() => [
+    {
+      id: "tarefa",
+      accessorKey: "title",
+      header: "Tarefa",
+      cell: ({ row }) => {
+        const t = row.original;
+        const isExpanded = expandedIds.has(t.id);
+        return (
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2 min-w-0">
+              {t.taskType === "multi_task" && (
+                <button className="shrink-0 p-0.5 rounded hover:bg-[hsl(var(--muted))] transition-colors"
+                  onClick={e => { e.stopPropagation(); toggleExpand(t.id); }}>
+                  <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`} />
+                </button>
+              )}
+              {t.taskCode && <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">{t.taskCode}</span>}
+              <span className="text-sm font-semibold truncate leading-snug">{t.title}</span>
+              {t.revisionCount > 0 && (
+                <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap">
+                  {t.revisionCount} {t.revisionCount === 1 ? "alt." : "alts."}
+                </span>
+              )}
+            </div>
+            {t.client && <p className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</p>}
+          </div>
+        );
+      },
+    },
+    {
+      id: "status",
+      accessorKey: "status",
+      header: "Status",
+      size: 144,
+      cell: ({ row }) => {
+        const t = row.original;
+        const subPct = t.subtaskProgress
+          ? (t.subtaskProgress.percentage ?? (t.subtaskProgress.total > 0 ? Math.round((t.subtaskProgress.completed / t.subtaskProgress.total) * 100) : 0))
+          : 0;
+        return (
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Badge className={`text-[11px] px-2 py-0.5 font-medium ${STATUS_CLASS[t.status] ?? ""}`}>{STATUS_LABEL[t.status] ?? t.status}</Badge>
+              <MultiTaskBadge taskType={t.taskType ?? "task"} />
+            </div>
+            {t.taskType === "multi_task" && t.subtaskProgress && t.subtaskProgress.total > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] tabular-nums text-[hsl(var(--muted-foreground))]/70">{t.subtaskProgress.completed}/{t.subtaskProgress.total}</span>
+                <div className="h-1 w-12 rounded-full bg-muted overflow-hidden">
+                  <div className={`h-full rounded-full transition-all ${subPct === 100 ? "bg-green-500" : subPct >= 66 ? "bg-blue-500" : subPct >= 33 ? "bg-indigo-400" : "bg-slate-400"}`} style={{ width: `${subPct}%` }} />
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      id: "prioridade",
+      accessorKey: "priority",
+      header: "Prior.",
+      size: 80,
+      meta: { className: "hidden lg:table-cell" },
+      cell: ({ row }) => <PriorityBadge priority={row.original.priority} />,
+    },
+    {
+      id: "editor",
+      header: "Editor",
+      size: 128,
+      cell: ({ row }) => {
+        const t = row.original;
+        const isUnassigned = !t.assignee && (!t.editors || t.editors.length === 0);
+        if (isUnassigned && t.taskType !== "multi_task") return <span className="text-xs text-slate-400">sem editor</span>;
+        if (!t.editors || t.editors.length === 0) return <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30">{t.taskType === "multi_task" ? "sem subtarefas" : "—"}</span>;
+        return (
+          <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center">
+              {t.editors.slice(0, 4).map((e, i) => (
+                <div key={e.id} style={{ marginLeft: i === 0 ? 0 : -8, zIndex: t.editors.length - i }}>
+                  <ChatAvatarButton userId={e.id} name={e.name} avatarUrl={e.avatarUrl} size={26}
+                    taskId={t.id} taskCode={t.taskCode} taskTitle={t.title}
+                    onOpenAvailability={() => setAvailEditor({ id: e.id, name: e.name, avatarUrl: e.avatarUrl })} />
+                </div>
+              ))}
+              {t.editors.length > 4 && (
+                <div style={{ marginLeft: -8 }} className="h-[26px] w-[26px] rounded-full bg-[hsl(var(--muted))] border-2 border-[hsl(var(--background))] flex items-center justify-center text-[10px] font-bold text-[hsl(var(--muted-foreground))]">+{t.editors.length - 4}</div>
+              )}
+            </div>
+            {t.editors.length === 1 && <span className="text-[11px] font-medium truncate">{t.editors[0].name.split(" ")[0]}</span>}
+          </div>
+        );
+      },
+    },
+    {
+      id: "entrega",
+      header: () => viewTab === "scheduled"
+        ? <span>Período</span>
+        : <span className="flex items-center gap-1"><Clock className="h-3 w-3 shrink-0" />Entrega</span>,
+      size: viewTab === "scheduled" ? 176 : 112,
+      meta: { className: "hidden lg:table-cell" },
+      cell: ({ row }) => {
+        const t = row.original;
+        const overdue = isOverdue(t);
+        if (viewTab === "scheduled") {
+          const fmtD = (d: string) => d.split("T")[0].split("-").slice(1).reverse().join("/");
+          const s = t.startDate ? fmtD(t.startDate) : null;
+          const e = t.dueDate ? fmtD(t.dueDate) : null;
+          return (
+            <span className="flex items-center gap-1 tabular-nums text-xs font-semibold">
+              {s && <span className="text-sky-500">{s}</span>}
+              {s && e && <><span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span><span className={overdue ? "text-red-500" : ""}>{e}</span></>}
+              {!s && e && <span className={overdue ? "text-red-500" : ""}>{e}</span>}
+              {!s && !e && <span className="text-[hsl(var(--muted-foreground))]/30">—</span>}
+            </span>
+          );
+        }
+        return <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} reviewedAt={t.reviewedAt} />;
+      },
+    },
+    {
+      id: "coordenador",
+      header: "Coord.",
+      size: 96,
+      meta: { className: "hidden xl:table-cell" },
+      cell: ({ row }) => {
+        const t = row.original;
+        if (t.isOwn) return <span className="text-[11px] text-[hsl(var(--muted-foreground))]/55 font-semibold">Você</span>;
+        if (!t.coordinator) return <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30">—</span>;
+        return (
+          <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+            <ChatAvatarButton userId={t.coordinator.id} name={t.coordinator.name} avatarUrl={t.coordinator.avatarUrl}
+              size={28} taskId={t.id} taskCode={t.taskCode} taskTitle={t.title} />
+            <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 truncate">{t.coordinator.name.split(" ")[0]}</span>
+          </div>
+        );
+      },
+    },
+    {
+      id: "midia",
+      header: "Mídia",
+      size: 40,
+      meta: { className: "text-center" },
+      cell: ({ row }) => {
+        const t = row.original;
+        return (t.fileCount ?? 0) > 0 ? (
+          <div className="flex justify-center" onClick={e => e.stopPropagation()}>
+            <button title="Ver mídia entregue" onClick={() => setFilesViewTarget(t)}
+              className="h-7 w-7 flex items-center justify-center rounded-lg text-violet-500 hover:bg-violet-500/10 transition-colors">
+              <FileVideo className="h-4 w-4" />
+            </button>
+          </div>
+        ) : <span className="text-[hsl(var(--muted-foreground))]/30 flex justify-center">—</span>;
+      },
+    },
+    {
+      id: "acoes",
+      header: "Ações",
+      size: 208,
+      cell: ({ row }) => {
+        const t = row.original;
+        const canActNow = canAct(t);
+
+        const DropdownItems = () => {
+          const isNotTerminal = !isTerminal(t.status);
+          return (
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={e => { e.stopPropagation(); setEditTaskId(t.id); setFormOpen(true); }}>
+                <Pencil className="h-3.5 w-3.5" />Editar tarefa
+              </DropdownMenuItem>
+              {canActNow && isNotTerminal && (
+                <>
+                  <DropdownMenuItem onClick={e => { e.stopPropagation(); setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "reassign" }); }}>
+                    <ArrowUpRight className="h-3.5 w-3.5" />Reatribuir editor
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={e => { e.stopPropagation(); setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "add" }); }}>
+                    <Plus className="h-3.5 w-3.5" />Adicionar editor
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={e => { e.stopPropagation(); setChangeDueDateTask(t); setChangeDueDateValue(t.dueDate ?? ""); }}>
+                    <CalendarClock className="h-3.5 w-3.5" />Alterar prazo
+                  </DropdownMenuItem>
+                </>
+              )}
+              {canActNow && t.status === "completed" && (
+                <DropdownMenuItem onClick={e => { e.stopPropagation(); setReopenTask(t); setReopenComment(""); setReopenDueDate(""); setReopenComplexity("medium"); setReopenPriority("medium"); }}>
+                  <RotateCcw className="h-3.5 w-3.5" />Reabrir tarefa
+                </DropdownMenuItem>
+              )}
+              {canActNow && t.status === "cancelled" && (
+                <DropdownMenuItem onClick={e => { e.stopPropagation(); setConfirmTask({ id: t.id, title: t.title, action: "reactivate" }); }}>
+                  <CheckCircle2 className="h-3.5 w-3.5" />Reativar tarefa
+                </DropdownMenuItem>
+              )}
+              {canActNow && isNotTerminal && <DropdownMenuSeparator />}
+              {canActNow && t.status !== "paused" && isNotTerminal && (
+                <DropdownMenuItem onClick={e => { e.stopPropagation(); setConfirmTask({ id: t.id, title: t.title, action: "pause" }); }}>
+                  <PauseCircle className="h-3.5 w-3.5" />Pausar tarefa
+                </DropdownMenuItem>
+              )}
+              {canActNow && t.status === "paused" && (
+                <DropdownMenuItem onClick={e => { e.stopPropagation(); setConfirmTask({ id: t.id, title: t.title, action: "resume" }); }}>
+                  <CheckCircle2 className="h-3.5 w-3.5" />Retomar tarefa
+                </DropdownMenuItem>
+              )}
+              {canActNow && isNotTerminal && (
+                <DropdownMenuItem onClick={e => { e.stopPropagation(); setConfirmTask({ id: t.id, title: t.title, action: "cancel" }); }} className="text-red-600 focus:text-red-600">
+                  <XCircle className="h-3.5 w-3.5" />Cancelar tarefa
+                </DropdownMenuItem>
+              )}
+              {canActNow && isTerminal(t.status) && (
+                <DropdownMenuItem onClick={e => { e.stopPropagation(); setDeleteTarget({ id: t.id, title: t.title }); }} className="text-red-600 focus:text-red-600">
+                  <Trash2 className="h-3.5 w-3.5" />Excluir tarefa
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          );
+        };
+
+        return (
+          <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+            {t.status === "rascunho" && canActNow && (
+              <Button size="icon" className={`h-7 w-7 ${t.editors?.length > 0 ? "bg-zinc-700 hover:bg-zinc-800" : "bg-zinc-300 cursor-not-allowed"}`}
+                disabled={!t.editors || t.editors.length === 0}
+                onClick={e => { e.stopPropagation(); apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(() => load(true)); }}>
+                <Send className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {t.status === "review" && canActNow && (
+              <>
+                <Button size="sm" className="h-7 gap-1 text-xs bg-green-600 hover:bg-green-700 text-white dark:bg-green-700 dark:hover:bg-green-600"
+                  onClick={e => { e.stopPropagation(); setApproveTarget({ taskId: t.id, title: t.title }); }}>
+                  <CheckCircle2 className="h-3.5 w-3.5" />Aprovar
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 gap-1 text-xs text-amber-600 border-amber-400 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:border-amber-700/60 dark:hover:bg-amber-950/40"
+                  onClick={e => { e.stopPropagation(); setRevisionTask(t); setRevisionComment(""); }}>
+                  <RotateCcw className="h-3.5 w-3.5" />Revisar
+                </Button>
+              </>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7"><MoreVertical className="h-4 w-4" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownItems />
+            </DropdownMenu>
+          </div>
+        );
+      },
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [viewTab, expandedIds, setAvailEditor, setFilesViewTarget, setEditTaskId, setFormOpen, setApproveTarget, setRevisionTask, setRevisionComment, setReopenTask, setConfirmTask, setDeleteTarget, setReassignTarget, setChangeDueDateTask, load]);
+
+  const overviewTable = useReactTable({
+    data: tabFiltered,
+    columns: overviewColumns,
+    state: { sorting: tanSorting },
+    onSortingChange: setTanSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -715,38 +985,6 @@ export default function TasksOverview() {
           ))}
         </div>
 
-        {/* Column headers — desktop fixed, não scrollam */}
-        {(() => {
-          const SortIcon = ({ col }: { col: string }) => {
-            if (sortKey !== col) return <ChevronsUpDown className="h-3 w-3 opacity-30" />;
-            return sortDir === "asc"
-              ? <ChevronUp className="h-3 w-3 text-[hsl(var(--primary))]/70" />
-              : <ChevronDown className="h-3 w-3 text-[hsl(var(--primary))]/70" />;
-          };
-          const Th = ({ col, label }: { col: string; label: string }) => (
-            <button
-              onClick={() => toggleSort(col)}
-              className={`flex items-center gap-1 text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--foreground))] transition-colors select-none ${sortKey === col ? "text-[hsl(var(--primary))]/70/80" : ""}`}
-            >
-              {label}<SortIcon col={col} />
-            </button>
-          );
-          return (
-            <div className="hidden md:flex shrink-0 items-center px-4 py-2.5 bg-[hsl(var(--muted))]/30 border-b">
-              <div className="flex-1 pr-3"><Th col="taskCode" label="Tarefa" /></div>
-              <div className="w-32 shrink-0"><Th col="status" label="Status" /></div>
-              <div className="w-20 shrink-0 hidden lg:block"><Th col="priority" label="Prior." /></div>
-              <div className="w-32 shrink-0"><Th col="assignee" label="Editor" /></div>
-              {viewTab === "scheduled"
-                ? <div className="w-44 shrink-0 hidden lg:block"><Th col="startDate" label="Período" /></div>
-                : <div className="w-28 shrink-0 hidden lg:flex items-center gap-1"><Clock className="h-3 w-3 shrink-0 text-current" /><Th col="dueDate" label="Entrega" /></div>
-              }
-              <div className="w-24 shrink-0 hidden xl:block"><Th col="coordinator" label="Coord." /></div>
-              <div className="w-52 shrink-0" />
-            </div>
-          );
-        })()}
-
         {/* Body scrollável */}
         <div className="flex-1 overflow-y-auto overscroll-contain">
 
@@ -787,7 +1025,9 @@ export default function TasksOverview() {
           </div>
 
         ) : (
-          <div>
+          <>
+            {/* ── Mobile (< md) ─────────────────────────────────── */}
+            <div className="md:hidden">
             {TASK_GROUPS.map(group => {
               const groupTasks = tabFiltered.filter(t => group.statuses.includes(t.status));
               if (!groupTasks.length) return null;
@@ -1243,6 +1483,21 @@ export default function TasksOverview() {
                     )}
                   </div>
 
+                  {/* Coluna Mídia */}
+                  <div className="hidden md:flex w-10 shrink-0 items-center justify-center" onClick={e => e.stopPropagation()}>
+                    {(t.fileCount ?? 0) > 0 ? (
+                      <button
+                        title="Ver mídia entregue"
+                        onClick={() => setFilesViewTarget(t)}
+                        className="h-7 w-7 flex items-center justify-center rounded-lg text-violet-500 hover:bg-violet-500/10 transition-colors"
+                      >
+                        <FileVideo className="h-4 w-4" />
+                      </button>
+                    ) : (
+                      <span className="text-[hsl(var(--muted-foreground))]/30 text-sm">—</span>
+                    )}
+                  </div>
+
                   {/* Ações — desktop (largura fixa w-52 para não desalinhar) */}
                   <div className="hidden md:flex w-52 shrink-0 items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
                     {t.status === "rascunho" && canActNow && (
@@ -1369,6 +1624,145 @@ export default function TasksOverview() {
               );
             })}
           </div>
+
+            {/* ── Desktop (md+): TanStack table ─────────────────── */}
+            <table className="hidden md:table w-full border-collapse">
+              <thead className="sticky top-0 z-20 bg-[hsl(var(--muted))]/30 border-b border-[hsl(var(--border))]">
+                {overviewTable.getHeaderGroups().map(hg => (
+                  <tr key={hg.id}>
+                    {hg.headers.map(h => (
+                      <th key={h.id}
+                        style={{ width: h.getSize() !== 150 && h.getSize() > 0 ? h.getSize() : undefined }}
+                        className={`h-10 px-3 text-left text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 whitespace-nowrap cursor-pointer select-none${(h.column.columnDef.meta as any)?.className ? ` ${(h.column.columnDef.meta as any).className}` : ""}`}
+                        onClick={() => h.column.getCanSort() && h.column.toggleSorting()}
+                      >
+                        <span className="flex items-center gap-1">
+                          {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
+                          {h.column.getIsSorted() === "asc" && <ChevronUp className="h-3 w-3 text-[hsl(var(--primary))]/70 shrink-0" />}
+                          {h.column.getIsSorted() === "desc" && <ChevronDown className="h-3 w-3 text-[hsl(var(--primary))]/70 shrink-0" />}
+                          {h.column.getCanSort() && !h.column.getIsSorted() && <ChevronsUpDown className="h-3 w-3 opacity-30 shrink-0" />}
+                        </span>
+                      </th>
+                    ))}
+                  </tr>
+                ))}
+              </thead>
+              <tbody>
+                {TASK_GROUPS.map(group => {
+                  const groupRows = overviewTable.getRowModel().rows.filter(r => group.statuses.includes(r.original.status));
+                  if (!groupRows.length) return null;
+                  return (
+                    <React.Fragment key={group.key}>
+                      <tr className="sticky top-10 z-10">
+                        <td colSpan={overviewColumns.length} className="bg-[hsl(var(--card))] px-4 py-2 border-b border-[hsl(var(--border))]/30">
+                          <div className="flex items-center gap-3">
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] shrink-0" style={{ color: group.color, opacity: 0.75 }}>{group.label}</span>
+                            <span className="flex-1 border-t border-dashed" style={{ borderColor: `${group.color}30` }} />
+                            <span className="text-[10px] tabular-nums shrink-0" style={{ color: group.color, opacity: 0.5 }}>{groupRows.length}</span>
+                          </div>
+                        </td>
+                      </tr>
+                      {groupRows.map(row => {
+                        const t = row.original;
+                        const isExpanded = expandedIds.has(t.id);
+                        const isHighlighted = highlighted === t.id;
+                        const subList = subtasksMap.get(t.id) ?? [];
+                        const isLoadingSubs = loadingSubtasks.has(t.id);
+                        const canActNow = canAct(t);
+                        return (
+                          <React.Fragment key={row.id}>
+                            <tr
+                              ref={isHighlighted ? (highlightRef as React.RefObject<HTMLTableRowElement>) : null}
+                              className="border-b border-[hsl(var(--border))]/40 hover:bg-[hsl(var(--muted))]/20 cursor-pointer transition-colors"
+                              style={{
+                                borderLeft: `3px ${t.status === "rascunho" ? "dashed" : "solid"} ${group.color}`,
+                                opacity: t.status === "rascunho" ? 0.75 : 1,
+                                backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.08)" : undefined,
+                                boxShadow: isHighlighted ? "inset 0 0 0 1px hsl(var(--primary) / 0.25)" : undefined,
+                              }}
+                              onClick={() => (t.status === "pending" || t.status === "rascunho") && canActNow ? (setEditTaskId(t.id), setFormOpen(true)) : openTask(t.id)}
+                            >
+                              {row.getVisibleCells().map(cell => (
+                                <td key={cell.id}
+                                  className={`px-3 py-2.5 align-middle${(cell.column.columnDef.meta as any)?.className ? ` ${(cell.column.columnDef.meta as any).className}` : ""}`}
+                                >
+                                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                </td>
+                              ))}
+                            </tr>
+                            {t.taskType === "multi_task" && isExpanded && (
+                              <tr>
+                                <td colSpan={overviewColumns.length} className="p-0 border-b border-[hsl(var(--border))]/40">
+                                  {isLoadingSubs ? (
+                                    <div className="flex items-center gap-2 px-10 py-3 text-sm text-[hsl(var(--muted-foreground))]">
+                                      <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
+                                      Carregando subtarefas…
+                                    </div>
+                                  ) : subList.length === 0 ? (
+                                    <div className="px-10 py-2.5 text-xs text-[hsl(var(--muted-foreground))]/60 italic">
+                                      Nenhuma subtarefa encontrada.
+                                    </div>
+                                  ) : (
+                                    <div className="divide-y divide-[hsl(var(--muted))]">
+                                      {subList.map(sub => {
+                                        const person = sub.assignedTo ?? sub.editors?.[0] ?? null;
+                                        return (
+                                          <div key={sub.id}
+                                            className="flex items-center gap-3 pl-10 pr-4 py-2.5 bg-[hsl(var(--muted))]/10 hover:bg-[hsl(var(--muted))]/25 transition-colors cursor-pointer border-l-4"
+                                            style={{ borderLeftColor: `${group.color}55` }}
+                                            onClick={e => { e.stopPropagation(); openTask(sub.id); }}
+                                          >
+                                            <div className="flex-1 min-w-0 flex items-baseline gap-2">
+                                              {sub.taskCode && <span className="shrink-0 font-mono text-xs text-[hsl(var(--primary))]/70">{sub.taskCode}</span>}
+                                              <span className="text-sm truncate">{sub.title}</span>
+                                              {sub.revisionCount > 0 && (
+                                                <span className="shrink-0 text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap leading-none">
+                                                  {sub.revisionCount} {sub.revisionCount === 1 ? "alteração" : "alterações"}
+                                                </span>
+                                              )}
+                                            </div>
+                                            <Badge className={`text-[11px] px-2 py-0.5 shrink-0 ${STATUS_CLASS[sub.status] ?? ""}`}>
+                                              {STATUS_LABEL[sub.status] ?? sub.status}
+                                            </Badge>
+                                            <div className="flex items-center shrink-0">
+                                              {person && (
+                                                <ChatAvatarButton
+                                                  userId={person.id} name={person.name} avatarUrl={person.avatarUrl}
+                                                  size={24} taskId={sub.id} taskCode={sub.taskCode} taskTitle={sub.title}
+                                                  onOpenAvailability={() => setAvailEditor({ id: person.id, name: person.name, avatarUrl: person.avatarUrl })}
+                                                />
+                                              )}
+                                            </div>
+                                            {sub.status === "review" && canActNow && (
+                                              <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                                                <Button size="sm" className="h-6 px-2 gap-1 text-[11px] bg-green-600 hover:bg-green-700 text-white dark:bg-green-700 dark:hover:bg-green-600"
+                                                  onClick={e => { e.stopPropagation(); setApproveTarget({ taskId: sub.id, title: sub.title, parentId: t.id }); }}>
+                                                  <CheckCircle2 className="h-3 w-3" />Aprovar
+                                                </Button>
+                                                <Button size="sm" variant="outline" className="h-6 px-2 gap-1 text-[11px] text-amber-600 border-amber-400 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:border-amber-700/60 dark:hover:bg-amber-950/40"
+                                                  onClick={e => { e.stopPropagation(); setRevisionSubtask({ id: sub.id, title: sub.title, parentId: t.id }); setRevisionSubtaskComment(""); }}>
+                                                  <RotateCcw className="h-3 w-3" />Revisar
+                                                </Button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </>
         )}
 
         </div>{/* fim body scrollável */}
@@ -1747,6 +2141,16 @@ export default function TasksOverview() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {filesViewTarget && (
+        <TaskFilesViewModal
+          open={!!filesViewTarget}
+          onClose={() => setFilesViewTarget(null)}
+          taskId={filesViewTarget.id}
+          taskCode={filesViewTarget.taskCode}
+          taskTitle={filesViewTarget.title}
+        />
+      )}
 
     </div>
   );
