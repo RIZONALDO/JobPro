@@ -2,8 +2,10 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import { usePageTitle } from "@/lib/use-page-title";
 import { useRealtime } from "@/hooks/use-realtime";
+import { useTaskModal } from "@/contexts/TaskModalContext";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -56,6 +58,19 @@ function dayScore(tasks: AgendaTask[], day: Date): number {
   }, 0);
 }
 
+function dayTasks(tasks: AgendaTask[], day: Date): AgendaTask[] {
+  const dayEnd = new Date(day.getTime() + 86_400_000 - 1);
+  return tasks.filter(t => {
+    const startStr = t.startDate?.split("T")[0];
+    const endStr   = t.dueDate?.split("T")[0];
+    const start = startStr ? d0(parseLocal(startStr)) : null;
+    const end   = endStr   ? d0(parseLocal(endStr))   : null;
+    const started = !start || start <= dayEnd;
+    const notDone = !end   || end   >= day;
+    return started && notDone;
+  });
+}
+
 function slotConfig(score: number) {
   const pct = Math.min(100, Math.round((score / 12) * 100));
   if (score === 0) return {
@@ -84,6 +99,7 @@ function slotConfig(score: number) {
 
 export default function AgendaGeral() {
   usePageTitle("Agenda Geral");
+  const { openTask } = useTaskModal();
 
   const [rows,    setRows]    = useState<EditorRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -204,7 +220,7 @@ export default function AgendaGeral() {
           )}
 
           {/* Editor rows */}
-          {!loading && editorData.map(({ editor, scores }) => (
+          {!loading && editorData.map(({ editor, tasks, scores }) => (
             <div
               key={editor.id}
               className="grid"
@@ -223,26 +239,66 @@ export default function AgendaGeral() {
 
               {/* Day heat slots */}
               {scores.map((sc, di) => {
-                const cfg    = slotConfig(sc);
-                const isToday  = diffDays(today, weekDays[di]) === 0;
-                const isWkend  = weekDays[di].getDay() === 0 || weekDays[di].getDay() === 6;
+                const cfg     = slotConfig(sc);
+                const isWkend = weekDays[di].getDay() === 0 || weekDays[di].getDay() === 6;
+                const tasksOnDay = dayTasks(tasks, weekDays[di]);
                 return (
                   <div
                     key={di}
                     className="p-[4px]"
                     style={isWkend ? { background: "hsl(var(--muted) / 0.07)" } : {}}
                   >
-                    <div
-                      className="flex flex-col items-center justify-center select-none transition-all duration-200 hover:scale-[1.03] cursor-default w-full"
-                      style={{
-                        height: 72,
-                        borderRadius: 7,
-                        background: cfg.bg,
-                        border: `1px solid ${cfg.border}`,
-                        boxShadow: cfg.shadow,
-                      }}
-                    >
-                    </div>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <div
+                          className="w-full cursor-pointer select-none transition-all duration-200 hover:scale-[1.03] hover:brightness-110"
+                          style={{
+                            height: 72,
+                            borderRadius: 7,
+                            background: cfg.bg,
+                            border: `1px solid ${cfg.border}`,
+                            boxShadow: cfg.shadow,
+                          }}
+                        />
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="p-0 w-60"
+                        side="bottom"
+                        align="center"
+                        sideOffset={6}
+                      >
+                        {/* Header */}
+                        <div className="px-3 py-2 border-b border-[hsl(var(--border))]">
+                          <p className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))]">
+                            {editor.name.split(" ")[0]} · {WEEK_DAYS[di]} {weekDays[di].getDate()}
+                          </p>
+                        </div>
+                        {/* Task list */}
+                        <div className="py-1 max-h-60 overflow-y-auto">
+                          {tasksOnDay.length === 0 ? (
+                            <p className="px-3 py-2 text-[12px] text-[hsl(var(--muted-foreground))]">
+                              Nenhuma tarefa
+                            </p>
+                          ) : tasksOnDay.map(t => (
+                            <button
+                              key={t.id}
+                              className="w-full flex items-center gap-2 px-3 py-1.5 text-left rounded hover:bg-[hsl(var(--muted)/0.6)] transition-colors"
+                              onClick={() => openTask(t.id)}
+                            >
+                              <span
+                                className="font-mono text-[11px] font-bold shrink-0"
+                                style={{ color: t.color || "hsl(var(--primary))" }}
+                              >
+                                {t.taskCode}
+                              </span>
+                              <span className="text-[12px] truncate text-[hsl(var(--foreground))]">
+                                {t.title}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 );
               })}
