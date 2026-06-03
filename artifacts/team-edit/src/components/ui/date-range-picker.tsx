@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { DayPicker, DateRange } from "react-day-picker";
+import { DayPicker } from "react-day-picker";
+
+type DateRange = { from?: Date; to?: Date };
 import { ptBR } from "date-fns/locale";
 import { format, parse, isValid, isBefore, startOfDay } from "date-fns";
 import { Calendar, Clock, X, ChevronLeft, ChevronUp, ChevronDown } from "lucide-react";
