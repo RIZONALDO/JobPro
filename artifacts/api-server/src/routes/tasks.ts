@@ -1092,19 +1092,23 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     const newEditor = update.assignedToId as number | null;
     const oldEditor = task.assignedToId;
 
-    if (oldEditor) {
-      await notify(oldEditor, "task_reassigned",
-        "Tarefa reatribuída",
-        `A tarefa "${task.title}" foi reatribuída a outro editor`,
-        { taskId: id }
-      );
+    if (task.status !== "rascunho") {
+      if (oldEditor) {
+        await notify(oldEditor, "task_reassigned",
+          "Tarefa reatribuída",
+          `A tarefa "${task.title}" foi reatribuída a outro editor`,
+          { taskId: id }
+        );
+      }
+      if (newEditor) {
+        await notify(newEditor, "task_assigned",
+          "Nova tarefa atribuída",
+          `A tarefa "${task.title}" foi atribuída a você`,
+          { taskId: id }
+        );
+      }
     }
     if (newEditor) {
-      await notify(newEditor, "task_assigned",
-        "Nova tarefa atribuída",
-        `A tarefa "${task.title}" foi atribuída a você`,
-        { taskId: id }
-      );
       await db.insert(taskEditorsTable).values({
         taskId: id, userId: newEditor, assignedById: req.session.userId,
       }).onConflictDoNothing();
@@ -1124,12 +1128,14 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
       if (task.assignedToId) recipients.add(task.assignedToId);
       const extraEditors = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
       extraEditors.forEach(e => recipients.add(e.userId));
-      for (const recipientId of recipients) {
-        await notify(recipientId, "due_date_changed",
-          "Prazo alterado",
-          `O prazo de "${task.title}" foi alterado para ${fmtBR(newDate)}`,
-          { taskId: id }
-        );
+      if (task.status !== "rascunho") {
+        for (const recipientId of recipients) {
+          await notify(recipientId, "due_date_changed",
+            "Prazo alterado",
+            `O prazo de "${task.title}" foi alterado para ${fmtBR(newDate)}`,
+            { taskId: id }
+          );
+        }
       }
     }
   }
@@ -2392,11 +2398,13 @@ router.post("/tasks/:id/editors", requireCoordinator, async (req, res): Promise<
     taskId: id, userId: editorId, assignedById: req.session.userId,
   }).onConflictDoNothing();
 
-  await notify(editorId, "task_assigned",
-    "Tarefa atribuída a você",
-    `Você foi adicionado à tarefa "${task.title}"`,
-    { taskId: id }
-  );
+  if (task.status !== "rascunho") {
+    await notify(editorId, "task_assigned",
+      "Tarefa atribuída a você",
+      `Você foi adicionado à tarefa "${task.title}"`,
+      { taskId: id }
+    );
+  }
 
   broadcastTaskChange();
   res.json({ ok: true });
@@ -2413,11 +2421,13 @@ router.delete("/tasks/:id/editors/:editorId", requireCoordinator, async (req, re
   await db.delete(taskEditorsTable)
     .where(and(eq(taskEditorsTable.taskId, id), eq(taskEditorsTable.userId, editorId)));
 
-  await notify(editorId, "task_reassigned",
-    "Removido de tarefa",
-    `Você foi removido da tarefa "${task.title}"`,
-    { taskId: id }
-  );
+  if (task.status !== "rascunho") {
+    await notify(editorId, "task_reassigned",
+      "Removido de tarefa",
+      `Você foi removido da tarefa "${task.title}"`,
+      { taskId: id }
+    );
+  }
 
   broadcastTaskChange();
   res.json({ ok: true });
