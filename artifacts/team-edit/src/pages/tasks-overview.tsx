@@ -563,14 +563,8 @@ export default function TasksOverview() {
       cell: ({ row }) => {
         const t = row.original;
         const isExpanded = expandedIds.has(t.id);
-        const overdue = isOverdue(t);
-        const fmtD = (d: string) => d.split("T")[0].split("-").slice(1).reverse().join("/");
-        const subPct = t.subtaskProgress
-          ? (t.subtaskProgress.percentage ?? (t.subtaskProgress.total > 0 ? Math.round((t.subtaskProgress.completed / t.subtaskProgress.total) * 100) : 0))
-          : 0;
         return (
           <div className="min-w-0">
-            {/* Linha 1: expand + código + título + chip de alterações */}
             <div className="flex items-baseline gap-2 min-w-0">
               {t.taskType === "multi_task" && (
                 <button className="shrink-0 p-0.5 rounded hover:bg-[hsl(var(--muted))] transition-colors"
@@ -586,52 +580,7 @@ export default function TasksOverview() {
                 </span>
               )}
             </div>
-            {/* Progresso de multi-tarefa */}
-            {t.taskType === "multi_task" && t.subtaskProgress && t.subtaskProgress.total > 0 && (
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-[10px] tabular-nums text-[hsl(var(--muted-foreground))]/60">{t.subtaskProgress.completed}/{t.subtaskProgress.total}</span>
-                <div className="h-1 w-10 rounded-full bg-muted overflow-hidden">
-                  <div className={`h-full rounded-full transition-all ${subPct === 100 ? "bg-green-500" : subPct >= 66 ? "bg-blue-500" : subPct >= 33 ? "bg-indigo-400" : "bg-slate-400"}`} style={{ width: `${subPct}%` }} />
-                </div>
-              </div>
-            )}
-            {/* Linha 2: cliente · prioridade · prazo · coord · mídia */}
-            <div className="flex items-center gap-2 mt-1 flex-wrap min-w-0">
-              {t.client && <span className="text-[11px] text-[hsl(var(--muted-foreground))]/55 truncate max-w-[140px]">{t.client}</span>}
-              <span
-                className={`h-1.5 w-1.5 rounded-full shrink-0 ${t.priority === "high" ? "bg-red-500" : t.priority === "medium" ? "bg-amber-400" : "bg-green-500"}`}
-                title={t.priority === "high" ? "Alta" : t.priority === "medium" ? "Média" : "Baixa"}
-              />
-              {viewTab === "scheduled" ? (
-                (t.startDate || t.dueDate) && (
-                  <span className="flex items-center gap-1 tabular-nums text-[11px] font-semibold shrink-0">
-                    {t.startDate && <span className="text-sky-500">{fmtD(t.startDate)}</span>}
-                    {t.startDate && t.dueDate && <span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span>}
-                    {t.dueDate && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/75"}>{fmtD(t.dueDate)}</span>}
-                  </span>
-                )
-              ) : (
-                t.dueDate && !isTerminal(t.status) && (
-                  <span className={`text-[11px] tabular-nums shrink-0 ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]/60"}`}>
-                    {fmtPrazoWeek(t.dueDate).label}
-                  </span>
-                )
-              )}
-              {!t.isOwn && t.coordinator && (
-                <span className="text-[11px] text-[hsl(var(--muted-foreground))]/40 shrink-0">
-                  {t.coordinator.name.split(" ")[0]}
-                </span>
-              )}
-              {(t.fileCount ?? 0) > 0 && (
-                <button
-                  onClick={e => { e.stopPropagation(); setFilesViewTarget(t); }}
-                  className="text-violet-500 hover:text-violet-600 transition-colors shrink-0"
-                  title="Ver mídia"
-                >
-                  <FileVideo className="h-3 w-3" />
-                </button>
-              )}
-            </div>
+            {t.client && <p className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</p>}
           </div>
         );
       },
@@ -643,13 +592,34 @@ export default function TasksOverview() {
       size: 144,
       cell: ({ row }) => {
         const t = row.original;
+        const subPct = t.subtaskProgress
+          ? (t.subtaskProgress.percentage ?? (t.subtaskProgress.total > 0 ? Math.round((t.subtaskProgress.completed / t.subtaskProgress.total) * 100) : 0))
+          : 0;
         return (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <Badge className={`text-[11px] px-2 py-0.5 font-medium ${STATUS_CLASS[t.status] ?? ""}`}>{STATUS_LABEL[t.status] ?? t.status}</Badge>
-            <MultiTaskBadge taskType={t.taskType ?? "task"} />
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Badge className={`text-[11px] px-2 py-0.5 font-medium ${STATUS_CLASS[t.status] ?? ""}`}>{STATUS_LABEL[t.status] ?? t.status}</Badge>
+              <MultiTaskBadge taskType={t.taskType ?? "task"} />
+            </div>
+            {t.taskType === "multi_task" && t.subtaskProgress && t.subtaskProgress.total > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] tabular-nums text-[hsl(var(--muted-foreground))]/70">{t.subtaskProgress.completed}/{t.subtaskProgress.total}</span>
+                <div className="h-1 w-12 rounded-full bg-muted overflow-hidden">
+                  <div className={`h-full rounded-full transition-all ${subPct === 100 ? "bg-green-500" : subPct >= 66 ? "bg-blue-500" : subPct >= 33 ? "bg-indigo-400" : "bg-slate-400"}`} style={{ width: `${subPct}%` }} />
+                </div>
+              </div>
+            )}
           </div>
         );
       },
+    },
+    {
+      id: "prioridade",
+      accessorKey: "priority",
+      header: "Prior.",
+      size: 80,
+      meta: { className: "hidden lg:table-cell" },
+      cell: ({ row }) => <PriorityBadge priority={row.original.priority} />,
     },
     {
       id: "editor",
@@ -677,6 +647,67 @@ export default function TasksOverview() {
             {t.editors.length === 1 && <span className="text-[11px] font-medium truncate">{t.editors[0].name.split(" ")[0]}</span>}
           </div>
         );
+      },
+    },
+    {
+      id: "entrega",
+      header: () => viewTab === "scheduled"
+        ? <span>Período</span>
+        : <span className="flex items-center gap-1"><Clock className="h-3 w-3 shrink-0" />Entrega</span>,
+      size: viewTab === "scheduled" ? 176 : 112,
+      meta: { className: "hidden lg:table-cell" },
+      cell: ({ row }) => {
+        const t = row.original;
+        const overdue = isOverdue(t);
+        if (viewTab === "scheduled") {
+          const fmtD = (d: string) => d.split("T")[0].split("-").slice(1).reverse().join("/");
+          const s = t.startDate ? fmtD(t.startDate) : null;
+          const e = t.dueDate ? fmtD(t.dueDate) : null;
+          return (
+            <span className="flex items-center gap-1 tabular-nums text-xs font-semibold">
+              {s && <span className="text-sky-500">{s}</span>}
+              {s && e && <><span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span><span className={overdue ? "text-red-500" : ""}>{e}</span></>}
+              {!s && e && <span className={overdue ? "text-red-500" : ""}>{e}</span>}
+              {!s && !e && <span className="text-[hsl(var(--muted-foreground))]/30">—</span>}
+            </span>
+          );
+        }
+        return <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} reviewedAt={t.reviewedAt} />;
+      },
+    },
+    {
+      id: "coordenador",
+      header: "Coord.",
+      size: 96,
+      meta: { className: "hidden xl:table-cell" },
+      cell: ({ row }) => {
+        const t = row.original;
+        if (t.isOwn) return <span className="text-[11px] text-[hsl(var(--muted-foreground))]/55 font-semibold">Você</span>;
+        if (!t.coordinator) return <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30">—</span>;
+        return (
+          <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+            <ChatAvatarButton userId={t.coordinator.id} name={t.coordinator.name} avatarUrl={t.coordinator.avatarUrl}
+              size={28} taskId={t.id} taskCode={t.taskCode} taskTitle={t.title} />
+            <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 truncate">{t.coordinator.name.split(" ")[0]}</span>
+          </div>
+        );
+      },
+    },
+    {
+      id: "midia",
+      header: "Mídia",
+      size: 40,
+      meta: { className: "text-center" },
+      cell: ({ row }) => {
+        const t = row.original;
+        return (t.fileCount ?? 0) > 0 ? (
+          <div className="flex justify-center" onClick={e => e.stopPropagation()}>
+            <button title="Ver mídia entregue" onClick={() => setFilesViewTarget(t)}
+              className="h-7 w-7 flex items-center justify-center rounded-lg text-violet-500 hover:bg-violet-500/10 transition-colors">
+              <FileVideo className="h-4 w-4" />
+            </button>
+          </div>
+        ) : <span className="text-[hsl(var(--muted-foreground))]/30 flex justify-center">—</span>;
       },
     },
     {
