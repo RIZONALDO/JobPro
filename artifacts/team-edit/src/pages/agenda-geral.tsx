@@ -239,9 +239,7 @@ export default function AgendaGeral() {
                         borderRadius: 7,
                         background: cfg.bg,
                         border: `1px solid ${cfg.border}`,
-                        boxShadow: isToday
-                          ? `${cfg.shadow}, 0 0 0 2px hsl(var(--primary) / 0.45)`
-                          : cfg.shadow,
+                        boxShadow: cfg.shadow,
                       }}
                     >
                     </div>
