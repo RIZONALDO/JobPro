@@ -248,10 +248,12 @@ export default function Team() {
                     return (
                       <div key={editor.id} className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
                         {/* Row: click to expand */}
-                        <button
-                          type="button"
+                        <div
+                          role="button"
+                          tabIndex={0}
                           onClick={() => toggleEditor(editor.id)}
-                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/30 transition-colors text-left"
+                          onKeyDown={e => (e.key === "Enter" || e.key === " ") && toggleEditor(editor.id)}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/30 transition-colors cursor-pointer select-none"
                         >
                           <AvatarDisplay
                             name={editor.name}
@@ -297,7 +299,7 @@ export default function Team() {
                               </Button>
                             </div>
                           )}
-                        </button>
+                        </div>
 
                         {/* Expanded task list */}
                         {expanded && (
