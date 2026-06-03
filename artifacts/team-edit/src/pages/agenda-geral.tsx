@@ -270,7 +270,7 @@ export default function AgendaGeral() {
                     <Popover>
                       <PopoverTrigger asChild>
                         <div
-                          className="w-full cursor-pointer select-none transition-all duration-200 hover:scale-[1.03] hover:brightness-110"
+                          className="relative w-full cursor-pointer select-none transition-all duration-200 hover:scale-[1.03] hover:brightness-110"
                           style={{
                             height: 72,
                             borderRadius: 7,
@@ -278,7 +278,13 @@ export default function AgendaGeral() {
                             border: `1px solid ${cfg.border}`,
                             boxShadow: cfg.shadow,
                           }}
-                        />
+                        >
+                          {sc >= 12 && (
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <span style={{ fontSize: 22, fontWeight: 800, color: "#ef4444", opacity: 0.25, lineHeight: 1 }}>✕</span>
+                            </div>
+                          )}
+                        </div>
                       </PopoverTrigger>
                       <PopoverContent
                         className="p-0 w-60"
