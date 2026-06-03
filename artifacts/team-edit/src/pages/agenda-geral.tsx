@@ -229,13 +229,14 @@ export default function AgendaGeral() {
                 return (
                   <div
                     key={di}
-                    className="p-[4px]"
+                    className="flex items-center justify-center py-[5px] px-[3px]"
                     style={isWkend ? { background: "hsl(var(--muted) / 0.07)" } : {}}
                   >
                     <div
-                      className="flex flex-col items-center justify-center select-none transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] cursor-default w-full"
+                      className="flex flex-col items-center justify-center select-none transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] cursor-default mx-auto"
                       style={{
-                        aspectRatio: "1 / 1",
+                        width: 58,
+                        height: 58,
                         borderRadius: 14,
                         background: cfg.bg,
                         border: `1px solid ${cfg.border}`,
@@ -245,13 +246,13 @@ export default function AgendaGeral() {
                       }}
                     >
                       <span
-                        className="text-[20px] font-bold leading-none"
+                        className="text-[15px] font-bold leading-none"
                         style={{ color: cfg.color }}
                       >
                         {cfg.pct}%
                       </span>
                       <span
-                        className="text-[9px] mt-1 font-semibold whitespace-nowrap"
+                        className="text-[8px] mt-[3px] font-semibold whitespace-nowrap"
                         style={{ color: cfg.color, opacity: 0.75 }}
                       >
                         {cfg.label}
