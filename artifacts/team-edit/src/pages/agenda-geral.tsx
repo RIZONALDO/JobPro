@@ -6,7 +6,7 @@ import { useTaskModal } from "@/contexts/TaskModalContext";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Lock } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -281,7 +281,7 @@ export default function AgendaGeral() {
                         >
                           {sc >= 12 && (
                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                              <span style={{ fontSize: 22, fontWeight: 800, color: "#ef4444", opacity: 0.25, lineHeight: 1 }}>✕</span>
+                              <Lock style={{ width: 18, height: 18, color: "#ef4444", opacity: 0.30 }} strokeWidth={2.5} />
                             </div>
                           )}
                         </div>
