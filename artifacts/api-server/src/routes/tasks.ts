@@ -1898,6 +1898,7 @@ router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
       startDate:    tasksTable.startDate,
       dueDate:      tasksTable.dueDate,
       assignedToId: tasksTable.assignedToId,
+      createdById:  tasksTable.createdById,
     })
     .from(tasksTable)
     .where(and(
@@ -1907,6 +1908,15 @@ router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
       ne(tasksTable.taskType, "multi_task"),
       isNotNull(tasksTable.assignedToId),
     ));
+
+  const creatorIds = [...new Set(tasks.map(t => t.createdById).filter(Boolean))] as number[];
+  const creatorMap = new Map<number, { id: number; name: string; avatarUrl: string | null }>();
+  if (creatorIds.length > 0) {
+    const creators = await db
+      .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+      .from(usersTable).where(inArray(usersTable.id, creatorIds));
+    creators.forEach(c => creatorMap.set(c.id, c));
+  }
 
   const result = editors.map(editor => ({
     editor,
@@ -1923,6 +1933,7 @@ router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
         client:    t.client,
         startDate: t.startDate ? t.startDate.toISOString() : null,
         dueDate:   t.dueDate   ? t.dueDate.toISOString()   : null,
+        creator:   t.createdById ? (creatorMap.get(t.createdById) ?? null) : null,
       })),
   }));
 

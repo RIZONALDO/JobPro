@@ -21,6 +21,7 @@ interface AgendaTask {
   client: string | null;
   startDate: string | null;
   dueDate: string | null;
+  creator: { id: number; name: string; avatarUrl: string | null } | null;
 }
 
 interface EditorRow {
@@ -282,18 +283,33 @@ export default function AgendaGeral() {
                           ) : tasksOnDay.map(t => (
                             <button
                               key={t.id}
-                              className="w-full flex items-center gap-2 px-3 py-1.5 text-left rounded hover:bg-[hsl(var(--muted)/0.6)] transition-colors"
+                              className="w-full flex flex-col px-3 py-2 text-left hover:bg-[hsl(var(--muted)/0.5)] transition-colors gap-1"
                               onClick={() => openTask(t.id)}
                             >
-                              <span
-                                className="font-mono text-[11px] font-bold shrink-0"
-                                style={{ color: t.color || "hsl(var(--primary))" }}
-                              >
-                                {t.taskCode}
-                              </span>
-                              <span className="text-[12px] truncate text-[hsl(var(--foreground))]">
-                                {t.title}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="font-mono text-[11px] font-bold shrink-0"
+                                  style={{ color: t.color || "hsl(var(--primary))" }}
+                                >
+                                  {t.taskCode}
+                                </span>
+                                <span className="text-[12px] truncate text-[hsl(var(--foreground))]">
+                                  {t.title}
+                                </span>
+                              </div>
+                              {t.creator && (
+                                <div className="flex items-center gap-1.5 pl-0.5">
+                                  <AvatarDisplay
+                                    name={t.creator.name}
+                                    avatarUrl={t.creator.avatarUrl}
+                                    size={14}
+                                    className="shrink-0"
+                                  />
+                                  <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                                    {t.creator.name.split(" ")[0]}
+                                  </span>
+                                </div>
+                              )}
                             </button>
                           ))}
                         </div>
