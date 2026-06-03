@@ -229,14 +229,13 @@ export default function AgendaGeral() {
                 return (
                   <div
                     key={di}
-                    className="flex items-center justify-center py-[5px] px-[3px]"
+                    className="p-[4px]"
                     style={isWkend ? { background: "hsl(var(--muted) / 0.07)" } : {}}
                   >
                     <div
-                      className="flex flex-col items-center justify-center select-none transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] cursor-default mx-auto"
+                      className="flex flex-col items-center justify-center select-none transition-all duration-200 hover:scale-[1.03] cursor-default w-full"
                       style={{
-                        width: 74,
-                        height: 74,
+                        aspectRatio: "1 / 1",
                         borderRadius: 14,
                         background: cfg.bg,
                         border: `1px solid ${cfg.border}`,
