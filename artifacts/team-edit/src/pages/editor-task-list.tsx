@@ -114,16 +114,6 @@ export default function EditorTaskList() {
   const { user } = useAuth();
   const { openTask } = useTaskModal();
 
-  // ── DEBUG logs — remove when freeze is found ─────────────────────────────
-  const _renderCount = useRef(0);
-  _renderCount.current++;
-  const _prevOpenTask = useRef(openTask);
-  const _prevTasks    = useRef<Task[]>([]);
-  console.log(`[EditorTaskList] render #${_renderCount.current}`);
-  if (_prevOpenTask.current !== openTask) {
-    console.warn("[EditorTaskList] openTask reference changed — columns will recompute");
-    _prevOpenTask.current = openTask;
-  }
 
   const [tasks,        setTasks]        = useState<Task[]>([]);
   const [loading,      setLoading]      = useState(true);
@@ -162,9 +152,8 @@ export default function EditorTaskList() {
   const [returning,     setReturning]     = useState(false);
 
   const load = useCallback(() => {
-    console.log("[EditorTaskList] load() called");
     apiFetch<Task[]>("/api/my-tasks")
-      .then(data => { console.log("[EditorTaskList] tasks received:", data.length); setTasks(data); })
+      .then(setTasks)
       .catch(() => toast.error("Erro ao carregar tarefas"))
       .finally(() => setLoading(false));
   }, []);
@@ -221,20 +210,21 @@ export default function EditorTaskList() {
     } finally { setReturning(false); }
   };
 
-  const filtered = tasks
+  const filtered = useMemo(() => tasks
     .filter(t => {
       if (search && !t.title.toLowerCase().includes(search.toLowerCase()) && !(t.client ?? "").toLowerCase().includes(search.toLowerCase())) return false;
       if (filterStatus === "active") return !isTerminal(t.status);
       if (filterStatus !== "all") return t.status === filterStatus;
       return true;
     })
-    .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
+    .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status)),
+  [tasks, search, filterStatus]);
 
-  const tabFiltered = (() => {
+  const tabFiltered = useMemo(() => {
     if (viewTab === "today")     return filtered.filter(t => !isTaskScheduled(t) && ACTIVE_STATUSES.has(t.status));
     if (viewTab === "scheduled") return filtered.filter(t => isTaskScheduled(t));
     return filtered;
-  })();
+  }, [filtered, viewTab]);
 
   const todayCount     = filtered.filter(t => !isTaskScheduled(t) && ACTIVE_STATUSES.has(t.status)).length;
   const scheduledCount = filtered.filter(t => isTaskScheduled(t)).length;
@@ -249,15 +239,7 @@ export default function EditorTaskList() {
 
   // ── TanStack Table ─────────────────────────────────────────────────────────
 
-  // Log when tabFiltered identity changes
-  if (_prevTasks.current !== tabFiltered) {
-    console.log(`[EditorTaskList] tabFiltered identity changed — ${tabFiltered.length} rows → TanStack will recompute`);
-    _prevTasks.current = tabFiltered;
-  }
-
-  const columns = useMemo<ColumnDef<Task, unknown>[]>(() => {
-    console.log("[EditorTaskList] columns useMemo recomputing");
-    return [
+  const columns = useMemo<ColumnDef<Task, unknown>[]>(() => [
     {
       id: "tarefa",
       accessorKey: "title",
@@ -429,7 +411,7 @@ export default function EditorTaskList() {
       },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ]; }, [viewTab, setFilesViewTarget, setComplexityTarget, setUploadTarget, setReturnTarget, openTask]);
+  ], [viewTab, setFilesViewTarget, setComplexityTarget, setUploadTarget, setReturnTarget, openTask]);
 
   const table = useReactTable({
     data: tabFiltered,
