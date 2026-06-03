@@ -165,7 +165,7 @@ export default function AgendaGeral() {
               borderBottom: "1px solid hsl(var(--border))",
             }}
           >
-            <div className="px-5 py-4 flex items-end">
+            <div className="px-4 py-3 flex items-end">
               <span className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40">
                 Editor
               </span>
@@ -176,7 +176,7 @@ export default function AgendaGeral() {
               return (
                 <div
                   key={i}
-                  className="py-4 text-center"
+                  className="py-3 text-center"
                   style={isWkend ? { background: "hsl(var(--muted) / 0.15)" } : {}}
                 >
                   <div
@@ -214,9 +214,9 @@ export default function AgendaGeral() {
               }}
             >
               {/* Editor sidebar */}
-              <div className="flex items-center gap-3 px-5 py-4">
-                <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={34} className="shrink-0" />
-                <span className="text-[13px] font-semibold truncate leading-snug">
+              <div className="flex items-center gap-3 px-4 py-[5px]">
+                <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={30} className="shrink-0" />
+                <span className="text-[12px] font-semibold truncate leading-snug">
                   {editor.name.split(" ")[0]}
                 </span>
               </div>
@@ -229,15 +229,14 @@ export default function AgendaGeral() {
                 return (
                   <div
                     key={di}
-                    className="flex items-center justify-center py-3"
+                    className="p-[4px]"
                     style={isWkend ? { background: "hsl(var(--muted) / 0.07)" } : {}}
                   >
                     <div
-                      className="flex flex-col items-center justify-center select-none transition-all duration-200 hover:-translate-y-1 hover:scale-105 cursor-default"
+                      className="flex flex-col items-center justify-center select-none transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] cursor-default w-full h-full"
                       style={{
-                        width: 76,
-                        height: 76,
-                        borderRadius: 18,
+                        minHeight: 72,
+                        borderRadius: 14,
                         background: cfg.bg,
                         border: `1px solid ${cfg.border}`,
                         boxShadow: isToday
