@@ -131,6 +131,17 @@ export default function TasksOverview() {
   const { user } = useAuth();
   const { openTask } = useTaskModal();
 
+  // ── DEBUG logs — remove when freeze is found ─────────────────────────────
+  const _renderCount     = useRef(0);
+  const _prevOpenTask    = useRef(openTask);
+  const _prevTabFiltered = useRef<OverviewTask[]>([]);
+  _renderCount.current++;
+  console.log(`[TasksOverview] render #${_renderCount.current}`);
+  if (_prevOpenTask.current !== openTask) {
+    console.warn("[TasksOverview] openTask reference changed — columns recompute");
+    _prevOpenTask.current = openTask;
+  }
+
   const isSuper = user?.role === "admin" || user?.role === "supervisor";
   const canCreate = isSuper || user?.role === "coordinator";
 
@@ -276,10 +287,11 @@ export default function TasksOverview() {
   };
 
   const load = useCallback((silent = false) => {
+    console.log(`[TasksOverview] load(silent=${silent}) called, filterStatus="${filterStatus}"`);
     if (!silent) setLoading(true);
     const qs = filterStatus !== "active" ? `?status=${filterStatus}` : "";
     apiFetch<OverviewTask[]>(`/api/tasks/overview${qs}`)
-      .then(setTasks)
+      .then(data => { console.log("[TasksOverview] tasks received:", data.length); setTasks(data); })
       .catch(() => toast.error("Erro ao carregar tarefas"))
       .finally(() => { if (!silent) setLoading(false); });
   }, [filterStatus]);
@@ -416,11 +428,13 @@ export default function TasksOverview() {
   const ACTIVE_STATUSES = new Set(["pending", "in_progress", "in_revision", "review"]);
 
   const tabFiltered = useMemo(() => {
-    if (viewTab === "today")
-      return sorted.filter(t => !isTaskScheduled(t) && ACTIVE_STATUSES.has(t.status));
-    if (viewTab === "scheduled")
-      return sorted.filter(t => isTaskScheduled(t));
-    return sorted;
+    const result = viewTab === "today"
+      ? sorted.filter(t => !isTaskScheduled(t) && ACTIVE_STATUSES.has(t.status))
+      : viewTab === "scheduled"
+        ? sorted.filter(t => isTaskScheduled(t))
+        : sorted;
+    console.log(`[TasksOverview] tabFiltered recomputed — ${result.length} rows, viewTab="${viewTab}"`);
+    return result;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sorted, viewTab]);
 
@@ -555,7 +569,14 @@ export default function TasksOverview() {
 
   const [tanSorting, setTanSorting] = useState<SortingState>([]);
 
-  const overviewColumns = reactUseMemo<ColumnDef<OverviewTask, unknown>[]>(() => [
+  if (_prevTabFiltered.current !== tabFiltered) {
+    console.log(`[TasksOverview] tabFiltered identity changed — ${tabFiltered.length} rows → TanStack recompute`);
+    _prevTabFiltered.current = tabFiltered;
+  }
+
+  const overviewColumns = reactUseMemo<ColumnDef<OverviewTask, unknown>[]>(() => {
+    console.log("[TasksOverview] overviewColumns useMemo recomputing");
+    return [
     {
       id: "tarefa",
       accessorKey: "title",
@@ -800,7 +821,7 @@ export default function TasksOverview() {
       },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [viewTab, expandedIds, setAvailEditor, setFilesViewTarget, setEditTaskId, setFormOpen, setApproveTarget, setRevisionTask, setRevisionComment, setReopenTask, setConfirmTask, setDeleteTarget, setReassignTarget, setChangeDueDateTask, load]);
+  ]; }, [viewTab, expandedIds, setAvailEditor, setFilesViewTarget, setEditTaskId, setFormOpen, setApproveTarget, setRevisionTask, setRevisionComment, setReopenTask, setConfirmTask, setDeleteTarget, setReassignTarget, setChangeDueDateTask, load]);
 
   const overviewTable = useReactTable({
     data: tabFiltered,

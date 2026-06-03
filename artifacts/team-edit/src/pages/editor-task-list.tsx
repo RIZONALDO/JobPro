@@ -114,6 +114,17 @@ export default function EditorTaskList() {
   const { user } = useAuth();
   const { openTask } = useTaskModal();
 
+  // ── DEBUG logs — remove when freeze is found ─────────────────────────────
+  const _renderCount = useRef(0);
+  _renderCount.current++;
+  const _prevOpenTask = useRef(openTask);
+  const _prevTasks    = useRef<Task[]>([]);
+  console.log(`[EditorTaskList] render #${_renderCount.current}`);
+  if (_prevOpenTask.current !== openTask) {
+    console.warn("[EditorTaskList] openTask reference changed — columns will recompute");
+    _prevOpenTask.current = openTask;
+  }
+
   const [tasks,        setTasks]        = useState<Task[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState("");
@@ -151,11 +162,12 @@ export default function EditorTaskList() {
   const [returning,     setReturning]     = useState(false);
 
   const load = useCallback(() => {
+    console.log("[EditorTaskList] load() called");
     apiFetch<Task[]>("/api/my-tasks")
-      .then(setTasks)
+      .then(data => { console.log("[EditorTaskList] tasks received:", data.length); setTasks(data); })
       .catch(() => toast.error("Erro ao carregar tarefas"))
       .finally(() => setLoading(false));
-  }, [toast]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
   useRealtime({ onTasksChanged: load });
@@ -237,7 +249,15 @@ export default function EditorTaskList() {
 
   // ── TanStack Table ─────────────────────────────────────────────────────────
 
-  const columns = useMemo<ColumnDef<Task, unknown>[]>(() => [
+  // Log when tabFiltered identity changes
+  if (_prevTasks.current !== tabFiltered) {
+    console.log(`[EditorTaskList] tabFiltered identity changed — ${tabFiltered.length} rows → TanStack will recompute`);
+    _prevTasks.current = tabFiltered;
+  }
+
+  const columns = useMemo<ColumnDef<Task, unknown>[]>(() => {
+    console.log("[EditorTaskList] columns useMemo recomputing");
+    return [
     {
       id: "tarefa",
       accessorKey: "title",
@@ -409,7 +429,7 @@ export default function EditorTaskList() {
       },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [viewTab, setFilesViewTarget, setComplexityTarget, setUploadTarget, setReturnTarget, openTask]);
+  ]; }, [viewTab, setFilesViewTarget, setComplexityTarget, setUploadTarget, setReturnTarget, openTask]);
 
   const table = useReactTable({
     data: tabFiltered,
