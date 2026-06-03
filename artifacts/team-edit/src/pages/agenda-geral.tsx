@@ -244,18 +244,6 @@ export default function AgendaGeral() {
                           : cfg.shadow,
                       }}
                     >
-                      <span
-                        className="text-[18px] font-bold leading-none"
-                        style={{ color: cfg.color }}
-                      >
-                        {cfg.pct}%
-                      </span>
-                      <span
-                        className="text-[9px] mt-1 font-semibold whitespace-nowrap"
-                        style={{ color: cfg.color, opacity: 0.75 }}
-                      >
-                        {cfg.label}
-                      </span>
                     </div>
                   </div>
                 );
