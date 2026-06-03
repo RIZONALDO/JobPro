@@ -59,6 +59,18 @@ function dayScore(tasks: AgendaTask[], day: Date): number {
   }, 0);
 }
 
+function dayReviewCount(tasks: AgendaTask[], day: Date): number {
+  const dayEnd = new Date(day.getTime() + 86_400_000 - 1);
+  return tasks.filter(t => {
+    if (t.status !== "review") return false;
+    const startStr = t.startDate?.split("T")[0];
+    const endStr   = t.dueDate?.split("T")[0];
+    const start = startStr ? d0(parseLocal(startStr)) : null;
+    const end   = endStr   ? d0(parseLocal(endStr))   : null;
+    return (!start || start <= dayEnd) && (!end || end >= day);
+  }).length;
+}
+
 function dayTasks(tasks: AgendaTask[], day: Date): AgendaTask[] {
   const dayEnd = new Date(day.getTime() + 86_400_000 - 1);
   return tasks.filter(t => {
@@ -72,8 +84,13 @@ function dayTasks(tasks: AgendaTask[], day: Date): AgendaTask[] {
   });
 }
 
-function slotConfig(score: number) {
+function slotConfig(score: number, reviewCount = 0) {
   const pct = Math.min(100, Math.round((score / 12) * 100));
+  if (score === 0 && reviewCount > 0) return {
+    pct, label: "Em aprovação",
+    bg: "rgba(96,165,250,0.14)", border: "rgba(96,165,250,0.36)",
+    shadow: "0 0 18px rgba(96,165,250,0.18)", color: "#60a5fa",
+  };
   if (score === 0) return {
     pct, label: "Disponível",
     bg: "rgba(100,116,139,0.12)", border: "rgba(100,116,139,0.28)",
@@ -130,7 +147,8 @@ export default function AgendaGeral() {
   const editorData = useMemo(() =>
     rows.map(row => ({
       ...row,
-      scores: weekDays.map(d => dayScore(row.tasks, d)),
+      scores:       weekDays.map(d => dayScore(row.tasks, d)),
+      reviewCounts: weekDays.map(d => dayReviewCount(row.tasks, d)),
     })),
     [rows, weekDays]
   );
@@ -221,7 +239,7 @@ export default function AgendaGeral() {
           )}
 
           {/* Editor rows */}
-          {!loading && editorData.map(({ editor, tasks, scores }) => (
+          {!loading && editorData.map(({ editor, tasks, scores, reviewCounts }) => (
             <div
               key={editor.id}
               className="grid"
@@ -240,7 +258,7 @@ export default function AgendaGeral() {
 
               {/* Day heat slots */}
               {scores.map((sc, di) => {
-                const cfg     = slotConfig(sc);
+                const cfg     = slotConfig(sc, reviewCounts[di]);
                 const isWkend = weekDays[di].getDay() === 0 || weekDays[di].getDay() === 6;
                 const tasksOnDay = dayTasks(tasks, weekDays[di]);
                 return (
@@ -333,6 +351,7 @@ export default function AgendaGeral() {
           >
             {[
               { color: "#94a3b8", label: "Disponível" },
+              { color: "#60a5fa", label: "Em aprovação" },
               { color: "#facc15", label: "Ocupado" },
               { color: "#fb923c", label: "Muito ocupado" },
               { color: "#ef4444", label: "No limite" },
