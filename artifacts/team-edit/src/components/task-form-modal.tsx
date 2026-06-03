@@ -78,6 +78,10 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   const [availModalEditorId, setAvailModalEditorId] = useState<number | null>(null);
   const [periodCheck,   setPeriodCheck]   = useState<{ blocked: boolean; conflictDays: string[]; maxScore: number } | null>(null);
   const [checkingPeriod, setCheckingPeriod] = useState(false);
+  // Valores originais carregados no edit — usados para detectar se algo mudou
+  const [origStart,     setOrigStart]     = useState("");
+  const [origDue,       setOrigDue]       = useState("");
+  const [origEditorIds, setOrigEditorIds] = useState<number[]>([]);
 
   useEffect(() => {
     apiFetch<Editor[]>("/api/users")
@@ -142,6 +146,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
           });
           const ids = t.editors?.map(e => e.id) ?? (t.assignedToId ? [t.assignedToId] : []);
           setSelectedEditorIds(ids);
+          setOrigStart(t.startDate ?? "");
+          setOrigDue(t.dueDate ?? "");
+          setOrigEditorIds(ids);
           // Populate subtasks for multi_task edit
           if (t.taskType === "multi_task" && Array.isArray(t.subtasks)) {
             setSubtasks(t.subtasks.map((s, i) => ({
@@ -161,6 +168,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
       setIsMultiTask(false);
       setTaskType("task");
       setSubtasks([newSubtaskRow(), newSubtaskRow()]);
+      setOrigStart(""); setOrigDue(""); setOrigEditorIds([]);
     }
   }, [open, editTaskId]);
 
@@ -177,18 +185,40 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   const removeEditor = (id: number) => setSelectedEditorIds(prev => prev.filter(x => x !== id));
 
   const save = async (publishStatus?: "rascunho" | "pending") => {
-    // ── Validações globais — todos os campos obrigatórios ──────────────────
-    if (!form.title.trim())       { toast.error("Título obrigatório");              return; }
-    if (!form.description.trim()) { toast.error("Direcionamento obrigatório");      return; }
-    if (!form.client?.trim())     { toast.error("Cliente obrigatório");             return; }
-    if (!form.startDateTime)      { toast.error("Data de início obrigatória");      return; }
-    if (!form.dueDateTime)        { toast.error("Data de entrega obrigatória");      return; }
-    if (!form.folderUrl?.trim())  { toast.error("Pasta / Arquivos obrigatório");    return; }
+    // ── Validações globais ─────────────────────────────────────────────────
+    if (!form.title.trim())       { toast.error("Título obrigatório");           return; }
+    if (!form.description.trim()) { toast.error("Direcionamento obrigatório");   return; }
+    if (!form.client?.trim())     { toast.error("Cliente obrigatório");          return; }
+
+    // Datas obrigatórias ao criar ou publicar um rascunho.
+    // Em edição de tarefa já ativa (pending/in_progress/…) as datas já foram
+    // validadas na criação — só exige se o usuário as limpou.
+    const isPublishedEdit = editMode && taskStatus !== "rascunho" && publishStatus !== "pending";
+    if (!isPublishedEdit) {
+      if (!form.startDateTime) { toast.error("Data de início obrigatória");  return; }
+      if (!form.dueDateTime)   { toast.error("Data de entrega obrigatória"); return; }
+    }
+
+    if (!form.folderUrl?.trim())  { toast.error("Pasta / Arquivos obrigatório"); return; }
     if (!isMultiTask && selectedEditorIds.length === 0) {
       toast.error("Atribua ao menos um editor"); return;
     }
 
+    // Helper: compara apenas a parte da data (ignora hora e fuso)
+    const datePart = (s: string) => {
+      if (!s) return "";
+      try { return new Date(s).toISOString().slice(0, 10); } catch { return ""; }
+    };
+    const datesChanged = isPublishedEdit && (
+      datePart(form.startDateTime) !== datePart(origStart) ||
+      datePart(form.dueDateTime)   !== datePart(origDue)
+    );
+    const editorChanged = isPublishedEdit && (
+      JSON.stringify([...selectedEditorIds].sort()) !== JSON.stringify([...origEditorIds].sort())
+    );
+
     // ── Nível 1: bloqueio se editor já está no limite de capacidade ────────
+    // Só aplica em criação nova (não em edição de tarefa já ativa)
     if (!isMultiTask && !editMode && selectedEditorIds.length > 0) {
       const WEIGHT: Record<string, number> = { low: 3, medium: 6, high: 12 };
       const newWeight     = WEIGHT[form.complexity] ?? 6;
@@ -202,7 +232,10 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
     }
 
     // ── Nível 3: bloqueio por conflito de período ──────────────────────────
-    if (!isMultiTask && periodCheck?.blocked) {
+    // Em edição de tarefa ativa, só bloqueia se datas ou editor mudaram.
+    // Editar título/descrição/cliente/pasta não deve ser bloqueado por conflito pré-existente.
+    const applyPeriodBlock = !isPublishedEdit || datesChanged || editorChanged;
+    if (!isMultiTask && periodCheck?.blocked && applyPeriodBlock) {
       const days = periodCheck.conflictDays.slice(0, 3)
         .map(d => { const [,m,day] = d.split("-"); return `${day}/${m}`; }).join(", ");
       const extra = periodCheck.conflictDays.length > 3 ? ` +${periodCheck.conflictDays.length - 3} dias` : "";
