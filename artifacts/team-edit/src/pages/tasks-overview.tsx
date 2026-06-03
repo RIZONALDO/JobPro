@@ -718,60 +718,7 @@ export default function TasksOverview() {
         const t = row.original;
         const canActNow = canAct(t);
 
-        const DropdownItems = () => {
-          const isNotTerminal = !isTerminal(t.status);
-          return (
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={e => { e.stopPropagation(); setEditTaskId(t.id); setFormOpen(true); }}>
-                <Pencil className="h-3.5 w-3.5" />Editar tarefa
-              </DropdownMenuItem>
-              {canActNow && isNotTerminal && (
-                <>
-                  <DropdownMenuItem onClick={e => { e.stopPropagation(); setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "reassign" }); }}>
-                    <ArrowUpRight className="h-3.5 w-3.5" />Reatribuir editor
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={e => { e.stopPropagation(); setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "add" }); }}>
-                    <Plus className="h-3.5 w-3.5" />Adicionar editor
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={e => { e.stopPropagation(); setChangeDueDateTask(t); setChangeDueDateValue(t.dueDate ?? ""); }}>
-                    <CalendarClock className="h-3.5 w-3.5" />Alterar prazo
-                  </DropdownMenuItem>
-                </>
-              )}
-              {canActNow && t.status === "completed" && (
-                <DropdownMenuItem onClick={e => { e.stopPropagation(); setReopenTask(t); setReopenComment(""); setReopenDueDate(""); setReopenComplexity("medium"); setReopenPriority("medium"); }}>
-                  <RotateCcw className="h-3.5 w-3.5" />Reabrir tarefa
-                </DropdownMenuItem>
-              )}
-              {canActNow && t.status === "cancelled" && (
-                <DropdownMenuItem onClick={e => { e.stopPropagation(); setConfirmTask({ id: t.id, title: t.title, action: "reactivate" }); }}>
-                  <CheckCircle2 className="h-3.5 w-3.5" />Reativar tarefa
-                </DropdownMenuItem>
-              )}
-              {canActNow && isNotTerminal && <DropdownMenuSeparator />}
-              {canActNow && t.status !== "paused" && isNotTerminal && (
-                <DropdownMenuItem onClick={e => { e.stopPropagation(); setConfirmTask({ id: t.id, title: t.title, action: "pause" }); }}>
-                  <PauseCircle className="h-3.5 w-3.5" />Pausar tarefa
-                </DropdownMenuItem>
-              )}
-              {canActNow && t.status === "paused" && (
-                <DropdownMenuItem onClick={e => { e.stopPropagation(); setConfirmTask({ id: t.id, title: t.title, action: "resume" }); }}>
-                  <CheckCircle2 className="h-3.5 w-3.5" />Retomar tarefa
-                </DropdownMenuItem>
-              )}
-              {canActNow && isNotTerminal && (
-                <DropdownMenuItem onClick={e => { e.stopPropagation(); setConfirmTask({ id: t.id, title: t.title, action: "cancel" }); }} className="text-red-600 focus:text-red-600">
-                  <XCircle className="h-3.5 w-3.5" />Cancelar tarefa
-                </DropdownMenuItem>
-              )}
-              {canActNow && isTerminal(t.status) && (
-                <DropdownMenuItem onClick={e => { e.stopPropagation(); setDeleteTarget({ id: t.id, title: t.title }); }} className="text-red-600 focus:text-red-600">
-                  <Trash2 className="h-3.5 w-3.5" />Excluir tarefa
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          );
-        };
+        const isNotTerminal = !isTerminal(t.status);
 
         return (
           <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
@@ -798,7 +745,55 @@ export default function TasksOverview() {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-7 w-7"><MoreVertical className="h-4 w-4" /></Button>
               </DropdownMenuTrigger>
-              <DropdownItems />
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={e => { e.stopPropagation(); setEditTaskId(t.id); setFormOpen(true); }}>
+                  <Pencil className="h-3.5 w-3.5" />Editar tarefa
+                </DropdownMenuItem>
+                {canActNow && isNotTerminal && (
+                  <>
+                    <DropdownMenuItem onClick={e => { e.stopPropagation(); setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "reassign" }); }}>
+                      <ArrowUpRight className="h-3.5 w-3.5" />Reatribuir editor
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={e => { e.stopPropagation(); setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "add" }); }}>
+                      <Plus className="h-3.5 w-3.5" />Adicionar editor
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={e => { e.stopPropagation(); setChangeDueDateTask(t); setChangeDueDateValue(t.dueDate ?? ""); }}>
+                      <CalendarClock className="h-3.5 w-3.5" />Alterar prazo
+                    </DropdownMenuItem>
+                  </>
+                )}
+                {canActNow && t.status === "completed" && (
+                  <DropdownMenuItem onClick={e => { e.stopPropagation(); setReopenTask(t); setReopenComment(""); setReopenDueDate(""); setReopenComplexity("medium"); setReopenPriority("medium"); }}>
+                    <RotateCcw className="h-3.5 w-3.5" />Reabrir tarefa
+                  </DropdownMenuItem>
+                )}
+                {canActNow && t.status === "cancelled" && (
+                  <DropdownMenuItem onClick={e => { e.stopPropagation(); setConfirmTask({ id: t.id, title: t.title, action: "reactivate" }); }}>
+                    <CheckCircle2 className="h-3.5 w-3.5" />Reativar tarefa
+                  </DropdownMenuItem>
+                )}
+                {canActNow && isNotTerminal && <DropdownMenuSeparator />}
+                {canActNow && t.status !== "paused" && isNotTerminal && (
+                  <DropdownMenuItem onClick={e => { e.stopPropagation(); setConfirmTask({ id: t.id, title: t.title, action: "pause" }); }}>
+                    <PauseCircle className="h-3.5 w-3.5" />Pausar tarefa
+                  </DropdownMenuItem>
+                )}
+                {canActNow && t.status === "paused" && (
+                  <DropdownMenuItem onClick={e => { e.stopPropagation(); setConfirmTask({ id: t.id, title: t.title, action: "resume" }); }}>
+                    <CheckCircle2 className="h-3.5 w-3.5" />Retomar tarefa
+                  </DropdownMenuItem>
+                )}
+                {canActNow && isNotTerminal && (
+                  <DropdownMenuItem onClick={e => { e.stopPropagation(); setConfirmTask({ id: t.id, title: t.title, action: "cancel" }); }} className="text-red-600 focus:text-red-600">
+                    <XCircle className="h-3.5 w-3.5" />Cancelar tarefa
+                  </DropdownMenuItem>
+                )}
+                {canActNow && isTerminal(t.status) && (
+                  <DropdownMenuItem onClick={e => { e.stopPropagation(); setDeleteTarget({ id: t.id, title: t.title }); }} className="text-red-600 focus:text-red-600">
+                    <Trash2 className="h-3.5 w-3.5" />Excluir tarefa
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
             </DropdownMenu>
           </div>
         );
@@ -1046,103 +1041,6 @@ export default function TasksOverview() {
                       const isHighlighted = highlighted === t.id;
                       const isUnassigned = t.status === "pending" && (!t.editors || t.editors.length === 0) && !t.assignee;
 
-              // Shared dropdown — rendered in both mobile and desktop slots
-              const DropdownItems = () => (
-                <DropdownMenuContent align="end">
-                  {t.status !== "rascunho" && (
-                    <DropdownMenuItem onClick={() => openTask(t.id)}>
-                      <ArrowUpRight className="h-3.5 w-3.5" />Ver detalhes
-                    </DropdownMenuItem>
-                  )}
-                  {(t.status === "pending" || t.status === "rascunho") && canActNow && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => { setEditTaskId(t.id); setFormOpen(true); }}>
-                        <Pencil className="h-3.5 w-3.5" />Editar tarefa
-                      </DropdownMenuItem>
-                      {t.status === "rascunho" && (
-                        <DropdownMenuItem
-                          onClick={() => {
-                            if (!t.dueDate) {
-                              toast.error("Defina o prazo antes de publicar");
-                              setEditTaskId(t.id); setFormOpen(true);
-                              return;
-                            }
-                            apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(() => load(true));
-                          }}
-                          className="text-zinc-700 focus:text-zinc-700 font-medium">
-                          <Send className="h-3.5 w-3.5" />Publicar
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem onClick={() => setDeleteTarget({ id: t.id, title: t.title })}>
-                        <Trash2 className="h-3.5 w-3.5" />Excluir tarefa
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                  {t.status === "cancelled" && canActNow && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "reactivate" })}>
-                        <ArrowUpRight className="h-3.5 w-3.5" />Reativar tarefa
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={() => setDeleteTarget({ id: t.id, title: t.title })}>
-                        <Trash2 className="h-3.5 w-3.5" />Excluir tarefa
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                  {t.status === "completed" && canActNow && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => { setReopenTask(t); setReopenComment(""); setReopenDueDate(""); setReopenComplexity(t.complexity ?? "medium"); setReopenPriority(t.priority ?? "medium"); }}>
-                        <RotateCcw className="h-3.5 w-3.5" />Reabrir tarefa
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                  {t.status === "paused" && canActNow && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "resume" })}>
-                        <ArrowUpRight className="h-3.5 w-3.5" />Retomar tarefa
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                  {!["completed","cancelled","rascunho"].includes(t.status) && canActNow && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => { setChangeDueDateValue(t.dueDate ?? ""); setChangeDueDateTask(t); }}>
-                        <CalendarClock className="h-3.5 w-3.5" />Alterar prazo
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                  {!["completed","cancelled"].includes(t.status) && canActNow && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "reassign" })}>
-                        <RefreshCw className="h-3.5 w-3.5" />Reatribuir tarefa
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "add" })}>
-                        <UserPlus className="h-3.5 w-3.5" />Adicionar editor
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                  {!["completed","cancelled"].includes(t.status) && (
-                    <>
-                      <DropdownMenuSeparator />
-                      {t.status !== "paused" && (
-                        <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "pause" })}>
-                          <PauseCircle className="h-3.5 w-3.5" />Pausar tarefa
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "cancel" })}>
-                        <XCircle className="h-3.5 w-3.5" />Cancelar tarefa
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                </DropdownMenuContent>
-              );
 
               const isExpanded    = expandedIds.has(t.id);
               const subList       = subtasksMap.get(t.id) ?? [];
@@ -1331,7 +1229,62 @@ export default function TasksOverview() {
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownItems />
+                        <DropdownMenuContent align="end">
+                          {t.status !== "rascunho" && (
+                            <DropdownMenuItem onClick={() => openTask(t.id)}>
+                              <ArrowUpRight className="h-3.5 w-3.5" />Ver detalhes
+                            </DropdownMenuItem>
+                          )}
+                          {(t.status === "pending" || t.status === "rascunho") && canActNow && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => { setEditTaskId(t.id); setFormOpen(true); }}>
+                                <Pencil className="h-3.5 w-3.5" />Editar tarefa
+                              </DropdownMenuItem>
+                              {t.status === "rascunho" && (
+                                <DropdownMenuItem onClick={() => { if (!t.dueDate) { toast.error("Defina o prazo antes de publicar"); setEditTaskId(t.id); setFormOpen(true); return; } apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(() => load(true)); }} className="text-zinc-700 focus:text-zinc-700 font-medium">
+                                  <Send className="h-3.5 w-3.5" />Publicar
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem onClick={() => setDeleteTarget({ id: t.id, title: t.title })}>
+                                <Trash2 className="h-3.5 w-3.5" />Excluir tarefa
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          {t.status === "cancelled" && canActNow && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "reactivate" })}><ArrowUpRight className="h-3.5 w-3.5" />Reativar tarefa</DropdownMenuItem>
+                              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteTarget({ id: t.id, title: t.title })}><Trash2 className="h-3.5 w-3.5" />Excluir tarefa</DropdownMenuItem>
+                            </>
+                          )}
+                          {t.status === "completed" && canActNow && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => { setReopenTask(t); setReopenComment(""); setReopenDueDate(""); setReopenComplexity(t.complexity ?? "medium"); setReopenPriority(t.priority ?? "medium"); }}><RotateCcw className="h-3.5 w-3.5" />Reabrir tarefa</DropdownMenuItem>
+                            </>
+                          )}
+                          {t.status === "paused" && canActNow && (
+                            <><DropdownMenuSeparator /><DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "resume" })}><ArrowUpRight className="h-3.5 w-3.5" />Retomar tarefa</DropdownMenuItem></>
+                          )}
+                          {!["completed","cancelled","rascunho"].includes(t.status) && canActNow && (
+                            <><DropdownMenuSeparator /><DropdownMenuItem onClick={() => { setChangeDueDateValue(t.dueDate ?? ""); setChangeDueDateTask(t); }}><CalendarClock className="h-3.5 w-3.5" />Alterar prazo</DropdownMenuItem></>
+                          )}
+                          {!["completed","cancelled"].includes(t.status) && canActNow && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "reassign" })}><RefreshCw className="h-3.5 w-3.5" />Reatribuir tarefa</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "add" })}><UserPlus className="h-3.5 w-3.5" />Adicionar editor</DropdownMenuItem>
+                            </>
+                          )}
+                          {!["completed","cancelled"].includes(t.status) && (
+                            <>
+                              <DropdownMenuSeparator />
+                              {t.status !== "paused" && <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "pause" })}><PauseCircle className="h-3.5 w-3.5" />Pausar tarefa</DropdownMenuItem>}
+                              <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "cancel" })}><XCircle className="h-3.5 w-3.5" />Cancelar tarefa</DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
                   </div>
@@ -1531,7 +1484,23 @@ export default function TasksOverview() {
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownItems />
+                      <DropdownMenuContent align="end">
+                        {t.status !== "rascunho" && <DropdownMenuItem onClick={() => openTask(t.id)}><ArrowUpRight className="h-3.5 w-3.5" />Ver detalhes</DropdownMenuItem>}
+                        {(t.status === "pending" || t.status === "rascunho") && canActNow && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => { setEditTaskId(t.id); setFormOpen(true); }}><Pencil className="h-3.5 w-3.5" />Editar tarefa</DropdownMenuItem>
+                            {t.status === "rascunho" && <DropdownMenuItem onClick={() => { if (!t.dueDate) { toast.error("Defina o prazo antes de publicar"); setEditTaskId(t.id); setFormOpen(true); return; } apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(() => load(true)); }} className="text-zinc-700 focus:text-zinc-700 font-medium"><Send className="h-3.5 w-3.5" />Publicar</DropdownMenuItem>}
+                            <DropdownMenuItem onClick={() => setDeleteTarget({ id: t.id, title: t.title })}><Trash2 className="h-3.5 w-3.5" />Excluir tarefa</DropdownMenuItem>
+                          </>
+                        )}
+                        {t.status === "cancelled" && canActNow && (<><DropdownMenuSeparator /><DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "reactivate" })}><ArrowUpRight className="h-3.5 w-3.5" />Reativar tarefa</DropdownMenuItem><DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteTarget({ id: t.id, title: t.title })}><Trash2 className="h-3.5 w-3.5" />Excluir tarefa</DropdownMenuItem></>)}
+                        {t.status === "completed" && canActNow && (<><DropdownMenuSeparator /><DropdownMenuItem onClick={() => { setReopenTask(t); setReopenComment(""); setReopenDueDate(""); setReopenComplexity(t.complexity ?? "medium"); setReopenPriority(t.priority ?? "medium"); }}><RotateCcw className="h-3.5 w-3.5" />Reabrir tarefa</DropdownMenuItem></>)}
+                        {t.status === "paused" && canActNow && (<><DropdownMenuSeparator /><DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "resume" })}><ArrowUpRight className="h-3.5 w-3.5" />Retomar tarefa</DropdownMenuItem></>)}
+                        {!["completed","cancelled","rascunho"].includes(t.status) && canActNow && (<><DropdownMenuSeparator /><DropdownMenuItem onClick={() => { setChangeDueDateValue(t.dueDate ?? ""); setChangeDueDateTask(t); }}><CalendarClock className="h-3.5 w-3.5" />Alterar prazo</DropdownMenuItem></>)}
+                        {!["completed","cancelled"].includes(t.status) && canActNow && (<><DropdownMenuSeparator /><DropdownMenuItem onClick={() => setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "reassign" })}><RefreshCw className="h-3.5 w-3.5" />Reatribuir tarefa</DropdownMenuItem><DropdownMenuItem onClick={() => setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "add" })}><UserPlus className="h-3.5 w-3.5" />Adicionar editor</DropdownMenuItem></>)}
+                        {!["completed","cancelled"].includes(t.status) && (<><DropdownMenuSeparator />{t.status !== "paused" && <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "pause" })}><PauseCircle className="h-3.5 w-3.5" />Pausar tarefa</DropdownMenuItem>}<DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "cancel" })}><XCircle className="h-3.5 w-3.5" />Cancelar tarefa</DropdownMenuItem></>)}
+                      </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
 
