@@ -233,9 +233,9 @@ export default function AgendaGeral() {
                     style={isWkend ? { background: "hsl(var(--muted) / 0.07)" } : {}}
                   >
                     <div
-                      className="flex flex-col items-center justify-center select-none transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] cursor-default w-full h-full"
+                      className="flex flex-col items-center justify-center select-none transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] cursor-default w-full"
                       style={{
-                        minHeight: 72,
+                        aspectRatio: "1 / 1",
                         borderRadius: 14,
                         background: cfg.bg,
                         border: `1px solid ${cfg.border}`,
