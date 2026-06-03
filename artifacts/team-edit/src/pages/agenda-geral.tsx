@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import { usePageTitle } from "@/lib/use-page-title";
 import { useRealtime } from "@/hooks/use-realtime";
@@ -102,18 +102,9 @@ export default function AgendaGeral() {
   usePageTitle("Agenda Geral");
   const { openTask } = useTaskModal();
 
-  const [rows,      setRows]      = useState<EditorRow[]>([]);
-  const [loading,   setLoading]   = useState(true);
+  const [rows,    setRows]    = useState<EditorRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [weekOffset, setWeekOffset] = useState(0);
-  const [openKey,   setOpenKey]   = useState<string | null>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const scheduleClose = useCallback(() => {
-    closeTimer.current = setTimeout(() => setOpenKey(null), 150);
-  }, []);
-  const cancelClose = useCallback(() => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-  }, []);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -252,14 +243,13 @@ export default function AgendaGeral() {
                 const cfg     = slotConfig(sc);
                 const isWkend = weekDays[di].getDay() === 0 || weekDays[di].getDay() === 6;
                 const tasksOnDay = dayTasks(tasks, weekDays[di]);
-                const key = `${editor.id}-${di}`;
                 return (
                   <div
                     key={di}
                     className="p-[4px]"
                     style={isWkend ? { background: "hsl(var(--muted) / 0.07)" } : {}}
                   >
-                    <Popover open={openKey === key} onOpenChange={(o) => { if (!o) scheduleClose(); }}>
+                    <Popover>
                       <PopoverTrigger asChild>
                         <div
                           className="w-full cursor-pointer select-none transition-all duration-200 hover:scale-[1.03] hover:brightness-110"
@@ -270,8 +260,6 @@ export default function AgendaGeral() {
                             border: `1px solid ${cfg.border}`,
                             boxShadow: cfg.shadow,
                           }}
-                          onMouseEnter={() => { cancelClose(); setOpenKey(key); }}
-                          onMouseLeave={scheduleClose}
                         />
                       </PopoverTrigger>
                       <PopoverContent
@@ -279,8 +267,6 @@ export default function AgendaGeral() {
                         side="bottom"
                         align="center"
                         sideOffset={6}
-                        onMouseEnter={cancelClose}
-                        onMouseLeave={scheduleClose}
                       >
                         {/* Header */}
                         <div className="px-3 py-2 border-b border-[hsl(var(--border))]">
