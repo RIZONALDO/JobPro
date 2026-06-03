@@ -17,3 +17,4 @@ export * from "./clients";
 export * from "./duty_schedules";
 export * from "./email_logs";
 export * from "./push_subscriptions";
+export * from "./task_files";

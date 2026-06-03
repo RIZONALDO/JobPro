@@ -24,6 +24,7 @@ import TasksHub      from "@/pages/tasks-hub";
 import DutyPage      from "@/pages/duty";
 import FaviconDebugPage from "@/pages/favicon-debug";
 import AgendaGeral from "@/pages/agenda-geral";
+import TaskPublicView from "@/pages/task-public-view";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } });
 
@@ -66,6 +67,7 @@ function Router() {
   }
 
   if (window.location.pathname === "/debug-favicon") return <FaviconDebugPage />;
+  if (window.location.pathname.startsWith("/p/")) return <TaskPublicView />;
   if (!user) return <LoginPage />;
   if (user.mustChangePassword) return <ChangePasswordPage />;
 

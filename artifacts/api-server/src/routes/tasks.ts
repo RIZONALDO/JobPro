@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, tasksTable, usersTable, taskRevisionsTable, taskEventsTable, taskEditorsTable } from "@workspace/db";
+import { db, tasksTable, usersTable, taskRevisionsTable, taskEventsTable, taskEditorsTable, taskFilesTable } from "@workspace/db";
 import { eq, ne, desc, asc, and, or, gte, lte, isNotNull, lt, inArray, isNull, sql } from "drizzle-orm";
 import { requireAuth, requireCoordinator } from "../lib/auth.js";
 import { notify } from "../lib/notify.js";
@@ -384,6 +384,14 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     }
   }
 
+  // File count per task
+  const overviewFileCounts = taskIds.length
+    ? await db.select({ taskId: taskFilesTable.taskId, count: sql<number>`count(*)::int` })
+        .from(taskFilesTable).where(inArray(taskFilesTable.taskId, taskIds))
+        .groupBy(taskFilesTable.taskId)
+    : [];
+  const overviewFileCountMap = new Map(overviewFileCounts.map(r => [r.taskId, Number(r.count)]));
+
   res.json(rows.map(r => ({
     id: r.id,
     taskCode: fmtCode(r.taskNumber, r.taskYear),
@@ -408,6 +416,7 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     updatedAt: r.updatedAt,
     reviewedAt: overviewReviewedAtMap.get(r.id)?.toISOString() ?? null,
     subtaskProgress: r.taskType === "multi_task" ? (progressMap.get(r.id) ?? { total: 0, completed: 0, inProgress: 0, pending: 0 }) : null,
+    fileCount: overviewFileCountMap.get(r.id) ?? 0,
   })));
 });
 
@@ -1485,6 +1494,14 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
   const multiTaskIds = tasks.filter(t => t.taskType === "multi_task").map(t => t.id);
   const progressMap = await getSubtaskProgressMap(multiTaskIds);
 
+  // File count per task
+  const myFileCounts = taskIds.length
+    ? await db.select({ taskId: taskFilesTable.taskId, count: sql<number>`count(*)::int` })
+        .from(taskFilesTable).where(inArray(taskFilesTable.taskId, taskIds))
+        .groupBy(taskFilesTable.taskId)
+    : [];
+  const myFileCountMap = new Map(myFileCounts.map(r => [r.taskId, Number(r.count)]));
+
   // reviewedAt: quando a tarefa foi enviada para review pela PRIMEIRA vez
   // (usado para determinar se o editor entregou no prazo originalmente)
   const reviewEvents = taskIds.length
@@ -1522,6 +1539,7 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
       parentTask: t.parentTaskId ? (parentMap.get(t.parentTaskId) ?? null) : null,
       subtaskProgress: t.taskType === "multi_task" ? (progressMap.get(t.id) ?? null) : null,
       reviewedAt: reviewedAtMap.get(t.id)?.toISOString() ?? null,
+      fileCount: myFileCountMap.get(t.id) ?? 0,
     };
   }));
 

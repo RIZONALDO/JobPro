@@ -1,13 +1,15 @@
 import { useEffect, useState, useCallback } from "react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiPost, apiDelete } from "@/lib/api";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
+import { Button } from "@/components/ui/button";
 import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
 import { fmtDate } from "@/lib/utils";
 import {
   Clock, FolderOpen, RotateCcw, Calendar, AlertTriangle,
   Layers, Copy, ChevronRight, Hash, Tag, Zap,
+  Film, Music, Download, Link2, Trash2, FileVideo,
 } from "lucide-react";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { SubtaskProgressBar } from "@/components/ui/subtask-progress-bar";
@@ -16,6 +18,11 @@ import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
+interface TaskFile {
+  id: number; fileName: string; fileSize: number | null; mimeType: string | null;
+  publicToken: string | null; revisionNumber: number; createdAt: string;
+  uploaderName: string | null;
+}
 
 interface SubtaskSummary {
   id: number; taskCode?: string; title: string; status: string;
@@ -57,16 +64,54 @@ interface Props { taskId: number; onClose: () => void; onOpenTask?: (id: number)
 export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
   const [task,    setTask]    = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [files,   setFiles]   = useState<TaskFile[]>([]);
+  const [sharing, setSharing] = useState<number | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
-    apiFetch<TaskDetail>(`/api/tasks/${taskId}`)
-      .then(setTask)
+    Promise.all([
+      apiFetch<TaskDetail>(`/api/tasks/${taskId}`),
+      apiFetch<TaskFile[]>(`/api/tasks/${taskId}/files`).catch(() => [] as TaskFile[]),
+    ]).then(([t, f]) => { setTask(t); setFiles(f); })
       .catch(() => toast.error("Erro ao carregar tarefa"))
       .finally(() => setLoading(false));
   }, [taskId]);
 
   useEffect(() => { load(); }, [load]);
+
+  const generateLink = async (fileId: number) => {
+    setSharing(fileId);
+    try {
+      const { token } = await apiPost<{ token: string }>(`/api/tasks/${taskId}/files/${fileId}/share`, {});
+      const url = `${window.location.origin}/p/${token}`;
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copiado para a área de transferência");
+      setFiles(prev => prev.map(f => f.id === fileId ? { ...f, publicToken: token } : f));
+    } catch { toast.error("Erro ao gerar link"); }
+    finally { setSharing(null); }
+  };
+
+  const revokeLink = async (fileId: number) => {
+    try {
+      await apiDelete(`/api/tasks/${taskId}/files/${fileId}/share`);
+      setFiles(prev => prev.map(f => f.id === fileId ? { ...f, publicToken: null } : f));
+      toast.success("Link revogado");
+    } catch { toast.error("Erro ao revogar link"); }
+  };
+
+  const removeFile = async (fileId: number) => {
+    try {
+      await apiDelete(`/api/tasks/${taskId}/files/${fileId}`);
+      setFiles(prev => prev.filter(f => f.id !== fileId));
+      toast.success("Arquivo removido");
+    } catch { toast.error("Erro ao remover arquivo"); }
+  };
+
+  function fmtSize(b: number | null) {
+    if (!b) return "";
+    if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
+    return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+  }
 
   const overdue = task ? isOverdue(task.dueDate, task.status) : false;
 
@@ -309,6 +354,84 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
                   <p className="text-sm text-[hsl(var(--muted-foreground))]/30 italic">Nenhuma alteração solicitada.</p>
                 )}
               </div>
+
+              {/* ARQUIVOS */}
+              {files.length > 0 && (
+                <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <FileVideo className="h-3 w-3 text-violet-500" />
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40">
+                      Arquivos entregues · {files.length}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    {files.map(f => {
+                      const isVideo = f.mimeType?.startsWith("video/");
+                      const isAudio = f.mimeType?.startsWith("audio/");
+                      return (
+                        <div key={f.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[hsl(var(--muted))]/30 border border-[hsl(var(--border))]">
+                          <div className="h-8 w-8 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
+                            {isVideo ? <Film className="h-4 w-4 text-violet-500" />
+                              : isAudio ? <Music className="h-4 w-4 text-violet-500" />
+                              : <Film className="h-4 w-4 text-violet-500" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold truncate">{f.fileName}</p>
+                            <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5">
+                              {fmtSize(f.fileSize)}
+                              {f.uploaderName && ` · ${f.uploaderName.split(" ")[0]}`}
+                              {f.revisionNumber > 0 && ` · Alt. ${f.revisionNumber}`}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {/* Download */}
+                            <a
+                              href={f.publicToken
+                                ? `/api/public/${f.publicToken}/download`
+                                : `/api/tasks/${taskId}/files/${f.id}/download`}
+                              download={f.fileName}
+                              title="Baixar"
+                              className="h-7 w-7 flex items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] transition-colors"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </a>
+                            {/* Link público */}
+                            {f.publicToken ? (
+                              <button
+                                title="Link ativo — clique para copiar"
+                                onClick={async () => {
+                                  await navigator.clipboard.writeText(`${window.location.origin}/p/${f.publicToken}`);
+                                  toast.success("Link copiado");
+                                }}
+                                className="h-7 w-7 flex items-center justify-center rounded-lg text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors"
+                              >
+                                <Link2 className="h-3.5 w-3.5" />
+                              </button>
+                            ) : (
+                              <button
+                                title="Gerar link público"
+                                onClick={() => generateLink(f.id)}
+                                disabled={sharing === f.id}
+                                className="h-7 w-7 flex items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/10 transition-colors disabled:opacity-40"
+                              >
+                                <Link2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                            {/* Remover */}
+                            <button
+                              title="Remover arquivo"
+                              onClick={() => removeFile(f.id)}
+                              className="h-7 w-7 flex items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* FOOTER timestamps */}
               <div className="px-5 py-3 flex items-center gap-1.5 text-[10px] text-[hsl(var(--muted-foreground))]/30">
