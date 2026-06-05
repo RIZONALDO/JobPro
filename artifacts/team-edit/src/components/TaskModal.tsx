@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { Button } from "@/components/ui/button";
-import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CHIP } from "@/lib/status";
 import { fmtDate } from "@/lib/utils";
 import {
   Clock, FolderOpen, RotateCcw, Calendar, AlertTriangle,
@@ -153,8 +153,7 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
 
               {/* linha de metadados: status · tipo · alterações · cliente */}
               <div className="flex items-center gap-2 flex-wrap">
-                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium ${STATUS_CLASS[task.status] ?? ""}`}>
-                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${STATUS_DOT[task.status] ?? "bg-slate-400"}`} />
+                <span className={`inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none ${STATUS_CHIP[task.status] ?? "bg-slate-500/10 text-slate-500"}`}>
                   {STATUS_LABEL[task.status] ?? task.status}
                 </span>
                 <MultiTaskBadge taskType={task.taskType} />

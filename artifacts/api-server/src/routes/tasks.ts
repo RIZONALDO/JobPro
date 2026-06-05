@@ -384,13 +384,22 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     }
   }
 
-  // File count per task
+  // File count + kind per task
   const overviewFileCounts = taskIds.length
-    ? await db.select({ taskId: taskFilesTable.taskId, count: sql<number>`count(*)::int` })
+    ? await db.select({
+        taskId:   taskFilesTable.taskId,
+        count:    sql<number>`count(*)::int`,
+        hasVideo: sql<boolean>`bool_or(${taskFilesTable.mimeType} LIKE 'video/%')`,
+        hasAudio: sql<boolean>`bool_or(${taskFilesTable.mimeType} LIKE 'audio/%')`,
+      })
         .from(taskFilesTable).where(inArray(taskFilesTable.taskId, taskIds))
         .groupBy(taskFilesTable.taskId)
     : [];
   const overviewFileCountMap = new Map(overviewFileCounts.map(r => [r.taskId, Number(r.count)]));
+  const overviewFileKindMap  = new Map(overviewFileCounts.map(r => [
+    r.taskId,
+    r.hasVideo && r.hasAudio ? "mixed" : r.hasVideo ? "video" : r.hasAudio ? "audio" : "other",
+  ]));
 
   res.json(rows.map(r => ({
     id: r.id,
@@ -417,6 +426,7 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     reviewedAt: overviewReviewedAtMap.get(r.id)?.toISOString() ?? null,
     subtaskProgress: r.taskType === "multi_task" ? (progressMap.get(r.id) ?? { total: 0, completed: 0, inProgress: 0, pending: 0 }) : null,
     fileCount: overviewFileCountMap.get(r.id) ?? 0,
+    fileKind:  overviewFileCountMap.get(r.id) ? (overviewFileKindMap.get(r.id) ?? null) : null,
   })));
 });
 
@@ -1494,13 +1504,22 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
   const multiTaskIds = tasks.filter(t => t.taskType === "multi_task").map(t => t.id);
   const progressMap = await getSubtaskProgressMap(multiTaskIds);
 
-  // File count per task
+  // File count + kind per task
   const myFileCounts = taskIds.length
-    ? await db.select({ taskId: taskFilesTable.taskId, count: sql<number>`count(*)::int` })
+    ? await db.select({
+        taskId:   taskFilesTable.taskId,
+        count:    sql<number>`count(*)::int`,
+        hasVideo: sql<boolean>`bool_or(${taskFilesTable.mimeType} LIKE 'video/%')`,
+        hasAudio: sql<boolean>`bool_or(${taskFilesTable.mimeType} LIKE 'audio/%')`,
+      })
         .from(taskFilesTable).where(inArray(taskFilesTable.taskId, taskIds))
         .groupBy(taskFilesTable.taskId)
     : [];
-  const myFileCountMap = new Map(myFileCounts.map(r => [r.taskId, Number(r.count)]));
+  const myFileCountMap  = new Map(myFileCounts.map(r => [r.taskId, Number(r.count)]));
+  const myFileKindMap   = new Map(myFileCounts.map(r => [
+    r.taskId,
+    r.hasVideo && r.hasAudio ? "mixed" : r.hasVideo ? "video" : r.hasAudio ? "audio" : "other",
+  ]));
 
   // reviewedAt: quando a tarefa foi enviada para review pela PRIMEIRA vez
   // (usado para determinar se o editor entregou no prazo originalmente)
@@ -1540,6 +1559,7 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
       subtaskProgress: t.taskType === "multi_task" ? (progressMap.get(t.id) ?? null) : null,
       reviewedAt: reviewedAtMap.get(t.id)?.toISOString() ?? null,
       fileCount: myFileCountMap.get(t.id) ?? 0,
+      fileKind:  myFileCountMap.get(t.id) ? (myFileKindMap.get(t.id) ?? null) : null,
     };
   }));
 
@@ -1908,6 +1928,7 @@ router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
     .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
     .from(usersTable).where(eq(usersTable.role, "editor"));
 
+  // Tarefas ativas — exclui paused (consistente com /api/workload)
   const tasks = await db
     .select({
       id:           tasksTable.id,
@@ -1928,10 +1949,26 @@ router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
     .where(and(
       ne(tasksTable.status, "completed"),
       ne(tasksTable.status, "cancelled"),
+      ne(tasksTable.status, "paused"),
       ne(tasksTable.status, "rascunho"),
       ne(tasksTable.taskType, "multi_task"),
       isNotNull(tasksTable.assignedToId),
     ));
+
+  // Editores adicionais via te_task_editors
+  const editorIds = editors.map(e => e.id);
+  const extraLinks = editorIds.length
+    ? await db
+        .select({ taskId: taskEditorsTable.taskId, userId: taskEditorsTable.userId })
+        .from(taskEditorsTable)
+        .where(inArray(taskEditorsTable.userId, editorIds))
+    : [];
+
+  const extraByEditor = new Map<number, Set<number>>();
+  extraLinks.forEach(l => {
+    if (!extraByEditor.has(l.userId)) extraByEditor.set(l.userId, new Set());
+    extraByEditor.get(l.userId)!.add(l.taskId);
+  });
 
   const creatorIds = [...new Set(tasks.map(t => t.createdById).filter(Boolean))] as number[];
   const creatorMap = new Map<number, { id: number; name: string; avatarUrl: string | null }>();
@@ -1942,24 +1979,28 @@ router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
     creators.forEach(c => creatorMap.set(c.id, c));
   }
 
-  const result = editors.map(editor => ({
-    editor,
-    tasks: tasks
-      .filter(t => t.assignedToId === editor.id)
-      .map(t => ({
-        id:        t.id,
-        taskCode:  fmtCode(t.taskNumber ?? 0, t.taskYear ?? 0),
-        title:     t.title,
-        status:    t.status,
-        priority:  t.priority,
+  const result = editors.map(editor => {
+    const extraIds = extraByEditor.get(editor.id) ?? new Set<number>();
+    const editorTasks = tasks.filter(t =>
+      t.assignedToId === editor.id || extraIds.has(t.id)
+    );
+    return {
+      editor,
+      tasks: editorTasks.map(t => ({
+        id:         t.id,
+        taskCode:   fmtCode(t.taskNumber ?? 0, t.taskYear ?? 0),
+        title:      t.title,
+        status:     t.status,
+        priority:   t.priority,
         complexity: t.complexity,
-        color:     t.color,
-        client:    t.client,
-        startDate: t.startDate ? t.startDate.toISOString() : null,
-        dueDate:   t.dueDate   ? t.dueDate.toISOString()   : null,
-        creator:   t.createdById ? (creatorMap.get(t.createdById) ?? null) : null,
+        color:      t.color,
+        client:     t.client,
+        startDate:  t.startDate ? t.startDate.toISOString() : null,
+        dueDate:    t.dueDate   ? t.dueDate.toISOString()   : null,
+        creator:    t.createdById ? (creatorMap.get(t.createdById) ?? null) : null,
       })),
-  }));
+    };
+  });
 
   res.json(result);
 });

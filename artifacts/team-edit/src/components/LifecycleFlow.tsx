@@ -1,6 +1,6 @@
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CHIP, isTerminal } from "@/lib/status";
 import { Badge } from "@/components/ui/badge";
 import {
   Play, Pencil, Send, MessageSquare, CheckCircle2, Clock,
@@ -217,9 +217,9 @@ export function LifecycleFlow({
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Badge className={`text-[11px] px-2 py-0.5 ${STATUS_CLASS[task.status] ?? ""}`}>
+            <span className={`inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none ${STATUS_CHIP[task.status] ?? "bg-slate-500/10 text-slate-500"}`}>
               {STATUS_LABEL[task.status] ?? task.status}
-            </Badge>
+            </span>
             <button
               onClick={() => { onClose(); onOpen(task.id); }}
               className="h-7 w-7 rounded-md flex items-center justify-center text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] transition-colors"

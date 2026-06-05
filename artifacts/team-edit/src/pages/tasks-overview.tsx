@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { staggerContainer, staggerRow } from "@/lib/motion";
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useSearch } from "wouter";
-import { apiFetch, apiPut, apiDelete } from "@/lib/api";
+import { apiFetch, apiPut, apiPatch, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useRealtime } from "@/hooks/use-realtime";
@@ -24,9 +24,10 @@ import {
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
   SlidersHorizontal, Search, CalendarClock, ChevronRight,
   CheckCircle2, RotateCcw, AlertTriangle, Clock, FileVideo,
+  Clapperboard, AudioLines,
 } from "lucide-react";
 import { TaskFilesViewModal } from "@/components/TaskFilesViewModal";
-import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CLASS, STATUS_DOT, STATUS_CHIP, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
@@ -78,6 +79,7 @@ interface OverviewTask {
   updatedAt: string;
   reviewedAt?: string | null;
   fileCount?: number;
+  fileKind?: "video" | "audio" | "mixed" | "other" | null;
   // multi-task
   taskType?: string;
   subtaskProgress?: { total: number; completed: number; percentage: number };
@@ -239,7 +241,10 @@ export default function TasksOverview() {
 
   // Approve confirmation
   const [approveTarget, setApproveTarget] = useState<{ taskId: number; title: string; parentId?: number } | null>(null);
-  const [approvingTarget, setApprovingTarget] = useState(false);
+  const [approvingTarget,    setApprovingTarget]    = useState(false);
+  const [approveFiles,       setApproveFiles]       = useState<{ id: number; fileName: string; mimeType: string | null; revisionNumber: number; createdAt: string; uploaderName: string | null }[]>([]);
+  const [approveFilesLoading,setApproveFilesLoading]= useState(false);
+  const [approvedFileIds,    setApprovedFileIds]    = useState<Set<number>>(new Set());
 
   const doTaskAction = async (taskId: number, action: "cancel" | "pause" | "resume" | "reactivate") => {
     setSendingConfirm(true);
@@ -437,10 +442,29 @@ export default function TasksOverview() {
     return due < now;
   };
 
+  // Carrega arquivos da tarefa ao abrir o dialog de aprovação
+  useEffect(() => {
+    if (!approveTarget) { setApproveFiles([]); setApprovedFileIds(new Set()); return; }
+    setApproveFilesLoading(true);
+    apiFetch<{ id: number; fileName: string; mimeType: string | null; revisionNumber: number; createdAt: string; uploaderName: string | null }[]>(
+      `/api/tasks/${approveTarget.taskId}/files`
+    ).then(files => {
+      setApproveFiles(files);
+      if (files.length > 0) {
+        const latestRev = Math.max(...files.map(f => f.revisionNumber));
+        setApprovedFileIds(new Set(files.filter(f => f.revisionNumber === latestRev).map(f => f.id)));
+      }
+    }).catch(() => {}).finally(() => setApproveFilesLoading(false));
+  }, [approveTarget?.taskId]);
+
   const doApprove = async () => {
     if (!approveTarget) return;
     setApprovingTarget(true);
     try {
+      // Marca arquivos selecionados como aprovados
+      if (approvedFileIds.size > 0) {
+        await apiPatch(`/api/tasks/${approveTarget.taskId}/files/approve`, { fileIds: [...approvedFileIds] });
+      }
       await apiPut(`/api/tasks/${approveTarget.taskId}`, { status: "completed" });
       toast.success(approveTarget.parentId ? "Subtarefa aprovada" : "Tarefa aprovada");
       if (approveTarget.parentId) {
@@ -556,6 +580,7 @@ export default function TasksOverview() {
   const [tanSorting, setTanSorting] = useState<SortingState>([]);
 
   const overviewColumns = reactUseMemo<ColumnDef<OverviewTask, unknown>[]>(() => [
+    // 1 — Tarefa: identidade + badges inline + ícone de mídia
     {
       id: "tarefa",
       accessorKey: "title",
@@ -565,7 +590,7 @@ export default function TasksOverview() {
         const isExpanded = expandedIds.has(t.id);
         return (
           <div className="min-w-0">
-            <div className="flex items-baseline gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
               {t.taskType === "multi_task" && (
                 <button className="shrink-0 p-0.5 rounded hover:bg-[hsl(var(--muted))] transition-colors"
                   onClick={e => { e.stopPropagation(); toggleExpand(t.id); }}>
@@ -574,6 +599,7 @@ export default function TasksOverview() {
               )}
               {t.taskCode && <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">{t.taskCode}</span>}
               <span className="text-sm font-semibold truncate leading-snug">{t.title}</span>
+              <MultiTaskBadge taskType={t.taskType ?? "task"} />
               {t.revisionCount > 0 && (
                 <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap">
                   {t.revisionCount} {t.revisionCount === 1 ? "alt." : "alts."}
@@ -585,22 +611,41 @@ export default function TasksOverview() {
         );
       },
     },
+    // 2 — Status: alpha chip (Vercel/Stripe style) + barra de progresso (multi_task)
     {
       id: "status",
       accessorKey: "status",
       header: "Status",
-      size: 144,
+      size: 160,
       cell: ({ row }) => {
         const t = row.original;
         const subPct = t.subtaskProgress
           ? (t.subtaskProgress.percentage ?? (t.subtaskProgress.total > 0 ? Math.round((t.subtaskProgress.completed / t.subtaskProgress.total) * 100) : 0))
           : 0;
         return (
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <Badge className={`text-[11px] px-2 py-0.5 font-medium ${STATUS_CLASS[t.status] ?? ""}`}>{STATUS_LABEL[t.status] ?? t.status}</Badge>
-              <MultiTaskBadge taskType={t.taskType ?? "task"} />
-            </div>
+          <div className="flex flex-col gap-1.5">
+            <span className={`inline-flex w-fit items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none tracking-[0.01em] ${STATUS_CHIP[t.status] ?? "bg-slate-500/10 text-slate-500"}`}>
+              {STATUS_LABEL[t.status] ?? t.status}
+            </span>
+            {(t.fileCount ?? 0) > 0 && (
+              <button
+                title={`Ver mídia entregue · ${t.fileCount} arquivo${t.fileCount !== 1 ? "s" : ""}`}
+                onClick={e => { e.stopPropagation(); setFilesViewTarget(t); }}
+                className={`inline-flex items-center gap-1 w-fit px-1.5 py-[3px] rounded-[4px] text-[10px] font-medium transition-colors
+                  ${t.fileKind === "audio"
+                    ? "bg-sky-500/8 text-sky-600 dark:text-sky-400 hover:bg-sky-500/15"
+                    : "bg-violet-500/8 text-violet-600 dark:text-violet-400 hover:bg-violet-500/15"}`}
+              >
+                {t.fileKind === "audio" ? (
+                  <AudioLines className="h-3 w-3 shrink-0" />
+                ) : t.fileKind === "mixed" ? (
+                  <><Clapperboard className="h-3 w-3 shrink-0" /><AudioLines className="h-3 w-3 shrink-0 opacity-70" /></>
+                ) : (
+                  <Clapperboard className="h-3 w-3 shrink-0" />
+                )}
+                <span>{t.fileCount} {t.fileKind === "audio" ? "áudio" : t.fileKind === "mixed" ? "arquivos" : t.fileCount === 1 ? "vídeo" : "vídeos"}</span>
+              </button>
+            )}
             {t.taskType === "multi_task" && t.subtaskProgress && t.subtaskProgress.total > 0 && (
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] tabular-nums text-[hsl(var(--muted-foreground))]/70">{t.subtaskProgress.completed}/{t.subtaskProgress.total}</span>
@@ -613,6 +658,34 @@ export default function TasksOverview() {
         );
       },
     },
+    // 3 — Entrega: junto do Status para leitura de "saúde" da tarefa
+    {
+      id: "entrega",
+      header: () => viewTab === "scheduled"
+        ? <span>Período</span>
+        : <span className="flex items-center gap-1"><Clock className="h-3 w-3 shrink-0" />Entrega</span>,
+      size: viewTab === "scheduled" ? 176 : 112,
+      meta: { className: "hidden lg:table-cell" },
+      cell: ({ row }) => {
+        const t = row.original;
+        const overdue = isOverdue(t);
+        if (viewTab === "scheduled") {
+          const fmtD = (d: string) => d.split("T")[0].split("-").slice(1).reverse().join("/");
+          const s = t.startDate ? fmtD(t.startDate) : null;
+          const e = t.dueDate ? fmtD(t.dueDate) : null;
+          return (
+            <span className="flex items-center gap-1 tabular-nums text-xs font-semibold">
+              {s && <span className="text-sky-500">{s}</span>}
+              {s && e && <><span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span><span className={overdue ? "text-red-500" : ""}>{e}</span></>}
+              {!s && e && <span className={overdue ? "text-red-500" : ""}>{e}</span>}
+              {!s && !e && <span className="text-[hsl(var(--muted-foreground))]/30">—</span>}
+            </span>
+          );
+        }
+        return <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} reviewedAt={t.reviewedAt} />;
+      },
+    },
+    // 4 — Prioridade
     {
       id: "prioridade",
       accessorKey: "priority",
@@ -621,6 +694,7 @@ export default function TasksOverview() {
       meta: { className: "hidden lg:table-cell" },
       cell: ({ row }) => <PriorityBadge priority={row.original.priority} />,
     },
+    // 5 — Editor
     {
       id: "editor",
       header: "Editor",
@@ -649,32 +723,7 @@ export default function TasksOverview() {
         );
       },
     },
-    {
-      id: "entrega",
-      header: () => viewTab === "scheduled"
-        ? <span>Período</span>
-        : <span className="flex items-center gap-1"><Clock className="h-3 w-3 shrink-0" />Entrega</span>,
-      size: viewTab === "scheduled" ? 176 : 112,
-      meta: { className: "hidden lg:table-cell" },
-      cell: ({ row }) => {
-        const t = row.original;
-        const overdue = isOverdue(t);
-        if (viewTab === "scheduled") {
-          const fmtD = (d: string) => d.split("T")[0].split("-").slice(1).reverse().join("/");
-          const s = t.startDate ? fmtD(t.startDate) : null;
-          const e = t.dueDate ? fmtD(t.dueDate) : null;
-          return (
-            <span className="flex items-center gap-1 tabular-nums text-xs font-semibold">
-              {s && <span className="text-sky-500">{s}</span>}
-              {s && e && <><span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span><span className={overdue ? "text-red-500" : ""}>{e}</span></>}
-              {!s && e && <span className={overdue ? "text-red-500" : ""}>{e}</span>}
-              {!s && !e && <span className="text-[hsl(var(--muted-foreground))]/30">—</span>}
-            </span>
-          );
-        }
-        return <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} reviewedAt={t.reviewedAt} />;
-      },
-    },
+    // 6 — Coordenador: adjacente ao Editor (bloco de pessoas)
     {
       id: "coordenador",
       header: "Coord.",
@@ -693,23 +742,7 @@ export default function TasksOverview() {
         );
       },
     },
-    {
-      id: "midia",
-      header: "Mídia",
-      size: 40,
-      meta: { className: "text-center" },
-      cell: ({ row }) => {
-        const t = row.original;
-        return (t.fileCount ?? 0) > 0 ? (
-          <div className="flex justify-center" onClick={e => e.stopPropagation()}>
-            <button title="Ver mídia entregue" onClick={() => setFilesViewTarget(t)}
-              className="h-7 w-7 flex items-center justify-center rounded-lg text-violet-500 hover:bg-violet-500/10 transition-colors">
-              <FileVideo className="h-4 w-4" />
-            </button>
-          </div>
-        ) : <span className="text-[hsl(var(--muted-foreground))]/30 flex justify-center">—</span>;
-      },
-    },
+    // 7 — Ações
     {
       id: "acoes",
       header: "Ações",
@@ -1128,9 +1161,9 @@ export default function TasksOverview() {
 
                       {/* Row 3: status + priority + due date / período */}
                       <div className="flex items-center gap-2 mt-2.5 flex-wrap">
-                        <Badge className={`text-xs px-2 py-0.5 font-medium shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
+                        <span className={`inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none whitespace-nowrap shrink-0 ${STATUS_CHIP[t.status] ?? "bg-slate-500/10 text-slate-500"}`}>
                           {STATUS_LABEL[t.status] ?? t.status}
-                        </Badge>
+                        </span>
                         {isUnassigned && <span className="text-[11px] text-slate-400 shrink-0">sem editor</span>}
                         <PriorityBadge priority={t.priority} />
                         {viewTab === "scheduled" ? (
@@ -1323,9 +1356,9 @@ export default function TasksOverview() {
                   {/* Status */}
                   <div className="hidden md:flex w-36 shrink-0 flex-col gap-1 justify-center">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <Badge className={`text-[11px] px-2 py-0.5 font-medium ${STATUS_CLASS[t.status] ?? ""}`}>
+                      <span className={`inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none ${STATUS_CHIP[t.status] ?? "bg-slate-500/10 text-slate-500"}`}>
                         {STATUS_LABEL[t.status] ?? t.status}
-                      </Badge>
+                      </span>
                       <MultiTaskBadge taskType={t.taskType ?? "task"} />
                     </div>
                     {t.taskType === "multi_task" && t.subtaskProgress && t.subtaskProgress.total > 0 && (
@@ -1538,9 +1571,9 @@ export default function TasksOverview() {
                           )}
                         </div>
                         {/* Subtask status */}
-                        <Badge className={`text-[11px] px-2 py-0.5 shrink-0 hidden md:inline-flex ${STATUS_CLASS[sub.status] ?? ""}`}>
+                        <span className={`inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none shrink-0 hidden md:inline-flex ${STATUS_CHIP[sub.status] ?? "bg-slate-500/10 text-slate-500"}`}>
                           {STATUS_LABEL[sub.status] ?? sub.status}
-                        </Badge>
+                        </span>
                         {/* Subtask editor avatar */}
                         <div className="hidden md:flex items-center shrink-0">
                           {(sub.assignedTo ?? sub.editors?.[0]) && (() => {
@@ -1643,7 +1676,7 @@ export default function TasksOverview() {
                           <React.Fragment key={row.id}>
                             <tr
                               ref={isHighlighted ? (highlightRef as React.RefObject<HTMLTableRowElement>) : null}
-                              className="border-b border-[hsl(var(--border))]/40 hover:bg-[hsl(var(--muted))]/20 cursor-pointer transition-colors"
+                              className="h-14 border-b border-[hsl(var(--border))]/40 hover:bg-[hsl(var(--muted))]/40 cursor-pointer transition-colors"
                               style={{
                                 borderLeft: `3px ${t.status === "rascunho" ? "dashed" : "solid"} ${group.color}`,
                                 opacity: t.status === "rascunho" ? 0.75 : 1,
@@ -1654,7 +1687,7 @@ export default function TasksOverview() {
                             >
                               {row.getVisibleCells().map(cell => (
                                 <td key={cell.id}
-                                  className={`px-3 py-2.5 align-middle${(cell.column.columnDef.meta as any)?.className ? ` ${(cell.column.columnDef.meta as any).className}` : ""}`}
+                                  className={`px-3 py-1.5 align-middle${(cell.column.columnDef.meta as any)?.className ? ` ${(cell.column.columnDef.meta as any).className}` : ""}`}
                                 >
                                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                 </td>
@@ -1691,9 +1724,9 @@ export default function TasksOverview() {
                                                 </span>
                                               )}
                                             </div>
-                                            <Badge className={`text-[11px] px-2 py-0.5 shrink-0 ${STATUS_CLASS[sub.status] ?? ""}`}>
+                                            <span className={`inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none shrink-0 ${STATUS_CHIP[sub.status] ?? "bg-slate-500/10 text-slate-500"}`}>
                                               {STATUS_LABEL[sub.status] ?? sub.status}
-                                            </Badge>
+                                            </span>
                                             <div className="flex items-center shrink-0">
                                               {person && (
                                                 <ChatAvatarButton
@@ -2025,25 +2058,83 @@ export default function TasksOverview() {
 
       {/* ── Approve confirm dialog ───────────────────────────────────────── */}
       <Dialog open={!!approveTarget} onOpenChange={open => { if (!open && !approvingTarget) setApproveTarget(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500" />
               {approveTarget?.parentId ? "Aprovar subtarefa" : "Aprovar tarefa"}
             </DialogTitle>
           </DialogHeader>
-          <div className="py-1 space-y-2">
+
+          <div className="space-y-4">
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              Tem certeza que deseja <strong className="text-[hsl(var(--foreground))]">aprovar</strong>{" "}
-              {approveTarget?.parentId ? "a subtarefa" : "a tarefa"}{" "}
-              <em>"{approveTarget?.title}"</em>?
+              <em>"{approveTarget?.title}"</em> será marcada como concluída.
             </p>
-            <p className="text-xs text-[hsl(var(--muted-foreground))]/70">
-              {approveTarget?.parentId
-                ? "A subtarefa será marcada como concluída."
-                : "A tarefa será marcada como concluída e o editor será notificado."}
-            </p>
+
+            {/* Seleção de versões aprovadas */}
+            {approveFilesLoading ? (
+              <div className="flex items-center gap-2 py-2 text-sm text-[hsl(var(--muted-foreground))]">
+                <div className="h-4 w-4 rounded-full border-2 border-[hsl(var(--primary))]/20 border-t-[hsl(var(--primary))] animate-spin shrink-0" />
+                Carregando arquivos…
+              </div>
+            ) : approveFiles.length > 0 && (() => {
+              // Agrupar por revisão
+              const revMap = new Map<number, typeof approveFiles>();
+              approveFiles.forEach(f => {
+                if (!revMap.has(f.revisionNumber)) revMap.set(f.revisionNumber, []);
+                revMap.get(f.revisionNumber)!.push(f);
+              });
+              const groups = [...revMap.entries()].sort((a, b) => a[0] - b[0]);
+              return (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-[hsl(var(--foreground))]">Selecione as versões aprovadas:</p>
+                  <div className="rounded-xl border border-[hsl(var(--border))] divide-y divide-[hsl(var(--border))] overflow-hidden">
+                    {groups.map(([revNum, revFiles]) => (
+                      <div key={revNum} className="px-3 py-2.5">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2">
+                          {revNum === 0 ? "Original" : `${revNum}ª alteração`}
+                        </p>
+                        <div className="space-y-1">
+                          {revFiles.map(f => {
+                            const checked = approvedFileIds.has(f.id);
+                            const isVid = f.mimeType?.startsWith("video/");
+                            return (
+                              <label key={f.id}
+                                className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg cursor-pointer transition-colors select-none
+                                  ${checked ? "bg-green-500/10" : "hover:bg-[hsl(var(--muted))]/40"}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={e => setApprovedFileIds(prev => {
+                                    const next = new Set(prev);
+                                    e.target.checked ? next.add(f.id) : next.delete(f.id);
+                                    return next;
+                                  })}
+                                  className="h-3.5 w-3.5 rounded accent-green-600 shrink-0"
+                                />
+                                {isVid
+                                  ? <Clapperboard className="h-3.5 w-3.5 shrink-0 text-violet-500" />
+                                  : <AudioLines className="h-3.5 w-3.5 shrink-0 text-sky-500" />}
+                                <span className="text-xs font-medium truncate flex-1">{f.fileName}</span>
+                                <span className="text-[10px] text-[hsl(var(--muted-foreground))]/50 shrink-0 tabular-nums">
+                                  {new Date(f.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60">
+                    {approvedFileIds.size} arquivo{approvedFileIds.size !== 1 ? "s" : ""} selecionado{approvedFileIds.size !== 1 ? "s" : ""}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setApproveTarget(null)} disabled={approvingTarget}>
               Cancelar

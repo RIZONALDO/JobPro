@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Users, ChevronDown, ChevronRight } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
-import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CHIP } from "@/lib/status";
 import { usePageTitle } from "@/lib/use-page-title";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 
@@ -323,9 +323,9 @@ export default function Team() {
                                     <span className="text-xs text-[hsl(var(--muted-foreground))]">{fmtDate(task.dueDate)}</span>
                                   )}
                                   <PriorityBadge priority={task.priority} />
-                                  <Badge className={`text-xs px-1.5 ${STATUS_CLASS[task.status] ?? ""}`}>
+                                  <span className={`inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none ${STATUS_CHIP[task.status] ?? "bg-slate-500/10 text-slate-500"}`}>
                                     {STATUS_LABEL[task.status] ?? task.status}
-                                  </Badge>
+                                  </span>
                                 </div>
                               </div>
                             ))}

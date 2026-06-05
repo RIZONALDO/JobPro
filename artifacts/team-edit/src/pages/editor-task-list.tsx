@@ -22,11 +22,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   AlertCircle, MoreVertical,
-  Info, Undo2, Search, X, Clock, FileVideo,
+  Info, Undo2, Search, X, Clock, FileVideo, Clapperboard, AudioLines,
 } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
-import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CHIP, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
 import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
@@ -52,6 +52,7 @@ interface Task {
   reviewedAt?: string | null;
   editorComplexitySet?: boolean;
   fileCount?: number;
+  fileKind?: "video" | "audio" | "mixed" | "other" | null;
   // multi-task
   taskType?: string;
   parentTask?: { id: number; title: string; taskCode?: string } | null;
@@ -273,9 +274,9 @@ export default function EditorTaskList() {
         const t = row.original;
         return (
           <div className="flex items-center gap-1.5 flex-wrap">
-            <Badge className={`${STATUS_CLASS[t.status] ?? ""} text-[11px] px-2 py-0.5 font-medium whitespace-nowrap shrink-0`}>
+            <span className={`inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none whitespace-nowrap shrink-0 ${STATUS_CHIP[t.status] ?? "bg-slate-500/10 text-slate-500"}`}>
               {STATUS_LABEL[t.status] ?? t.status}
-            </Badge>
+            </span>
             <MultiTaskBadge taskType={t.taskType ?? "task"} />
           </div>
         );
@@ -349,9 +350,18 @@ export default function EditorTaskList() {
         const t = row.original;
         return (t.fileCount ?? 0) > 0 ? (
           <div className="flex justify-center" onClick={e => e.stopPropagation()}>
-            <button title="Ver mídia" onClick={() => setFilesViewTarget(t)}
-              className="h-7 w-7 flex items-center justify-center rounded-lg text-violet-500 hover:bg-violet-500/10 transition-colors">
-              <FileVideo className="h-4 w-4" />
+            <button
+              title={`Ver mídia (${t.fileCount} arquivo${t.fileCount !== 1 ? "s" : ""})`}
+              onClick={() => setFilesViewTarget(t)}
+              className={`flex items-center gap-0.5 px-1.5 h-7 rounded-lg transition-colors ${t.fileKind === "audio" ? "text-sky-500 hover:bg-sky-500/10" : "text-violet-500 hover:bg-violet-500/10"}`}
+            >
+              {t.fileKind === "audio" ? (
+                <AudioLines className="h-4 w-4" />
+              ) : t.fileKind === "mixed" ? (
+                <><Clapperboard className="h-3.5 w-3.5 text-violet-500" /><AudioLines className="h-3.5 w-3.5 text-sky-500" /></>
+              ) : (
+                <Clapperboard className="h-4 w-4" />
+              )}
             </button>
           </div>
         ) : <span className="text-[hsl(var(--muted-foreground))]/30 flex justify-center">—</span>;
@@ -551,7 +561,7 @@ export default function EditorTaskList() {
                                 {t.taskType === "multi_task" && <div className="mt-1"><MultiTaskBadge taskType="multi_task" /></div>}
                                 {t.client && <p className="text-xs text-[hsl(var(--muted-foreground))]/60 truncate mt-1">{t.client}</p>}
                                 <div className="flex items-center gap-2 mt-2.5 flex-wrap">
-                                  <Badge className={`text-xs px-2 py-0.5 font-medium shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>{STATUS_LABEL[t.status] ?? t.status}</Badge>
+                                  <span className={`inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none whitespace-nowrap shrink-0 ${STATUS_CHIP[t.status] ?? "bg-slate-500/10 text-slate-500"}`}>{STATUS_LABEL[t.status] ?? t.status}</span>
                                   <PriorityBadge priority={t.priority} />
                                   {!isTerminal(t.status) && t.dueDate && <span className={`text-xs shrink-0 tabular-nums ${overdue ? "text-red-500 font-semibold" : "text-[hsl(var(--muted-foreground))]/60"}`}>{overdue && <AlertCircle className="inline h-3 w-3 mr-0.5" />}{fmtPrazoWeek(t.dueDate).label}</span>}
                                 </div>

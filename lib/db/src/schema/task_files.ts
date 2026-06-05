@@ -13,4 +13,6 @@ export const taskFilesTable = pgTable("te_task_files", {
   uploadedById:   integer("uploaded_by_id").references(() => usersTable.id),
   revisionNumber: integer("revision_number").notNull().default(0),
   createdAt:      timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  approvedAt:     timestamp("approved_at", { withTimezone: true }),
+  approvedById:   integer("approved_by_id").references(() => usersTable.id),
 });

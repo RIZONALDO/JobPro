@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, appSettingsTable, usersTable, tasksTable, taskEditorsTable, taskRevisionsTable, taskEventsTable } from "@workspace/db";
 import { eq, or, sql } from "drizzle-orm";
-import { requireAdmin } from "../lib/auth.js";
+import { requireAdmin, requireAuth, requireSupervisor } from "../lib/auth.js";
 import { pool } from "@workspace/db";
 import { broadcastTaskChange } from "../lib/broadcast.js";
 import { execFile } from "node:child_process";
@@ -288,6 +288,25 @@ router.post("/admin/seed", requireAdmin, async (_req, res): Promise<void> => {
 
   broadcastTaskChange();
   res.json({ ok: true, created: created.length });
+});
+
+// ── GET /api/calendar-config — lê feriados (todos autenticados) ───────────────
+router.get("/calendar-config", requireAuth, async (_req, res): Promise<void> => {
+  const [row] = await db.select().from(appSettingsTable)
+    .where(eq(appSettingsTable.key, "calendar_holidays"));
+  const holidays: string[] = row?.value ? JSON.parse(row.value) : [];
+  res.json({ holidays });
+});
+
+// ── PUT /api/calendar-config — salva feriados (supervisor/admin) ───────────────
+router.put("/calendar-config", requireSupervisor, async (req, res): Promise<void> => {
+  const { holidays } = req.body as { holidays: string[] };
+  if (!Array.isArray(holidays)) { res.status(400).json({ error: "Inválido" }); return; }
+  const sorted = [...new Set(holidays)].sort();
+  await db.insert(appSettingsTable)
+    .values({ key: "calendar_holidays", value: JSON.stringify(sorted) })
+    .onConflictDoUpdate({ target: appSettingsTable.key, set: { value: JSON.stringify(sorted) } });
+  res.json({ holidays: sorted });
 });
 
 export default router;

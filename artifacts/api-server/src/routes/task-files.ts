@@ -4,7 +4,8 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { db, taskFilesTable, tasksTable, usersTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { requireAuth, requireCoordinator } from "../lib/auth.js";
 
 const router = Router();
@@ -83,29 +84,57 @@ router.get("/tasks/:id/files", requireAuth, async (req, res): Promise<void> => {
   const taskId = parseInt(req.params.id, 10);
   if (isNaN(taskId)) { res.status(400).json({ error: "ID inválido" }); return; }
 
+  const approverTable = alias(usersTable, "approver");
+
   const files = await db
     .select({
-      id: taskFilesTable.id,
-      taskId: taskFilesTable.taskId,
-      fileName: taskFilesTable.fileName,
-      fileSize: taskFilesTable.fileSize,
-      mimeType: taskFilesTable.mimeType,
-      storagePath: taskFilesTable.storagePath,
-      publicToken: taskFilesTable.publicToken,
+      id:             taskFilesTable.id,
+      taskId:         taskFilesTable.taskId,
+      fileName:       taskFilesTable.fileName,
+      fileSize:       taskFilesTable.fileSize,
+      mimeType:       taskFilesTable.mimeType,
+      storagePath:    taskFilesTable.storagePath,
+      publicToken:    taskFilesTable.publicToken,
       revisionNumber: taskFilesTable.revisionNumber,
-      createdAt: taskFilesTable.createdAt,
-      uploadedById: taskFilesTable.uploadedById,
-      uploaderName: usersTable.name,
+      createdAt:      taskFilesTable.createdAt,
+      uploadedById:   taskFilesTable.uploadedById,
+      uploaderName:   usersTable.name,
+      approvedAt:     taskFilesTable.approvedAt,
+      approvedById:   taskFilesTable.approvedById,
+      approvedByName: approverTable.name,
     })
     .from(taskFilesTable)
-    .leftJoin(usersTable, eq(taskFilesTable.uploadedById, usersTable.id))
+    .leftJoin(usersTable,     eq(taskFilesTable.uploadedById, usersTable.id))
+    .leftJoin(approverTable,  eq(taskFilesTable.approvedById, approverTable.id))
     .where(eq(taskFilesTable.taskId, taskId))
     .orderBy(taskFilesTable.createdAt);
 
   res.json(files.map(f => ({
     ...formatFile(f),
-    uploaderName: f.uploaderName ?? null,
+    uploaderName:   f.uploaderName   ?? null,
+    approvedAt:     f.approvedAt?.toISOString() ?? null,
+    approvedByName: f.approvedByName ?? null,
   })));
+});
+
+// ── PATCH /api/tasks/:id/files/approve ───────────────────────────────────────
+router.patch("/tasks/:id/files/approve", requireCoordinator, async (req, res): Promise<void> => {
+  const taskId = parseInt(req.params.id, 10);
+  if (isNaN(taskId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const { fileIds } = req.body as { fileIds: number[] };
+  if (!Array.isArray(fileIds) || fileIds.length === 0) {
+    res.status(400).json({ error: "Selecione ao menos um arquivo" }); return;
+  }
+
+  const userId = req.session.userId!;
+  const now    = new Date();
+
+  await db.update(taskFilesTable)
+    .set({ approvedAt: now, approvedById: userId })
+    .where(and(eq(taskFilesTable.taskId, taskId), inArray(taskFilesTable.id, fileIds)));
+
+  res.json({ ok: true });
 });
 
 // ── DELETE /api/tasks/:id/files/:fileId ───────────────────────────────────────
@@ -283,6 +312,8 @@ function formatFile(f: typeof taskFilesTable.$inferSelect & { uploaderName?: str
     createdAt:      f.createdAt,
     uploadedById:   f.uploadedById,
     uploaderName:   f.uploaderName ?? null,
+    approvedAt:     (f as any).approvedAt ?? null,
+    approvedByName: (f as any).approvedByName ?? null,
   };
 }
 

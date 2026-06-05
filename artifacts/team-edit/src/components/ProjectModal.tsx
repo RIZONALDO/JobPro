@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { Plus, Briefcase, Pencil, Trash2, MoreVertical, MessageSquare, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Undo2, FolderOpen, ExternalLink, PauseCircle, XCircle } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { CoordinatorAvatar, EditorAvatars } from "@/components/ui/avatar-group";
-import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CHIP } from "@/lib/status";
 import { JOB_STATUS_CLASS, JOB_STATUS_LABEL, JOB_STATUS_OPTIONS } from "@/lib/job-status";
 import { PROJ_STATUS_CLASS, PROJ_STATUS_LABEL } from "@/lib/project-status";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
@@ -635,9 +635,9 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                           </div>
                           {/* Status */}
                           <div className="w-48 shrink-0 flex items-center gap-1.5">
-                            <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
+                            <span className={`inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none ${STATUS_CHIP[t.status] ?? "bg-slate-500/10 text-slate-500"}`}>
                               {STATUS_LABEL[t.status] ?? t.status}
-                            </Badge>
+                            </span>
                             {t.revisionCount > 0 && (
                               <span className="text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap leading-none">
                                 {t.revisionCount} {t.revisionCount === 1 ? "alteração" : "alterações"}
