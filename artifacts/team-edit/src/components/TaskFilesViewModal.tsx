@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Clapperboard, AudioLines, Download, ChevronRight, CheckCircle2 } from "lucide-react";
+import { Clapperboard, AudioLines, Download, CheckCircle2, ChevronRight } from "lucide-react";
 
 interface TaskFile {
   id: number;
@@ -42,17 +42,22 @@ export function TaskFilesViewModal({ open, onClose, taskId, taskCode, taskTitle 
   const [files,    setFiles]    = useState<TaskFile[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [selected, setSelected] = useState<TaskFile | null>(null);
+  const [activeRev, setActiveRev] = useState<number>(0);
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
     apiFetch<TaskFile[]>(`/api/tasks/${taskId}/files`)
-      .then(f => { setFiles(f); setSelected(f[f.length - 1] ?? null); })
+      .then(f => {
+        setFiles(f);
+        const last = f[f.length - 1] ?? null;
+        setSelected(last);
+        setActiveRev(last?.revisionNumber ?? 0);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [open, taskId]);
 
-  // Agrupa arquivos por número de revisão, em ordem cronológica
   const revisionGroups = useMemo(() => {
     const map = new Map<number, TaskFile[]>();
     files.forEach(f => {
@@ -62,64 +67,73 @@ export function TaskFilesViewModal({ open, onClose, taskId, taskCode, taskTitle 
     return [...map.entries()].sort((a, b) => a[0] - b[0]);
   }, [files]);
 
+  const activeFiles = useMemo(
+    () => revisionGroups.find(([n]) => n === activeRev)?.[1] ?? [],
+    [revisionGroups, activeRev]
+  );
+
   const streamUrl = (f: TaskFile) =>
-    f.publicToken
-      ? `/api/public/${f.publicToken}/stream`
-      : `/api/tasks/${taskId}/files/${f.id}/download`;
+    f.publicToken ? `/api/public/${f.publicToken}/stream` : `/api/tasks/${taskId}/files/${f.id}/download`;
 
   const downloadUrl = (f: TaskFile) =>
-    f.publicToken
-      ? `/api/public/${f.publicToken}/download`
-      : `/api/tasks/${taskId}/files/${f.id}/download`;
+    f.publicToken ? `/api/public/${f.publicToken}/download` : `/api/tasks/${taskId}/files/${f.id}/download`;
 
   const isVideo = (f: TaskFile) => f.mimeType?.startsWith("video/");
   const isAudio = (f: TaskFile) => f.mimeType?.startsWith("audio/");
 
+  const selectFile = (f: TaskFile) => {
+    setSelected(f);
+    setActiveRev(f.revisionNumber);
+  };
+
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-3xl w-[calc(100vw-24px)] p-0 gap-0 overflow-hidden rounded-2xl max-h-[92vh] flex flex-col bg-zinc-950 border border-zinc-800/80">
+      <DialogContent className="max-w-3xl w-[calc(100vw-24px)] p-0 gap-0 overflow-hidden rounded-2xl max-h-[92vh] flex flex-col bg-[hsl(var(--card))] border border-[hsl(var(--border))]">
 
-        {/* ── Header ─────────────────────────────────────────────────── */}
-        <div className="px-5 pt-4 pb-3 shrink-0 flex items-center gap-3">
-          <div className="h-8 w-8 rounded-xl bg-violet-500/15 flex items-center justify-center shrink-0 border border-violet-500/20">
-            <Clapperboard className="h-4 w-4 text-violet-400" />
-          </div>
+        {/* ── Header ────────────────────────────────────────────────── */}
+        <div className="px-5 pt-4 pb-3 shrink-0 flex items-center gap-2.5 border-b border-[hsl(var(--border))]">
           <DialogTitle className="flex-1 min-w-0 text-left">
-            {taskCode && <p className="text-[10px] text-zinc-500 font-mono leading-none mb-0.5 tracking-widest uppercase">{taskCode}</p>}
-            <p className="text-sm font-semibold text-zinc-100 truncate leading-snug">{taskTitle}</p>
+            <div className="flex items-baseline gap-2 min-w-0">
+              {taskCode && (
+                <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/60">
+                  {taskCode}
+                </span>
+              )}
+              <span className="text-sm font-semibold truncate text-[hsl(var(--foreground))]">{taskTitle}</span>
+            </div>
           </DialogTitle>
         </div>
 
-        {/* ── States: loading / empty ─────────────────────────────────── */}
+        {/* ── Loading / empty ───────────────────────────────────────── */}
         {loading ? (
-          <div className="flex items-center justify-center py-24">
-            <div className="h-6 w-6 rounded-full border-2 border-violet-500/20 border-t-violet-500 animate-spin" />
+          <div className="flex items-center justify-center py-20">
+            <div className="h-5 w-5 rounded-full border-2 border-[hsl(var(--primary))]/20 border-t-[hsl(var(--primary))] animate-spin" />
           </div>
         ) : files.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-3">
-            <Clapperboard className="h-10 w-10 text-zinc-700" />
-            <p className="text-sm text-zinc-500">Nenhum arquivo enviado</p>
+          <div className="flex flex-col items-center justify-center py-20 gap-2">
+            <Clapperboard className="h-8 w-8 text-[hsl(var(--muted-foreground))]/20" />
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">Nenhum arquivo enviado</p>
           </div>
         ) : (
           <>
-            {/* ── Player ─────────────────────────────────────────────── */}
-            <div className="bg-black flex items-center justify-center" style={{ minHeight: 300 }}>
+            {/* ── Player ────────────────────────────────────────────── */}
+            <div className="bg-black flex items-center justify-center shrink-0" style={{ minHeight: 260 }}>
               {selected && (
                 isVideo(selected) ? (
                   <video
                     key={selected.id}
                     controls
                     className="w-full"
-                    style={{ maxHeight: "calc(92vh - 280px)", minHeight: 200 }}
+                    style={{ maxHeight: "calc(92vh - 260px)", minHeight: 180 }}
                   >
                     <source src={streamUrl(selected)} type={selected.mimeType ?? "video/mp4"} />
                   </video>
                 ) : isAudio(selected) ? (
-                  <div className="flex flex-col items-center gap-5 py-10 px-6 w-full max-w-sm">
-                    <div className="h-20 w-20 rounded-2xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center">
-                      <AudioLines className="h-9 w-9 text-sky-400" />
+                  <div className="flex flex-col items-center gap-4 py-8 px-6 w-full max-w-xs">
+                    <div className="h-14 w-14 rounded-2xl bg-[hsl(var(--primary))]/10 flex items-center justify-center">
+                      <AudioLines className="h-6 w-6 text-[hsl(var(--primary))]" />
                     </div>
-                    <p className="text-sm font-semibold text-white text-center truncate w-full">{selected.fileName}</p>
+                    <p className="text-xs font-medium text-zinc-300 text-center truncate w-full">{selected.fileName}</p>
                     <audio key={selected.id} controls className="w-full">
                       <source src={streamUrl(selected)} type={selected.mimeType ?? "audio/mpeg"} />
                     </audio>
@@ -128,25 +142,28 @@ export function TaskFilesViewModal({ open, onClose, taskId, taskCode, taskTitle 
               )}
             </div>
 
-            {/* ── Info bar ───────────────────────────────────────────── */}
+            {/* ── Info bar ──────────────────────────────────────────── */}
             {selected && (
-              <div className="shrink-0 px-4 py-2.5 bg-zinc-900 border-t border-zinc-800 flex items-center gap-3">
+              <div className="shrink-0 px-4 py-2 border-t border-[hsl(var(--border))] flex items-center gap-3 bg-[hsl(var(--muted))]/30">
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-medium text-zinc-200 truncate">{selected.fileName}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                    {selected.uploaderName && <span className="text-[10px] text-zinc-500">{selected.uploaderName.split(" ")[0]}</span>}
-                    <span className="text-[10px] text-zinc-700">·</span>
-                    <span className="text-[10px] text-zinc-500">{fmtDate(selected.createdAt)}</span>
-                    {selected.fileSize && <>
-                      <span className="text-[10px] text-zinc-700">·</span>
-                      <span className="text-[10px] text-zinc-500">{fmtSize(selected.fileSize)}</span>
-                    </>}
-                  </div>
+                  <p className="text-[11px] font-medium text-[hsl(var(--foreground))] truncate">{selected.fileName}</p>
+                  <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5">
+                    {[
+                      selected.uploaderName?.split(" ")[0],
+                      fmtDate(selected.createdAt),
+                      fmtSize(selected.fileSize),
+                    ].filter(Boolean).join(" · ")}
+                    {selected.approvedAt && (
+                      <span className="ml-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                        · ✓ {selected.approvedByName?.split(" ")[0] ?? "Aprovado"}
+                      </span>
+                    )}
+                  </p>
                 </div>
                 <a
                   href={downloadUrl(selected)}
                   download={selected.fileName}
-                  className="flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors shrink-0 border border-zinc-700/50"
+                  className="shrink-0 flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--foreground))]"
                 >
                   <Download className="h-3.5 w-3.5" />
                   Baixar
@@ -154,76 +171,62 @@ export function TaskFilesViewModal({ open, onClose, taskId, taskCode, taskTitle 
               </div>
             )}
 
-            {/* ── Revision history ───────────────────────────────────── */}
-            <div className="shrink-0 border-t border-zinc-800 px-4 pt-3 pb-4 bg-zinc-950">
-              <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-600 mb-3">
-                Histórico de entregas · {revisionGroups.length} {revisionGroups.length === 1 ? "versão" : "versões"}
-              </p>
-              <div className="flex items-start gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {/* ── Histórico de versões ───────────────────────────────── */}
+            <div className="shrink-0 border-t border-[hsl(var(--border))] bg-[hsl(var(--card))]">
+
+              {/* Pills de revisão */}
+              <div className="flex items-center gap-1 px-4 pt-3 pb-2 overflow-x-auto scrollbar-none">
                 {revisionGroups.map(([revNum, revFiles], idx) => {
-                  const isCurrentRev = revFiles.some(f => f.id === selected?.id);
+                  const isActive = activeRev === revNum;
+                  const isApproved = revFiles.some(f => f.approvedAt);
                   return (
-                    <div key={revNum} className="flex items-center gap-2 shrink-0">
-                      <div className={`rounded-xl border p-3 w-[148px] transition-all
-                        ${isCurrentRev
-                          ? "border-violet-500/50 bg-violet-500/10"
-                          : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700"}`}
+                    <div key={revNum} className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => {
+                          setActiveRev(revNum);
+                          setSelected(revFiles[revFiles.length - 1]);
+                        }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all
+                          ${isActive
+                            ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
+                            : "bg-[hsl(var(--muted))]/50 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]"
+                          }`}
                       >
-                        {/* Revision label + approved badge */}
-                        <div className="flex items-center justify-between mb-2.5">
-                          <span className={`text-[10px] font-bold tracking-wide ${isCurrentRev ? "text-violet-400" : "text-zinc-500"}`}>
-                            {revLabel(revNum)}
-                          </span>
-                          {revFiles.some(f => f.approvedAt) ? (
-                            <span className="flex items-center gap-0.5 text-[9px] font-semibold text-emerald-400">
-                              <CheckCircle2 className="h-3 w-3" />
-                              Aprovado
-                            </span>
-                          ) : isCurrentRev ? (
-                            <span className="h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0" />
-                          ) : null}
-                        </div>
-
-                        {/* Files dentro da revisão */}
-                        <div className="flex flex-col gap-1">
-                          {revFiles.map(f => (
-                            <button
-                              key={f.id}
-                              onClick={() => setSelected(f)}
-                              className={`flex items-center gap-1.5 w-full text-left rounded-lg px-1.5 py-1.5 transition-colors
-                                ${f.id === selected?.id
-                                  ? "bg-violet-500/25 text-violet-300"
-                                  : "hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200"}`}
-                            >
-                              {isVideo(f)
-                                ? <Clapperboard className="h-3 w-3 shrink-0" />
-                                : <AudioLines className="h-3 w-3 shrink-0" />}
-                              <span className="text-[10px] font-medium truncate flex-1">{f.fileName}</span>
-                              {f.approvedAt && <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-500" />}
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* Uploader + data + quem aprovou */}
-                        {revFiles[0] && (
-                          <p className="text-[9px] text-zinc-600 mt-2 leading-snug truncate">
-                            {revFiles[0].uploaderName?.split(" ")[0]}
-                            {" · "}
-                            {fmtDate(revFiles[0].createdAt)}
-                            {revFiles.some(f => f.approvedAt) && revFiles.find(f => f.approvedByName) && (
-                              <> · <span className="text-emerald-600">{revFiles.find(f => f.approvedByName)!.approvedByName?.split(" ")[0]}</span></>
-                            )}
-                          </p>
+                        {revLabel(revNum)}
+                        {isApproved && (
+                          <CheckCircle2 className={`h-3 w-3 shrink-0 ${isActive ? "opacity-80" : "text-emerald-500"}`} />
                         )}
-                      </div>
-
-                      {/* Seta entre revisões */}
+                      </button>
                       {idx < revisionGroups.length - 1 && (
-                        <ChevronRight className="h-3.5 w-3.5 text-zinc-700 shrink-0" />
+                        <ChevronRight className="h-3 w-3 text-[hsl(var(--muted-foreground))]/30 shrink-0" />
                       )}
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Arquivos da revisão ativa */}
+              <div className="px-4 pb-3 space-y-1">
+                {activeFiles.map(f => (
+                  <button
+                    key={f.id}
+                    onClick={() => selectFile(f)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors
+                      ${f.id === selected?.id
+                        ? "bg-[hsl(var(--primary))]/10 border border-[hsl(var(--primary))]/20"
+                        : "hover:bg-[hsl(var(--muted))]/50 border border-transparent"
+                      }`}
+                  >
+                    {isVideo(f)
+                      ? <Clapperboard className={`h-3.5 w-3.5 shrink-0 ${f.id === selected?.id ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--muted-foreground))]"}`} />
+                      : <AudioLines className={`h-3.5 w-3.5 shrink-0 ${f.id === selected?.id ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--muted-foreground))]"}`} />
+                    }
+                    <span className={`text-[11px] font-medium truncate flex-1 ${f.id === selected?.id ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]"}`}>
+                      {f.fileName}
+                    </span>
+                    {f.approvedAt && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />}
+                  </button>
+                ))}
               </div>
             </div>
           </>
