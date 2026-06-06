@@ -628,7 +628,7 @@ export default function TasksOverview() {
             {(t.fileCount ?? 0) > 0 && (
               <button
                 title={`Ver mídia entregue · ${t.fileCount} arquivo${t.fileCount !== 1 ? "s" : ""}`}
-                onClick={e => { e.stopPropagation(); openTask(t.id, "media"); }}
+                onClick={e => { e.stopPropagation(); openTask(t.id, "entrega"); }}
                 className={`inline-flex items-center gap-1 w-fit px-1.5 py-[3px] rounded-[4px] text-[10px] font-medium transition-colors
                   ${t.fileKind === "audio"
                     ? "bg-sky-500/8 text-sky-600 dark:text-sky-400 hover:bg-sky-500/15"
@@ -1444,7 +1444,7 @@ export default function TasksOverview() {
                     {(t.fileCount ?? 0) > 0 ? (
                       <button
                         title="Ver mídia entregue"
-                        onClick={() => openTask(t.id, "media")}
+                        onClick={() => openTask(t.id, "entrega")}
                         className="h-7 w-7 flex items-center justify-center rounded-lg text-violet-500 hover:bg-violet-500/10 transition-colors"
                       >
                         <FileVideo className="h-4 w-4" />

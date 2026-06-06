@@ -350,7 +350,7 @@ export default function EditorTaskList() {
           <div className="flex justify-center" onClick={e => e.stopPropagation()}>
             <button
               title={`Ver mídia (${t.fileCount} arquivo${t.fileCount !== 1 ? "s" : ""})`}
-              onClick={() => openTask(t.id, "media")}
+              onClick={() => openTask(t.id, "entrega")}
               className={`flex items-center gap-0.5 px-1.5 h-7 rounded-lg transition-colors ${t.fileKind === "audio" ? "text-sky-500 hover:bg-sky-500/10" : "text-violet-500 hover:bg-violet-500/10"}`}
             >
               {t.fileKind === "audio" ? (
