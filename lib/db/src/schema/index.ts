@@ -19,3 +19,4 @@ export * from "./email_logs";
 export * from "./push_subscriptions";
 export * from "./task_files";
 export * from "./task_review";
+export * from "./review_comments";

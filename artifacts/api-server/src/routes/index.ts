@@ -14,6 +14,7 @@ import dutyEmailRouter from "./duty-email.js";
 import pushRouter from "./push.js";
 import taskFilesRouter from "./task-files.js";
 import taskReviewRouter from "./task-review.js";
+import reviewCommentsRouter from "./review-comments.js";
 
 const router = Router();
 router.use(authRouter);
@@ -31,5 +32,6 @@ router.use(dutyRouter);
 router.use(pushRouter);
 router.use(taskFilesRouter);
 router.use(taskReviewRouter);
+router.use(reviewCommentsRouter);
 
 export default router;

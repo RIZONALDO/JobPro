@@ -25,6 +25,8 @@ import DutyPage      from "@/pages/duty";
 import FaviconDebugPage from "@/pages/favicon-debug";
 import AgendaGeral from "@/pages/agenda-geral";
 import TaskPublicView from "@/pages/task-public-view";
+import ReviewTaskPage from "@/pages/review-task";
+import ReviewFilePage from "@/pages/review-file";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } });
 
@@ -90,6 +92,8 @@ function Router() {
         <Route path="/tasks" component={TasksHub} />
         <Route path="/duty" component={DutyPage} />
         <Route path="/agenda" component={AgendaGeral} />
+        <Route path="/review/:taskId/:fileId"><ReviewFilePage /></Route>
+        <Route path="/review/:taskId"><ReviewTaskPage /></Route>
         <Route>
           <div className="text-center py-20">
             <h2 className="text-2xl font-bold">404</h2>
