@@ -281,6 +281,46 @@ router.get("/public/:token/download", async (req, res): Promise<void> => {
   fs.createReadStream(filePath).pipe(res);
 });
 
+// ── GET /api/tasks/:id/files/:fileId/stream — streaming autenticado com Range ─
+router.get("/tasks/:id/files/:fileId/stream", requireAuth, async (req, res): Promise<void> => {
+  const taskId = parseInt(req.params.id, 10);
+  const fileId = parseInt(req.params.fileId, 10);
+  if (isNaN(taskId) || isNaN(fileId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const [file] = await db.select().from(taskFilesTable)
+    .where(and(eq(taskFilesTable.id, fileId), eq(taskFilesTable.taskId, taskId)));
+  if (!file) { res.status(404).json({ error: "Arquivo não encontrado" }); return; }
+
+  const filePath = path.join(uploadsDir, file.storagePath);
+  if (!fs.existsSync(filePath)) { res.status(404).json({ error: "Arquivo não encontrado no servidor" }); return; }
+
+  const stat  = fs.statSync(filePath);
+  const total = stat.size;
+  const range = req.headers.range;
+  const mime  = file.mimeType ?? "application/octet-stream";
+
+  if (range) {
+    const [startStr, endStr] = range.replace(/bytes=/, "").split("-");
+    const start = parseInt(startStr, 10);
+    const end   = endStr ? parseInt(endStr, 10) : total - 1;
+    const chunkSize = end - start + 1;
+    res.writeHead(206, {
+      "Content-Range":  `bytes ${start}-${end}/${total}`,
+      "Accept-Ranges":  "bytes",
+      "Content-Length": chunkSize,
+      "Content-Type":   mime,
+    });
+    fs.createReadStream(filePath, { start, end }).pipe(res);
+  } else {
+    res.writeHead(200, {
+      "Content-Length": total,
+      "Content-Type":   mime,
+      "Accept-Ranges":  "bytes",
+    });
+    fs.createReadStream(filePath).pipe(res);
+  }
+});
+
 // ── GET /api/tasks/:id/files/:fileId/download — autenticado ──────────────────
 router.get("/tasks/:id/files/:fileId/download", requireAuth, async (req, res): Promise<void> => {
   const taskId = parseInt(req.params.id, 10);
