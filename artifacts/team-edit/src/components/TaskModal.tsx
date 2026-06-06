@@ -575,7 +575,7 @@ export function TaskModal({ taskId, onClose, onOpenTask, initialTab = "entrega",
 
   return (
     <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-3xl w-[calc(100vw-16px)] p-0 gap-0 overflow-hidden max-h-[92vh] flex flex-col rounded-2xl border border-[hsl(var(--border))] shadow-2xl bg-[hsl(var(--card))]">
+      <DialogContent className="max-w-3xl w-[calc(100vw-16px)] p-0 gap-0 overflow-hidden h-[90vh] flex flex-col rounded-2xl border border-[hsl(var(--border))] shadow-2xl bg-[hsl(var(--card))]">
 
         {loading || !task ? (
           <>
