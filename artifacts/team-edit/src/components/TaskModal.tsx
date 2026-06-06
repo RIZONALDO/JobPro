@@ -9,8 +9,9 @@ import { fmtDate } from "@/lib/utils";
 import {
   Clock, FolderOpen, RotateCcw, Calendar, AlertTriangle,
   Layers, Copy, ChevronRight, Hash, Tag, Zap,
-  Film, Music, Download, Link2, Trash2, FileVideo,
+  Film, Music, Download, Link2, Trash2, FileVideo, Eye,
 } from "lucide-react";
+import { TaskFilesViewModal } from "@/components/TaskFilesViewModal";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { SubtaskProgressBar } from "@/components/ui/subtask-progress-bar";
 import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
@@ -18,6 +19,24 @@ import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
+
+interface FrameComment {
+  id: number;
+  timestampSec: number;
+  orderIndex: number;
+  frameThumbnail: string | null;
+  body: string;
+}
+interface ReviewBatch {
+  id: number;
+  taskFileId: number | null;
+  revisionNumber: number;
+  commentCount: number;
+  submittedAt: string;
+  submittedByName: string | null;
+  comments: FrameComment[];
+}
+
 interface TaskFile {
   id: number; fileName: string; fileSize: number | null; mimeType: string | null;
   publicToken: string | null; revisionNumber: number; createdAt: string;
@@ -66,13 +85,16 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
   const [loading, setLoading] = useState(true);
   const [files,   setFiles]   = useState<TaskFile[]>([]);
   const [sharing, setSharing] = useState<number | null>(null);
+  const [batches, setBatches] = useState<ReviewBatch[]>([]);
+  const [playerTarget, setPlayerTarget] = useState<{ fileId: number | null; time: number } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
     Promise.all([
       apiFetch<TaskDetail>(`/api/tasks/${taskId}`),
       apiFetch<TaskFile[]>(`/api/tasks/${taskId}/files`).catch(() => [] as TaskFile[]),
-    ]).then(([t, f]) => { setTask(t); setFiles(f); })
+      apiFetch<ReviewBatch[]>(`/api/tasks/${taskId}/review-batches`).catch(() => [] as ReviewBatch[]),
+    ]).then(([t, f, b]) => { setTask(t); setFiles(f); setBatches(b); })
       .catch(() => toast.error("Erro ao carregar tarefa"))
       .finally(() => setLoading(false));
   }, [taskId]);
@@ -427,6 +449,8 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
                             </div>
                           );
                         } else {
+                          const batch = batches.find(b => b.revisionNumber === entry.rev.revisionNumber);
+                          const hasFrameComments = batch && batch.comments.length > 0;
                           return (
                             <div key={`r-${entry.rev.id}`} className="flex gap-3">
                               <div className="flex flex-col items-center shrink-0 pt-0.5">
@@ -440,9 +464,50 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
                                   {entry.rev.revisionNumber}ª alteração solicitada
                                   <span className="font-normal text-[hsl(var(--muted-foreground))]/40 ml-1">{fmtDate(entry.rev.createdAt)}</span>
                                 </p>
-                                <div className="px-3 py-2 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/30">
-                                  <p className="text-sm text-[hsl(var(--foreground))]/80 leading-relaxed">{entry.rev.comment}</p>
-                                </div>
+
+                                {hasFrameComments ? (
+                                  <div className="rounded-xl border border-amber-200/60 dark:border-amber-800/30 overflow-hidden">
+                                    {batch.comments.map((fc, ci) => (
+                                      <div
+                                        key={fc.id}
+                                        className={`flex items-start gap-2.5 px-3 py-2 bg-amber-50/50 dark:bg-amber-950/10
+                                          ${ci < batch.comments.length - 1 ? "border-b border-amber-200/40 dark:border-amber-800/20" : ""}`}
+                                      >
+                                        <span className="shrink-0 text-[10px] font-bold text-amber-500 mt-1 w-4 tabular-nums">{fc.orderIndex}</span>
+                                        {fc.frameThumbnail ? (
+                                          <button
+                                            onClick={() => setPlayerTarget({ fileId: batch.taskFileId, time: fc.timestampSec })}
+                                            className="shrink-0 relative group"
+                                          >
+                                            <img
+                                              src={fc.frameThumbnail}
+                                              className="h-10 w-[72px] rounded-md object-cover ring-1 ring-amber-400/30 group-hover:ring-amber-400 transition-all"
+                                            />
+                                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 rounded-md">
+                                              <Eye className="h-3.5 w-3.5 text-white" />
+                                            </div>
+                                          </button>
+                                        ) : (
+                                          <button
+                                            onClick={() => setPlayerTarget({ fileId: batch.taskFileId, time: fc.timestampSec })}
+                                            className="shrink-0 h-10 w-[72px] rounded-md bg-amber-100 dark:bg-amber-950/30 border border-amber-300/40 flex items-center justify-center text-[9px] font-mono text-amber-600 hover:bg-amber-200/60 transition-colors"
+                                          >
+                                            {(() => {
+                                              const m = Math.floor(fc.timestampSec / 60);
+                                              const s = Math.floor(fc.timestampSec % 60);
+                                              return `${m}:${s.toString().padStart(2, "0")}`;
+                                            })()}
+                                          </button>
+                                        )}
+                                        <p className="flex-1 min-w-0 text-xs text-[hsl(var(--foreground))]/80 leading-snug pt-0.5">{fc.body}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="px-3 py-2 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/30">
+                                    <p className="text-sm text-[hsl(var(--foreground))]/80 leading-relaxed">{entry.rev.comment}</p>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           );
@@ -462,6 +527,20 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
           </>
         )}
       </DialogContent>
+
+      {/* Player aberto ao clicar em frame comment */}
+      {playerTarget && task && (
+        <TaskFilesViewModal
+          open
+          onClose={() => setPlayerTarget(null)}
+          taskId={taskId}
+          taskCode={task.taskCode}
+          taskTitle={task.title}
+          taskStatus={task.status}
+          initialFileId={playerTarget.fileId ?? undefined}
+          initialTime={playerTarget.time}
+        />
+      )}
     </Dialog>
   );
 }

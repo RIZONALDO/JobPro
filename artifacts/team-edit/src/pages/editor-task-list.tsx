@@ -713,6 +713,7 @@ export default function EditorTaskList() {
           taskId={filesViewTarget.id}
           taskCode={filesViewTarget.taskCode}
           taskTitle={filesViewTarget.title}
+          taskStatus={filesViewTarget.status}
         />
       )}
 

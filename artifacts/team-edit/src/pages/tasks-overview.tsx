@@ -762,18 +762,6 @@ export default function TasksOverview() {
                 <Send className="h-3.5 w-3.5" />
               </Button>
             )}
-            {t.status === "review" && canActNow && (
-              <>
-                <Button size="sm" className="h-7 gap-1 text-xs bg-green-600 hover:bg-green-700 text-white dark:bg-green-700 dark:hover:bg-green-600"
-                  onClick={e => { e.stopPropagation(); setApproveTarget({ taskId: t.id, title: t.title }); }}>
-                  <CheckCircle2 className="h-3.5 w-3.5" />Aprovar
-                </Button>
-                <Button size="sm" variant="outline" className="h-7 gap-1 text-xs text-amber-600 border-amber-400 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:border-amber-700/60 dark:hover:bg-amber-950/40"
-                  onClick={e => { e.stopPropagation(); setRevisionTask(t); setRevisionComment(""); }}>
-                  <RotateCcw className="h-3.5 w-3.5" />Revisar
-                </Button>
-              </>
-            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-7 w-7"><MoreVertical className="h-4 w-4" /></Button>
@@ -1240,22 +1228,6 @@ export default function TasksOverview() {
                           <Send className="h-4 w-4" />
                         </Button>
                       )}
-                      {t.status === "review" && canActNow && (
-                        <div className="flex gap-1.5 flex-wrap">
-                          <Button size="sm"
-                            className="h-8 gap-1.5 bg-green-600 hover:bg-green-700 text-white dark:bg-green-700 dark:hover:bg-green-600"
-                            onClick={e => { e.stopPropagation(); setApproveTarget({ taskId: t.id, title: t.title }); }}>
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Aprovar
-                          </Button>
-                          <Button size="sm" variant="outline"
-                            className="h-8 gap-1.5 text-amber-600 border-amber-400 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:border-amber-700/60 dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
-                            onClick={e => { e.stopPropagation(); setRevisionTask(t); setRevisionComment(""); }}>
-                            <RotateCcw className="h-3.5 w-3.5" />
-                            Revisar
-                          </Button>
-                        </div>
-                      )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -1494,22 +1466,6 @@ export default function TasksOverview() {
                         onClick={e => { e.stopPropagation(); apiPut(`/api/tasks/${t.id}`, { status: "pending" }).then(() => load(true)); }}>
                         <Send className="h-3.5 w-3.5" />
                       </Button>
-                    )}
-                    {t.status === "review" && canActNow && (
-                      <>
-                        <Button size="sm"
-                          className="h-7 gap-1 text-xs bg-green-600 hover:bg-green-700 text-white dark:bg-green-700 dark:hover:bg-green-600"
-                          onClick={e => { e.stopPropagation(); setApproveTarget({ taskId: t.id, title: t.title }); }}>
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          Aprovar
-                        </Button>
-                        <Button size="sm" variant="outline"
-                          className="h-7 gap-1 text-xs text-amber-600 border-amber-400 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:border-amber-700/60 dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
-                          onClick={e => { e.stopPropagation(); setRevisionTask(t); setRevisionComment(""); }}>
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          Revisar
-                        </Button>
-                      </>
                     )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -2209,6 +2165,8 @@ export default function TasksOverview() {
           taskId={filesViewTarget.id}
           taskCode={filesViewTarget.taskCode}
           taskTitle={filesViewTarget.title}
+          taskStatus={filesViewTarget.status}
+          onDone={() => { setFilesViewTarget(null); load(true); }}
         />
       )}
 

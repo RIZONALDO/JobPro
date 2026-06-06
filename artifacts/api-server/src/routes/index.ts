@@ -13,6 +13,7 @@ import dutyRouter from "./duty.js";
 import dutyEmailRouter from "./duty-email.js";
 import pushRouter from "./push.js";
 import taskFilesRouter from "./task-files.js";
+import taskReviewRouter from "./task-review.js";
 
 const router = Router();
 router.use(authRouter);
@@ -29,5 +30,6 @@ router.use(dutyEmailRouter);
 router.use(dutyRouter);
 router.use(pushRouter);
 router.use(taskFilesRouter);
+router.use(taskReviewRouter);
 
 export default router;
