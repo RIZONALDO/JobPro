@@ -1,7 +1,6 @@
 import { useReactTable, getCoreRowModel, flexRender, type ColumnDef } from "@tanstack/react-table";
 import React, { useMemo } from "react";
 import { TaskFileUploadModal } from "@/components/TaskFileUploadModal";
-import { TaskFilesViewModal } from "@/components/TaskFilesViewModal";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerRow } from "@/lib/motion";
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -147,7 +146,6 @@ export default function EditorTaskList() {
   }, [loading]);
 
   const [uploadTarget,    setUploadTarget]    = useState<Task | null>(null);
-  const [filesViewTarget, setFilesViewTarget] = useState<Task | null>(null);
   const [returnTarget,  setReturnTarget]  = useState<Task | null>(null);
   const [returnComment, setReturnComment] = useState("");
   const [returning,     setReturning]     = useState(false);
@@ -352,7 +350,7 @@ export default function EditorTaskList() {
           <div className="flex justify-center" onClick={e => e.stopPropagation()}>
             <button
               title={`Ver mídia (${t.fileCount} arquivo${t.fileCount !== 1 ? "s" : ""})`}
-              onClick={() => setFilesViewTarget(t)}
+              onClick={() => openTask(t.id, "media")}
               className={`flex items-center gap-0.5 px-1.5 h-7 rounded-lg transition-colors ${t.fileKind === "audio" ? "text-sky-500 hover:bg-sky-500/10" : "text-violet-500 hover:bg-violet-500/10"}`}
             >
               {t.fileKind === "audio" ? (
@@ -421,7 +419,7 @@ export default function EditorTaskList() {
       },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [viewTab, setFilesViewTarget, setComplexityTarget, setUploadTarget, setReturnTarget, openTask]);
+  ], [viewTab, setComplexityTarget, setUploadTarget, setReturnTarget, openTask]);
 
   const table = useReactTable({
     data: tabFiltered,
@@ -706,16 +704,6 @@ export default function EditorTaskList() {
         />
       )}
 
-      {filesViewTarget && (
-        <TaskFilesViewModal
-          open={!!filesViewTarget}
-          onClose={() => setFilesViewTarget(null)}
-          taskId={filesViewTarget.id}
-          taskCode={filesViewTarget.taskCode}
-          taskTitle={filesViewTarget.title}
-          taskStatus={filesViewTarget.status}
-        />
-      )}
 
     </div>
   );

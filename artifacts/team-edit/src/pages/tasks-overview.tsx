@@ -26,7 +26,6 @@ import {
   CheckCircle2, RotateCcw, AlertTriangle, Clock, FileVideo,
   Clapperboard, AudioLines,
 } from "lucide-react";
-import { TaskFilesViewModal } from "@/components/TaskFilesViewModal";
 import { STATUS_LABEL, STATUS_CLASS, STATUS_DOT, STATUS_CHIP, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
@@ -177,7 +176,6 @@ export default function TasksOverview() {
   };
 
   // Revision dialog
-  const [filesViewTarget, setFilesViewTarget] = useState<OverviewTask | null>(null);
   const [revisionTask,    setRevisionTask]    = useState<OverviewTask | null>(null);
   const [revisionComment, setRevisionComment] = useState("");
 
@@ -630,7 +628,7 @@ export default function TasksOverview() {
             {(t.fileCount ?? 0) > 0 && (
               <button
                 title={`Ver mídia entregue · ${t.fileCount} arquivo${t.fileCount !== 1 ? "s" : ""}`}
-                onClick={e => { e.stopPropagation(); setFilesViewTarget(t); }}
+                onClick={e => { e.stopPropagation(); openTask(t.id, "media"); }}
                 className={`inline-flex items-center gap-1 w-fit px-1.5 py-[3px] rounded-[4px] text-[10px] font-medium transition-colors
                   ${t.fileKind === "audio"
                     ? "bg-sky-500/8 text-sky-600 dark:text-sky-400 hover:bg-sky-500/15"
@@ -821,7 +819,7 @@ export default function TasksOverview() {
       },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [viewTab, expandedIds, setAvailEditor, setFilesViewTarget, setEditTaskId, setFormOpen, setApproveTarget, setRevisionTask, setRevisionComment, setReopenTask, setConfirmTask, setDeleteTarget, setReassignTarget, setChangeDueDateTask, load]);
+  ], [viewTab, expandedIds, setAvailEditor, setEditTaskId, setFormOpen, setApproveTarget, setRevisionTask, setRevisionComment, setReopenTask, setConfirmTask, setDeleteTarget, setReassignTarget, setChangeDueDateTask, load]);
 
   const overviewTable = useReactTable({
     data: tabFiltered,
@@ -1446,7 +1444,7 @@ export default function TasksOverview() {
                     {(t.fileCount ?? 0) > 0 ? (
                       <button
                         title="Ver mídia entregue"
-                        onClick={() => setFilesViewTarget(t)}
+                        onClick={() => openTask(t.id, "media")}
                         className="h-7 w-7 flex items-center justify-center rounded-lg text-violet-500 hover:bg-violet-500/10 transition-colors"
                       >
                         <FileVideo className="h-4 w-4" />
@@ -2158,17 +2156,6 @@ export default function TasksOverview() {
         </DialogContent>
       </Dialog>
 
-      {filesViewTarget && (
-        <TaskFilesViewModal
-          open={!!filesViewTarget}
-          onClose={() => setFilesViewTarget(null)}
-          taskId={filesViewTarget.id}
-          taskCode={filesViewTarget.taskCode}
-          taskTitle={filesViewTarget.title}
-          taskStatus={filesViewTarget.status}
-          onDone={() => { setFilesViewTarget(null); load(true); }}
-        />
-      )}
 
     </div>
   );

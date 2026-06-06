@@ -1,8 +1,10 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { TaskModal } from "@/components/TaskModal";
 
+type Tab = "details" | "media" | "history";
+
 interface TaskModalContextValue {
-  openTask: (taskId: number) => void;
+  openTask: (taskId: number, tab?: Tab) => void;
 }
 
 const TaskModalContext = createContext<TaskModalContextValue>({ openTask: () => {} });
@@ -12,13 +14,18 @@ export function useTaskModal() {
 }
 
 export function TaskModalProvider({ children }: { children: ReactNode }) {
-  const [taskId, setTaskId] = useState<number | null>(null);
+  const [state, setState] = useState<{ id: number; tab: Tab } | null>(null);
 
   return (
-    <TaskModalContext.Provider value={{ openTask: setTaskId }}>
+    <TaskModalContext.Provider value={{ openTask: (id, tab = "details") => setState({ id, tab }) }}>
       {children}
-      {taskId !== null && (
-        <TaskModal taskId={taskId} onClose={() => setTaskId(null)} />
+      {state !== null && (
+        <TaskModal
+          taskId={state.id}
+          initialTab={state.tab}
+          onClose={() => setState(null)}
+          onOpenTask={(id) => setState({ id, tab: "details" })}
+        />
       )}
     </TaskModalContext.Provider>
   );
