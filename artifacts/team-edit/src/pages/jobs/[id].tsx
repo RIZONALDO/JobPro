@@ -54,28 +54,26 @@ interface Editor { id: number; name: string; login: string; }
 interface EditorWorkload {
   id: number;
   name: string;
-  score: number;
+  hoursToday: number;
+  dailyCap: number;
   taskCount: number;
-  byComplexity: { low: number; medium: number; high: number };
 }
 
-function workloadLevel(score: number): "ok" | "moderate" | "high" | "critical" {
-  if (score <= 3)  return "ok";
-  if (score <= 9)  return "moderate";
-  if (score <= 18) return "high";
+function workloadLevel(hours: number, cap: number): "ok" | "moderate" | "high" | "critical" {
+  if (cap === 0 || hours === 0) return "ok";
+  const pct = hours / cap;
+  if (pct <= 0.5)  return "ok";
+  if (pct <= 0.75) return "moderate";
+  if (pct < 1.0)   return "high";
   return "critical";
 }
 
 
 const EDITOR_TRANSITIONS: Record<string, string> = {
-  pending:     "in_progress",
-  in_progress: "review",
-  in_revision: "review",
+  pending: "in_progress",
 };
 const EDITOR_ACTION_LABEL: Record<string, string> = {
-  pending:     "Iniciar edição",
-  in_progress: "Enviar para aprovação",
-  in_revision: "Enviar para aprovação",
+  pending: "Iniciar edição",
 };
 
 export default function JobDetail() {
@@ -409,7 +407,7 @@ export default function JobDetail() {
                         <FolderOpen className="h-3.5 w-3.5" />
                       </a>
                     )}
-                    {isEditor && t.assignedTo?.id === user?.id && ["pending", "in_progress", "in_revision"].includes(t.status) && (
+                    {isEditor && t.assignedTo?.id === user?.id && ["pending", "in_progress", "review"].includes(t.status) && (
                       <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-muted-foreground hover:text-destructive"
                         onClick={() => returnTask(t.id)}>
                         <Undo2 className="h-3 w-3 mr-1" />Devolver
@@ -538,11 +536,12 @@ export default function JobDetail() {
                   <SelectContent>
                     <SelectItem value="none">Ninguém</SelectItem>
                     {editors.map(e => {
-                      const wl = workload.find(w => w.id === e.id);
-                      const score = wl?.score ?? 0;
-                      const level = workloadLevel(score);
+                      const wl    = workload.find(w => w.id === e.id);
+                      const hours = wl?.hoursToday ?? 0;
+                      const cap   = wl?.dailyCap   ?? 8;
+                      const level = workloadLevel(hours, cap);
                       const labelCfg: Record<string, { label: string; cls: string }> = {
-                        ok:       { label: score === 0 ? "Livre" : "Tranquilo", cls: score === 0 ? "text-slate-400" : "text-green-500" },
+                        ok:       { label: hours === 0 ? "Livre" : "Tranquilo", cls: hours === 0 ? "text-slate-400" : "text-green-500" },
                         moderate: { label: "Ocupado",   cls: "text-amber-400"  },
                         high:     { label: "Apertado",  cls: "text-orange-500" },
                         critical: { label: "No limite", cls: "text-red-500"    },
@@ -565,7 +564,7 @@ export default function JobDetail() {
                   const id = form.assignedToId ? parseInt(form.assignedToId) : null;
                   const wl = id ? workload.find(w => w.id === id) : null;
                   if (!wl) return null;
-                  const level = workloadLevel(wl.score);
+                  const level = workloadLevel(wl.hoursToday, wl.dailyCap);
                   if (level === "ok") return null;
 
                   const cfg = {
@@ -579,12 +578,7 @@ export default function JobDetail() {
                       <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${cfg.icon}`} />
                       <div className={`text-xs ${cfg.text}`}>
                         <p className="font-semibold">{cfg.msg}</p>
-                        <p className="mt-0.5 opacity-80">
-                          {wl.taskCount} tarefa(s) ativa(s)
-                          {(wl.byComplexity?.high ?? 0) > 0 && ` · ${wl.byComplexity.high} complexa(s)`}
-                          {(wl.byComplexity?.medium ?? 0) > 0 && ` · ${wl.byComplexity.medium} moderada(s)`}.
-                          Você ainda pode atribuir esta tarefa.
-                        </p>
+                        <p className="mt-0.5 opacity-80">{wl.taskCount} tarefa(s) ativa(s). Você ainda pode atribuir esta tarefa.</p>
                       </div>
                     </div>
                   );

@@ -1,15 +1,12 @@
 import { useState, useEffect } from "react";
 import { apiFetch, apiPost, apiDelete } from "@/lib/api";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
-import { UserPlus, UserMinus, RefreshCw, X } from "lucide-react";
+import { RefreshCw, UserPlus, X, Search } from "lucide-react";
 
 interface Editor { id: number; name: string; avatarUrl?: string | null; login?: string; }
-interface EditorWorkload { id: number; score: number; taskCount: number; }
+interface EditorWorkload { id: number; hoursToday: number; dailyCap: number; taskCount: number; }
 
 interface Props {
   open: boolean;
@@ -21,31 +18,37 @@ interface Props {
   mode: "reassign" | "add";
 }
 
-function scoreColor(score: number): string {
-  if (score === 0)  return "#94a3b8";
-  if (score <= 6)    return "#eab308"; // amarelo — Ocupado
-  if (score <= 11)  return "#f97316";
+function loadColor(h: number, cap: number) {
+  if (!cap || !h) return "#94a3b8";
+  const p = h / cap;
+  if (p <= 0.5) return "#eab308";
+  if (p < 1)   return "#f97316";
   return "#ef4444";
 }
-function scoreLabel(score: number): string {
-  if (score === 0)  return "Disponível";
-  if (score <= 6)   return "Ocupado";
-  if (score <= 11)  return "Muito ocupado";
+function loadLabel(h: number, cap: number) {
+  if (!cap || !h) return "Disponível";
+  const p = h / cap;
+  if (p <= 0.5) return "Ocupado";
+  if (p < 1)   return "Muito ocupado";
   return "No limite";
 }
 
 export function ReassignEditorModal({ open, onOpenChange, onSaved, taskId, taskTitle, currentAssignedTo, mode }: Props) {
-  const [editors,  setEditors]  = useState<Editor[]>([]);
-  const [workload, setWorkload] = useState<EditorWorkload[]>([]);
+  const [editors,     setEditors]     = useState<Editor[]>([]);
+  const [workload,    setWorkload]    = useState<EditorWorkload[]>([]);
   const [taskEditors, setTaskEditors] = useState<Editor[]>([]);
-  const [selectedId, setSelectedId] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [removing, setRemoving] = useState<number | null>(null);
+  const [selectedId,  setSelectedId] = useState<number | null>(null);
+  const [search,      setSearch]     = useState("");
+  const [saving,      setSaving]     = useState(false);
+  const [removing,    setRemoving]   = useState<number | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setSelectedId("");
-    apiFetch<Editor[]>("/api/users").then(u => setEditors(u.filter(x => (x as any).role === "editor"))).catch(() => {});
+    setSelectedId(null);
+    setSearch("");
+    apiFetch<Editor[]>("/api/users")
+      .then(u => setEditors(u.filter(x => (x as any).role === "editor")))
+      .catch(() => {});
     apiFetch<EditorWorkload[]>("/api/workload").then(setWorkload).catch(() => {});
     apiFetch<Editor[]>(`/api/tasks/${taskId}/editors`).then(setTaskEditors).catch(() => {});
   }, [open, taskId]);
@@ -55,11 +58,11 @@ export function ReassignEditorModal({ open, onOpenChange, onSaved, taskId, taskT
     setSaving(true);
     try {
       if (mode === "reassign") {
-        await apiPost(`/api/tasks/${taskId}/reassign`, { editorId: parseInt(selectedId) });
-        toast.success("Tarefa reatribuída com sucesso");
+        await apiPost(`/api/tasks/${taskId}/reassign`, { editorId: selectedId });
+        toast.success("Tarefa reatribuída");
       } else {
-        await apiPost(`/api/tasks/${taskId}/editors`, { editorId: parseInt(selectedId) });
-        toast.success("Editor adicionado com sucesso");
+        await apiPost(`/api/tasks/${taskId}/editors`, { editorId: selectedId });
+        toast.success("Editor adicionado");
       }
       onOpenChange(false);
       onSaved();
@@ -68,120 +71,132 @@ export function ReassignEditorModal({ open, onOpenChange, onSaved, taskId, taskT
     } finally { setSaving(false); }
   };
 
-  const removeEditor = async (editorId: number, editorName: string) => {
+  const removeEditor = async (editorId: number, name: string) => {
     setRemoving(editorId);
     try {
       await apiDelete(`/api/tasks/${taskId}/editors/${editorId}`);
       setTaskEditors(prev => prev.filter(e => e.id !== editorId));
-      toast.success(`${editorName} removido da tarefa`);
+      toast.success(`${name} removido da tarefa`);
       onSaved();
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao remover");
-    } finally { setRemoving(null); }
+    } catch { toast.error("Erro ao remover"); }
+    finally { setRemoving(null); }
   };
 
-  const Icon = mode === "reassign" ? RefreshCw : UserPlus;
-  const title = mode === "reassign" ? "Reatribuir tarefa" : "Adicionar editor";
-
-  // Filter already-assigned editors from the selection list
   const assignedIds = new Set(taskEditors.map(e => e.id));
-  if (currentAssignedTo && mode === "reassign") assignedIds.delete(currentAssignedTo.id); // can reassign to same? no, filter
-  const availableEditors = editors.filter(e => mode === "add" ? !assignedIds.has(e.id) : true);
+  const available = editors.filter(e => mode === "add" ? !assignedIds.has(e.id) : true);
+  const filtered  = available.filter(e => !search || e.name.toLowerCase().includes(search.toLowerCase()));
+
+  const title = mode === "reassign" ? "Reatribuir editor" : "Adicionar editor";
+  const Icon  = mode === "reassign" ? RefreshCw : UserPlus;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+      <DialogContent className="max-w-sm p-0 gap-0 rounded-3xl border shadow-2xl bg-[hsl(var(--card))] [&>button]:hidden flex flex-col max-h-[85vh]">
+        <DialogTitle className="sr-only">{title}</DialogTitle>
+
+        {/* Header */}
+        <div className="px-6 pt-6 pb-4 space-y-1 shrink-0">
+          <div className="flex items-center gap-2">
             <Icon className="h-4 w-4 text-[hsl(var(--primary))]" />
-            {title}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4 py-1">
-          {/* Task info */}
-          <div className="rounded-lg border bg-[hsl(var(--muted))]/30 px-3 py-2.5">
-            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Tarefa</p>
-            <p className="text-sm font-medium truncate">{taskTitle}</p>
+            <p className="text-xl font-black tracking-tight">{title}</p>
           </div>
+          <p className="text-sm text-[hsl(var(--muted-foreground))] truncate">{taskTitle}</p>
+        </div>
 
-          {/* Current assignment (reassign mode) */}
+        <div className="flex-1 overflow-y-auto px-6 pb-5 space-y-4">
+
+          {/* Editor atual (reassign) */}
           {mode === "reassign" && currentAssignedTo && (
-            <div className="space-y-1.5">
-              <p className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-widest">Editor atual</p>
-              <div className="flex items-center gap-2.5 rounded-lg border px-3 py-2 bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-900">
-                <AvatarDisplay name={currentAssignedTo.name} avatarUrl={currentAssignedTo.avatarUrl} style={{ width: 28, height: 28, fontSize: 10 }} />
-                <span className="text-sm font-medium">{currentAssignedTo.name}</span>
-                <Badge className="ml-auto text-[10px] px-1.5 bg-orange-100 text-orange-700 border-orange-200">atual</Badge>
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Editor atual</p>
+              <div className="rounded-2xl border px-3.5 py-3 bg-amber-500/5 border-amber-500/20 flex items-center gap-2.5">
+                <AvatarDisplay name={currentAssignedTo.name} avatarUrl={currentAssignedTo.avatarUrl} size={28} />
+                <span className="text-sm font-semibold flex-1 truncate">{currentAssignedTo.name}</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">atual</span>
               </div>
             </div>
           )}
 
-          {/* Additional editors list (add mode) */}
+          {/* Editores na tarefa (add mode) */}
           {mode === "add" && taskEditors.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-widest">Editores na tarefa</p>
-              <div className="space-y-1.5">
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Na tarefa</p>
+              <div className="rounded-2xl border border-[hsl(var(--border))] divide-y divide-[hsl(var(--border))]/60 overflow-hidden">
                 {taskEditors.map(e => (
-                  <div key={e.id} className="flex items-center gap-2.5 rounded-lg border px-3 py-2">
-                    <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} style={{ width: 24, height: 24, fontSize: 9 }} />
-                    <span className="text-sm flex-1 truncate">{e.name}</span>
+                  <div key={e.id} className="flex items-center gap-2.5 px-3.5 py-2.5">
+                    <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={26} />
+                    <span className="text-sm flex-1 truncate font-medium">{e.name}</span>
                     {e.id === currentAssignedTo?.id && (
-                      <Badge className="text-[10px] px-1.5 shrink-0">principal</Badge>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]">principal</span>
                     )}
-                    <Button
-                      variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-[hsl(var(--muted-foreground))] hover:text-red-600"
-                      disabled={removing === e.id}
-                      onClick={() => removeEditor(e.id, e.name)}
-                    >
-                      {removing === e.id ? <span className="animate-spin text-xs">○</span> : <X className="h-3.5 w-3.5" />}
-                    </Button>
+                    <button onClick={() => removeEditor(e.id, e.name)} disabled={removing === e.id}
+                      className="h-6 w-6 flex items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))]/40 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors disabled:opacity-40">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Select new editor */}
-          <div className="space-y-1.5">
-            <p className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-widest">
-              {mode === "reassign" ? "Novo editor" : "Adicionar editor"}
+          {/* Seleção de novo editor */}
+          <div className="space-y-2">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+              {mode === "reassign" ? "Novo editor" : "Adicionar"}
             </p>
-            <Select value={selectedId} onValueChange={setSelectedId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecionar editor…" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableEditors.map(e => {
-                  const wl = workload.find(w => w.id === e.id);
-                  const score = wl?.score ?? 0;
-                  const color = scoreColor(score);
-                  const label = scoreLabel(score);
-                  return (
-                    <SelectItem key={e.id} value={String(e.id)}>
-                      <span className="flex items-center gap-2">
-                        {e.name}
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>{label}</span>
-                      </span>
-                    </SelectItem>
-                  );
-                })}
-                {availableEditors.length === 0 && (
-                  <div className="px-3 py-4 text-center text-sm text-[hsl(var(--muted-foreground))]">
-                    Todos os editores já estão atribuídos
-                  </div>
-                )}
-              </SelectContent>
-            </Select>
+
+            {/* Search */}
+            <div className="flex items-center gap-2 h-9 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 px-3">
+              <Search className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]/40 shrink-0" />
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Buscar editor…"
+                className="flex-1 bg-transparent text-sm outline-none placeholder:text-[hsl(var(--muted-foreground))]/35" />
+            </div>
+
+            {/* Lista */}
+            <div className="rounded-2xl border border-[hsl(var(--border))] divide-y divide-[hsl(var(--border))]/60 overflow-hidden">
+              {filtered.length === 0 ? (
+                <p className="text-center text-xs text-[hsl(var(--muted-foreground))]/50 py-6">
+                  {available.length === 0 ? "Todos os editores já estão atribuídos" : "Nenhum resultado"}
+                </p>
+              ) : filtered.map(e => {
+                const wl    = workload.find(w => w.id === e.id);
+                const color = loadColor(wl?.hoursToday ?? 0, wl?.dailyCap ?? 8);
+                const label = loadLabel(wl?.hoursToday ?? 0, wl?.dailyCap ?? 8);
+                const on    = selectedId === e.id;
+                return (
+                  <button key={e.id} onClick={() => setSelectedId(on ? null : e.id)}
+                    className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors
+                      ${on ? "bg-[hsl(var(--primary))]/8" : "hover:bg-[hsl(var(--muted))]/40"}`}>
+                    <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={28} />
+                    <span className="text-sm font-medium flex-1 truncate">{e.name}</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                      style={{ background: `${color}22`, color }}>{label}</span>
+                    <div className={`h-4 w-4 rounded-full border flex items-center justify-center shrink-0 transition-all
+                      ${on ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]" : "border-[hsl(var(--border))]"}`}>
+                      {on && <svg className="h-2.5 w-2.5 text-white" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={save} disabled={saving || !selectedId || availableEditors.length === 0}>
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-[hsl(var(--border))]/60 flex items-center justify-between shrink-0">
+          <button onClick={() => onOpenChange(false)}
+            className="h-9 px-4 rounded-full text-sm font-medium border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/60 transition-colors">
+            Cancelar
+          </button>
+          <button onClick={save} disabled={saving || !selectedId}
+            className="h-9 px-6 rounded-full text-sm font-black text-white disabled:opacity-40 transition-colors"
+            style={{ background: "hsl(var(--primary))" }}>
             {saving ? "Salvando…" : mode === "reassign" ? "Reatribuir" : "Adicionar"}
-          </Button>
-        </DialogFooter>
+          </button>
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -53,12 +53,9 @@ interface EditorWorkload {
   login: string;
   avatarUrl: string | null;
   taskCount: number;
-  scheduledCount?: number;
-  score: number;
-  scheduledScore?: number;
-  projectedScore?: number;
-  byComplexity: { low: number; medium: number; high: number };
-  byStatus: { pending: number; in_progress: number; in_revision: number; review: number };
+  hoursToday: number;
+  dailyCap: number;
+  byStatus: { pending: number; in_progress: number; review: number; };
 }
 
 interface ActivityEvent {
@@ -103,23 +100,24 @@ interface DeadlineOverview {
   urgentCount: number;
 }
 
-// cinza=disponível | verde=ocupado | laranja=muito ocupado | vermelho=no limite
-function scoreColor(score: number): string {
-  if (score === 0)   return "#94a3b8"; // cinza  — Disponível
-  if (score <= 6)    return "#eab308"; // amarelo — Ocupado
-  if (score <= 11)   return "#f97316"; // laranja — Muito ocupado
-  return "#ef4444";                    // vermelho — No limite
+function loadColor(hours: number, cap: number): string {
+  if (cap === 0 || hours === 0) return "#94a3b8";
+  const pct = hours / cap;
+  if (pct <= 0.5) return "#eab308";
+  if (pct < 1.0)  return "#f97316";
+  return "#ef4444";
 }
-function scoreLabel(score: number): string {
-  if (score === 0)   return "Disponível";
-  if (score <= 6)    return "Ocupado";
-  if (score <= 11)   return "Muito ocupado";
+function loadLabel(hours: number, cap: number): string {
+  if (cap === 0 || hours === 0) return "Disponível";
+  const pct = hours / cap;
+  if (pct <= 0.5) return "Ocupado";
+  if (pct < 1.0)  return "Muito ocupado";
   return "No limite";
 }
 
 const BATTERY_SEGS = 5;
 
-function Battery({ score, maxScore, color }: { score: number; maxScore: number; color: string }) {
+function Battery({ score, maxScore, color }: { score: number; maxScore: number; color: string; }) {
   const pct = maxScore > 0 ? score / maxScore : 0;
   const filled = Math.round(pct * BATTERY_SEGS);
   const bw = 36; const bh = 16;
@@ -260,15 +258,14 @@ function BottleneckCard({ allTasks, workload, menu }: {
 }) {
   const active      = allTasks.filter(t => !["completed","cancelled"].includes(t.status));
   const reviewCount = active.filter(t => t.status === "review").length;
-  const inRevision  = active.filter(t => t.status === "in_revision").length;
+  
   const pendingCnt  = active.filter(t => t.status === "pending").length;
-  const maxLoad     = workload.reduce<EditorWorkload | null>((m, e) => !m || e.score > m.score ? e : m, null);
+  const maxLoad = workload.reduce<EditorWorkload | null>((m, e) => !m || e.hoursToday > m.hoursToday ? e : m, null);
 
   const alerts: { text: string; color: string }[] = [];
   if (reviewCount >= 3) alerts.push({ text: `${reviewCount} tarefas aguardam aprovação`, color: "#f59e0b" });
-  if (inRevision  >= 2) alerts.push({ text: `${inRevision} tarefas em revisão`,          color: "#f97316" });
   if (pendingCnt  >= 5) alerts.push({ text: `${pendingCnt} tarefas ainda pendentes`,      color: "#94a3b8" });
-  if (maxLoad && maxLoad.score > 15) alerts.push({ text: `${maxLoad.name.split(" ")[0]} com maior volume de tarefas (score ${maxLoad.score})`, color: "#f97316" });
+  if (maxLoad && maxLoad.dailyCap > 0 && maxLoad.hoursToday >= maxLoad.dailyCap) alerts.push({ text: `${maxLoad.name.split(" ")[0]} está no limite de capacidade`, color: "#f97316" });
   if (alerts.length === 0) alerts.push({ text: "Nenhum gargalo identificado", color: "#22c55e" });
 
   return (
@@ -298,8 +295,7 @@ function BottleneckCard({ allTasks, workload, menu }: {
 // ── Alternative slot-2 cards ──────────────────────────────────────────────────
 
 function CapacityCard({ workload, menu }: { workload: EditorWorkload[]; menu?: React.ReactNode }) {
-  const sorted = [...workload].sort((a, b) => b.score - a.score).slice(0, 6);
-  const maxScore = Math.max(...sorted.map(e => e.score), 1);
+  const sorted = [...workload].sort((a, b) => b.hoursToday - a.hoursToday).slice(0, 6);
 
   return (
     <div className="rounded-2xl border bg-[hsl(var(--card))] card-float flex flex-col min-w-0 h-[200px] md:h-[220px] overflow-hidden">
@@ -317,28 +313,21 @@ function CapacityCard({ workload, menu }: { workload: EditorWorkload[]; menu?: R
       ) : (
         <div className="flex-1 min-h-0 flex flex-col justify-center gap-2 px-3.5 py-2">
           {sorted.map(e => {
-            const color = scoreColor(e.score);
-            const { low, medium, high } = e.byComplexity;
+            const color = loadColor(e.hoursToday, e.dailyCap);
+            const pct   = e.dailyCap > 0 ? Math.min(100, Math.round(e.hoursToday / e.dailyCap * 100)) : 0;
             return (
               <div key={e.id} className="flex items-center gap-2 min-w-0">
                 <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl ?? null} size={24} className="shrink-0" />
                 <span className="text-[10px] font-semibold truncate shrink-0">
                   {e.name.split(" ")[0]}
                 </span>
-                {/* Breakdown B · M · A */}
-                <span className="text-[9px] tabular-nums ml-auto shrink-0 text-[hsl(var(--muted-foreground))]/70 leading-none">
-                  {low > 0 && <span>B:{low} </span>}
-                  {medium > 0 && <span>M:{medium} </span>}
-                  {high > 0 && <span>A:{high}</span>}
-                  {low === 0 && medium === 0 && high === 0 && <span>—</span>}
-                </span>
+                <div className="flex-1 h-1.5 rounded-full bg-[hsl(var(--muted))] overflow-hidden ml-1">
+                  <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+                </div>
+                <span className="text-[9px] tabular-nums shrink-0 ml-1" style={{ color }}>{pct}%</span>
               </div>
             );
           })}
-          {/* Legenda */}
-          <div className="flex items-center gap-2 pt-0.5 border-t border-[hsl(var(--border))]/40">
-            <span className="text-[9px] text-[hsl(var(--muted-foreground))]/50">B = baixa · M = média · A = alta</span>
-          </div>
         </div>
       )}
     </div>
@@ -479,7 +468,6 @@ function ClientHealthCard({ allTasks, menu }: { allTasks: AllTask[]; menu?: Reac
 const STATUS_COLS = [
   { key: "pending",     label: "Pend.",  color: "#94a3b8" },
   { key: "in_progress", label: "Edição", color: "#3b82f6" },
-  { key: "in_revision", label: "Revis.", color: "#f97316" },
   { key: "review",      label: "Aprov.", color: "#f59e0b" },
   { key: "completed",   label: "Feito",  color: "#22c55e" },
 ];
@@ -563,10 +551,10 @@ function HealthRadarCard({ allTasks, atRisk, workload, menu }: {
   const pontualidade = active.length > 0 ? Math.round((1 - atRisk.length / active.length) * 100) : 100;
   const fluxo        = active.length > 0 ? Math.min(100, Math.round((inProgress / active.length) * 200)) : 0;
   const conclusao    = total > 0 ? Math.round(completed / total * 100) : 0;
-  const scores       = workload.map(e => e.score);
-  const avg          = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-  const variance     = scores.length > 0 ? scores.reduce((a, b) => a + (b - avg) ** 2, 0) / scores.length : 0;
-  const equilibrio   = Math.max(0, Math.min(100, Math.round(100 - Math.sqrt(variance) * 4)));
+  const loadPcts   = workload.map(e => e.dailyCap > 0 ? e.hoursToday / e.dailyCap : 0);
+  const avg        = loadPcts.length > 0 ? loadPcts.reduce((a, b) => a + b, 0) / loadPcts.length : 0;
+  const variance   = loadPcts.length > 0 ? loadPcts.reduce((a, b) => a + (b - avg) ** 2, 0) / loadPcts.length : 0;
+  const equilibrio = Math.max(0, Math.min(100, Math.round(100 - Math.sqrt(variance) * 100)));
   const aprovacao    = active.length > 0 ? Math.round((1 - reviewCnt / active.length) * 100) : 100;
 
   const muted = isDark ? "rgba(148,163,184,0.45)" : "rgba(100,116,139,0.45)";
@@ -721,7 +709,7 @@ function DeliveryProjectionCard({
 
   const overdueCount = buckets[0].count;
   const thisWeekCount = buckets[1].count;
-  const inProgress = activeTasks.filter(t => ["in_progress", "in_revision", "review"].includes(t.status)).length;
+  const inProgress = activeTasks.filter(t => ["in_progress", "review"].includes(t.status)).length;
   const onTrack = overdueCount === 0 && (velocity >= thisWeekCount || thisWeekCount === 0);
 
   const mutedColor = isDark ? "rgba(148,163,184,0.55)" : "rgba(100,116,139,0.55)";
@@ -798,7 +786,6 @@ function DeliveryProjectionCard({
 
   const statusRows = [
     { key: "in_progress", label: "Editando",  color: "#3b82f6" },
-    { key: "in_revision", label: "Revisando", color: "#f97316" },
     { key: "review",      label: "Aprovar",   color: "#f59e0b" },
     { key: "pending",     label: "Pendente",  color: "#94a3b8" },
   ];
@@ -906,8 +893,7 @@ function DeliveryProjectionCard({
 }
 
 function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
-  const sorted = [...workload].sort((a, b) => b.score - a.score);
-  const maxScore = Math.max(...sorted.map(e => e.score), 1);
+  const sorted = [...workload].sort((a, b) => b.hoursToday - a.hoursToday);
   const [tip, setTip] = useState<{ x: number; y: number; editor: EditorWorkload } | null>(null);
 
   return (
@@ -928,7 +914,7 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto divide-y">
           {sorted.map(editor => {
-            const color = scoreColor(editor.score);
+            const color = loadColor(editor.hoursToday, editor.dailyCap);
             const firstName = editor.name.split(" ")[0];
             return (
               <div
@@ -943,21 +929,11 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
                   <p className="text-xs font-semibold truncate">{firstName}</p>
                   <p className="text-[10px] text-[hsl(var(--muted-foreground))]">
                     {editor.taskCount === 0 ? "disponível" : `${editor.taskCount} ativa${editor.taskCount !== 1 ? "s" : ""}`}
-                    {(editor.scheduledCount ?? 0) > 0 && (
-                      <span className="ml-1 text-sky-500">+{editor.scheduledCount} agend.</span>
-                    )}
                   </p>
                 </div>
-                <div className="flex flex-col items-end gap-0.5 shrink-0">
-                  <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>
-                    {scoreLabel(editor.score)}
-                  </span>
-                  {(editor.scheduledCount ?? 0) > 0 && (
-                    <span className="text-[8px] text-sky-500 leading-none">
-                      +{editor.scheduledCount} agend.
-                    </span>
-                  )}
-                </div>
+                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full shrink-0" style={{ background: `${color}22`, color }}>
+                  {loadLabel(editor.hoursToday, editor.dailyCap)}
+                </span>
               </div>
             );
           })}
@@ -970,19 +946,11 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
           style={{ left: tip.x + 14, top: tip.y - 8 }}
         >
           <p className="font-semibold">{tip.editor.name}</p>
-          <p className="text-[hsl(var(--muted-foreground))]">{tip.editor.taskCount} tarefa(s) ativa(s) · {scoreLabel(tip.editor.score)}</p>
-          {(tip.editor.scheduledCount ?? 0) > 0 && (
-            <p className="text-sky-500">{tip.editor.scheduledCount} agendada(s) · projetado: {scoreLabel(tip.editor.projectedScore ?? tip.editor.score)}</p>
-          )}
-          {((tip.editor.byComplexity?.high   ?? 0) > 0) && <p className="text-[hsl(var(--muted-foreground))]">Alta: {tip.editor.byComplexity.high}</p>}
-          {((tip.editor.byComplexity?.medium ?? 0) > 0) && <p className="text-[hsl(var(--muted-foreground))]">Média: {tip.editor.byComplexity.medium}</p>}
-          {((tip.editor.byComplexity?.low    ?? 0) > 0) && <p className="text-[hsl(var(--muted-foreground))]">Baixa: {tip.editor.byComplexity.low}</p>}
-          {tip.editor.taskCount === 0 && (tip.editor.scheduledCount ?? 0) === 0 && <p className="text-[hsl(var(--muted-foreground))]">Sem tarefas ativas</p>}
+          <p className="text-[hsl(var(--muted-foreground))]">{tip.editor.taskCount} tarefa(s) ativa(s) · {loadLabel(tip.editor.hoursToday, tip.editor.dailyCap)}</p>
+          {tip.editor.taskCount === 0 && <p className="text-[hsl(var(--muted-foreground))]">Sem tarefas ativas</p>}
           <div className="border-t pt-1.5 space-y-0.5">
             {tip.editor.byStatus.pending     > 0 && <p className="text-slate-500">{tip.editor.byStatus.pending} pendente(s)</p>}
             {tip.editor.byStatus.in_progress > 0 && <p className="text-blue-600">{tip.editor.byStatus.in_progress} em edição</p>}
-            {tip.editor.byStatus.in_revision > 0 && <p className="text-orange-600">{tip.editor.byStatus.in_revision} em alteração</p>}
-            {tip.editor.byStatus.review      > 0 && <p className="text-amber-600">{tip.editor.byStatus.review} para aprovar</p>}
           </div>
         </div>,
         document.body
@@ -994,7 +962,6 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
 const STATUS_BAR: Record<string, string> = {
   pending:     "bg-slate-300",
   in_progress: "bg-blue-400",
-  in_revision: "bg-orange-400",
   review:      "bg-amber-400",
   completed:   "bg-green-500",
 };
@@ -1008,7 +975,7 @@ function CommandPanelCard({ tasks, allTasks, atRiskCount, menu }: {
   menu?: React.ReactNode;
 }) {
   const reviewCount    = tasks.filter(t => t.status === "review").length;
-  const inRevisionCount = tasks.filter(t => t.status === "in_revision").length;
+  
   const inProgressCount = tasks.filter(t => t.status === "in_progress").length;
   const completedAll   = tasks.filter(t => t.status === "completed").length;
   const completionPct  = tasks.length > 0 ? Math.round(completedAll / tasks.length * 100) : 0;
@@ -1072,9 +1039,6 @@ function CommandPanelCard({ tasks, allTasks, atRiskCount, menu }: {
           ? <><AlertTriangle className="h-3 w-3 shrink-0" />{urgentCount} precisam de ação</>
           : <><CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />Tudo sob controle</>
         }
-        {inRevisionCount > 0 && (
-          <span className="ml-auto text-orange-500">{inRevisionCount} em revisão</span>
-        )}
       </div>
     </div>
   );
@@ -1082,14 +1046,15 @@ function CommandPanelCard({ tasks, allTasks, atRiskCount, menu }: {
 
 // ── Editor: Painel de controle ───────────────────────────────────────────────
 function EditorPanelCard({ tasks, overdueCount }: { tasks: Task[]; overdueCount: number }) {
-  const inRevisionCount = tasks.filter(t => t.status === "in_revision").length;
+  
   const pendingCount    = tasks.filter(t => t.status === "pending").length;
   const inProgressCount = tasks.filter(t => t.status === "in_progress").length;
+  const reviewCount     = tasks.filter(t => t.status === "review").length;
   const completed       = tasks.filter(t => t.status === "completed").length;
   const completionPct   = tasks.length > 0 ? Math.round(completed / tasks.length * 100) : 0;
-  const hasAlert = inRevisionCount > 0 || overdueCount > 0;
+  const hasAlert = overdueCount > 0;
   const kpis = [
-    { label: "Alterar",    value: inRevisionCount, color: "#f97316", alert: inRevisionCount > 0 },
+    { label: "Em revisão", value: reviewCount,     color: "#f59e0b", alert: false },
     { label: "Atrasadas",  value: overdueCount,    color: "#ef4444", alert: overdueCount > 0 },
     { label: "Em edição",  value: inProgressCount, color: "#3b82f6", alert: false },
     { label: "Concluídas", value: `${completionPct}%`, color: "#22c55e", alert: false },
@@ -1119,7 +1084,7 @@ function EditorPanelCard({ tasks, overdueCount }: { tasks: Task[]; overdueCount:
       </div>
       <div className={`px-3.5 py-2 border-t shrink-0 flex items-center gap-1.5 text-[10px] font-semibold ${hasAlert ? "bg-amber-500/5 text-amber-600" : "text-[hsl(var(--muted-foreground))]"}`}>
         {hasAlert
-          ? <><AlertTriangle className="h-3 w-3 shrink-0" />{inRevisionCount + overdueCount} precisam de atenção</>
+          ? <><AlertTriangle className="h-3 w-3 shrink-0" />{overdueCount} atrasada{overdueCount !== 1 ? "s" : ""}</>
           : <><CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />Tudo sob controle</>
         }
         {pendingCount > 0 && <span className="ml-auto text-slate-500">{pendingCount} pendente{pendingCount !== 1 ? "s" : ""}</span>}
@@ -1148,7 +1113,6 @@ function EditorWeekCard({ tasks }: { tasks: Task[] }) {
   const STATUS_LEGEND = [
     { label: "Pendentes",    status: "pending",     color: "#64748b" },
     { label: "Em edição",    status: "in_progress", color: "#3b82f6" },
-    { label: "Em alteração", status: "in_revision", color: "#f97316" },
     { label: "Em revisão",   status: "review",      color: "#f59e0b" },
   ];
 
@@ -1839,7 +1803,6 @@ const WAFFLE_STATUSES = [
   { key: "completed",   label: "Concluído", color: "#22c55e" },
   { key: "in_progress", label: "Em edição", color: "#3b82f6" },
   { key: "review",      label: "Aprovar",   color: "#f59e0b" },
-  { key: "in_revision", label: "Revisão",   color: "#f97316" },
   { key: "pending",     label: "Pendente",  color: "#94a3b8" },
 ];
 
@@ -1944,7 +1907,7 @@ export default function Dashboard() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   })();
-  const ACTIVE_STATUSES_DASH = new Set(["pending", "in_progress", "in_revision", "review"]);
+  const ACTIVE_STATUSES_DASH = new Set(["pending", "in_progress", "review"]);
   const isScheduledDash = (t: Task) => {
     const ref = t.startDate ?? (t.status === "pending" ? t.dueDate : null);
     if (!ref) return false;
@@ -1955,7 +1918,7 @@ export default function Dashboard() {
   const isEditor       = user?.role === "editor";
 
   const actionCount = isEditor
-    ? tasks.filter(t => t.status === "pending" || t.status === "in_revision").length
+    ? tasks.filter(t => t.status === "pending").length
     : byStatus("review");
 
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
@@ -2026,7 +1989,6 @@ export default function Dashboard() {
   const actionRows = [
     { label: "Pendente",  count: byStatus("pending"),     color: "#94a3b8" },
     { label: "Edição",    count: byStatus("in_progress"), color: "#3b82f6" },
-    { label: "Revisão",   count: byStatus("in_revision"), color: "#f97316" },
     { label: "Aprovar",   count: byStatus("review"),      color: "#f59e0b" },
     { label: "Feito",     count: byStatus("completed"),   color: "#22c55e" },
   ];

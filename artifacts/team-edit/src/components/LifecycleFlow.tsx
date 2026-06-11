@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Play, Pencil, Send, MessageSquare, CheckCircle2, Clock,
   ArrowRight, Tag, X, ExternalLink, PauseCircle, XCircle, RotateCcw, Layers,
+  Upload, Music, Film,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -12,13 +13,17 @@ import {
 interface Person { id: number; name: string; role: string; avatarUrl: string | null; }
 
 interface LifecycleStep {
-  type: "created" | "status_change";
+  type: "created" | "status_change" | "file_uploaded" | "comment_added";
   at: string;
   by: Person | null;
   meta: {
     fromStatus?: string; toStatus?: string;
     title?: string; client?: string; priority?: string; color?: string;
     revisionComment?: string; revisionNumber?: number;
+    // file_uploaded
+    fileName?: string; mimeType?: string;
+    // comment_added
+    body?: string; timestampSec?: number | null; parentId?: number | null;
   };
 }
 
@@ -39,15 +44,17 @@ export interface LifecycleData {
 // ── Step config ───────────────────────────────────────────────────────────────
 
 const STEP_CFG: Record<string, { dot: string; icon: React.ReactNode; label: string }> = {
-  created:     { dot: "#818cf8", icon: <Play          className="h-3 w-3" />, label: "Criação"              },
-  pending:     { dot: "#94a3b8", icon: <Clock         className="h-3 w-3" />, label: "Pendente"             },
-  in_progress: { dot: "#3b82f6", icon: <Pencil        className="h-3 w-3" />, label: "Em edição"            },
-  review:      { dot: "#f59e0b", icon: <Send          className="h-3 w-3" />, label: "Envio p/ aprovação"   },
-  in_revision: { dot: "#f97316", icon: <MessageSquare className="h-3 w-3" />, label: "Alteração solicitada" },
-  completed:   { dot: "#22c55e", icon: <CheckCircle2  className="h-3 w-3" />, label: "Aprovada"             },
-  reopened:    { dot: "#e11d48", icon: <RotateCcw     className="h-3 w-3" />, label: "Reaberta"             },
-  paused:      { dot: "#a855f7", icon: <PauseCircle   className="h-3 w-3" />, label: "Pausada"              },
-  cancelled:   { dot: "#ef4444", icon: <XCircle       className="h-3 w-3" />, label: "Cancelada"            },
+  created:       { dot: "#818cf8", icon: <Play          className="h-3 w-3" />, label: "Criação"              },
+  pending:       { dot: "#94a3b8", icon: <Clock         className="h-3 w-3" />, label: "Pendente"             },
+  in_progress:   { dot: "#3b82f6", icon: <Pencil        className="h-3 w-3" />, label: "Em edição"            },
+  review:        { dot: "#f59e0b", icon: <Send          className="h-3 w-3" />, label: "Envio p/ aprovação"   },
+  in_revision:   { dot: "#f97316", icon: <MessageSquare className="h-3 w-3" />, label: "Alteração solicitada" },
+  completed:     { dot: "#22c55e", icon: <CheckCircle2  className="h-3 w-3" />, label: "Aprovada"             },
+  reopened:      { dot: "#e11d48", icon: <RotateCcw     className="h-3 w-3" />, label: "Reaberta"             },
+  paused:        { dot: "#a855f7", icon: <PauseCircle   className="h-3 w-3" />, label: "Pausada"              },
+  cancelled:     { dot: "#ef4444", icon: <XCircle       className="h-3 w-3" />, label: "Cancelada"            },
+  file_uploaded: { dot: "#06b6d4", icon: <Upload        className="h-3 w-3" />, label: "Nova versão enviada"  },
+  comment_added: { dot: "#8b5cf6", icon: <MessageSquare className="h-3 w-3" />, label: "Comentário adicionado" },
 };
 
 const ROLE_LABEL: Record<string, string> = {
@@ -64,7 +71,10 @@ function fmtAt(iso: string) {
 }
 
 function getCfg(step: LifecycleStep) {
-  const key = step.type === "created" ? "created" : (step.meta.toStatus ?? "pending");
+  if (step.type === "created")       return STEP_CFG.created;
+  if (step.type === "file_uploaded") return STEP_CFG.file_uploaded;
+  if (step.type === "comment_added") return STEP_CFG.comment_added;
+  const key = step.meta.toStatus ?? "pending";
   return STEP_CFG[key] ?? STEP_CFG.pending;
 }
 
@@ -162,6 +172,31 @@ function StepRow({ step, index, total }: { step: LifecycleStep; index: number; t
             <p className="text-xs text-[hsl(var(--foreground))] leading-relaxed">
               {step.meta.revisionComment}
             </p>
+          </div>
+        )}
+
+        {/* Arquivo enviado */}
+        {step.type === "file_uploaded" && step.meta.fileName && (
+          <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[hsl(var(--muted-foreground))]">
+            {step.meta.mimeType?.startsWith("audio/")
+              ? <Music className="h-3 w-3 shrink-0 text-cyan-500" />
+              : <Film  className="h-3 w-3 shrink-0 text-cyan-500" />}
+            <span className="truncate font-medium text-[hsl(var(--foreground))]/80">{step.meta.fileName}</span>
+          </div>
+        )}
+
+        {/* Comentário adicionado */}
+        {step.type === "comment_added" && step.meta.body && (
+          <div className="mt-1.5 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-3 py-2">
+            {step.meta.timestampSec != null && (
+              <span className="text-[10px] font-mono font-bold text-violet-400 mr-2">
+                {Math.floor(step.meta.timestampSec / 60)}:{String(Math.floor(step.meta.timestampSec % 60)).padStart(2,"0")}
+              </span>
+            )}
+            {step.meta.parentId != null && (
+              <span className="text-[10px] text-[hsl(var(--muted-foreground))]/50 mr-1">↳ reply</span>
+            )}
+            <span className="text-xs text-[hsl(var(--foreground))]/75 leading-relaxed">{step.meta.body}</span>
           </div>
         )}
       </div>

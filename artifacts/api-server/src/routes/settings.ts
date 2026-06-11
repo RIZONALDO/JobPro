@@ -168,8 +168,8 @@ router.post("/admin/seed", requireAdmin, async (_req, res): Promise<void> => {
     { title: "Cardápio Digital Interativo", client: "Alinny Serrão", description: "Cardápio em PDF interativo com links internos e ícones personalizados.", priority: "low", complexity: "low", status: "in_progress", dueDays: 10 },
 
     // ── em alteração ──
-    { title: "Logotipo e Variações", client: "Davi Alcolumbre", description: "Redesign de logotipo com 3 propostas. Aprovado proposta 2, ajustar cores.", priority: "high", complexity: "medium", status: "in_revision", dueDays: 2, revisions: ["Mudar o azul do fundo para o pantone 286 C. O cliente não gostou do degradê."] },
-    { title: "Folder Institucional A4", client: "Governo Federal", description: "Folder recto-verso para evento de inauguração.", priority: "medium", complexity: "low", status: "in_revision", dueDays: 4, revisions: ["Aumentar o logo no verso. Centralizar o texto da página 2. Remover a foto da direita."] },
+    { title: "Logotipo e Variações", client: "Davi Alcolumbre", description: "Redesign de logotipo com 3 propostas. Aprovado proposta 2, ajustar cores.", priority: "high", complexity: "medium", status: "review", dueDays: 2, revisions: ["Mudar o azul do fundo para o pantone 286 C. O cliente não gostou do degradê."] },
+    { title: "Folder Institucional A4", client: "Governo Federal", description: "Folder recto-verso para evento de inauguração.", priority: "medium", complexity: "low", status: "review", dueDays: 4, revisions: ["Aumentar o logo no verso. Centralizar o texto da página 2. Remover a foto da direita."] },
 
     // ── em aprovação ──
     { title: "Campanha Mídia Exterior", client: "Clécio Luís", description: "Arte final para busdoor, backbus e empena.", priority: "high", complexity: "medium", status: "review", dueDays: 0 },
@@ -202,7 +202,7 @@ router.post("/admin/seed", requireAdmin, async (_req, res): Promise<void> => {
     // ── atrasadas ──
     { title: "Flyer Evento Cultural", client: "Davi Alcolumbre", description: "Arte para flyer digital e impresso de evento cultural.", priority: "high", complexity: "low", status: "in_progress", dueDays: -3 },
     { title: "Roteiro e Storyboard Vídeo", client: "Mina Tucano", description: "Storyboard frame a frame de vídeo de 3 minutos.", priority: "high", complexity: "high", status: "in_progress", dueDays: -5 },
-    { title: "Capa Relatório de Impacto", client: "Governo Federal", description: "Capa e contracapa para relatório de impacto social 2025.", priority: "medium", complexity: "medium", status: "in_revision", dueDays: -2, revisions: ["A foto da capa não foi aprovada pela assessoria. Substituir por imagem do banco interno."] },
+    { title: "Capa Relatório de Impacto", client: "Governo Federal", description: "Capa e contracapa para relatório de impacto social 2025.", priority: "medium", complexity: "medium", status: "review", dueDays: -2, revisions: ["A foto da capa não foi aprovada pela assessoria. Substituir por imagem do banco interno."] },
     { title: "Adesivo Frota de Veículos", client: "Governo do Amapá", description: "Arte para envelopamento lateral de 12 veículos da frota.", priority: "high", complexity: "medium", status: "in_progress", dueDays: -7 },
     { title: "Animação Story 9×16", client: "Clécio Luís", description: "Pack de 8 stories animados para campanha de lançamento.", priority: "medium", complexity: "medium", status: "pending", dueDays: -1 },
 
@@ -261,7 +261,7 @@ router.post("/admin/seed", requireAdmin, async (_req, res): Promise<void> => {
     const STATUS_PATH: Record<string, string[]> = {
       pending:     ["pending"],
       in_progress: ["pending", "in_progress"],
-      in_revision: ["pending", "in_progress", "in_revision"],
+      review: ["pending", "in_progress", "review"],
       review:      ["pending", "in_progress", "review"],
       reopened:    ["pending", "in_progress", "review", "completed", "reopened"],
       paused:      ["pending", "in_progress", "paused"],

@@ -16,18 +16,20 @@ interface Editor {
   avatarUrl?: string | null;
 }
 
-interface EditorWorkload { id: number; score: number; }
+interface EditorWorkload { id: number; hoursToday: number; dailyCap: number; }
 
-function scoreColor(score: number): string {
-  if (score === 0)  return "#94a3b8";
-  if (score <= 6)    return "#eab308"; // amarelo — Ocupado
-  if (score <= 11)  return "#f97316";
+function loadColor(hours: number, cap: number): string {
+  if (cap === 0 || hours === 0) return "#94a3b8";
+  const pct = hours / cap;
+  if (pct <= 0.5) return "#eab308";
+  if (pct < 1.0)  return "#f97316";
   return "#ef4444";
 }
-function scoreLabel(score: number): string {
-  if (score === 0)  return "Disponível";
-  if (score <= 6)   return "Ocupado";
-  if (score <= 11)  return "Muito ocupado";
+function loadLabel(hours: number, cap: number): string {
+  if (cap === 0 || hours === 0) return "Disponível";
+  const pct = hours / cap;
+  if (pct <= 0.5) return "Ocupado";
+  if (pct < 1.0)  return "Muito ocupado";
   return "No limite";
 }
 
@@ -78,9 +80,10 @@ export function SubtaskFormRow({ row, index, editors, workload = [], onChange, o
             <SelectItem value="none">Sem editor</SelectItem>
             {editors.map(e => {
               const wl = workload.find(w => w.id === e.id);
-              const score = wl?.score ?? 0;
-              const color = scoreColor(score);
-              const label = scoreLabel(score);
+              const hours = wl?.hoursToday ?? 0;
+              const cap   = wl?.dailyCap   ?? 8;
+              const color = loadColor(hours, cap);
+              const label = loadLabel(hours, cap);
               return (
                 <SelectItem key={e.id} value={String(e.id)}>
                   <span className="flex items-center gap-1.5">

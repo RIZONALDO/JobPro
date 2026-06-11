@@ -61,6 +61,7 @@
     "socket.io-client": "^4.8.3",
     "sonner": "^2.0.7",
     "@vidstack/react": "^1.12.14",
-    "@tanstack/react-table": "catalog:"
+    "@tanstack/react-table": "catalog:",
+    "hls.js": "^1.5.15"
   }
 }

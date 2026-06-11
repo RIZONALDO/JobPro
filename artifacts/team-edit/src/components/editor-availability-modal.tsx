@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { ChevronLeft, ChevronRight, LockKeyhole } from "lucide-react";
 
-interface DayData { date: string; score: number; count: number; }
+interface DayData { date: string; hours: number; cap: number; }
 
 interface Editor { id: number; name: string; avatarUrl?: string | null; }
 
@@ -16,28 +16,32 @@ interface Props {
   editor: Editor | null;
 }
 
-function scoreColor(score: number): string {
-  if (score === 0)  return "transparent";
-  if (score <= 6)   return "#eab308";
-  if (score <= 11)  return "#f97316";
+function loadColor(hours: number, cap: number): string {
+  if (cap === 0 || hours === 0) return "transparent";
+  const pct = hours / cap;
+  if (pct <= 0.5) return "#eab308";
+  if (pct < 1.0)  return "#f97316";
   return "#ef4444";
 }
-function scoreLabel(score: number): string {
-  if (score === 0)  return "Livre";
-  if (score <= 6)   return "Ocupado";
-  if (score <= 11)  return "Muito ocupado";
+function loadLabel(hours: number, cap: number): string {
+  if (cap === 0 || hours === 0) return "Livre";
+  const pct = hours / cap;
+  if (pct <= 0.5) return "Ocupado";
+  if (pct < 1.0)  return "Muito ocupado";
   return "No limite";
 }
-function scoreBg(score: number): string {
-  if (score === 0)  return "bg-transparent";
-  if (score <= 6)   return "bg-yellow-100 dark:bg-yellow-950/50";
-  if (score <= 11)  return "bg-orange-100 dark:bg-orange-950/50";
+function loadBg(hours: number, cap: number): string {
+  if (cap === 0 || hours === 0) return "bg-transparent";
+  const pct = hours / cap;
+  if (pct <= 0.5) return "bg-yellow-100 dark:bg-yellow-950/50";
+  if (pct < 1.0)  return "bg-orange-100 dark:bg-orange-950/50";
   return "bg-red-100 dark:bg-red-950/50";
 }
-function scoreText(score: number): string {
-  if (score === 0)  return "text-[hsl(var(--muted-foreground))]";
-  if (score <= 6)   return "text-yellow-700 dark:text-yellow-400";
-  if (score <= 11)  return "text-orange-700 dark:text-orange-400";
+function loadText(hours: number, cap: number): string {
+  if (cap === 0 || hours === 0) return "text-[hsl(var(--muted-foreground))]";
+  const pct = hours / cap;
+  if (pct <= 0.5) return "text-yellow-700 dark:text-yellow-400";
+  if (pct < 1.0)  return "text-orange-700 dark:text-orange-400";
   return "text-red-700 dark:text-red-400";
 }
 
@@ -139,26 +143,27 @@ export function EditorAvailabilityModal({ open, onOpenChange, editor }: Props) {
                 if (day === null) return <div key={i} />;
                 const monthStr = `${year}-${String(month).padStart(2, "0")}`;
                 const dateStr = `${monthStr}-${String(day).padStart(2, "0")}`;
-                const data = dayMap.get(dateStr);
-                const score = data?.score ?? 0;
-                const count = data?.count ?? 0;
+                const data  = dayMap.get(dateStr);
+                const hours = data?.hours ?? 0;
+                const cap   = data?.cap   ?? 8;
+                const busy  = cap > 0 && hours > 0;
                 const isToday = dateStr === todayStr;
-                const isPast = dateStr < todayStr;
+                const isPast  = dateStr < todayStr;
                 return (
                   <div
                     key={i}
-                    title={`${day}/${month}: ${scoreLabel(score)}${count > 0 ? ` (${count} tarefa${count !== 1 ? "s" : ""})` : ""}`}
+                    title={`${day}/${month}: ${loadLabel(hours, cap)}`}
                     className={`
                       relative flex flex-col items-center justify-center h-16 rounded-xl text-sm font-semibold
                       transition-colors cursor-default select-none
                       ${isPast ? "opacity-35" : ""}
-                      ${score > 0 ? scoreBg(score) : "hover:bg-[hsl(var(--muted))]/40"}
+                      ${busy ? loadBg(hours, cap) : "hover:bg-[hsl(var(--muted))]/40"}
                       ${isToday ? "ring-2 ring-[hsl(var(--primary))] ring-offset-2" : ""}
                     `}
                   >
-                    <span className={`leading-none ${scoreText(score)}`}>{day}</span>
-                    {count > 0 && (
-                      <LockKeyhole className={`h-3.5 w-3.5 mt-1 shrink-0 ${scoreText(score)}`} />
+                    <span className={`leading-none ${loadText(hours, cap)}`}>{day}</span>
+                    {busy && (
+                      <LockKeyhole className={`h-3.5 w-3.5 mt-1 shrink-0 ${loadText(hours, cap)}`} />
                     )}
                   </div>
                 );

@@ -3,7 +3,7 @@ import React, { useMemo as reactUseMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { staggerContainer, staggerRow } from "@/lib/motion";
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
-import { useSearch } from "wouter";
+import { useSearch, useLocation } from "wouter";
 import { apiFetch, apiPut, apiPatch, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -13,24 +13,25 @@ import { useTaskModal } from "@/contexts/TaskModalContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   ClipboardList, MoreVertical,
-  ArrowUpRight, X, PauseCircle, XCircle,
+  ArrowUpRight, X, PauseCircle, XCircle, Check,
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
-  SlidersHorizontal, Search, CalendarClock, ChevronRight,
+  SlidersHorizontal, Search, CalendarClock, ChevronRight, ExternalLink,
   CheckCircle2, RotateCcw, AlertTriangle, Clock, FileVideo,
-  Clapperboard, AudioLines,
+  Clapperboard, AudioLines, MessageSquare,
 } from "lucide-react";
 import { STATUS_LABEL, STATUS_CLASS, STATUS_DOT, STATUS_CHIP, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
 import { TaskFormModal } from "@/components/task-form-modal";
+import { EscalaModal } from "@/components/EscalaModal";
+import { RescheduleModal } from "@/components/reschedule-modal";
 import { ReassignEditorModal } from "@/components/reassign-editor-modal";
 import { EditorAvailabilityModal } from "@/components/editor-availability-modal";
 import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
@@ -39,21 +40,25 @@ import { RefreshCw, UserPlus } from "lucide-react";
 import { fmtClosedCycle, fmtPrazoWeek, fmtDate } from "@/lib/utils";
 import { PrazoCell } from "@/components/prazo-cell";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { DatePicker } from "@/components/ui/date-picker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Person { id: number; name: string; login: string; avatarUrl?: string | null; }
 
-function scoreColor(score: number): string {
-  if (score === 0)  return "#94a3b8";
-  if (score <= 6)    return "#eab308"; // amarelo — Ocupado
-  if (score <= 11)  return "#f97316";
+
+function loadColor(hours: number, cap: number): string {
+  if (cap === 0 || hours === 0) return "#94a3b8";
+  const pct = hours / cap;
+  if (pct <= 0.5) return "#eab308";
+  if (pct < 1.0)  return "#f97316";
   return "#ef4444";
 }
-function scoreLabel(score: number): string {
-  if (score === 0)  return "Disponível";
-  if (score <= 6)   return "Ocupado";
-  if (score <= 11)  return "Muito ocupado";
+function loadLabel(hours: number, cap: number): string {
+  if (cap === 0 || hours === 0) return "Disponível";
+  const pct = hours / cap;
+  if (pct <= 0.5) return "Ocupado";
+  if (pct < 1.0)  return "Muito ocupado";
   return "No limite";
 }
 
@@ -74,11 +79,16 @@ interface OverviewTask {
   assignee: Person | null;
   editors: Person[];
   coordinator: Person | null;
+  coCoordinators: { id: number; name: string; avatarUrl?: string | null }[];
   isOwn: boolean;
+  isCoCoord: boolean;
   updatedAt: string;
   reviewedAt?: string | null;
+  effortHours?: number | null;
+  hasAllocToday?: boolean;
   fileCount?: number;
   fileKind?: "video" | "audio" | "mixed" | "other" | null;
+  unreadCommentCount?: number;
   // multi-task
   taskType?: string;
   subtaskProgress?: { total: number; completed: number; percentage: number };
@@ -98,6 +108,241 @@ interface SubtaskDetail {
   folderUrl: string | null;
 }
 
+// ─── TransferTaskModal ────────────────────────────────────────────────────────
+
+function TransferTaskModal({ task, onClose, onDone }: {
+  task: OverviewTask;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [coords, setCoords]   = useState<CoordEntry[]>([]);
+  const [search, setSearch]   = useState("");
+  const [selected, setSelected] = useState<number | null>(null);
+  const [sending, setSending] = useState(false);
+
+  const ROLE_LABEL: Record<string, string> = { admin: "Admin", supervisor: "Superv.", coordinator: "Coord." };
+
+  useEffect(() => {
+    apiFetch<CoordEntry[]>("/api/coordinators").then(setCoords).catch(() => {});
+  }, []);
+
+  const filtered = coords.filter(c =>
+    c.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const handleTransfer = async () => {
+    if (!selected) return;
+    setSending(true);
+    try {
+      await apiFetch(`/api/tasks/${task.id}/transfer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toUserId: selected }),
+      });
+      toast.success("Tarefa transferida com sucesso");
+      onDone();
+    } catch { toast.error("Erro ao transferir tarefa"); }
+    finally { setSending(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.72)", backdropFilter: "blur(8px)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-sm rounded-3xl border border-[hsl(var(--border))] shadow-2xl flex flex-col overflow-hidden bg-[hsl(var(--card))]" style={{ maxHeight: "82vh" }}>
+
+        <div className="px-6 pt-7 pb-4 space-y-1 shrink-0">
+          <p className="text-xl font-black tracking-tight">Transferir tarefa</p>
+          <p className="text-sm text-[hsl(var(--muted-foreground))] truncate">{task.title}</p>
+        </div>
+
+        <div className="mx-6 mb-4 px-3.5 py-2.5 rounded-2xl bg-amber-500/8 border border-amber-500/20 shrink-0">
+          <p className="text-[11px] text-amber-600 dark:text-amber-400 leading-snug">
+            O novo coordenador assume a titularidade completa. Você perderá o acesso de gestão desta tarefa.
+          </p>
+        </div>
+
+        <div className="px-6 pb-2 shrink-0">
+          <div className="flex items-center gap-2 h-9 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 px-3">
+            <Search className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]/40 shrink-0" />
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar coordenador…"
+              className="flex-1 bg-transparent text-sm outline-none placeholder:text-[hsl(var(--muted-foreground))]/35" />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 pb-2">
+          <div className="rounded-2xl border border-[hsl(var(--border))] divide-y divide-[hsl(var(--border))]/60 overflow-hidden">
+            {filtered.length === 0
+              ? <p className="text-center text-xs text-[hsl(var(--muted-foreground))]/50 py-6">Nenhum coordenador encontrado</p>
+              : filtered.map(c => {
+                const on = selected === c.id;
+                return (
+                  <button key={c.id} onClick={() => setSelected(on ? null : c.id)}
+                    className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors ${on ? "bg-[hsl(var(--primary))]/8" : "hover:bg-[hsl(var(--muted))]/40"}`}>
+                    <AvatarDisplay name={c.name} avatarUrl={c.avatarUrl} size={28} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{c.name}</p>
+                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50">{ROLE_LABEL[c.role] ?? c.role}</p>
+                    </div>
+                    <div className={`h-4 w-4 rounded-full border flex items-center justify-center transition-all shrink-0
+                      ${on ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]" : "border-[hsl(var(--border))]"}`}>
+                      {on && <svg className="h-2.5 w-2.5 text-white" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>}
+                    </div>
+                  </button>
+                );
+              })
+            }
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-[hsl(var(--border))]/60 flex items-center justify-between shrink-0">
+          <button onClick={onClose}
+            className="h-9 px-4 rounded-full text-sm font-medium border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/60 transition-colors">
+            Cancelar
+          </button>
+          <button onClick={handleTransfer} disabled={!selected || sending}
+            className="h-9 px-6 rounded-full text-sm font-black text-white disabled:opacity-40 transition-colors"
+            style={{ background: "hsl(var(--primary))" }}>
+            {sending ? "Transferindo…" : "Transferir"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ManageCoordsModal ────────────────────────────────────────────────────────
+
+interface CoordEntry { id: number; name: string; role: string; avatarUrl: string | null; }
+
+function ManageCoordsModal({ task, currentUserId, onClose }: {
+  task: OverviewTask;
+  currentUserId: number;
+  onClose: () => void;
+}) {
+  const [coCoords, setCoCoords]   = useState<CoordEntry[]>([]);
+  const [available, setAvailable] = useState<CoordEntry[]>([]);
+  const [search, setSearch]       = useState("");
+  const [adding, setAdding]       = useState(false);
+  const [removing, setRemoving]   = useState<number | null>(null);
+
+  const ROLE_LABEL: Record<string, string> = { admin: "Admin", supervisor: "Superv.", coordinator: "Coord." };
+
+  const load = useCallback(async () => {
+    const [current, all] = await Promise.all([
+      apiFetch<CoordEntry[]>(`/api/tasks/${task.id}/coordinators`),
+      apiFetch<CoordEntry[]>("/api/coordinators"),
+    ]);
+    setCoCoords(current);
+    const currentIds = new Set(current.map(c => c.id));
+    setAvailable(all.filter(c => !currentIds.has(c.id) && c.id !== currentUserId));
+  }, [task.id, currentUserId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const addCoord = async (targetId: number) => {
+    setAdding(true);
+    try {
+      await apiFetch(`/api/tasks/${task.id}/coordinators`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: targetId }),
+      });
+      toast.success("Co-coordenador adicionado");
+      load();
+    } catch { toast.error("Erro ao adicionar co-coordenador"); }
+    finally { setAdding(false); }
+  };
+
+  const removeCoord = async (targetId: number) => {
+    setRemoving(targetId);
+    try {
+      await apiFetch(`/api/tasks/${task.id}/coordinators/${targetId}`, { method: "DELETE" });
+      toast.success("Co-coordenador removido");
+      load();
+    } catch { toast.error("Erro ao remover"); }
+    finally { setRemoving(null); }
+  };
+
+  const filteredAvail = available.filter(c =>
+    c.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.72)", backdropFilter: "blur(8px)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-sm rounded-3xl border border-[hsl(var(--border))] shadow-2xl flex flex-col overflow-hidden bg-[hsl(var(--card))]" style={{ maxHeight: "82vh" }}>
+
+        <div className="px-6 pt-7 pb-4 space-y-1 shrink-0">
+          <p className="text-xl font-black tracking-tight">Co-coordenadores</p>
+          <p className="text-sm text-[hsl(var(--muted-foreground))] truncate">{task.title}</p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 pb-4 space-y-4">
+          {coCoords.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Atuais</p>
+              <div className="rounded-2xl border border-[hsl(var(--border))] divide-y divide-[hsl(var(--border))]/60 overflow-hidden">
+                {coCoords.map(c => (
+                  <div key={c.id} className="flex items-center gap-2.5 px-3.5 py-2.5">
+                    <AvatarDisplay name={c.name} avatarUrl={c.avatarUrl} size={28} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{c.name}</p>
+                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50">{ROLE_LABEL[c.role] ?? c.role}</p>
+                    </div>
+                    <button onClick={() => removeCoord(c.id)} disabled={removing === c.id}
+                      className="h-6 w-6 flex items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))]/40 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors disabled:opacity-40">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Adicionar</p>
+            <div className="flex items-center gap-2 h-9 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 px-3">
+              <Search className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]/40 shrink-0" />
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Buscar coordenador…"
+                className="flex-1 bg-transparent text-sm outline-none placeholder:text-[hsl(var(--muted-foreground))]/35" />
+            </div>
+            <div className="rounded-2xl border border-[hsl(var(--border))] divide-y divide-[hsl(var(--border))]/60 overflow-hidden">
+              {filteredAvail.length === 0
+                ? <p className="text-center text-xs text-[hsl(var(--muted-foreground))]/50 py-6">Nenhum disponível</p>
+                : filteredAvail.map(c => (
+                  <button key={c.id} disabled={adding} onClick={() => addCoord(c.id)}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2.5 hover:bg-[hsl(var(--muted))]/40 transition-colors text-left disabled:opacity-50">
+                    <AvatarDisplay name={c.name} avatarUrl={c.avatarUrl} size={28} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{c.name}</p>
+                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50">{ROLE_LABEL[c.role] ?? c.role}</p>
+                    </div>
+                    <Plus className="h-3.5 w-3.5 text-[hsl(var(--primary))]/70 shrink-0" />
+                  </button>
+                ))
+              }
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-[hsl(var(--border))]/60 flex justify-end shrink-0">
+          <button onClick={onClose}
+            className="h-9 px-6 rounded-full text-sm font-black text-white disabled:opacity-40 transition-colors"
+            style={{ background: "hsl(var(--primary))" }}>
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 
@@ -107,7 +352,6 @@ const STATUS_OPTIONS = [
   { value: "pending",     label: "Pendente" },
   { value: "in_progress", label: "Em andamento" },
   { value: "review",      label: "Em revisão" },
-  { value: "in_revision", label: "Em alteração" },
   { value: "reopened",    label: "Reaberta" },
   { value: "paused",      label: "Pausada" },
   { value: "completed",   label: "Concluída" },
@@ -117,12 +361,18 @@ const STATUS_OPTIONS = [
 const TASK_GROUPS = [
   { key: "pending",  label: "Pendentes",    statuses: ["pending"],               color: "#64748b" },
   { key: "editing",  label: "Em edição",    statuses: ["in_progress"],           color: "#3b82f6" },
-  { key: "revision",  label: "Em alteração", statuses: ["in_revision"],          color: "#f97316" },
   { key: "approval",  label: "Em aprovação", statuses: ["review"],               color: "#f59e0b" },
   { key: "reopened", label: "Reabertas",    statuses: ["reopened"],              color: "#e11d48" },
   { key: "paused",   label: "Pausadas",     statuses: ["paused"],                color: "#a855f7" },
   { key: "done",     label: "Concluídas",   statuses: ["completed"],             color: "#22c55e" },
   { key: "cancelled",label: "Canceladas",   statuses: ["cancelled"],             color: "#ef4444" },
+];
+
+const TODAY_SECTIONS_COORD = [
+  { key: "approve",  label: "Para aprovar",   statuses: ["review"],              color: "#f59e0b", defaultCollapsed: false, canReview: true  },
+  { key: "working",  label: "Em produção",    statuses: ["in_progress"],         color: "#3b82f6", defaultCollapsed: false, canReview: false },
+  { key: "start",    label: "Sem início",     statuses: ["pending", "reopened"], color: "#64748b", defaultCollapsed: false, canReview: false },
+  { key: "done",     label: "Entregues hoje", statuses: ["completed"],           color: "#22c55e", defaultCollapsed: true,  canReview: false },
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -180,8 +430,7 @@ export default function TasksOverview() {
   const [revisionComment, setRevisionComment] = useState("");
 
   // Reopen dialog
-  interface EditorWorkload { id: number; score: number; taskCount: number; }
-  const COMPLEXITY_WEIGHT: Record<string, number> = { low: 3, medium: 6, high: 12 };
+  interface EditorWorkload { id: number; hoursToday: number; dailyCap: number; taskCount: number; }
   const [reopenTask,        setReopenTask]        = useState<OverviewTask | null>(null);
   const [reopenComment,     setReopenComment]     = useState("");
   const [reopenDueDate,     setReopenDueDate]     = useState("");
@@ -205,10 +454,8 @@ export default function TasksOverview() {
   const [confirmComment, setConfirmComment] = useState("");
   const [sendingConfirm, setSendingConfirm] = useState(false);
 
-  // Change due date dialog
-  const [changeDueDateTask,  setChangeDueDateTask]  = useState<OverviewTask | null>(null);
-  const [changeDueDateValue, setChangeDueDateValue] = useState("");
-  const [sendingDueDate,     setSendingDueDate]     = useState(false);
+  // Reagendar via ESCALA (tarefas com effortHours)
+  const [rescheduleTask, setRescheduleTask] = useState<OverviewTask | null>(null);
 
   // Collapsible subtask expansion
   const [expandedIds,            setExpandedIds]            = useState<Set<number>>(new Set());
@@ -223,8 +470,17 @@ export default function TasksOverview() {
 
   // View tabs: todas / tarefas do dia / agendadas
   const [viewTab, setViewTab] = useState<"all" | "today" | "scheduled">("today");
+  const [, navigate] = useLocation();
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
+    () => new Set(TODAY_SECTIONS_COORD.filter(s => s.defaultCollapsed).map(s => s.key))
+  );
+  const toggleSection = (key: string) =>
+    setCollapsedSections(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
-  // Create / Edit modal
+  // EscalaModal (criação de nova tarefa)
+  const [escalaOpen, setEscalaOpen] = useState(false);
+
+  // TaskFormModal (edição de tarefa existente)
   const [formOpen,   setFormOpen]   = useState(false);
   const [editTaskId, setEditTaskId] = useState<number | null>(null);
 
@@ -238,6 +494,8 @@ export default function TasksOverview() {
   const [deleting,     setDeleting]     = useState(false);
 
   // Approve confirmation
+  const [manageCoordsTask, setManageCoordsTask] = useState<OverviewTask | null>(null);
+  const [transferTask, setTransferTask] = useState<OverviewTask | null>(null);
   const [approveTarget, setApproveTarget] = useState<{ taskId: number; title: string; parentId?: number } | null>(null);
   const [approvingTarget,    setApprovingTarget]    = useState(false);
   const [approveFiles,       setApproveFiles]       = useState<{ id: number; fileName: string; mimeType: string | null; revisionNumber: number; createdAt: string; uploaderName: string | null }[]>([]);
@@ -347,20 +605,20 @@ export default function TasksOverview() {
     if (t.status === "rascunho") return false;
     if (filterEditor !== "all" && String(t.assignee?.id ?? "") !== filterEditor &&
         !t.editors.some(e => String(e.id) === filterEditor)) return false;
-    if (filterCoord  !== "all" && String(t.coordinator?.id ?? "") !== filterCoord) return false;
+    if (filterCoord !== "all" && String(t.coordinator?.id ?? "") !== filterCoord && !(t.isCoCoord && filterCoord === String(user?.id ?? ""))) return false;
     if (search) {
       const q = search.toLowerCase();
       if (!t.title.toLowerCase().includes(q) && !(t.client ?? "").toLowerCase().includes(q)) return false;
     }
     return true;
-  }), [tasks, filterEditor, filterCoord, search]);
+  }), [tasks, filterEditor, filterCoord, search, user]);
 
   const hasFilter = search || filterStatus !== "all" || filterEditor !== "all" || filterCoord !== defaultCoord;
   const clearFilters = () => { setSearch(""); setFilterStatus("all"); setFilterEditor("all"); setFilterCoord(defaultCoord); };
 
   // ── Client-side sort ──────────────────────────────────────────────────────
 
-  const STATUS_ORDER_SORT = ["pending","in_progress","in_revision","review","reopened","paused","cancelled","completed"];
+  const STATUS_ORDER_SORT = ["pending","in_progress","review","reopened","paused","cancelled","completed"];
   const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
   const sorted = useMemo(() => {
@@ -407,20 +665,26 @@ export default function TasksOverview() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   })();
 
-  // Uma tarefa é "agendada" se: status pré-execução E data de referência > hoje.
+  // Uma tarefa é "agendada" se: status pré-execução E sem trabalho hoje.
   const SCHEDULED_STATUSES = new Set(["pending", "in_progress", "paused"]);
   const isTaskScheduled = (t: OverviewTask) => {
     if (!SCHEDULED_STATUSES.has(t.status)) return false;
+    // v2 ESCALA (tem effortHours): tarefa pendente só aparece hoje se tem alocação hoje
+    if (t.effortHours != null && t.status === "pending") return !t.hasAllocToday;
+    // in_progress / paused: usa startDate
     const ref = t.startDate ?? (t.status === "pending" ? t.dueDate : null);
     if (!ref) return false;
     return ref.split("T")[0] > TAB_TODAY_STR;
   };
 
-  const ACTIVE_STATUSES = new Set(["pending", "in_progress", "in_revision", "review"]);
+  const ACTIVE_STATUSES = new Set(["pending", "in_progress", "review"]);
 
   const tabFiltered = useMemo(() => {
     if (viewTab === "today")
-      return sorted.filter(t => !isTaskScheduled(t) && ACTIVE_STATUSES.has(t.status));
+      return sorted.filter(t => {
+        if (t.status === "completed") return t.dueDate?.split("T")[0] === TAB_TODAY_STR;
+        return !isTaskScheduled(t) && ACTIVE_STATUSES.has(t.status);
+      });
     if (viewTab === "scheduled")
       return sorted.filter(t => isTaskScheduled(t));
     return sorted;
@@ -433,7 +697,7 @@ export default function TasksOverview() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  const canAct = (t: OverviewTask) => t.isOwn || isSuper;
+  const canAct = (t: OverviewTask) => t.isOwn || t.isCoCoord || isSuper;
   const isOverdue = (t: OverviewTask) => {
     if (!t.dueDate || isTerminal(t.status)) return false;
     const due = new Date(t.dueDate); due.setHours(0, 0, 0, 0);
@@ -521,23 +785,6 @@ export default function TasksOverview() {
     }
   };
 
-  const submitChangeDueDate = async () => {
-    if (!changeDueDateTask || !changeDueDateValue) {
-      toast.error("Selecione uma nova data");
-      return;
-    }
-    setSendingDueDate(true);
-    try {
-      await apiPut(`/api/tasks/${changeDueDateTask.id}`, { dueDate: changeDueDateValue });
-      toast.success("Prazo atualizado");
-      setChangeDueDateTask(null);
-      load(true);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar prazo");
-    } finally {
-      setSendingDueDate(false);
-    }
-  };
 
   const toggleExpand = (taskId: number) => {
     setExpandedIds(prev => {
@@ -625,7 +872,18 @@ export default function TasksOverview() {
             <span className={`inline-flex w-fit items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none tracking-[0.01em] ${STATUS_CHIP[t.status] ?? "bg-slate-500/10 text-slate-500"}`}>
               {STATUS_LABEL[t.status] ?? t.status}
             </span>
-            {(t.fileCount ?? 0) > 0 && (
+            {(t.unreadCommentCount ?? 0) > 0 && (
+              <button
+                title={`${t.unreadCommentCount} comentário${t.unreadCommentCount !== 1 ? "s" : ""} não lido${t.unreadCommentCount !== 1 ? "s" : ""}`}
+                onClick={e => { e.stopPropagation(); openTask(t.id, "entrega"); }}
+                className="inline-flex items-center gap-1 w-fit px-1.5 py-[3px] rounded-[4px] text-[10px] font-semibold transition-colors hover:bg-red-500/15"
+                style={{ background: "rgba(239,68,68,0.10)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.20)" }}
+              >
+                <MessageSquare className="h-2.5 w-2.5 shrink-0" style={{ fill: "currentColor", stroke: "none" }} />
+                <span>ajustes</span>
+              </button>
+            )}
+            {(t.fileCount ?? 0) > 0 && t.status !== "review" && (
               <button
                 title={`Ver mídia entregue · ${t.fileCount} arquivo${t.fileCount !== 1 ? "s" : ""}`}
                 onClick={e => { e.stopPropagation(); openTask(t.id, "entrega"); }}
@@ -729,13 +987,32 @@ export default function TasksOverview() {
       meta: { className: "hidden xl:table-cell" },
       cell: ({ row }) => {
         const t = row.original;
-        if (t.isOwn) return <span className="text-[11px] text-[hsl(var(--muted-foreground))]/55 font-semibold">Você</span>;
+        const hasCoCoords = t.coCoordinators?.length > 0;
+        if (t.isOwn && !hasCoCoords) return <span className="text-[11px] text-[hsl(var(--muted-foreground))]/55 font-semibold">Você</span>;
         if (!t.coordinator) return <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30">—</span>;
+
+        // Stack: titular + co-coords
+        const allCoords = [
+          t.coordinator,
+          ...(t.coCoordinators ?? []),
+        ];
+        if (allCoords.length === 1) {
+          return (
+            <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+              <ChatAvatarButton userId={allCoords[0].id} name={allCoords[0].name} avatarUrl={allCoords[0].avatarUrl}
+                size={28} taskId={t.id} taskCode={t.taskCode} taskTitle={t.title} />
+              <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 truncate">
+                {t.isOwn ? "Você" : allCoords[0].name.split(" ")[0]}
+              </span>
+            </div>
+          );
+        }
         return (
-          <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-            <ChatAvatarButton userId={t.coordinator.id} name={t.coordinator.name} avatarUrl={t.coordinator.avatarUrl}
-              size={28} taskId={t.id} taskCode={t.taskCode} taskTitle={t.title} />
-            <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 truncate">{t.coordinator.name.split(" ")[0]}</span>
+          <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+            <StackedAvatars
+              people={allCoords.map(c => ({ id: c.id, name: c.name, avatarUrl: c.avatarUrl ?? null }))}
+              size={22} max={3}
+            />
           </div>
         );
       },
@@ -768,6 +1045,16 @@ export default function TasksOverview() {
                 <DropdownMenuItem onClick={e => { e.stopPropagation(); setEditTaskId(t.id); setFormOpen(true); }}>
                   <Pencil className="h-3.5 w-3.5" />Editar tarefa
                 </DropdownMenuItem>
+                {t.isOwn && t.taskType === "task" && (
+                  <>
+                    <DropdownMenuItem onClick={e => { e.stopPropagation(); setManageCoordsTask(t); }}>
+                      <UserPlus className="h-3.5 w-3.5" />Coordenadores
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={e => { e.stopPropagation(); setTransferTask(t); }}>
+                      <ArrowUpRight className="h-3.5 w-3.5" />Transferir tarefa
+                    </DropdownMenuItem>
+                  </>
+                )}
                 {canActNow && isNotTerminal && (
                   <>
                     <DropdownMenuItem onClick={e => { e.stopPropagation(); setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "reassign" }); }}>
@@ -776,7 +1063,7 @@ export default function TasksOverview() {
                     <DropdownMenuItem onClick={e => { e.stopPropagation(); setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "add" }); }}>
                       <Plus className="h-3.5 w-3.5" />Adicionar editor
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={e => { e.stopPropagation(); setChangeDueDateTask(t); setChangeDueDateValue(t.dueDate ?? ""); }}>
+                    <DropdownMenuItem onClick={e => { e.stopPropagation(); setRescheduleTask(t); }}>
                       <CalendarClock className="h-3.5 w-3.5" />Alterar prazo
                     </DropdownMenuItem>
                   </>
@@ -819,7 +1106,7 @@ export default function TasksOverview() {
       },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [viewTab, expandedIds, setAvailEditor, setEditTaskId, setFormOpen, setApproveTarget, setRevisionTask, setRevisionComment, setReopenTask, setConfirmTask, setDeleteTarget, setReassignTarget, setChangeDueDateTask, load]);
+  ], [viewTab, expandedIds, setAvailEditor, setEditTaskId, setFormOpen, setApproveTarget, setRevisionTask, setRevisionComment, setReopenTask, setConfirmTask, setDeleteTarget, setReassignTarget, setRescheduleTask, setManageCoordsTask, setTransferTask, load]);
 
   const overviewTable = useReactTable({
     data: tabFiltered,
@@ -860,7 +1147,7 @@ export default function TasksOverview() {
             )}
           </Button>
           {canCreate && (
-            <Button size="sm" className="h-9 w-9 shrink-0 p-0" onClick={() => { setEditTaskId(null); setFormOpen(true); }}>
+            <Button size="sm" className="h-9 w-9 shrink-0 p-0" onClick={() => setEscalaOpen(true)}>
               <Plus className="h-4 w-4" />
             </Button>
           )}
@@ -956,7 +1243,7 @@ export default function TasksOverview() {
           </button>
         )}
         {canCreate && (
-          <Button size="sm" className="h-8 gap-1.5 ml-auto" onClick={() => { setEditTaskId(null); setFormOpen(true); }}>
+          <Button size="sm" className="h-8 gap-1.5 ml-auto" onClick={() => setEscalaOpen(true)}>
             <Plus className="h-3.5 w-3.5" />Nova tarefa
           </Button>
         )}
@@ -1042,23 +1329,30 @@ export default function TasksOverview() {
           <>
             {/* ── Mobile (< md) ─────────────────────────────────── */}
             <div className="md:hidden">
-            {TASK_GROUPS.map(group => {
+            {(viewTab === "today" ? TODAY_SECTIONS_COORD : TASK_GROUPS).map(group => {
               const groupTasks = tabFiltered.filter(t => group.statuses.includes(t.status));
               if (!groupTasks.length) return null;
+              const collapsed = viewTab === "today" && collapsedSections.has(group.key);
               return (
                 <div key={group.key}>
-                  <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-2 mt-4 bg-[hsl(var(--card))]">
+                  <div className="flex items-center gap-3 px-4 py-2 mt-4 bg-[hsl(var(--card))]">
                     <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
                     <span className="text-[10px] font-semibold uppercase tracking-[0.12em] shrink-0" style={{ color: group.color, opacity: 0.75 }}>{group.label}</span>
                     <span className="flex-1 border-t border-dashed" style={{ borderColor: `${group.color}30` }} />
                     <span className="text-[10px] tabular-nums shrink-0" style={{ color: group.color, opacity: 0.5 }}>{groupTasks.length}</span>
+                    {viewTab === "today" && (
+                      <button onClick={() => toggleSection(group.key)} className="opacity-40 hover:opacity-80 transition-opacity">
+                        {collapsed ? <ChevronRight className="h-3.5 w-3.5" style={{ color: group.color }} /> : <ChevronDown className="h-3.5 w-3.5" style={{ color: group.color }} />}
+                      </button>
+                    )}
                   </div>
                   <div className="divide-y divide-[hsl(var(--muted))]">
-                    {groupTasks.map(t => {
+                    {!collapsed && groupTasks.map(t => {
                       const overdue      = isOverdue(t);
                       const canActNow    = canAct(t);
                       const isHighlighted = highlighted === t.id;
                       const isUnassigned = t.status === "pending" && (!t.editors || t.editors.length === 0) && !t.assignee;
+                      const sectionCanReview = viewTab === "today" && (group as typeof TODAY_SECTIONS_COORD[0]).canReview;
 
 
               const isExpanded    = expandedIds.has(t.id);
@@ -1078,7 +1372,7 @@ export default function TasksOverview() {
                 <div
                   ref={isHighlighted ? highlightRef : null}
                   className="flex items-stretch px-4 hover:bg-[hsl(var(--muted))]/20 transition-all cursor-pointer"
-                  onClick={() => (t.status === 'pending' || t.status === 'rascunho') && canActNow ? (setEditTaskId(t.id), setFormOpen(true)) : openTask(t.id)}
+                  onClick={() => t.status === 'rascunho' && canActNow ? (setEditTaskId(t.id), setFormOpen(true)) : openTask(t.id)}
                   style={{
                     borderLeft: `3px ${t.status === "rascunho" ? "dashed" : "solid"} ${group.color}`,
                     opacity: t.status === "rascunho" ? 0.75 : 1,
@@ -1188,7 +1482,7 @@ export default function TasksOverview() {
                           if (!t.dueDate) return null;
                           const { label } = fmtPrazoWeek(t.dueDate);
                           const AMBER_CHIP = "inline-flex w-fit items-center px-1.5 py-0.5 rounded-md border text-[10px] font-medium leading-none bg-amber-50 border-amber-200/80 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800/50 dark:text-amber-400";
-                          if ((t.status === "review" || t.status === "in_revision") && overdue) return (
+                          if ((t.status === "review" ) && overdue) return (
                             <span className="flex flex-col gap-1 shrink-0">
                               <span className="text-xs text-[hsl(var(--muted-foreground))]/60 tabular-nums leading-tight">{label}</span>
                               <span className={AMBER_CHIP}>
@@ -1271,7 +1565,7 @@ export default function TasksOverview() {
                             <><DropdownMenuSeparator /><DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "resume" })}><ArrowUpRight className="h-3.5 w-3.5" />Retomar tarefa</DropdownMenuItem></>
                           )}
                           {!["completed","cancelled","rascunho"].includes(t.status) && canActNow && (
-                            <><DropdownMenuSeparator /><DropdownMenuItem onClick={() => { setChangeDueDateValue(t.dueDate ?? ""); setChangeDueDateTask(t); }}><CalendarClock className="h-3.5 w-3.5" />Alterar prazo</DropdownMenuItem></>
+                            <><DropdownMenuSeparator /><DropdownMenuItem onClick={() => setRescheduleTask(t)}><CalendarClock className="h-3.5 w-3.5" />Alterar prazo</DropdownMenuItem></>
                           )}
                           {!["completed","cancelled"].includes(t.status) && canActNow && (
                             <>
@@ -1456,6 +1750,12 @@ export default function TasksOverview() {
 
                   {/* Ações — desktop (largura fixa w-52 para não desalinhar) */}
                   <div className="hidden md:flex w-52 shrink-0 items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                    {sectionCanReview && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs px-2.5 gap-1 whitespace-nowrap"
+                        onClick={e => { e.stopPropagation(); navigate(`/review/${t.id}`); }}>
+                        <ExternalLink className="h-3 w-3" />Revisar
+                      </Button>
+                    )}
                     {t.status === "rascunho" && canActNow && (
                       <Button size="icon"
                         className={`h-7 w-7 ${t.editors?.length > 0 ? "bg-zinc-700 hover:bg-zinc-800" : "bg-zinc-300 cursor-not-allowed"}`}
@@ -1484,7 +1784,7 @@ export default function TasksOverview() {
                         {t.status === "cancelled" && canActNow && (<><DropdownMenuSeparator /><DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "reactivate" })}><ArrowUpRight className="h-3.5 w-3.5" />Reativar tarefa</DropdownMenuItem><DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteTarget({ id: t.id, title: t.title })}><Trash2 className="h-3.5 w-3.5" />Excluir tarefa</DropdownMenuItem></>)}
                         {t.status === "completed" && canActNow && (<><DropdownMenuSeparator /><DropdownMenuItem onClick={() => { setReopenTask(t); setReopenComment(""); setReopenDueDate(""); setReopenComplexity(t.complexity ?? "medium"); setReopenPriority(t.priority ?? "medium"); }}><RotateCcw className="h-3.5 w-3.5" />Reabrir tarefa</DropdownMenuItem></>)}
                         {t.status === "paused" && canActNow && (<><DropdownMenuSeparator /><DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "resume" })}><ArrowUpRight className="h-3.5 w-3.5" />Retomar tarefa</DropdownMenuItem></>)}
-                        {!["completed","cancelled","rascunho"].includes(t.status) && canActNow && (<><DropdownMenuSeparator /><DropdownMenuItem onClick={() => { setChangeDueDateValue(t.dueDate ?? ""); setChangeDueDateTask(t); }}><CalendarClock className="h-3.5 w-3.5" />Alterar prazo</DropdownMenuItem></>)}
+                        {!["completed","cancelled","rascunho"].includes(t.status) && canActNow && (<><DropdownMenuSeparator /><DropdownMenuItem onClick={() => setRescheduleTask(t)}><CalendarClock className="h-3.5 w-3.5" />Alterar prazo</DropdownMenuItem></>)}
                         {!["completed","cancelled"].includes(t.status) && canActNow && (<><DropdownMenuSeparator /><DropdownMenuItem onClick={() => setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "reassign" })}><RefreshCw className="h-3.5 w-3.5" />Reatribuir tarefa</DropdownMenuItem><DropdownMenuItem onClick={() => setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "add" })}><UserPlus className="h-3.5 w-3.5" />Adicionar editor</DropdownMenuItem></>)}
                         {!["completed","cancelled"].includes(t.status) && (<><DropdownMenuSeparator />{t.status !== "paused" && <DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "pause" })}><PauseCircle className="h-3.5 w-3.5" />Pausar tarefa</DropdownMenuItem>}<DropdownMenuItem onClick={() => setConfirmTask({ id: t.id, title: t.title, action: "cancel" })}><XCircle className="h-3.5 w-3.5" />Cancelar tarefa</DropdownMenuItem></>)}
                       </DropdownMenuContent>
@@ -1604,22 +1904,29 @@ export default function TasksOverview() {
                 ))}
               </thead>
               <tbody>
-                {TASK_GROUPS.map(group => {
+                {(viewTab === "today" ? TODAY_SECTIONS_COORD : TASK_GROUPS).map(group => {
                   const groupRows = overviewTable.getRowModel().rows.filter(r => group.statuses.includes(r.original.status));
                   if (!groupRows.length) return null;
+                  const collapsed = viewTab === "today" && collapsedSections.has(group.key);
+                  const sectionCanReview = viewTab === "today" && (group as typeof TODAY_SECTIONS_COORD[0]).canReview;
                   return (
                     <React.Fragment key={group.key}>
-                      <tr className="sticky top-10 z-10">
+                      <tr>
                         <td colSpan={overviewColumns.length} className="bg-[hsl(var(--card))] px-4 py-2 border-b border-[hsl(var(--border))]/30">
                           <div className="flex items-center gap-3">
                             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
                             <span className="text-[10px] font-semibold uppercase tracking-[0.12em] shrink-0" style={{ color: group.color, opacity: 0.75 }}>{group.label}</span>
                             <span className="flex-1 border-t border-dashed" style={{ borderColor: `${group.color}30` }} />
                             <span className="text-[10px] tabular-nums shrink-0" style={{ color: group.color, opacity: 0.5 }}>{groupRows.length}</span>
+                            {viewTab === "today" && (
+                              <button onClick={() => toggleSection(group.key)} className="opacity-40 hover:opacity-80 transition-opacity">
+                                {collapsed ? <ChevronRight className="h-3.5 w-3.5" style={{ color: group.color }} /> : <ChevronDown className="h-3.5 w-3.5" style={{ color: group.color }} />}
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
-                      {groupRows.map(row => {
+                      {!collapsed && groupRows.map(row => {
                         const t = row.original;
                         const isExpanded = expandedIds.has(t.id);
                         const isHighlighted = highlighted === t.id;
@@ -1724,213 +2031,149 @@ export default function TasksOverview() {
         </div>{/* fim body scrollável */}
       </div>
 
-      {/* ── Cancel / Pause / Resume confirm dialog ───────────────────────── */}
+      {/* ── Cancel / Pause / Resume / Reactivate ─────────────────────────── */}
       <Dialog open={!!confirmTask} onOpenChange={open => { if (!open && !sendingConfirm) { setConfirmTask(null); setConfirmComment(""); } }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>
-              {confirmTask?.action === "cancel" ? "Cancelar tarefa" : confirmTask?.action === "pause" ? "Pausar tarefa" : confirmTask?.action === "reactivate" ? "Reativar tarefa" : "Retomar tarefa"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+        <DialogContent className="max-w-sm p-0 gap-0 rounded-3xl border shadow-2xl bg-[hsl(var(--card))] [&>button]:hidden">
+          <DialogTitle className="sr-only">{confirmTask?.action}</DialogTitle>
+          <div className="px-6 pt-7 pb-5 space-y-4">
+            <p className="text-xl font-black tracking-tight">
+              {confirmTask?.action === "cancel" ? "Cancelar tarefa" :
+               confirmTask?.action === "pause"  ? "Pausar tarefa"  :
+               confirmTask?.action === "reactivate" ? "Reativar tarefa" : "Retomar tarefa"}
+            </p>
+            <p className="text-sm text-[hsl(var(--muted-foreground))] leading-relaxed">
               {confirmTask?.action === "cancel"
-                ? <>Tem certeza que deseja <strong>cancelar</strong> <em>"{confirmTask?.title}"</em>? Os editores serão notificados.</>
+                ? <>Tem certeza que deseja cancelar <strong className="text-[hsl(var(--foreground))]">"{confirmTask?.title}"</strong>? Os editores serão notificados.</>
                 : confirmTask?.action === "pause"
-                  ? <>Tem certeza que deseja <strong>pausar</strong> <em>"{confirmTask?.title}"</em>? Os editores serão notificados.</>
-                  : confirmTask?.action === "reactivate"
-                    ? <>A tarefa <em>"{confirmTask?.title}"</em> voltará para <strong>Pendente</strong> e os editores serão notificados.</>
-                    : <>A tarefa <em>"{confirmTask?.title}"</em> voltará para <strong>Pendente</strong> e os editores serão notificados.</>}
+                  ? <>Tem certeza que deseja pausar <strong className="text-[hsl(var(--foreground))]">"{confirmTask?.title}"</strong>? Os editores serão notificados.</>
+                  : <>A tarefa <strong className="text-[hsl(var(--foreground))]">"{confirmTask?.title}"</strong> voltará para <strong>Pendente</strong> e os editores serão notificados.</>}
             </p>
             {confirmTask?.action !== "resume" && confirmTask?.action !== "reactivate" && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">
+              <div className="space-y-2">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
                   Motivo <span className="text-destructive">*</span>
-                </label>
+                </p>
                 <Textarea
                   placeholder={confirmTask?.action === "cancel" ? "Motivo do cancelamento…" : "Motivo da pausa…"}
                   value={confirmComment}
                   onChange={e => setConfirmComment(e.target.value)}
                   rows={3}
-                  className="resize-none text-sm"
+                  className="resize-none text-sm rounded-2xl"
                   disabled={sendingConfirm}
                 />
               </div>
             )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setConfirmTask(null); setConfirmComment(""); }} disabled={sendingConfirm}>Voltar</Button>
-            <Button
-              className={confirmTask?.action === "cancel" ? "bg-red-600 hover:bg-red-700" : confirmTask?.action === "pause" ? "bg-purple-600 hover:bg-purple-700" : ""}
+          <div className="px-6 py-4 border-t border-[hsl(var(--border))]/60 flex items-center justify-between">
+            <button onClick={() => { setConfirmTask(null); setConfirmComment(""); }} disabled={sendingConfirm}
+              className="h-9 px-4 rounded-full text-sm font-medium border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/60 transition-colors disabled:opacity-40">
+              Voltar
+            </button>
+            <button
               onClick={() => confirmTask && doTaskAction(confirmTask.id, confirmTask.action)}
               disabled={sendingConfirm || (confirmTask?.action !== "resume" && confirmTask?.action !== "reactivate" && !confirmComment.trim())}
-            >
-              {sendingConfirm ? "Aguarde…" : confirmTask?.action === "cancel" ? "Confirmar cancelamento" : confirmTask?.action === "pause" ? "Confirmar pausa" : confirmTask?.action === "reactivate" ? "Reativar" : "Retomar"}
-            </Button>
-          </DialogFooter>
+              className={`h-9 px-6 rounded-full text-sm font-black text-white disabled:opacity-40 transition-colors
+                ${confirmTask?.action === "cancel" ? "bg-red-600 hover:bg-red-700" :
+                  confirmTask?.action === "pause"  ? "bg-purple-600 hover:bg-purple-700" :
+                  "bg-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/90"}`}>
+              {sendingConfirm ? "Aguarde…" :
+               confirmTask?.action === "cancel"     ? "Cancelar" :
+               confirmTask?.action === "pause"      ? "Pausar" :
+               confirmTask?.action === "reactivate" ? "Reativar" : "Retomar"}
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
 
-      {/* ── Revision dialog ───────────────────────────────────────────────── */}
+      {/* ── Solicitar alteração ───────────────────────────────────────────── */}
       <Dialog open={!!revisionTask} onOpenChange={open => !open && setRevisionTask(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Solicitar alteração</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            {revisionTask && revisionTask.revisionCount > 0 && (
-              <p className="text-xs text-orange-600 font-medium">
-                Esta será a Alteração #{revisionTask.revisionCount + 1}
+        <DialogContent className="max-w-sm p-0 gap-0 rounded-3xl border shadow-2xl bg-[hsl(var(--card))] [&>button]:hidden">
+          <DialogTitle className="sr-only">Solicitar alteração</DialogTitle>
+          <div className="px-6 pt-7 pb-5 space-y-4">
+            <div>
+              <p className="text-xl font-black tracking-tight">Solicitar alteração</p>
+              {revisionTask && revisionTask.revisionCount > 0 && (
+                <p className="text-[11px] font-bold text-amber-500 mt-1">
+                  Alteração #{revisionTask.revisionCount + 1}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                Comentário do cliente <span className="text-destructive">*</span>
               </p>
-            )}
-            <div className="space-y-1.5">
-              <Label>Comentário do cliente *</Label>
               <Textarea
                 value={revisionComment}
                 onChange={e => setRevisionComment(e.target.value)}
                 rows={4}
                 placeholder="Descreva o que o cliente solicitou alterar…"
+                className="resize-none text-sm rounded-2xl"
                 autoFocus
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRevisionTask(null)}>Cancelar</Button>
-            <Button onClick={submitRevision} disabled={sendingRevision}
-              className="bg-orange-600 hover:bg-orange-700">
+          <div className="px-6 py-4 border-t border-[hsl(var(--border))]/60 flex items-center justify-between">
+            <button onClick={() => setRevisionTask(null)}
+              className="h-9 px-4 rounded-full text-sm font-medium border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/60 transition-colors">
+              Cancelar
+            </button>
+            <button onClick={submitRevision} disabled={sendingRevision || !revisionComment.trim()}
+              className="h-9 px-6 rounded-full text-sm font-black text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-40 transition-colors">
               {sendingRevision ? "Enviando…" : "↩ Solicitar alteração"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Change due date dialog ───────────────────────────────────────── */}
-      <Dialog open={!!changeDueDateTask} onOpenChange={open => { if (!open) setChangeDueDateTask(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Alterar prazo</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            {changeDueDateTask?.dueDate && (
-              <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-[hsl(var(--muted))]/40 text-sm">
-                <span className="text-[hsl(var(--muted-foreground))]">Prazo atual:</span>
-                <span className="font-semibold">{fmtDate(changeDueDateTask.dueDate)}</span>
-              </div>
-            )}
-            <div className="space-y-1.5">
-              <Label>Novo prazo</Label>
-              <DateRangePicker
-                startDate=""
-                endDate={changeDueDateValue}
-                onChangeStart={() => {}}
-                onChangeEnd={setChangeDueDateValue}
-                withEndTime
-                placeholder="Selecionar novo prazo…"
-              />
-            </div>
+            </button>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setChangeDueDateTask(null)}>Cancelar</Button>
-            <Button onClick={submitChangeDueDate} disabled={sendingDueDate || !changeDueDateValue}>
-              {sendingDueDate ? "Salvando…" : "Salvar prazo"}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ── Reopen dialog ────────────────────────────────────────────────── */}
+      {/* ── Reabrir tarefa ───────────────────────────────────────────────── */}
       <Dialog open={!!reopenTask} onOpenChange={open => { if (!open) { setReopenTask(null); setReopenDueDate(""); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Reabrir tarefa aprovada</DialogTitle>
-          </DialogHeader>
-          {(() => {
-            const t = reopenTask;
-            if (!t) return null;
-            const primaryEditor  = t.assignee ?? t.editors?.[0] ?? null;
-            const editorWl      = primaryEditor ? reopenWorkload.find(w => w.id === primaryEditor.id) : null;
-            const currentScore  = editorWl?.score ?? 0;
-            const addedWeight   = COMPLEXITY_WEIGHT[reopenComplexity] ?? 6;
-            const projectedScore = currentScore + addedWeight;
-            const currentColor  = scoreColor(currentScore);
-            const currentLbl    = scoreLabel(currentScore);
-            const projColor        = scoreColor(projectedScore);
-            const projLbl         = scoreLabel(projectedScore);
-            const projectedBlocked = projectedScore >= 12;
-            return (
-              <div className="space-y-3 py-1">
-                <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                  A tarefa voltará ao status <strong>Reaberta</strong> e o editor será notificado.
-                </p>
-
-                {/* Editor + carga atual + projeção */}
+        <DialogContent className="max-w-md p-0 gap-0 rounded-3xl border shadow-2xl bg-[hsl(var(--card))] [&>button]:hidden flex flex-col max-h-[90vh]">
+          <DialogTitle className="sr-only">Reabrir tarefa</DialogTitle>
+          <div className="flex-1 overflow-y-auto px-6 pt-7 pb-5 space-y-5">
+            <p className="text-xl font-black tracking-tight">Reabrir tarefa</p>
+            {reopenTask && (() => {
+              const t = reopenTask;
+              const primaryEditor = t.assignee ?? t.editors?.[0] ?? null;
+              const editorWl = primaryEditor ? reopenWorkload.find(w => w.id === primaryEditor.id) : null;
+              const wlColor = loadColor(editorWl?.hoursToday ?? 0, editorWl?.dailyCap ?? 8);
+              const wlLabel = loadLabel(editorWl?.hoursToday ?? 0, editorWl?.dailyCap ?? 8);
+              return (<>
                 {primaryEditor && (
-                  <div className="rounded-xl border px-3 py-2.5 space-y-2 bg-[hsl(var(--muted))]/30">
-                    <div className="flex items-center gap-2.5">
-                      <AvatarDisplay name={primaryEditor.name} avatarUrl={primaryEditor.avatarUrl} size={28} className="shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{primaryEditor.name}</p>
-                        <p className="text-[10px] text-[hsl(var(--muted-foreground))]">editor atribuído</p>
-                      </div>
-                      {loadingWorkload
-                        ? <span className="text-[10px] text-[hsl(var(--muted-foreground))]">verificando…</span>
-                        : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
-                            style={{ background: `${currentColor}22`, color: currentColor }}>
-                            {currentLbl}
-                          </span>
-                      }
+                  <div className="rounded-2xl border px-3.5 py-3 bg-[hsl(var(--muted))]/30 flex items-center gap-2.5">
+                    <AvatarDisplay name={primaryEditor.name} avatarUrl={primaryEditor.avatarUrl} size={28} className="shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{primaryEditor.name}</p>
+                      <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60">editor atribuído</p>
                     </div>
-                    {/* Projeção com a complexidade escolhida */}
-                    {!loadingWorkload && (
-                      <div className="flex items-center gap-1.5 text-[10px] text-[hsl(var(--muted-foreground))] border-t border-[hsl(var(--border))]/50 pt-2">
-                        <span>Após reabertura ({reopenComplexity === "low" ? "Baixa" : reopenComplexity === "medium" ? "Média" : "Alta"}):</span>
-                        <span className="font-semibold px-1.5 py-0.5 rounded-full"
-                          style={{ background: `${projColor}22`, color: projColor }}>
-                          {projLbl}
-                        </span>
-                      </div>
-                    )}
+                    {loadingWorkload
+                      ? <span className="text-[10px] text-[hsl(var(--muted-foreground))]">verificando…</span>
+                      : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                          style={{ background: `${wlColor}22`, color: wlColor }}>{wlLabel}</span>
+                    }
                   </div>
                 )}
-
-                {projectedBlocked && !loadingWorkload && (
-                  <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900 px-3 py-2.5">
-                    <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
-                    <p className="text-xs text-red-700 dark:text-red-300">
-                      Com esta complexidade, <strong>{primaryEditor?.name.split(" ")[0]}</strong> ficaria no limite. Reduza a complexidade ou reatribua a tarefa.
-                    </p>
-                  </div>
-                )}
-
-                {/* Prazo anterior */}
                 {t.dueDate && (
-                  <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-[hsl(var(--muted))]/40 text-sm">
-                    <span className="text-[hsl(var(--muted-foreground))]">Prazo anterior:</span>
-                    <span className="font-semibold">{fmtDate(t.dueDate)}</span>
+                  <div className="rounded-2xl px-3.5 py-3 bg-[hsl(var(--muted))]/30 flex items-center gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">Prazo anterior</span>
+                    <span className="font-semibold text-sm ml-auto">{fmtDate(t.dueDate)}</span>
                   </div>
                 )}
-
-                {/* Complexidade + Prioridade */}
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Complexidade</Label>
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Complexidade</p>
                     <Select value={reopenComplexity} onValueChange={setReopenComplexity}>
-                      <SelectTrigger className="h-9 text-sm rounded-xl">
-                        <SelectValue />
-                      </SelectTrigger>
+                      <SelectTrigger className="h-9 text-sm rounded-2xl"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="low">Baixa</SelectItem>
-                        <SelectItem value="medium">Média</SelectItem>
-                        <SelectItem value="high">Alta</SelectItem>
+                        <SelectItem value="low">Simples</SelectItem>
+                        <SelectItem value="medium">Moderada</SelectItem>
+                        <SelectItem value="high">Complexa</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Prioridade</Label>
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Prioridade</p>
                     <Select value={reopenPriority} onValueChange={setReopenPriority}>
-                      <SelectTrigger className="h-9 text-sm rounded-xl">
-                        <SelectValue />
-                      </SelectTrigger>
+                      <SelectTrigger className="h-9 text-sm rounded-2xl"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="low">Baixa</SelectItem>
                         <SelectItem value="medium">Média</SelectItem>
@@ -1940,47 +2183,39 @@ export default function TasksOverview() {
                     </Select>
                   </div>
                 </div>
-
-                {/* Novo prazo */}
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                <div className="space-y-2">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
                     Novo prazo <span className="font-normal normal-case">(opcional)</span>
-                  </Label>
-                  <DateRangePicker
-                    startDate=""
-                    endDate={reopenDueDate}
-                    onChangeStart={() => {}}
-                    onChangeEnd={setReopenDueDate}
-                    withEndTime
+                  </p>
+                  <DatePicker
+                    value={reopenDueDate} onChange={setReopenDueDate} withTime
+                    defaultTime={d => new Date(d + "T12:00:00").getDay() === 6 ? "13:00" : "18:00"}
                     placeholder="Selecionar novo prazo…"
                   />
                 </div>
-
-                {/* Motivo */}
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
-                    Motivo da reabertura *
-                  </Label>
+                <div className="space-y-2">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                    Motivo <span className="text-destructive">*</span>
+                  </p>
                   <Textarea
-                    value={reopenComment}
-                    onChange={e => setReopenComment(e.target.value)}
-                    rows={3}
-                    placeholder="Descreva o que o cliente solicitou alterar…"
-                    autoFocus
+                    value={reopenComment} onChange={e => setReopenComment(e.target.value)}
+                    rows={3} placeholder="Descreva o que o cliente solicitou alterar…"
+                    className="resize-none text-sm rounded-2xl" autoFocus
                   />
                 </div>
-              </div>
-            );
-          })()}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setReopenTask(null)}>Cancelar</Button>
-            <Button
-              onClick={submitReopen}
-              disabled={sendingReopen || !reopenComment.trim() || loadingWorkload}
-              className="bg-rose-600 hover:bg-rose-700">
-              {sendingReopen ? "Reabrindo…" : "↩ Reabrir tarefa"}
-            </Button>
-          </DialogFooter>
+              </>);
+            })()}
+          </div>
+          <div className="px-6 py-4 border-t border-[hsl(var(--border))]/60 flex items-center justify-between shrink-0">
+            <button onClick={() => setReopenTask(null)}
+              className="h-9 px-4 rounded-full text-sm font-medium border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/60 transition-colors">
+              Cancelar
+            </button>
+            <button onClick={submitReopen} disabled={sendingReopen || !reopenComment.trim() || loadingWorkload}
+              className="h-9 px-6 rounded-full text-sm font-black text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-40 transition-colors">
+              {sendingReopen ? "Reabrindo…" : "↩ Reabrir"}
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -2003,6 +2238,27 @@ export default function TasksOverview() {
       />
 
 
+      <EscalaModal
+        open={escalaOpen}
+        onClose={() => setEscalaOpen(false)}
+        onCreated={({ taskId }) => { setEscalaOpen(false); load(true); setHighlighted(taskId); }}
+      />
+
+      {rescheduleTask && (
+        <RescheduleModal
+          open={!!rescheduleTask}
+          onOpenChange={v => { if (!v) setRescheduleTask(null); }}
+          onSaved={() => { setRescheduleTask(null); load(true); }}
+          task={{
+            id:          rescheduleTask.id,
+            title:       rescheduleTask.title,
+            effortHours: rescheduleTask.effortHours!,
+            editor:      rescheduleTask.assignee ?? rescheduleTask.editors?.[0] ?? null,
+            dueDate:     rescheduleTask.dueDate,
+          }}
+        />
+      )}
+
       <TaskFormModal
         open={formOpen}
         onOpenChange={setFormOpen}
@@ -2010,29 +2266,25 @@ export default function TasksOverview() {
         editTaskId={editTaskId}
       />
 
-      {/* ── Approve confirm dialog ───────────────────────────────────────── */}
+      {/* ── Aprovar tarefa ───────────────────────────────────────────────── */}
       <Dialog open={!!approveTarget} onOpenChange={open => { if (!open && !approvingTarget) setApproveTarget(null); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500" />
-              {approveTarget?.parentId ? "Aprovar subtarefa" : "Aprovar tarefa"}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              <em>"{approveTarget?.title}"</em> será marcada como concluída.
-            </p>
-
-            {/* Seleção de versões aprovadas */}
+        <DialogContent className="max-w-md p-0 gap-0 rounded-3xl border shadow-2xl bg-[hsl(var(--card))] [&>button]:hidden flex flex-col max-h-[90vh]">
+          <DialogTitle className="sr-only">Aprovar tarefa</DialogTitle>
+          <div className="flex-1 overflow-y-auto px-6 pt-7 pb-5 space-y-5">
+            <div>
+              <p className="text-xl font-black tracking-tight">
+                {approveTarget?.parentId ? "Aprovar subtarefa" : "Aprovar tarefa"}
+              </p>
+              <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
+                <strong className="text-[hsl(var(--foreground))]">"{approveTarget?.title}"</strong> será marcada como concluída.
+              </p>
+            </div>
             {approveFilesLoading ? (
               <div className="flex items-center gap-2 py-2 text-sm text-[hsl(var(--muted-foreground))]">
                 <div className="h-4 w-4 rounded-full border-2 border-[hsl(var(--primary))]/20 border-t-[hsl(var(--primary))] animate-spin shrink-0" />
                 Carregando arquivos…
               </div>
             ) : approveFiles.length > 0 && (() => {
-              // Agrupar por revisão
               const revMap = new Map<number, typeof approveFiles>();
               approveFiles.forEach(f => {
                 if (!revMap.has(f.revisionNumber)) revMap.set(f.revisionNumber, []);
@@ -2041,11 +2293,11 @@ export default function TasksOverview() {
               const groups = [...revMap.entries()].sort((a, b) => a[0] - b[0]);
               return (
                 <div className="space-y-3">
-                  <p className="text-xs font-semibold text-[hsl(var(--foreground))]">Selecione as versões aprovadas:</p>
-                  <div className="rounded-xl border border-[hsl(var(--border))] divide-y divide-[hsl(var(--border))] overflow-hidden">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Versões aprovadas</p>
+                  <div className="rounded-2xl border border-[hsl(var(--border))] divide-y divide-[hsl(var(--border))] overflow-hidden">
                     {groups.map(([revNum, revFiles]) => (
-                      <div key={revNum} className="px-3 py-2.5">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2">
+                      <div key={revNum} className="px-3.5 py-3">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 mb-2">
                           {revNum === 0 ? "Original" : `${revNum}ª alteração`}
                         </p>
                         <div className="space-y-1">
@@ -2054,19 +2306,15 @@ export default function TasksOverview() {
                             const isVid = f.mimeType?.startsWith("video/");
                             return (
                               <label key={f.id}
-                                className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg cursor-pointer transition-colors select-none
-                                  ${checked ? "bg-green-500/10" : "hover:bg-[hsl(var(--muted))]/40"}`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
+                                className={`flex items-center gap-2.5 px-2 py-1.5 rounded-xl cursor-pointer transition-colors select-none
+                                  ${checked ? "bg-green-500/10" : "hover:bg-[hsl(var(--muted))]/40"}`}>
+                                <input type="checkbox" checked={checked}
                                   onChange={e => setApprovedFileIds(prev => {
                                     const next = new Set(prev);
                                     e.target.checked ? next.add(f.id) : next.delete(f.id);
                                     return next;
                                   })}
-                                  className="h-3.5 w-3.5 rounded accent-green-600 shrink-0"
-                                />
+                                  className="h-3.5 w-3.5 rounded accent-green-600 shrink-0" />
                                 {isVid
                                   ? <Clapperboard className="h-3.5 w-3.5 shrink-0 text-violet-500" />
                                   : <AudioLines className="h-3.5 w-3.5 shrink-0 text-sky-500" />}
@@ -2081,82 +2329,102 @@ export default function TasksOverview() {
                       </div>
                     ))}
                   </div>
-                  <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60">
+                  <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50">
                     {approvedFileIds.size} arquivo{approvedFileIds.size !== 1 ? "s" : ""} selecionado{approvedFileIds.size !== 1 ? "s" : ""}
                   </p>
                 </div>
               );
             })()}
           </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setApproveTarget(null)} disabled={approvingTarget}>
+          <div className="px-6 py-4 border-t border-[hsl(var(--border))]/60 flex items-center justify-between shrink-0">
+            <button onClick={() => setApproveTarget(null)} disabled={approvingTarget}
+              className="h-9 px-4 rounded-full text-sm font-medium border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/60 transition-colors disabled:opacity-40">
               Cancelar
-            </Button>
-            <Button
-              className="bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600"
-              onClick={doApprove}
-              disabled={approvingTarget}
-            >
+            </button>
+            <button onClick={doApprove} disabled={approvingTarget}
+              className="h-9 px-6 rounded-full text-sm font-black text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 transition-colors">
               {approvingTarget ? "Aprovando…" : "Confirmar aprovação"}
-            </Button>
-          </DialogFooter>
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
 
-      {/* Delete confirm */}
+      {/* ── Excluir tarefa ───────────────────────────────────────────────── */}
       <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Excluir tarefa</DialogTitle></DialogHeader>
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Tem certeza que deseja <strong>excluir</strong> a tarefa <em>"{deleteTarget?.title}"</em>? Esta ação não pode ser desfeita.
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancelar</Button>
-            <Button variant="destructive" onClick={deleteTask} disabled={deleting}>
-              {deleting ? "Excluindo…" : "Excluir tarefa"}
-            </Button>
-          </DialogFooter>
+        <DialogContent className="max-w-sm p-0 gap-0 rounded-3xl border shadow-2xl bg-[hsl(var(--card))] [&>button]:hidden">
+          <DialogTitle className="sr-only">Excluir tarefa</DialogTitle>
+          <div className="px-6 pt-7 pb-5 space-y-3">
+            <p className="text-xl font-black tracking-tight">Excluir tarefa</p>
+            <p className="text-sm text-[hsl(var(--muted-foreground))] leading-relaxed">
+              Tem certeza que deseja excluir <strong className="text-[hsl(var(--foreground))]">"{deleteTarget?.title}"</strong>? Esta ação não pode ser desfeita.
+            </p>
+          </div>
+          <div className="px-6 py-4 border-t border-[hsl(var(--border))]/60 flex items-center justify-between">
+            <button onClick={() => setDeleteTarget(null)} disabled={deleting}
+              className="h-9 px-4 rounded-full text-sm font-medium border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/60 transition-colors disabled:opacity-40">
+              Cancelar
+            </button>
+            <button onClick={deleteTask} disabled={deleting}
+              className="h-9 px-6 rounded-full text-sm font-black text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 transition-colors">
+              {deleting ? "Excluindo…" : "Excluir"}
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
 
-      {/* ── Revision dialog — subtarefa ───────────────────────────────────── */}
+      {/* ── Revisão subtarefa ────────────────────────────────────────────── */}
       <Dialog open={!!revisionSubtask} onOpenChange={open => !open && setRevisionSubtask(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Solicitar alteração — subtarefa</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            {revisionSubtask && (
-              <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                <span className="font-medium text-[hsl(var(--foreground))]">{revisionSubtask.title}</span>
+        <DialogContent className="max-w-sm p-0 gap-0 rounded-3xl border shadow-2xl bg-[hsl(var(--card))] [&>button]:hidden">
+          <DialogTitle className="sr-only">Solicitar alteração</DialogTitle>
+          <div className="px-6 pt-7 pb-5 space-y-4">
+            <div>
+              <p className="text-xl font-black tracking-tight">Solicitar alteração</p>
+              {revisionSubtask && (
+                <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1 truncate">{revisionSubtask.title}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                Comentário do cliente <span className="text-destructive">*</span>
               </p>
-            )}
-            <div className="space-y-1.5">
-              <Label>Comentário do cliente *</Label>
               <Textarea
                 value={revisionSubtaskComment}
                 onChange={e => setRevisionSubtaskComment(e.target.value)}
                 rows={4}
                 placeholder="Descreva o que o cliente solicitou alterar…"
+                className="resize-none text-sm rounded-2xl"
                 autoFocus
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRevisionSubtask(null)}>Cancelar</Button>
-            <Button
-              onClick={submitRevisionSubtask}
-              disabled={sendingRevisionSubtask || !revisionSubtaskComment.trim()}
-              className="bg-orange-600 hover:bg-orange-700"
-            >
+          <div className="px-6 py-4 border-t border-[hsl(var(--border))]/60 flex items-center justify-between">
+            <button onClick={() => setRevisionSubtask(null)}
+              className="h-9 px-4 rounded-full text-sm font-medium border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/60 transition-colors">
+              Cancelar
+            </button>
+            <button onClick={submitRevisionSubtask} disabled={sendingRevisionSubtask || !revisionSubtaskComment.trim()}
+              className="h-9 px-6 rounded-full text-sm font-black text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-40 transition-colors">
               {sendingRevisionSubtask ? "Enviando…" : "↩ Solicitar alteração"}
-            </Button>
-          </DialogFooter>
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
 
 
+      {manageCoordsTask && (
+        <ManageCoordsModal
+          task={manageCoordsTask}
+          currentUserId={user?.id ?? 0}
+          onClose={() => { setManageCoordsTask(null); load(true); }}
+        />
+      )}
+      {transferTask && (
+        <TransferTaskModal
+          task={transferTask}
+          onClose={() => setTransferTask(null)}
+          onDone={() => { setTransferTask(null); load(true); }}
+        />
+      )}
     </div>
   );
 }

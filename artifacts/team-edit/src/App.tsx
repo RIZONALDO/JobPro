@@ -6,6 +6,7 @@ import { SettingsProvider, useSettings } from "@/contexts/SettingsContext";
 import { TaskModalProvider } from "@/contexts/TaskModalContext";
 import { ChatProvider } from "@/contexts/ChatContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { BreadcrumbProvider } from "@/contexts/BreadcrumbContext";
 import { Shell } from "@/components/layout/Shell";
 import { Toaster as SonnerToaster } from "sonner";
 import LoginPage from "@/pages/login";
@@ -23,7 +24,9 @@ import TasksOverview from "@/pages/tasks-overview";
 import TasksHub      from "@/pages/tasks-hub";
 import DutyPage      from "@/pages/duty";
 import FaviconDebugPage from "@/pages/favicon-debug";
-import AgendaGeral from "@/pages/agenda-geral";
+import EscalaBoard from "@/pages/escala-board";
+import PlanejarPage from "@/pages/planejar";
+import ReagendamentoPage from "@/pages/reagendamento";
 import TaskPublicView from "@/pages/task-public-view";
 import ReviewTaskPage from "@/pages/review-task";
 import ReviewFilePage from "@/pages/review-file";
@@ -75,6 +78,7 @@ function Router() {
 
   return (
     <ThemeProvider>
+    <BreadcrumbProvider>
     <ChatProvider>
     <TaskModalProvider>
     <Shell>
@@ -91,7 +95,9 @@ function Router() {
         <Route path="/feed" component={FeedPage} />
         <Route path="/tasks" component={TasksHub} />
         <Route path="/duty" component={DutyPage} />
-        <Route path="/agenda" component={AgendaGeral} />
+        <Route path="/agenda" component={EscalaBoard} />
+        <Route path="/planejar" component={PlanejarPage} />
+        <Route path="/reagendamento" component={ReagendamentoPage} />
         <Route path="/review/:taskId/:fileId"><ReviewFilePage /></Route>
         <Route path="/review/:taskId"><ReviewTaskPage /></Route>
         <Route>
@@ -104,6 +110,7 @@ function Router() {
     </Shell>
     </TaskModalProvider>
     </ChatProvider>
+    </BreadcrumbProvider>
     </ThemeProvider>
   );
 }

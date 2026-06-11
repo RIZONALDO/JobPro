@@ -8,5 +8,6 @@ export const taskEventsTable = pgTable("te_task_events", {
   fromStatus: text("from_status").notNull(),
   toStatus: text("to_status").notNull(),
   changedById: integer("changed_by_id").references(() => usersTable.id),
+  meta: text("meta"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

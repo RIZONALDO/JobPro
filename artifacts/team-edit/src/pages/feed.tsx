@@ -13,11 +13,15 @@ import { cn } from "@/lib/utils";
 import {
   Trash2, Zap, Folder,
   CheckCircle2, FolderCheck, Edit3, SmilePlus, MessageCircle, Pencil, X, Check, RotateCcw, Undo2,
-  PauseCircle, XCircle, PlayCircle,
+  PauseCircle, XCircle, PlayCircle, Film, MoreHorizontal, Download, Link,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
+import { FeedPlayer } from "@/components/FeedPlayer";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -42,6 +46,7 @@ interface OnlineUser {
 
 const FEED_ICON: Record<string, React.ReactNode> = {
   task_completed:    <CheckCircle2 className="h-4 w-4 text-green-500" />,
+  media_approved:    <Film className="h-4 w-4 text-sky-500" />,
   task_reopened:     <RotateCcw className="h-4 w-4 text-rose-500" />,
   task_returned:     <Undo2 className="h-4 w-4 text-amber-500" />,
   task_paused:       <PauseCircle className="h-4 w-4 text-violet-500" />,
@@ -56,6 +61,7 @@ const FEED_ICON: Record<string, React.ReactNode> = {
 
 const FEED_ACCENT: Record<string, string> = {
   task_completed:    "border-t-green-400",
+  media_approved:    "border-t-sky-400",
   task_reopened:     "border-t-rose-400",
   task_returned:     "border-t-amber-400",
   task_paused:       "border-t-violet-400",
@@ -355,21 +361,45 @@ function FeedCard({ item, myUserId, myRole, users, onReact, updatedReactions, on
     } catch {}
   };
 
+  const isMedia = item.type === "media_approved";
+
+  const mediaContent = isMedia && item.content ? (() => {
+    try { return JSON.parse(item.content) as { fileId: number; taskId: number; fileName: string; mimeType: string }; }
+    catch { return null; }
+  })() : null;
+
+  const handleDownload = () => {
+    if (!mediaContent) return;
+    const a = document.createElement("a");
+    a.href = `/api/tasks/${mediaContent.taskId}/files/${mediaContent.fileId}/stream`;
+    a.download = mediaContent.fileName || "media";
+    a.click();
+  };
+
+  const handleCopyLink = () => {
+    if (!mediaContent) return;
+    const url = `${window.location.origin}/review/${mediaContent.taskId}/${mediaContent.fileId}`;
+    navigator.clipboard.writeText(url).then(() => toast.success("Link copiado!")).catch(() => {});
+  };
+
   return (
-    <div className={cn("rounded-2xl border-t-4 bg-[hsl(var(--card))] shadow-sm overflow-visible", FEED_ACCENT[item.type] ?? "border-t-slate-300")}>
+    <div className={isMedia
+      ? "overflow-hidden rounded-xl"
+      : "rounded-xl border bg-[hsl(var(--card))] shadow-sm overflow-visible"
+    }>
 
       {/* Header */}
-      <div className="flex gap-3 px-5 pt-4 pb-3">
-        <AvatarDisplay name={item.actor?.name ?? "?"} avatarUrl={item.actor?.avatarUrl ?? null} size={40} />
+      <div className="flex gap-2.5 px-4 pt-3 pb-2.5">
+        <AvatarDisplay name={item.actor?.name ?? "?"} avatarUrl={item.actor?.avatarUrl ?? null} size={34} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 justify-between">
-            <div className="flex items-center gap-1.5">
-              <span className="font-semibold text-sm">{item.actor?.name ?? "Sistema"}</span>
+            <div className="flex items-center gap-1">
+              <span className="font-semibold text-[13px]">{item.actor?.name ?? "Sistema"}</span>
               <span className="text-[hsl(var(--muted-foreground))] text-xs">·</span>
-              <span className="text-xs text-[hsl(var(--muted-foreground))]">{timeAgo(item.createdAt)}</span>
+              <span className="text-[11px] text-[hsl(var(--muted-foreground))]">{timeAgo(item.createdAt)}</span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              {FEED_ICON[item.type]}
+              {!isMedia && FEED_ICON[item.type]}
               {canManage && item.type === "manual_post" && !editing && (
                 <>
                   {isAuthor && (
@@ -384,19 +414,38 @@ function FeedCard({ item, myUserId, myRole, users, onReact, updatedReactions, on
                   </button>
                 </>
               )}
+              {isMedia && mediaContent && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors p-0.5 rounded">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem onClick={handleDownload} className="gap-2 cursor-pointer">
+                      <Download className="h-3.5 w-3.5" />
+                      Baixar
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleCopyLink} className="gap-2 cursor-pointer">
+                      <Link className="h-3.5 w-3.5" />
+                      Copiar link
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </div>
-          <p className="text-xs text-[hsl(var(--muted-foreground))] leading-tight">{item.title}</p>
+          <p className="text-[11px] text-[hsl(var(--muted-foreground))] leading-tight">{item.title}</p>
         </div>
       </div>
 
       {/* Content */}
       {editing ? (
-        <div className="px-5 pb-4 space-y-2">
+        <div className="px-4 pb-3 space-y-2">
           <MentionTextarea
             value={editText} onChange={setEditText} users={users}
             placeholder="Editar publicação..."
-            rows={3} className="w-full text-[15px] leading-relaxed border rounded-xl px-3 py-2 bg-[hsl(var(--muted))]/30"
+            rows={3} className="w-full text-sm leading-relaxed border rounded-lg px-3 py-2 bg-[hsl(var(--muted))]/30"
           />
           <div className="flex gap-2 justify-end">
             <button onClick={() => setEditing(false)}
@@ -409,17 +458,22 @@ function FeedCard({ item, myUserId, myRole, users, onReact, updatedReactions, on
             </button>
           </div>
         </div>
+      ) : isMedia && mediaContent ? (
+        <FeedPlayer
+          src={`/api/tasks/${mediaContent.taskId}/files/${mediaContent.fileId}/stream`}
+          mimeType={mediaContent.mimeType}
+        />
       ) : item.content ? (
-        <div className="px-5 pb-4">
-          <p className="text-[15px] leading-relaxed">{renderMentions(item.content)}</p>
+        <div className="px-4 pb-3">
+          <p className="text-sm leading-relaxed">{renderMentions(item.content)}</p>
         </div>
       ) : null}
 
       {/* Divider */}
-      <div className="border-t mx-5" />
+      {!isMedia && <div className="border-t mx-4" />}
 
       {/* Actions bar */}
-      <div className="px-5 py-2.5 flex items-center gap-4">
+      <div className={cn("px-4 py-2 flex items-center gap-3", isMedia && "border-t-0")}>
         <EmojiReactions
           feedItemId={item.id}
           reactions={reactions}
@@ -439,18 +493,18 @@ function FeedCard({ item, myUserId, myRole, users, onReact, updatedReactions, on
       {expanded && (
         <div className="border-t">
           {loadingComments ? (
-            <p className="text-xs text-[hsl(var(--muted-foreground))] px-5 py-3">Carregando...</p>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] px-4 py-2.5">Carregando...</p>
           ) : (
             <div className="divide-y">
               {comments.map(c => (
-                <div key={c.id} className="flex gap-3 px-5 py-3 group">
-                  <AvatarDisplay name={c.userName ?? "?"} avatarUrl={c.userAvatar} size={32} />
+                <div key={c.id} className="flex gap-2.5 px-4 py-2.5 group">
+                  <AvatarDisplay name={c.userName ?? "?"} avatarUrl={c.userAvatar} size={28} />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs">
                       <strong className="font-semibold mr-1">{c.userName ?? "?"}</strong>
                       {renderMentions(c.content)}
                     </p>
-                    <span className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 block">{timeAgo(c.createdAt)}</span>
+                    <span className="text-[11px] text-[hsl(var(--muted-foreground))] mt-0.5 block">{timeAgo(c.createdAt)}</span>
                   </div>
                   {(c.userId === myUserId || ["admin", "supervisor"].includes(myRole)) && (
                     <button onClick={() => deleteComment(c.id)}
@@ -463,10 +517,10 @@ function FeedCard({ item, myUserId, myRole, users, onReact, updatedReactions, on
             </div>
           )}
 
-          {/* Comment input — Instagram style */}
-          <div className="flex gap-3 px-5 py-3 border-t items-start">
-            <AvatarDisplay name={user?.name ?? "?"} avatarUrl={user?.avatarUrl ?? null} size={32} />
-            <div className="flex-1 flex items-end gap-2 bg-[hsl(var(--muted))]/40 rounded-2xl px-3 py-2">
+          {/* Comment input */}
+          <div className="flex gap-2.5 px-4 py-2.5 border-t items-start">
+            <AvatarDisplay name={user?.name ?? "?"} avatarUrl={user?.avatarUrl ?? null} size={28} />
+            <div className="flex-1 flex items-end gap-2 bg-[hsl(var(--muted))]/40 rounded-xl px-3 py-2">
               <MentionTextarea
                 value={commentText}
                 onChange={setCommentText}
@@ -552,14 +606,14 @@ export default function FeedPage() {
   const myInitials = user?.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() ?? "?";
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
+    <div className="max-w-[520px] mx-auto space-y-3">
 
-      {/* ── Compose box — Twitter/Instagram style ─────────────── */}
-      <div className="relative rounded-2xl border bg-[hsl(var(--card))] shadow-sm overflow-visible">
-        <div className="flex gap-3 p-4">
+      {/* ── Compose box ─────────────────────────────────────────── */}
+      <div className="relative rounded-xl border bg-[hsl(var(--card))] shadow-sm overflow-visible">
+        <div className="flex gap-2.5 p-3">
           {/* Avatar */}
           <div className="shrink-0 pt-0.5">
-            <AvatarDisplay name={user?.name ?? "?"} avatarUrl={user?.avatarUrl ?? null} size={40} />
+            <AvatarDisplay name={user?.name ?? "?"} avatarUrl={user?.avatarUrl ?? null} size={34} />
           </div>
 
           {/* Compose area */}
@@ -570,18 +624,18 @@ export default function FeedPage() {
               users={allUsers}
               placeholder="No que você está pensando?"
               rows={postFocused || postText ? 4 : 2}
-              className={cn("w-full text-[15px] leading-relaxed transition-all", postFocused || postText ? "min-h-[90px]" : "min-h-[44px]")}
+              className={cn("w-full text-sm leading-relaxed transition-all", postFocused || postText ? "min-h-[80px]" : "min-h-[38px]")}
             />
 
             {(postFocused || postText) && (
-              <div className="flex items-center justify-between pt-3 mt-2 border-t">
-                <span className="text-xs text-[hsl(var(--muted-foreground))]">@ para mencionar · Ctrl+Enter publica</span>
+              <div className="flex items-center justify-between pt-2 mt-2 border-t">
+                <span className="text-[11px] text-[hsl(var(--muted-foreground))]">@ para mencionar · Ctrl+Enter</span>
                 <div className="flex items-center gap-2">
                   <button onClick={() => { setPostText(""); setPostFocused(false); }}
                     className="text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors px-2 py-1">
                     Cancelar
                   </button>
-                  <Button size="sm" onClick={publish} disabled={posting || !postText.trim()} className="rounded-full px-5">
+                  <Button size="sm" onClick={publish} disabled={posting || !postText.trim()} className="rounded-full px-4 h-7 text-xs">
                     Publicar
                   </Button>
                 </div>

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, CalendarDays, Calendar as CalIcon, Plus, X, ChevronDown } from "lucide-react";
 import { toLocalDate } from "@/lib/utils";
 import { TaskFormModal } from "@/components/task-form-modal";
+import { EscalaModal } from "@/components/EscalaModal";
 
 interface CalendarTask {
   id: number;
@@ -38,7 +39,6 @@ const STATUS_OPTS = [
   { value: "pending",     label: "Pendente"     },
   { value: "in_progress", label: "Em andamento" },
   { value: "review",      label: "Aprovação"    },
-  { value: "in_revision", label: "Em alteração" },
   { value: "completed",   label: "Aprovadas"    },
   { value: "paused",      label: "Pausadas"     },
   { value: "cancelled",   label: "Canceladas"   },
@@ -287,6 +287,7 @@ export default function Calendar() {
           >
             Hoje
           </button>
+
 
           {/* View toggle */}
           <div className="flex items-center rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-0.5 shrink-0">
@@ -546,15 +547,26 @@ export default function Calendar() {
         )}
       </div>
 
-      {isCoord && (
+      {/* Criação via ESCALA (sem editTaskId) */}
+      {isCoord && !editTaskId && (
+        <EscalaModal
+          open={dialogOpen}
+          onClose={() => setDialogOpen(false)}
+          onCreated={() => { setDialogOpen(false); loadCalendar(); }}
+          initialDate={initialDueDate || undefined}
+        />
+      )}
+
+      {/* Edição de metadados (com editTaskId) */}
+      {isCoord && !!editTaskId && (
         <TaskFormModal
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           onSaved={loadCalendar}
           editTaskId={editTaskId}
-          initialDueDate={initialDueDate}
         />
       )}
+
     </div>
   );
 }

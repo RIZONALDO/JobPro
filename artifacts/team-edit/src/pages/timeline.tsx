@@ -37,7 +37,6 @@ type ZoomMode = "week" | "month" | "year";
 const BAR_COLOR: Record<string, string> = {
   pending:     "#94a3b8",
   in_progress: "#3b82f6",
-  in_revision: "#f97316",
   review:      "#f59e0b",
   completed:   "#22c55e",
   paused:      "#a855f7",

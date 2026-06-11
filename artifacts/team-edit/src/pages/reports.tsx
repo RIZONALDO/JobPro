@@ -22,7 +22,7 @@ interface ReportTask {
   assignee: Person | null; coordinator: Person | null;
 }
 
-const STATUS_ORDER    = ["pending", "in_progress", "in_revision", "review", "completed"];
+const STATUS_ORDER    = ["pending", "in_progress", "review", "completed"];
 const COMPLEXITY_LABEL: Record<string, string> = { low: "Simples", medium: "Moderada", high: "Complexa" };
 const PRIORITY_LABEL:   Record<string, string> = { high: "Alta", medium: "Média", low: "Baixa" };
 const COORD_ROLES     = ["admin", "supervisor", "coordinator"];
@@ -38,7 +38,6 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   pending:     { bg: "#f1f5f9", color: "#475569" },
   in_progress: { bg: "#dbeafe", color: "#1d4ed8" },
   review:      { bg: "#ede9fe", color: "#6d28d9" },
-  in_revision: { bg: "#fef3c7", color: "#92400e" },
   completed:   { bg: "#d1fae5", color: "#065f46" },
   cancelled:   { bg: "#fee2e2", color: "#991b1b" },
   paused:      { bg: "#f3e8ff", color: "#6b21a8" },
@@ -125,10 +124,10 @@ export default function Reports() {
     setFCoord(defaultCoord); setFPriority("all"); setFComplexity("all"); setSearch("");
   };
 
-  const total     = filtered.length;
-  const completed = filtered.filter(t => t.status === "completed").length;
-  const inRev     = filtered.filter(t => t.status === "in_revision").length;
-  const revTotal  = filtered.reduce((s, t) => s + t.revisionCount, 0);
+  const total       = filtered.length;
+  const completed   = filtered.filter(t => t.status === "completed").length;
+  const inReview    = filtered.filter(t => t.status === "review").length;
+  const revTotal    = filtered.reduce((s, t) => s + t.revisionCount, 0);
 
   // ── Gerar documento HTML limpo em nova aba ───────────────────────────────
   const openDocument = () => {
@@ -223,7 +222,7 @@ export default function Reports() {
 <div class="summary">
   <div class="stat"><div class="lbl">Total no período</div><div class="val">${total}</div></div>
   <div class="stat"><div class="lbl">Concluídas</div><div class="val" style="color:#16a34a">${completed}</div></div>
-  <div class="stat"><div class="lbl">Em revisão</div><div class="val" style="color:#f97316">${inRev}</div></div>
+  <div class="stat"><div class="lbl">Em revisão</div><div class="val" style="color:#f59e0b">${inReview}</div></div>
   <div class="stat"><div class="lbl">Revisões totais</div><div class="val" style="color:#6366f1">${revTotal}</div></div>
 </div>
 
@@ -348,7 +347,7 @@ export default function Reports() {
         {[
           { label: "Total no período", value: total,     cls: "" },
           { label: "Concluídas",       value: completed, cls: "text-green-600" },
-          { label: "Em revisão",       value: inRev,     cls: "text-orange-500" },
+          { label: "Em revisão",       value: inReview,  cls: "text-amber-500" },
           { label: "Revisões totais",  value: revTotal,  cls: "text-[hsl(var(--primary))]" },
         ].map(k => (
           <div key={k.label} className="rounded-xl border bg-[hsl(var(--card))] card-float p-4">

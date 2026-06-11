@@ -1,12 +1,208 @@
 import { Router } from "express";
-import { db, tasksTable, usersTable, taskRevisionsTable, taskEventsTable, taskEditorsTable, taskFilesTable } from "@workspace/db";
-import { eq, ne, desc, asc, and, or, gte, lte, isNotNull, lt, inArray, isNull, sql } from "drizzle-orm";
+import { db, tasksTable, usersTable, taskRevisionsTable, taskEventsTable, taskEditorsTable, taskFilesTable, taskCoordinatorsTable, reviewCommentsTable, reviewReadsTable, taskAllocationsTable, appSettingsTable } from "@workspace/db";
+import { eq, ne, desc, asc, and, or, gte, lte, isNotNull, lt, inArray, isNull, sql, like } from "drizzle-orm";
 import { requireAuth, requireCoordinator } from "../lib/auth.js";
 import { notify } from "../lib/notify.js";
 import { broadcastTaskChange, broadcastSubtaskProgress, broadcastSubtaskChanged } from "../lib/broadcast.js";
 import { createFeedItem } from "../lib/feed.js";
 
 const router = Router();
+
+// ── ESCALA re-alocação ────────────────────────────────────────────────────────
+const DAILY_CAP_REALLOC = (dow: number) => (dow === 0 ? 0 : dow === 6 ? 5 : 8);
+const WORK_START = 8;
+function toDateStrLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+// Date-only strings (no "T") são parseadas como UTC midnight, causando drift em fuso UTC-3.
+// Este helper normaliza para noon local, garantindo que a data extraída via toDateStrLocal() seja sempre correta.
+function parseDateSafe(raw: unknown): Date | null | "invalid" {
+  if (raw == null || raw === "") return null;
+  const s = String(raw);
+  // Com offset explícito ou timestamp: parse direto
+  const d = s.includes("T") ? new Date(s) : new Date(s + "T12:00:00");
+  return isNaN(d.getTime()) ? "invalid" : d;
+}
+function hoursToTime(h: number): string {
+  const hh = Math.floor(h);
+  const mm = Math.round((h - hh) * 60);
+  return `${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
+}
+
+// ── Regras de expediente ──────────────────────────────────────────────────────
+// Horário de encerramento por dia da semana (local): seg-sex 17:30, sab 13:00
+const BUSINESS_END: Record<number, number> = { 1: 17.5, 2: 17.5, 3: 17.5, 4: 17.5, 5: 17.5, 6: 13.0 };
+
+async function getHolidays(): Promise<Set<string>> {
+  const [row] = await db.select({ value: appSettingsTable.value })
+    .from(appSettingsTable)
+    .where(eq(appSettingsTable.key, "calendar_holidays"));
+  try {
+    const arr = JSON.parse(row?.value ?? "[]");
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch { return new Set(); }
+}
+
+function isWorkingDay(d: Date, holidays: Set<string>): boolean {
+  const dow = d.getDay();
+  if (dow === 0) return false; // domingo
+  return !holidays.has(toDateStrLocal(d));
+}
+
+// Retorna o próximo dia útil a partir de `from` (exclusivo — não inclui o próprio `from`)
+function nextWorkingDay(from: Date, holidays: Set<string>): Date {
+  const d = new Date(from);
+  d.setHours(12, 0, 0, 0); // noon local, evita drift
+  do { d.setDate(d.getDate() + 1); } while (!isWorkingDay(d, holidays));
+  return d;
+}
+
+// Retorna true se o horário atual já passou do encerramento do expediente (ou é domingo)
+function isAfterBusinessHours(now: Date, holidays: Set<string>): boolean {
+  const dow = now.getDay();
+  if (!isWorkingDay(now, holidays)) return true;
+  const endH = BUSINESS_END[dow];
+  if (endH === undefined) return true; // dia sem expediente definido
+  const currentH = now.getHours() + now.getMinutes() / 60;
+  return currentH >= endH;
+}
+
+// Capacidade bruta de um dia (sem considerar carga existente)
+function dailyCapBrute(d: Date, holidays: Set<string>): number {
+  if (!isWorkingDay(d, holidays)) return 0;
+  return d.getDay() === 6 ? 5 : 8;
+}
+
+// Data mais cedo possível para concluir effortHours a partir de start (agenda vazia)
+// Usado para validar se a janela [start, deadline] é matematicamente possível
+function calcMinDeadline(start: Date, effortHours: number, holidays: Set<string>): Date {
+  let remaining = Math.round(effortHours * 100) / 100;
+  const d = new Date(start);
+  d.setHours(8, 0, 0, 0);
+  while (remaining > 0.01) {
+    const cap = dailyCapBrute(d, holidays);
+    if (cap > 0) {
+      remaining = Math.round((remaining - Math.min(cap, remaining)) * 100) / 100;
+      if (remaining <= 0.01) return new Date(d);
+    }
+    d.setDate(d.getDate() + 1);
+    d.setHours(8, 0, 0, 0);
+  }
+  return d;
+}
+
+// Calcula o startDate efetivo para uma nova tarefa:
+// - Dentro do expediente: hoje (noon local)
+// - Após o expediente ou feriado/domingo: próximo dia útil
+async function effectiveStartDate(holidays: Set<string>): Promise<Date> {
+  const now = new Date();
+  if (isAfterBusinessHours(now, holidays)) {
+    return nextWorkingDay(now, holidays);
+  }
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  return today;
+}
+
+/**
+ * Re-calcula alocações para uma tarefa ESCALA quando effortHours muda.
+ * Não faz cascata — apenas procura os próximos slots livres do editor.
+ */
+async function reallocTask(
+  taskId:      number,
+  editorId:    number,
+  effortHours: number,
+  startDate:   Date | null,
+  deadline:    Date | null,
+): Promise<void> {
+  const now      = new Date();
+  const start    = startDate && startDate > now ? startDate : now;
+  const end      = deadline && deadline > now
+    ? deadline
+    : new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000); // +15 dias corridos
+
+  const slots: { workDate: string; allocatedHours: number; startTime: string; endTime: string }[] = [];
+  let remaining = effortHours;
+
+  const current = new Date(start);
+  current.setHours(12, 0, 0, 0);
+
+  while (current <= end && remaining > 0.01) {
+    const ds  = toDateStrLocal(current);
+    const dow = current.getDay();
+    const cap = DAILY_CAP_REALLOC(dow);
+
+    if (cap > 0) {
+      const [usedRow] = await db
+        .select({ total: sql<number>`COALESCE(SUM(${taskAllocationsTable.allocatedHours}), 0)::float` })
+        .from(taskAllocationsTable)
+        .where(and(
+          eq(taskAllocationsTable.editorId, editorId),
+          eq(taskAllocationsTable.workDate, ds),
+          ne(taskAllocationsTable.taskId, taskId),
+          isNotNull(taskAllocationsTable.allocatedHours),
+        ));
+      const used      = Number(usedRow?.total ?? 0);
+      const available = Math.round((cap - used) * 100) / 100;
+
+      if (available > 0.01) {
+        const allocate = Math.round(Math.min(available, remaining) * 100) / 100;
+        const startH   = WORK_START + used;
+        slots.push({
+          workDate:       ds,
+          allocatedHours: allocate,
+          startTime:      hoursToTime(startH),
+          endTime:        hoursToTime(startH + allocate),
+        });
+        remaining = Math.round((remaining - allocate) * 100) / 100;
+      }
+    }
+    current.setDate(current.getDate() + 1);
+  }
+
+  await db.transaction(async tx => {
+    await tx.delete(taskAllocationsTable).where(eq(taskAllocationsTable.taskId, taskId));
+    if (slots.length > 0) {
+      await tx.insert(taskAllocationsTable).values(
+        slots.map(s => ({ taskId, editorId, ...s }))
+      );
+    }
+  });
+}
+
+// Retorna os userIds dos co-coordenadores de uma tarefa (exclui o titular)
+async function getCoCoordIds(taskId: number): Promise<number[]> {
+  const rows = await db
+    .select({ userId: taskCoordinatorsTable.userId })
+    .from(taskCoordinatorsTable)
+    .where(eq(taskCoordinatorsTable.taskId, taskId));
+  return rows.map(r => r.userId);
+}
+
+// Verifica se userId é co-coord da tarefa
+async function isCoCoord(taskId: number, userId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ userId: taskCoordinatorsTable.userId })
+    .from(taskCoordinatorsTable)
+    .where(and(eq(taskCoordinatorsTable.taskId, taskId), eq(taskCoordinatorsTable.userId, userId)));
+  return !!row;
+}
+
+// Notifica titular + todos os co-coords de uma tarefa
+async function notifyAllCoords(
+  task: { id: number; createdById: number | null },
+  excludeUserId: number | null,
+  type: string,
+  title: string,
+  message: string,
+) {
+  const coIds = await getCoCoordIds(task.id);
+  const targets = [...new Set([
+    ...(task.createdById ? [task.createdById] : []),
+    ...coIds,
+  ])].filter(id => id !== excludeUserId);
+  await Promise.all(targets.map(uid => notify(uid, type, title, message, { taskId: task.id })));
+}
 
 function fmtCode(num: number, year: number): string {
   return `${String(num).padStart(3, "0")}.${String(year).padStart(2, "0")}`;
@@ -36,7 +232,7 @@ async function recalculateParentStatus(parentId: number, changedById: number): P
 
     const allCompleted   = subtasks.every(s => s.status === "completed");
     const allCancelled   = subtasks.every(s => s.status === "cancelled");
-    const anyActive      = subtasks.some(s => ["in_progress", "review", "in_revision", "reopened"].includes(s.status));
+    const anyActive      = subtasks.some(s => ["in_progress", "review", "reopened"].includes(s.status));
     const anyPending     = subtasks.some(s => s.status === "pending");
 
     let newStatus: string | null = null;
@@ -58,6 +254,11 @@ async function recalculateParentStatus(parentId: number, changedById: number): P
       .set({ status: newStatus })
       .where(eq(tasksTable.id, parentId));
 
+    // Limpa alocações ESCALA do pai quando completa/cancela por rollup de subtarefas
+    if (newStatus === "completed" || newStatus === "cancelled") {
+      await db.delete(taskAllocationsTable).where(eq(taskAllocationsTable.taskId, parentId));
+    }
+
     await db.insert(taskEventsTable).values({
       taskId: parentId,
       fromStatus: parent.status,
@@ -74,13 +275,6 @@ async function recalculateParentStatus(parentId: number, changedById: number): P
         `Todas as subtarefas de "${parent.title}" foram concluídas`,
         { taskId: parentId }
       );
-      await createFeedItem({
-        type: "task_completed",
-        title: `Multi-tarefa concluída: "${parent.title}"`,
-        actorId: changedById,
-        entityId: parentId,
-        entityType: "task",
-      }).catch(() => {});
     }
 
     // Broadcast progress update
@@ -113,7 +307,7 @@ async function getSubtaskProgressMap(parentIds: number[]): Promise<Map<number, {
     const entry = map.get(pid)!;
     entry.total++;
     if (row.status === "completed") entry.completed++;
-    else if (["in_progress", "review", "in_revision", "reopened"].includes(row.status)) entry.inProgress++;
+    else if (["in_progress", "review", "reopened"].includes(row.status)) entry.inProgress++;
     else if (row.status === "pending") entry.pending++;
   }
 
@@ -128,7 +322,7 @@ async function getSubtaskProgressMap(parentIds: number[]): Promise<Map<number, {
 // ── Create task ──────────────────────────────────────────────────────────────
 router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
   const { title, description, startDate, dueDate, priority, complexity, assignedToId, editorIds,
-          folderUrl, client, color, status, taskType, parentTaskId, subtasks } = req.body ?? {};
+          folderUrl, client, color, status, taskType, parentTaskId, subtasks, effortHours } = req.body ?? {};
 
   if (!title) { res.status(400).json({ error: "Título obrigatório" }); return; }
 
@@ -136,9 +330,73 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
   const parsedAssignee = assignedToId ? parseInt(String(assignedToId), 10) : null;
   const initialStatus = status === "rascunho" ? "rascunho" : "pending";
 
+  // Valida e parseia datas usando parseDateSafe (evita drift UTC com date-only strings)
+  const parsedStart = parseDateSafe(startDate);
+  const parsedDue   = parseDateSafe(dueDate);
+  if (parsedStart === "invalid") { res.status(400).json({ error: "Data de início inválida" }); return; }
+  if (parsedDue   === "invalid") { res.status(400).json({ error: "Prazo inválido" }); return; }
+  if (parsedStart && parsedDue && parsedStart > parsedDue) {
+    res.status(400).json({ error: "A data de início não pode ser depois do prazo" }); return;
+  }
+
+  // ── Regras de expediente (apenas para tarefas publicadas, não rascunhos) ──────
+  const holidays = await getHolidays();
+  const todayStr = toDateStrLocal(new Date());
+
+  // Prazo retroativo: dueDate no passado nunca é permitido
+  if (parsedDue && initialStatus !== "rascunho") {
+    if (toDateStrLocal(parsedDue) < todayStr) {
+      res.status(400).json({ error: "O prazo não pode ser uma data passada" }); return;
+    }
+  }
+
+  // startDate: se informado no passado, rejeita
+  let resolvedStart: Date | null = parsedStart;
+  if (parsedStart && initialStatus !== "rascunho") {
+    const startStr = toDateStrLocal(parsedStart);
+    if (startStr < todayStr) {
+      res.status(400).json({ error: "A data de início não pode ser retroativa" }); return;
+    }
+    // startDate = hoje mas já passou do expediente → avança para próximo dia útil
+    if (startStr === todayStr && isAfterBusinessHours(new Date(), holidays)) {
+      resolvedStart = nextWorkingDay(new Date(), holidays);
+    }
+  }
+
+  // startDate não informado → calcula automaticamente (hoje ou próximo dia útil)
+  if (!resolvedStart && initialStatus !== "rascunho") {
+    resolvedStart = await effectiveStartDate(holidays);
+  }
+
+  // Valida que o resolvedStart (após auto-shift) não ultrapassa o dueDate
+  if (resolvedStart && parsedDue && initialStatus !== "rascunho") {
+    if (toDateStrLocal(resolvedStart) > toDateStrLocal(parsedDue)) {
+      res.status(400).json({ error: "O prazo precisa ser posterior à data de início. Verifique as datas." }); return;
+    }
+  }
+
+  // Valida viabilidade da janela: effortHours precisa caber entre startDate e dueDate
+  // mesmo com agenda completamente vazia (se não cabe assim, nunca vai caber)
+  if (resolvedStart && parsedDue && effortHours != null && initialStatus !== "rascunho") {
+    const effort = parseFloat(String(effortHours));
+    if (!isNaN(effort) && effort > 0) {
+      const minEnd    = calcMinDeadline(resolvedStart, effort, holidays);
+      const minEndStr = toDateStrLocal(minEnd);
+      const dueStr    = toDateStrLocal(parsedDue);
+      if (dueStr < minEndStr) {
+        res.status(400).json({
+          error: `Janela inviável: ${effort}h de trabalho requer prazo mínimo de ${minEndStr}. O prazo informado (${dueStr}) é insuficiente.`,
+          code: "WINDOW_TOO_TIGHT",
+          theoreticalMinDeadline: minEndStr,
+        });
+        return;
+      }
+    }
+  }
+
   // Multi-task doesn't require editor or dueDate at the parent level
   if (resolvedType !== "multi_task") {
-    if (initialStatus === "pending" && !dueDate) {
+    if (initialStatus === "pending" && !parsedDue) {
       res.status(400).json({ error: "Informe o prazo antes de publicar a tarefa" }); return;
     }
     const allEditorIdsCheck = new Set<number>();
@@ -157,18 +415,7 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
     }
   }
 
-  // ── Bloqueio server-side de capacidade (fecha race condition) ─────────────
-  // Se a tarefa tem startDate futuro, tarefas do editor que encerram antes dessa data não contam
-  if (resolvedType !== "multi_task" && parsedAssignee && initialStatus !== "rascunho") {
-    const fromDate = startDate ? new Date(String(startDate)) : undefined;
-    const score = await editorScore(parsedAssignee, undefined, fromDate);
-    const newW   = COMPLEXITY_WEIGHT[String(complexity ?? "medium")] ?? 6;
-    if (score + newW > 12) {
-      const [ed] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, parsedAssignee));
-      res.status(422).json({ error: `${ed?.name ?? "Editor"} está no limite de capacidade (${score} pts). Reduza a complexidade, escolha outro editor ou ajuste as datas.` });
-      return;
-    }
-  }
+  // Capacidade gerenciada pelo ESCALA — sem bloqueio por pontos legado.
 
   const seqResult = await db.execute<{ nextval: string }>(sql`SELECT nextval('te_task_number_seq') AS nextval`);
   const taskNumber = Number((seqResult.rows ?? seqResult)[0].nextval);
@@ -181,8 +428,8 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
     description: description ? String(description) : null,
     client: client ? String(client) : null,
     color: color ? String(color) : "#6366f1",
-    startDate: startDate ? new Date(String(startDate)) : null,
-    dueDate: dueDate ? new Date(String(dueDate)) : null,
+    startDate: resolvedStart,
+    dueDate: parsedDue,
     priority: priority ?? "medium",
     complexity: complexity ?? "medium",
     status: initialStatus,
@@ -190,6 +437,7 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
     folderUrl: folderUrl ? String(folderUrl) : null,
     createdById: req.session.userId,
     taskType: resolvedType,
+    effortHours: effortHours != null ? parseFloat(String(effortHours)) : null,
   }).returning();
 
   // For regular tasks: add editors to junction table
@@ -232,7 +480,7 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
         description: sub.description ? String(sub.description) : null,
         client: client ? String(client) : null,
         color: color ? String(color) : "#6366f1",
-        dueDate: sub.dueDate ? new Date(String(sub.dueDate)) : (dueDate ? new Date(String(dueDate)) : null),
+        dueDate: (() => { const d = parseDateSafe(sub.dueDate) ?? parseDateSafe(dueDate); return d && d !== "invalid" ? d : null; })(),
         priority: sub.priority ?? priority ?? "medium",
         complexity: sub.complexity ?? complexity ?? "medium",
         status: initialStatus === "rascunho" ? "rascunho" : "pending",
@@ -276,7 +524,23 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     .where(inArray(usersTable.role, ["coordinator", "supervisor", "admin"]));
   const coordIds = coordUsers.map(u => u.id);
   if (coordIds.length === 0) { res.json([]); return; }
-  const ownerCondition = inArray(tasksTable.createdById, coordIds);
+
+  // Tarefas onde o user é co-coord (para incluir no overview)
+  const coCoordTaskRows = await db
+    .select({ taskId: taskCoordinatorsTable.taskId })
+    .from(taskCoordinatorsTable)
+    .where(eq(taskCoordinatorsTable.userId, userId));
+  const coCoordTaskIds = coCoordTaskRows.map(r => r.taskId);
+
+  // Condição base: leva em conta o filtro de createdById sem excluir co-coord tasks
+  const parsedCreatedBy = createdById ? parseInt(String(createdById), 10) : null;
+  const ownedByCoord = parsedCreatedBy
+    ? and(inArray(tasksTable.createdById, coordIds), eq(tasksTable.createdById, parsedCreatedBy))!
+    : inArray(tasksTable.createdById, coordIds);
+
+  const ownerCondition = coCoordTaskIds.length
+    ? or(ownedByCoord, inArray(tasksTable.id, coCoordTaskIds))!
+    : ownedByCoord;
 
   const conditions: any[] = [
     ownerCondition,
@@ -294,7 +558,7 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     conditions.push(ne(tasksTable.status, "cancelled"));
   }
   if (assignedToId) conditions.push(eq(tasksTable.assignedToId, parseInt(String(assignedToId), 10)));
-  if (createdById) conditions.push(eq(tasksTable.createdById, parseInt(String(createdById), 10)));
+  // createdById já integrado no ownerCondition acima
 
   const rows = await db
     .select()
@@ -317,6 +581,25 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
         .where(inArray(usersTable.id, personIds))
     : [];
   const personMap = new Map(persons.map(p => [p.id, p]));
+
+  // Co-coordenadores por tarefa
+  const coCoordRows = taskIds.length
+    ? await db
+        .select({
+          taskId:    taskCoordinatorsTable.taskId,
+          userId:    usersTable.id,
+          name:      usersTable.name,
+          avatarUrl: usersTable.avatarUrl,
+        })
+        .from(taskCoordinatorsTable)
+        .innerJoin(usersTable, eq(taskCoordinatorsTable.userId, usersTable.id))
+        .where(inArray(taskCoordinatorsTable.taskId, taskIds))
+    : [];
+  const coCoordMap = new Map<number, { id: number; name: string; avatarUrl: string | null }[]>();
+  for (const c of coCoordRows) {
+    if (!coCoordMap.has(c.taskId)) coCoordMap.set(c.taskId, []);
+    coCoordMap.get(c.taskId)!.push({ id: c.userId, name: c.name, avatarUrl: c.avatarUrl });
+  }
 
   const editorRows = taskIds.length
     ? await db
@@ -401,6 +684,36 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     r.hasVideo && r.hasAudio ? "mixed" : r.hasVideo ? "video" : r.hasAudio ? "audio" : "other",
   ]));
 
+  // Unread review comment count per task (comments not by current user, after last_read_at)
+  const overviewUnreadComments = taskIds.length
+    ? await db
+        .select({ taskId: reviewCommentsTable.taskId, count: sql<number>`count(*)::int` })
+        .from(reviewCommentsTable)
+        .leftJoin(
+          reviewReadsTable,
+          and(eq(reviewReadsTable.taskId, reviewCommentsTable.taskId), eq(reviewReadsTable.userId, userId))
+        )
+        .where(and(
+          inArray(reviewCommentsTable.taskId, taskIds),
+          ne(reviewCommentsTable.userId, userId),
+          or(isNull(reviewReadsTable.lastReadAt), sql`${reviewCommentsTable.createdAt} > ${reviewReadsTable.lastReadAt}`)
+        ))
+        .groupBy(reviewCommentsTable.taskId)
+    : [];
+  const overviewReviewCommentMap = new Map(overviewUnreadComments.map(r => [r.taskId, Number(r.count)]));
+
+  // Quais tarefas têm alocação HOJE (ESCALA v2)
+  const overviewTodayStr = new Date().toISOString().slice(0, 10);
+  const overviewTodayAllocIds: Set<number> = taskIds.length
+    ? new Set((await db.select({ taskId: taskAllocationsTable.taskId })
+        .from(taskAllocationsTable)
+        .where(and(
+          inArray(taskAllocationsTable.taskId, taskIds),
+          eq(taskAllocationsTable.workDate, overviewTodayStr),
+          sql`${taskAllocationsTable.allocatedHours} > 0`,
+        ))).map(a => a.taskId))
+    : new Set();
+
   res.json(rows.map(r => ({
     id: r.id,
     taskCode: fmtCode(r.taskNumber, r.taskYear),
@@ -421,19 +734,27 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
       ? subtaskEditorsMap.get(r.id) ?? []
       : editorsMap.get(r.id) ?? [],
     coordinator: r.createdById ? (personMap.get(r.createdById) ?? null) : null,
+    coCoordinators: coCoordMap.get(r.id) ?? [],
     isOwn: r.createdById === userId,
+    isCoCoord: coCoordTaskIds.includes(r.id),
     updatedAt: r.updatedAt,
     reviewedAt: overviewReviewedAtMap.get(r.id)?.toISOString() ?? null,
     subtaskProgress: r.taskType === "multi_task" ? (progressMap.get(r.id) ?? { total: 0, completed: 0, inProgress: 0, pending: 0 }) : null,
-    fileCount: overviewFileCountMap.get(r.id) ?? 0,
-    fileKind:  overviewFileCountMap.get(r.id) ? (overviewFileKindMap.get(r.id) ?? null) : null,
+    fileCount:           overviewFileCountMap.get(r.id) ?? 0,
+    fileKind:            overviewFileCountMap.get(r.id) ? (overviewFileKindMap.get(r.id) ?? null) : null,
+    unreadCommentCount:  overviewReviewCommentMap.get(r.id) ?? 0,
+    effortHours:         r.effortHours ?? null,
+    editorComplexitySet: r.editorComplexitySet,
+    editorEstimateHours: r.editorEstimateHours ?? null,
+    editorAcceptedAt:    r.editorAcceptedAt ?? null,
+    hasAllocToday:       overviewTodayAllocIds.has(r.id),
   })));
 });
 
 // ── Status history (stacked line chart data) ──────────────────────────────────
 router.get("/tasks/status-history", requireAuth, async (req, res): Promise<void> => {
   const DAYS = 14;
-  const STATUS_KEYS = ["pending", "in_progress", "in_revision", "review", "completed", "paused", "cancelled"];
+  const STATUS_KEYS = ["pending", "in_progress", "review", "completed", "paused", "cancelled"];
 
   const nowMs = Date.now();
 
@@ -547,6 +868,12 @@ router.get("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     .innerJoin(usersTable, eq(taskEditorsTable.userId, usersTable.id))
     .where(eq(taskEditorsTable.taskId, id));
 
+  const coCoordRows = await db
+    .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+    .from(taskCoordinatorsTable)
+    .innerJoin(usersTable, eq(taskCoordinatorsTable.userId, usersTable.id))
+    .where(eq(taskCoordinatorsTable.taskId, id));
+
   // If multi_task: fetch subtasks with their editors
   let subtasks: object[] = [];
   let subtaskProgress: { total: number; completed: number; inProgress: number; pending: number } | null = null;
@@ -601,7 +928,7 @@ router.get("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
 
     const totalSub = subRows.length;
     const completedSub = subRows.filter(s => s.status === "completed").length;
-    const inProgressSub = subRows.filter(s => ["in_progress", "review", "in_revision", "reopened"].includes(s.status)).length;
+    const inProgressSub = subRows.filter(s => ["in_progress", "review", "reopened"].includes(s.status)).length;
     const pendingSub = subRows.filter(s => s.status === "pending").length;
     subtaskProgress = { total: totalSub, completed: completedSub, inProgress: inProgressSub, pending: pendingSub };
   }
@@ -618,16 +945,29 @@ router.get("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     }
   }
 
+  const userId = req.session.userId!;
+  const [unreadRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(reviewCommentsTable)
+    .leftJoin(reviewReadsTable, and(eq(reviewReadsTable.taskId, id), eq(reviewReadsTable.userId, userId)))
+    .where(and(
+      eq(reviewCommentsTable.taskId, id),
+      ne(reviewCommentsTable.userId, userId),
+      or(isNull(reviewReadsTable.lastReadAt), sql`${reviewCommentsTable.createdAt} > ${reviewReadsTable.lastReadAt}`)
+    ));
+
   res.json({
     ...task,
     taskCode: fmtCode(task.taskNumber, task.taskYear),
     createdBy: createdBy ?? null,
     assignedTo: assignedTo ?? null,
+    coCoordinators: coCoordRows,
     revisions,
     editors: editorRows,
     subtasks,
     subtaskProgress,
     parentTask,
+    unreadCommentCount: unreadRow?.count ?? 0,
   });
 });
 
@@ -642,7 +982,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   const role = req.session.userRole!;
   const userId = req.session.userId!;
 
-  const { title, description, startDate, dueDate, priority, complexity, assignedToId, folderUrl, status, revisionComment, startComment, client, color } = req.body ?? {};
+  const { title, description, startDate, dueDate, priority, complexity, assignedToId, folderUrl, status, revisionComment, startComment, client, color, effortHours } = req.body ?? {};
   const update: Record<string, unknown> = {};
   let eventComment: string | undefined;
 
@@ -657,16 +997,15 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
       const editorTransitions: Record<string, string[]> = {
         pending:     ["in_progress"],
         in_progress: ["review"],
-        in_revision: ["review"],
         reopened:    ["in_progress"],
       };
       const allowed = editorTransitions[task.status] ?? [];
       if (!allowed.includes(s)) { res.status(400).json({ error: "Transição de status não permitida" }); return; }
 
-      // Bloqueia iniciar tarefa antes do startDate agendado (compara só a data, sem hora)
+      // Bloqueia iniciar tarefa antes do startDate agendado (compara data LOCAL, sem drift UTC)
       if (s === "in_progress" && task.startDate) {
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const startStr = task.startDate.toISOString().slice(0, 10);
+        const todayStr = toDateStrLocal(new Date());
+        const startStr = toDateStrLocal(task.startDate);
         if (startStr > todayStr) {
           res.status(400).json({ error: "Esta tarefa está agendada para iniciar em " + startStr + ". Aguarde a data para iniciá-la." });
           return;
@@ -680,89 +1019,84 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         if (startStr > todayStr) update.startDate = new Date(todayStr + "T00:00:00Z");
       }
 
-      // ── Reserva de slot: editor confirma/ajusta a complexidade ao iniciar ──
-      if (s === "in_progress" && complexity && ["low","medium","high"].includes(String(complexity))) {
-        const editorComplexity  = String(complexity);
-        const coordComplexity   = task.complexity ?? "medium";
-        update.complexity            = editorComplexity;
-        update.editorComplexitySet   = true;
+    }
 
-        if (editorComplexity !== coordComplexity && task.createdById) {
-          const LABEL: Record<string,string> = { low: "Baixa", medium: "Média", high: "Alta" };
-          const [editor]  = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
+
+    // ── Editor valida/ajusta horas estimadas pelo ESCALA ──
+    const rawEditorHours = (req.body ?? {}).editorEstimateHours;
+    if (rawEditorHours !== undefined && task.effortHours != null) {
+      const adjusted = parseFloat(String(rawEditorHours));
+      if (!isNaN(adjusted) && adjusted > 0) {
+        update.editorEstimateHours = adjusted;
+        update.editorAcceptedAt    = new Date();
+
+        if (task.createdById) {
+          const [editor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
           const editorName = editor?.name ?? "Editor";
-          const toLbl      = LABEL[editorComplexity]  ?? editorComplexity;
           const taskCode   = fmtCode(task.taskNumber ?? 0, task.taskYear ?? 0);
-          const considera  = startComment ? ` por considerar: ${String(startComment).slice(0, 200)}` : "";
+          const original   = task.effortHours;
+          const changed    = Math.abs(adjusted - original) > 0.01;
+          const obs        = (req.body ?? {}).startComment ? ` Observação: ${String((req.body ?? {}).startComment).slice(0, 200)}` : "";
 
-          const fromDate     = task.startDate ?? undefined;
-          const currentScore = await editorScore(userId, id, fromDate);
-          const newWeight    = COMPLEXITY_WEIGHT[editorComplexity] ?? 6;
-          const totalScore   = currentScore + newWeight;
+          // Check if editor's estimate would exceed dueDate
+          let exceedsDue = false;
+          if (task.dueDate) {
+            const startFrom = task.startDate ?? new Date();
+            let remaining = adjusted;
+            const d = new Date(startFrom);
+            d.setHours(8, 0, 0, 0);
+            const DAILY_CAP = (dow: number) => (dow === 0 ? 0 : dow === 6 ? 5 : 8);
+            const WORK_END  = (dow: number) => (dow === 6 ? 13 : 18);
+            while (remaining > 0.01) {
+              const dow = d.getDay();
+              const cap = DAILY_CAP(dow);
+              if (cap > 0) {
+                const avail = Math.max(0, WORK_END(dow) - 8);
+                if (avail > 0.01) {
+                  remaining = Math.round((remaining - Math.min(avail, remaining)) * 100) / 100;
+                  if (remaining <= 0.01) break;
+                }
+              }
+              d.setDate(d.getDate() + 1);
+              d.setHours(8, 0, 0, 0);
+            }
+            const compDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+            const dueStr   = task.dueDate.toISOString().slice(0, 10);
+            exceedsDue = compDate > dueStr;
+          }
 
-          if (totalScore > 12) {
+          if (changed && exceedsDue) {
             await notify(
               task.createdById,
-              "complexity_conflict",
-              "Capacidade excedida",
-              `${editorName} definiu complexidade ${toLbl} para "${taskCode} ${task.title}"${considera}. A carga do editor excede o limite recomendado — verifique a distribuição de tarefas.`,
+              "estimate_conflict",
+              "Horas ultrapassam o prazo",
+              `${editorName} ajustou as horas de "${taskCode} ${task.title}" de ${original}h para ${adjusted}h. A conclusão estimada ultrapassa o prazo de entrega.${obs}`,
               { taskId: id }
             );
-          } else {
+          } else if (changed) {
             await notify(
               task.createdById,
-              "complexity_adjusted",
-              "Complexidade definida",
-              `${editorName} definiu complexidade ${toLbl} para "${taskCode} ${task.title}"${considera}.`,
+              "estimate_adjusted",
+              "Horas ajustadas pelo editor",
+              `${editorName} ajustou as horas de "${taskCode} ${task.title}" de ${original}h para ${adjusted}h.${obs}`,
               { taskId: id }
             );
           }
         }
-      }
-      // Se está iniciando sem complexity no body, marca como definido
-      if (s === "in_progress") update.editorComplexitySet = true;
-    }
-
-    // ── Editor define complexidade sem iniciar (tarefa permanece pending) ──
-    if (!status && complexity && ["low","medium","high"].includes(String(complexity))) {
-      const editorComplexity = String(complexity);
-      const coordComplexity  = task.complexity ?? "medium";
-      update.complexity          = editorComplexity;
-      update.editorComplexitySet = true;
-
-      if (editorComplexity !== coordComplexity && task.createdById) {
-        const LABEL: Record<string,string> = { low: "Baixa", medium: "Média", high: "Alta" };
-        const [editor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
-        const editorName = editor?.name ?? "Editor";
-        const toLbl      = LABEL[editorComplexity] ?? editorComplexity;
-        const taskCode   = fmtCode(task.taskNumber ?? 0, task.taskYear ?? 0);
-        const considera  = startComment ? ` por considerar: ${String(startComment).slice(0, 200)}` : "";
-        const fromDate     = task.startDate ?? undefined;
-        const currentScore = await editorScore(userId, id, fromDate);
-        const totalScore   = currentScore + (COMPLEXITY_WEIGHT[editorComplexity] ?? 6);
-        await notify(
-          task.createdById,
-          totalScore > 12 ? "complexity_conflict" : "complexity_adjusted",
-          totalScore > 12 ? "Capacidade excedida" : "Complexidade definida",
-          totalScore > 12
-            ? `${editorName} definiu complexidade ${toLbl} para "${taskCode} ${task.title}"${considera}. A carga do editor excede o limite recomendado — verifique a distribuição de tarefas.`
-            : `${editorName} definiu complexidade ${toLbl} para "${taskCode} ${task.title}"${considera}.`,
-          { taskId: id }
-        );
       }
     }
 
     if (folderUrl !== undefined) update.folderUrl = folderUrl ? String(folderUrl) : null;
   } else {
     if (role === "coordinator" && task.createdById !== userId) {
-      // For subtasks, check if coordinator owns the parent task
+      // Subtarefa: verifica se é dono da tarefa pai
       if (task.taskType === "subtask" && task.parentTaskId) {
         const [parent] = await db.select({ createdById: tasksTable.createdById }).from(tasksTable).where(eq(tasksTable.id, task.parentTaskId));
         if (!parent || parent.createdById !== userId) {
           res.status(403).json({ error: "Sem permissão para editar esta subtarefa. Apenas o criador da multi-tarefa pode fazer isso." }); return;
         }
-      } else {
-        res.status(403).json({ error: "Sem permissão para editar esta tarefa. Apenas o criador ou um Supervisor pode fazer isso." }); return;
+      } else if (!(await isCoCoord(id, userId))) {
+        res.status(403).json({ error: "Sem permissão para editar esta tarefa. Apenas o criador, um co-coordenador ou Supervisor pode fazer isso." }); return;
       }
     }
     if (title) update.title = String(title);
@@ -770,15 +1104,15 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     if (client !== undefined) update.client = client ? String(client) : null;
     if (color) update.color = String(color);
     if (startDate !== undefined) {
-      update.startDate = startDate ? new Date(String(startDate)) : null;
+      const ps = parseDateSafe(startDate);
+      if (ps === "invalid") { res.status(400).json({ error: "Data de início inválida" }); return; }
+      update.startDate = ps;
     }
     if (dueDate !== undefined) {
       if (dueDate) {
-        const parsed = new Date(String(dueDate));
-        if (isNaN(parsed.getTime())) {
-          res.status(400).json({ error: "Data inválida" }); return;
-        }
-        update.dueDate = parsed;
+        const pd = parseDateSafe(dueDate);
+        if (pd === "invalid" || pd === null) { res.status(400).json({ error: "Prazo inválido" }); return; }
+        update.dueDate = pd;
       } else {
         if (task.status !== "rascunho") {
           res.status(400).json({ error: "Tarefas em andamento precisam ter um prazo definido" }); return;
@@ -792,6 +1126,21 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
       update.assignedToId = assignedToId ? parseInt(String(assignedToId), 10) : null;
     }
     if (folderUrl !== undefined) update.folderUrl = folderUrl ? String(folderUrl) : null;
+
+    // ── effortHours: aceita mudança e re-aloca automaticamente ──
+    if (effortHours !== undefined && task.effortHours != null) {
+      const newEffort = parseFloat(String(effortHours));
+      if (!isNaN(newEffort) && newEffort > 0 && Math.abs(newEffort - Number(task.effortHours)) > 0.01) {
+        update.effortHours = newEffort;
+        const editorId    = update.assignedToId ? Number(update.assignedToId) : (task.assignedToId ?? null);
+        const newStart    = update.startDate !== undefined ? (update.startDate as Date | null) : task.startDate;
+        const newDeadline = update.dueDate    !== undefined ? (update.dueDate    as Date | null) : task.dueDate;
+        if (editorId) {
+          await reallocTask(id, editorId, newEffort, newStart, newDeadline);
+        }
+      }
+    }
+
     if (status) {
       const s = String(status);
       const TERMINAL = ["completed", "cancelled"];
@@ -882,43 +1231,37 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           }
         }
         update.status = "pending";
-      } else {
-        // Normal approval flow (task must be in "review")
-        if (task.status !== "review") { res.status(400).json({ error: `Coordenador só pode avaliar tarefas em revisão (status atual: ${task.status})` }); return; }
-        if (!["completed", "in_progress"].includes(s)) { res.status(400).json({ error: "Transição inválida" }); return; }
-        update.status = s === "in_progress" ? "in_revision" : s;
-        if (s === "in_progress") {
-          const newRevision = (task.revisionCount ?? 0) + 1;
-          update.revisionCount = newRevision;
-          const comment = revisionComment ? String(revisionComment).trim() : "";
-          if (!comment) { res.status(400).json({ error: "Informe o comentário da alteração" }); return; }
-          await db.insert(taskRevisionsTable).values({
-            taskId: id,
-            revisionNumber: newRevision,
-            comment,
-            createdById: userId,
-          });
+      } else if (s === "in_progress" && task.status === "review") {
+        // Coordenador solicita alteração: review → in_progress com comentário obrigatório
+        const comment = revisionComment ? String(revisionComment).trim() : "";
+        if (!comment) { res.status(400).json({ error: "Informe o comentário de alteração" }); return; }
+        const newRevision = (task.revisionCount ?? 0) + 1;
+        update.revisionCount = newRevision;
+        update.status = "in_progress";
+        eventComment = comment;
+        await db.insert(taskRevisionsTable).values({
+          taskId: id,
+          revisionNumber: newRevision,
+          comment,
+          createdById: userId,
+        });
+        // Notifica o editor
+        if (task.assignedToId) {
+          const taskCode = fmtCode(task.taskNumber ?? 0, task.taskYear ?? 0);
+          await notify(
+            task.assignedToId,
+            "task_revision",
+            "Alteração solicitada",
+            `Alteração #${newRevision} em "${taskCode} ${task.title}": ${comment.slice(0, 120)}`,
+            { taskId: id },
+          );
         }
+      } else {
+        // Aprovação: task deve estar em review → só completed é válido
+        if (task.status !== "review") { res.status(400).json({ error: `Coordenador só pode avaliar tarefas em revisão (status atual: ${task.status})` }); return; }
+        if (s !== "completed") { res.status(400).json({ error: "Transição inválida" }); return; }
+        update.status = s;
       }
-    }
-  }
-
-  // ── Bloqueio server-side de capacidade em edições ─────────────────────────
-  // Aplica quando muda editor OU complexidade, para tarefas reais (não rascunho, não multi_task)
-  // Editores estão excluídos: ao iniciar uma tarefa eles declaram a própria carga — nunca são bloqueados aqui
-  const changingAssignee   = update.assignedToId !== undefined && update.assignedToId !== task.assignedToId;
-  const changingComplexity = update.complexity   !== undefined && update.complexity   !== task.complexity;
-  const targetAssignee     = update.assignedToId !== undefined ? (update.assignedToId as number | null) : task.assignedToId;
-  const targetComplexity   = update.complexity   !== undefined ? String(update.complexity) : (task.complexity ?? "medium");
-
-  if (role !== "editor" && (changingAssignee || changingComplexity) && targetAssignee && task.status !== "rascunho" && task.taskType !== "multi_task") {
-    const taskFromDate = task.startDate ?? undefined;
-    const score = await editorScore(targetAssignee, id, taskFromDate); // exclui a própria tarefa; considera startDate
-    const newW  = COMPLEXITY_WEIGHT[targetComplexity] ?? 6;
-    if (score + newW > 12) {
-      const [ed] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, targetAssignee));
-      res.status(422).json({ error: `${ed?.name ?? "Editor"} está no limite de capacidade (${score} pts). Reduza a complexidade ou escolha outro editor.` });
-      return;
     }
   }
 
@@ -941,34 +1284,19 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     if (newStatus === "review" && task.createdById) {
       const [editor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
       const parentLabel = task.taskType === "subtask" ? "Subtarefa" : "Tarefa";
-      await notify(task.createdById, "task_review",
+      await notifyAllCoords(task, null,
+        "task_review",
         `${parentLabel} enviada para aprovação`,
         `${editor?.name ?? "Editor"} enviou "${task.title}" para aprovação`,
-        { taskId: id }
       );
     }
     if (newStatus === "in_progress" && task.createdById && task.createdById !== userId) {
       const [editor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
-      await notify(task.createdById, "task_started",
+      await notifyAllCoords(task, null,
+        "task_started",
         "Tarefa em edição",
         `${editor?.name ?? "Editor"} iniciou a edição de "${task.title}"`,
-        { taskId: id }
       );
-    }
-    if (newStatus === "in_revision") {
-      // Notify assignedToId or all editors of subtask
-      const comment = revisionComment ? String(revisionComment).trim() : "";
-      const recipients = new Set<number>();
-      if (task.assignedToId) recipients.add(task.assignedToId);
-      const extraEditors = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
-      extraEditors.forEach(e => recipients.add(e.userId));
-      for (const rid of recipients) {
-        await notify(rid, "task_revision",
-          "Alteração solicitada",
-          `Alteração solicitada em "${task.title}"${comment ? `: ${comment}` : ""}`,
-          { taskId: id }
-        );
-      }
     }
     if (newStatus === "cancelled") {
       const comment = eventComment ?? "";
@@ -982,13 +1310,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           { taskId: id }
         );
       }
-      await createFeedItem({
-        type: "task_cancelled",
-        title: `Tarefa cancelada: "${task.title}"`,
-        actorId: userId,
-        entityId: id,
-        entityType: "task",
-      }).catch(() => {});
     }
     if (newStatus === "paused") {
       const comment = eventComment ?? "";
@@ -1002,13 +1323,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           { taskId: id }
         );
       }
-      await createFeedItem({
-        type: "task_paused",
-        title: `Tarefa pausada: "${task.title}"`,
-        actorId: userId,
-        entityId: id,
-        entityType: "task",
-      }).catch(() => {});
     }
     if (newStatus === "pending" && task.status === "paused") {
       const resumedEditors = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
@@ -1021,13 +1335,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           { taskId: id }
         );
       }
-      await createFeedItem({
-        type: "task_resumed",
-        title: `Tarefa retomada: "${task.title}"`,
-        actorId: userId,
-        entityId: id,
-        entityType: "task",
-      }).catch(() => {});
     }
     if (newStatus === "pending" && task.status === "cancelled") {
       const reactivatedEditors = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
@@ -1040,13 +1347,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           { taskId: id }
         );
       }
-      await createFeedItem({
-        type: "task_reactivated",
-        title: `Tarefa reativada: "${task.title}"`,
-        actorId: userId,
-        entityId: id,
-        entityType: "task",
-      }).catch(() => {});
     }
     if (newStatus === "pending" && task.status === "rascunho") {
       const editorRows = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
@@ -1058,19 +1358,54 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         );
       }
     }
+    if (newStatus === "completed" || newStatus === "cancelled") {
+      // Libera os slots do ESCALA — o cálculo de carga já ignora por status,
+      // mas manter registros órfãos polui a agenda e relatórios
+      await db.delete(taskAllocationsTable).where(eq(taskAllocationsTable.taskId, id));
+    }
+
     if (newStatus === "completed" && task.assignedToId && task.taskType !== "multi_task") {
       await notify(task.assignedToId, "task_approved",
         "Tarefa aprovada",
         `Sua tarefa "${task.title}" foi aprovada`,
         { taskId: id }
       );
-      await createFeedItem({
-        type: "task_completed",
-        title: `Tarefa concluída: "${task.title}"`,
-        actorId: userId,
-        entityId: id,
-        entityType: "task",
-      }).catch(() => {});
+
+      // Busca o arquivo de mídia mais recente da tarefa (maior revisionNumber)
+      const [latestFile] = await db
+        .select({
+          id:       taskFilesTable.id,
+          fileName: taskFilesTable.fileName,
+          mimeType: taskFilesTable.mimeType,
+        })
+        .from(taskFilesTable)
+        .where(
+          and(
+            eq(taskFilesTable.taskId, id),
+            or(
+              like(taskFilesTable.mimeType, "video/%"),
+              like(taskFilesTable.mimeType, "audio/%")
+            )
+          )
+        )
+        .orderBy(desc(taskFilesTable.revisionNumber), desc(taskFilesTable.id))
+        .limit(1);
+
+      if (latestFile) {
+        await createFeedItem({
+          type: "media_approved",
+          title: `Mídia aprovada: "${task.title}"`,
+          content: JSON.stringify({
+            fileId:   latestFile.id,
+            taskId:   id,
+            fileName: latestFile.fileName,
+            mimeType: latestFile.mimeType,
+          }),
+          actorId:    userId,
+          entityId:   id,
+          entityType: "task",
+        }).catch(() => {});
+      }
     }
     if (newStatus === "reopened") {
       const comment = revisionComment ? String(revisionComment).trim() : "";
@@ -1091,13 +1426,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           );
         }
       }
-      await createFeedItem({
-        type: "task_reopened",
-        title: `Tarefa reaberta: "${task.title}"`,
-        actorId: userId,
-        entityId: id,
-        entityType: "task",
-      }).catch(() => {});
     }
 
     // If this is a subtask and status changed, recalculate parent status
@@ -1306,7 +1634,7 @@ router.get("/tasks/:id/progress", requireAuth, async (req, res): Promise<void> =
 
   const total = subtasks.length;
   const completed = subtasks.filter(s => s.status === "completed").length;
-  const inProgress = subtasks.filter(s => ["in_progress", "review", "in_revision", "reopened"].includes(s.status)).length;
+  const inProgress = subtasks.filter(s => ["in_progress", "review", "reopened"].includes(s.status)).length;
   const pending = subtasks.filter(s => s.status === "pending").length;
   const cancelled = subtasks.filter(s => s.status === "cancelled").length;
 
@@ -1334,7 +1662,7 @@ router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> =>
   if (role === "editor" && task.assignedToId !== userId) {
     res.status(403).json({ error: "Você só pode devolver tarefas atribuídas a você." }); return;
   }
-  if (!["pending", "in_progress", "in_revision"].includes(task.status)) {
+  if (!["pending", "in_progress", "review"].includes(task.status)) {
     res.status(400).json({ error: "Só é possível devolver uma tarefa pendente, em edição ou em revisão." }); return;
   }
 
@@ -1370,14 +1698,6 @@ router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> =>
     );
   }
 
-  await createFeedItem({
-    type: "task_returned",
-    title: `Tarefa devolvida: "${task.title}"`,
-    actorId: userId,
-    entityId: id,
-    entityType: "task",
-  }).catch(() => {});
-
   // If subtask: recalculate parent
   if (task.taskType === "subtask" && task.parentTaskId) {
     await recalculateParentStatus(task.parentTaskId, userId);
@@ -1404,7 +1724,7 @@ router.delete("/tasks/:id", requireCoordinator, async (req, res): Promise<void> 
   }
 
   // For regular tasks: block if in-progress
-  if (task.taskType !== "multi_task" && task.assignedToId !== null && (task.status === "in_progress" || task.status === "in_revision")) {
+  if (task.taskType !== "multi_task" && task.assignedToId !== null && task.status === "in_progress") {
     res.status(409).json({ error: "Esta tarefa está atribuída e em edição. Remova a atribuição antes de excluir.", blocked: true });
     return;
   }
@@ -1534,13 +1854,64 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
     if (!reviewedAtMap.has(e.taskId)) reviewedAtMap.set(e.taskId, e.createdAt);
   }
 
+  // Unread review comment count per task (comments not by current user, after last_read_at)
+  const unreadCommentRows = taskIds.length
+    ? await db
+        .select({ taskId: reviewCommentsTable.taskId, count: sql<number>`count(*)::int` })
+        .from(reviewCommentsTable)
+        .leftJoin(
+          reviewReadsTable,
+          and(eq(reviewReadsTable.taskId, reviewCommentsTable.taskId), eq(reviewReadsTable.userId, userId))
+        )
+        .where(and(
+          inArray(reviewCommentsTable.taskId, taskIds),
+          ne(reviewCommentsTable.userId, userId),
+          or(isNull(reviewReadsTable.lastReadAt), sql`${reviewCommentsTable.createdAt} > ${reviewReadsTable.lastReadAt}`)
+        ))
+        .groupBy(reviewCommentsTable.taskId)
+    : [];
+  const reviewCommentCountMap = new Map(unreadCommentRows.map(r => [r.taskId, Number(r.count)]));
+
+  // Quais tarefas têm alocação HOJE (ESCALA v2)
+  const myTodayStr = new Date().toISOString().slice(0, 10);
+  const myTodayAllocIds: Set<number> = taskIds.length
+    ? new Set((await db.select({ taskId: taskAllocationsTable.taskId })
+        .from(taskAllocationsTable)
+        .where(and(
+          inArray(taskAllocationsTable.taskId, taskIds),
+          eq(taskAllocationsTable.workDate, myTodayStr),
+          sql`${taskAllocationsTable.allocatedHours} > 0`,
+        ))).map(a => a.taskId))
+    : new Set();
+
+  // Buscar criadores e assignees em lote
+  const myPersonIds = [...new Set([
+    ...tasks.map(t => t.createdById),
+    ...tasks.map(t => t.assignedToId),
+  ].filter((id): id is number => id !== null))];
+  const myPersons = myPersonIds.length
+    ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+        .from(usersTable).where(inArray(usersTable.id, myPersonIds))
+    : [];
+  const myPersonMap = new Map(myPersons.map(p => [p.id, p]));
+
+  // Co-coords em lote
+  const myCoCoordRows = taskIds.length
+    ? await db
+        .select({ taskId: taskCoordinatorsTable.taskId, id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+        .from(taskCoordinatorsTable)
+        .innerJoin(usersTable, eq(taskCoordinatorsTable.userId, usersTable.id))
+        .where(inArray(taskCoordinatorsTable.taskId, taskIds))
+    : [];
+  const myCoCoordMap = new Map<number, { id: number; name: string; avatarUrl: string | null }[]>();
+  for (const c of myCoCoordRows) {
+    if (!myCoCoordMap.has(c.taskId)) myCoCoordMap.set(c.taskId, []);
+    myCoCoordMap.get(c.taskId)!.push({ id: c.id, name: c.name, avatarUrl: c.avatarUrl });
+  }
+
   const tasksWithDetails = await Promise.all(tasks.map(async (t) => {
-    const [createdBy] = t.createdById
-      ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, t.createdById))
-      : [null];
-    const [assignedTo] = t.assignedToId
-      ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, t.assignedToId))
-      : [null];
+    const createdBy = t.createdById ? (myPersonMap.get(t.createdById) ?? null) : null;
+    const assignedTo = t.assignedToId ? (myPersonMap.get(t.assignedToId) ?? null) : null;
     const revisions = await db.select({
       id: taskRevisionsTable.id,
       revisionNumber: taskRevisionsTable.revisionNumber,
@@ -1551,6 +1922,7 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
       ...t,
       taskCode: fmtCode(t.taskNumber, t.taskYear),
       createdBy: createdBy ?? null,
+      coCoordinators: myCoCoordMap.get(t.id) ?? [],
       assignedTo: assignedTo ?? null,
       editors: editorsMap.get(t.id) ?? [],
       revisions,
@@ -1558,8 +1930,10 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
       parentTask: t.parentTaskId ? (parentMap.get(t.parentTaskId) ?? null) : null,
       subtaskProgress: t.taskType === "multi_task" ? (progressMap.get(t.id) ?? null) : null,
       reviewedAt: reviewedAtMap.get(t.id)?.toISOString() ?? null,
-      fileCount: myFileCountMap.get(t.id) ?? 0,
-      fileKind:  myFileCountMap.get(t.id) ? (myFileKindMap.get(t.id) ?? null) : null,
+      fileCount:          myFileCountMap.get(t.id) ?? 0,
+      fileKind:           myFileCountMap.get(t.id) ? (myFileKindMap.get(t.id) ?? null) : null,
+      unreadCommentCount: reviewCommentCountMap.get(t.id) ?? 0,
+      hasAllocToday:      myTodayAllocIds.has(t.id),
     };
   }));
 
@@ -1697,228 +2071,114 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
   })));
 });
 
-// ── Workload ──────────────────────────────────────────────────────────────────
-const COMPLEXITY_WEIGHT: Record<string, number> = { low: 3, medium: 6, high: 12 };
-
-/** Score de um editor na data fromDate (ou hoje se omitido).
- *  Conta apenas tarefas que estão ativas nessa data:
- *  - dueDate >= fromDate (não terminou antes)
- *  - startDate <= fromDate ou sem startDate (já começou)  */
-async function editorScore(editorId: number, excludeTaskId?: number, fromDate?: Date): Promise<number> {
-  const conds = [
-    eq(tasksTable.assignedToId, editorId),
-    ne(tasksTable.status, "completed"),
-    ne(tasksTable.status, "cancelled"),
-    ne(tasksTable.status, "paused"),
-    ne(tasksTable.status, "rascunho"),
-    ne(tasksTable.status, "review"),
-    ne(tasksTable.taskType, "multi_task"),
-  ];
-  if (excludeTaskId) conds.push(ne(tasksTable.id, excludeTaskId));
-  const rows = await db.select({ complexity: tasksTable.complexity, dueDate: tasksTable.dueDate, startDate: tasksTable.startDate }).from(tasksTable).where(and(...conds));
-  return rows
-    .filter(r => {
-      if (!fromDate) return true;
-      if (r.dueDate   && r.dueDate   < fromDate) return false; // terminou antes da data alvo
-      if (r.startDate && r.startDate > fromDate) return false; // ainda não começou na data alvo
-      return true;
-    })
-    .reduce((s, r) => s + (COMPLEXITY_WEIGHT[r.complexity ?? "medium"] ?? 6), 0);
+// ── Workload (hours-based) ────────────────────────────────────────────────────
+function dailyCapHours(d: Date): number {
+  const dow = d.getDay();
+  if (dow === 0) return 0;
+  if (dow === 6) return 5;
+  return 8;
 }
 
+const WORKLOAD_ACTIVE = ["pending", "in_progress", "review", "reopened"] as string[];
+
 router.get("/workload", requireCoordinator, async (req, res): Promise<void> => {
+  const todayStr    = new Date().toISOString().slice(0, 10);
+  const projDateStr = typeof req.query.date === "string" ? req.query.date : todayStr;
+  const projDate    = new Date(projDateStr);
+  const dailyCap    = dailyCapHours(projDate);
+
   const editors = await db
     .select({ id: usersTable.id, name: usersTable.name, login: usersTable.login, avatarUrl: usersTable.avatarUrl })
     .from(usersTable).where(eq(usersTable.role, "editor"));
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const result = await Promise.all(editors.map(async editor => {
+    const allocRows = await db
+      .select({ h: taskAllocationsTable.allocatedHours })
+      .from(taskAllocationsTable)
+      .innerJoin(tasksTable, eq(taskAllocationsTable.taskId, tasksTable.id))
+      .where(and(
+        eq(taskAllocationsTable.editorId, editor.id),
+        eq(taskAllocationsTable.workDate, projDateStr),
+        isNotNull(taskAllocationsTable.allocatedHours),
+        inArray(tasksTable.status, WORKLOAD_ACTIVE),
+        ne(tasksTable.taskType, "multi_task"),
+      ));
 
-  // projected date from query param (default = today)
-  const projDateStr = typeof req.query.date === "string" ? req.query.date : todayStr;
-  const projDate = new Date(projDateStr + "T23:59:59Z");
-  const isProjFuture = projDateStr > todayStr;
+    const hoursToday = Math.round(allocRows.reduce((s, r) => s + (r.h ?? 0), 0) * 100) / 100;
 
-  const open = await db
-    .select({
-      id: tasksTable.id,
-      status: tasksTable.status,
-      complexity: tasksTable.complexity,
-      assignedToId: tasksTable.assignedToId,
-      startDate: tasksTable.startDate,
-      dueDate: tasksTable.dueDate,
-    })
-    .from(tasksTable)
-    .where(and(
-      ne(tasksTable.status, "completed"),
-      ne(tasksTable.status, "cancelled"),
-      ne(tasksTable.status, "paused"),
-      ne(tasksTable.status, "rascunho"),
-      ne(tasksTable.status, "review"),
-      ne(tasksTable.taskType, "multi_task"),
-      isNotNull(tasksTable.assignedToId),
-    ));
-
-  const todayEnd = new Date(todayStr + "T23:59:59Z");
-
-  const result = editors.map(editor => {
-    const all = open.filter(t => t.assignedToId === editor.id);
-
-    // Current score: tasks with no startDate OR startDate <= today.
-    // When projecting: exclude tasks whose dueDate is strictly before the projection day
-    // (they're expected to be delivered by then).
-    const current = all.filter(t => {
-      if (!(!t.startDate || t.startDate <= todayEnd)) return false;
-      if (isProjFuture && t.dueDate) {
-        const dueStr = t.dueDate.toISOString().slice(0, 10);
-        if (dueStr < projDateStr) return false;
-      }
-      return true;
-    });
-    const score = current.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
-
-    // Scheduled score: tasks starting after today up to projDate,
-    // but only if they're still active on the projection day (dueDate >= projDate or no dueDate).
-    const scheduled = all.filter(t => {
-      if (!t.startDate || t.startDate <= todayEnd || t.startDate > projDate) return false;
-      if (t.dueDate) {
-        const dueStr = t.dueDate.toISOString().slice(0, 10);
-        if (dueStr < projDateStr) return false;
-      }
-      return true;
-    });
-    const scheduledScore = scheduled.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
-
-    // Projected = current + scheduled (all tasks up to projDate)
-    const projectedScore = score + scheduledScore;
+    const activeTasks = await db
+      .select({ id: tasksTable.id, status: tasksTable.status })
+      .from(tasksTable)
+      .where(and(
+        eq(tasksTable.assignedToId, editor.id),
+        inArray(tasksTable.status, WORKLOAD_ACTIVE),
+        ne(tasksTable.taskType, "multi_task"),
+      ));
 
     return {
       id: editor.id, name: editor.name, login: editor.login, avatarUrl: editor.avatarUrl ?? null,
-      taskCount: current.length,
-      scheduledCount: scheduled.length,
-      score,
-      scheduledScore,
-      projectedScore,
-      byComplexity: {
-        low:    current.filter(t => t.complexity === "low").length,
-        medium: current.filter(t => t.complexity === "medium").length,
-        high:   current.filter(t => t.complexity === "high").length,
-      },
+      hoursToday,
+      dailyCap,
+      taskCount: activeTasks.length,
       byStatus: {
-        pending:     current.filter(t => t.status === "pending").length,
-        in_progress: current.filter(t => t.status === "in_progress").length,
-        in_revision: current.filter(t => t.status === "in_revision").length,
-        review:      current.filter(t => t.status === "review").length,
+        pending:     activeTasks.filter(t => t.status === "pending").length,
+        in_progress: activeTasks.filter(t => t.status === "in_progress").length,
+        review:      activeTasks.filter(t => t.status === "review").length,
       },
     };
-  });
-  result.sort((a, b) => b.score - a.score);
+  }));
+
+  result.sort((a, b) => b.hoursToday - a.hoursToday);
   res.json(result);
 });
 
-// ── Workload calendar — per-day score for one editor ─────────────────────────
+// ── Workload calendar — horas por dia para um editor ─────────────────────────
 router.get("/workload/calendar", requireCoordinator, async (req, res): Promise<void> => {
   const editorId = parseInt(req.query.editorId as string, 10);
-  const monthStr = typeof req.query.month === "string" ? req.query.month : ""; // "YYYY-MM"
+  const monthStr = typeof req.query.month === "string" ? req.query.month : "";
   if (!editorId || !monthStr || !/^\d{4}-\d{2}$/.test(monthStr)) {
-    res.status(400).json({ error: "editorId e month (YYYY-MM) são obrigatórios" });
-    return;
+    res.status(400).json({ error: "editorId e month (YYYY-MM) são obrigatórios" }); return;
   }
 
-  // Fetch all non-terminal tasks for this editor
-  const tasks = await db
-    .select({
-      id: tasksTable.id,
-      complexity: tasksTable.complexity,
-      startDate: tasksTable.startDate,
-      dueDate: tasksTable.dueDate,
-    })
-    .from(tasksTable)
-    .where(and(
-      eq(tasksTable.assignedToId, editorId),
-      ne(tasksTable.status, "completed"),
-      ne(tasksTable.status, "cancelled"),
-      ne(tasksTable.status, "paused"),
-      ne(tasksTable.status, "rascunho"),
-      ne(tasksTable.status, "review"),
-      ne(tasksTable.taskType, "multi_task"),
-    ));
-
-  // Generate per-day data for the month
   const [year, month] = monthStr.split("-").map(Number);
   const daysInMonth = new Date(year, month, 0).getDate();
-  const days: { date: string; score: number; count: number }[] = [];
+  const firstDay    = `${monthStr}-01`;
+  const lastDay     = `${monthStr}-${String(daysInMonth).padStart(2, "0")}`;
 
+  // v2: alocações do mês
+  const allocRows = await db
+    .select({ workDate: taskAllocationsTable.workDate, allocatedHours: taskAllocationsTable.allocatedHours })
+    .from(taskAllocationsTable)
+    .innerJoin(tasksTable, eq(taskAllocationsTable.taskId, tasksTable.id))
+    .where(and(
+      eq(taskAllocationsTable.editorId, editorId),
+      isNotNull(tasksTable.effortHours),
+      inArray(tasksTable.status, WORKLOAD_ACTIVE),
+      ne(tasksTable.taskType, "multi_task"),
+      gte(taskAllocationsTable.workDate, firstDay),
+      lte(taskAllocationsTable.workDate, lastDay),
+    ));
+
+  const allocByDay = new Map<string, number>();
+  for (const r of allocRows) {
+    allocByDay.set(r.workDate, (allocByDay.get(r.workDate) ?? 0) + (r.allocatedHours ?? 0));
+  }
+
+  const days = [];
   for (let d = 1; d <= daysInMonth; d++) {
-    const dayStr = `${monthStr}-${String(d).padStart(2, "0")}`;
-    const dayEnd   = new Date(dayStr + "T23:59:59Z"); // UTC explícito
-    const dayStart = new Date(dayStr + "T00:00:00Z"); // UTC explícito
-
-    const active = tasks.filter(t => {
-      // Task is active on this day if:
-      // startDate <= end-of-day (or null = already started)
-      const started = !t.startDate || t.startDate <= dayEnd;
-      // dueDate >= start-of-day (or null = no deadline = always counts)
-      const notDone = !t.dueDate || t.dueDate >= dayStart;
-      return started && notDone;
-    });
-
-    const score = active.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
-    days.push({ date: dayStr, score, count: active.length });
+    const dayStr  = `${monthStr}-${String(d).padStart(2, "0")}`;
+    const dayDate = new Date(dayStr);
+    const cap     = dailyCapHours(dayDate);
+    const hours   = Math.round((allocByDay.get(dayStr) ?? 0) * 100) / 100;
+    days.push({ date: dayStr, hours, cap });
   }
 
   res.json(days);
 });
 
-// ── Nível 3: verificação de período ───────────────────────────────────────────
-// GET /api/workload/period-check?editorId=X&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&complexity=low|medium|high&excludeTaskId=N
-router.get("/workload/period-check", requireCoordinator, async (req, res): Promise<void> => {
-  const editorId      = parseInt(req.query.editorId as string, 10);
-  const startDate     = req.query.startDate as string;
-  const endDate       = req.query.endDate   as string;
-  const complexity    = (req.query.complexity as string) ?? "medium";
-  const excludeTaskId = req.query.excludeTaskId ? parseInt(req.query.excludeTaskId as string, 10) : null;
-
-  if (!editorId || !startDate || !endDate) {
-    res.status(400).json({ error: "editorId, startDate e endDate são obrigatórios" }); return;
-  }
-
-  const newWeight = COMPLEXITY_WEIGHT[complexity] ?? 6;
-  const startD    = new Date(startDate + "T00:00:00Z");
-  const endD      = new Date(endDate   + "T23:59:59Z");
-
-  const conds = [
-    eq(tasksTable.assignedToId, editorId),
-    ne(tasksTable.status, "completed"),
-    ne(tasksTable.status, "cancelled"),
-    ne(tasksTable.status, "paused"),
-    ne(tasksTable.status, "rascunho"),
-    ne(tasksTable.status, "review"),
-    ne(tasksTable.taskType, "multi_task"),
-  ];
-  if (excludeTaskId) conds.push(ne(tasksTable.id, excludeTaskId));
-
-  const tasks = await db
-    .select({ id: tasksTable.id, complexity: tasksTable.complexity, startDate: tasksTable.startDate, dueDate: tasksTable.dueDate })
-    .from(tasksTable).where(and(...conds));
-
-  const conflictDays: string[] = [];
-  let maxScore = 0;
-  const DAY_MS = 86_400_000;
-
-  for (let d = new Date(startD); d <= endD; d = new Date(d.getTime() + DAY_MS)) {
-    const dayEnd = new Date(d.getTime() + DAY_MS - 1);
-    const active = tasks.filter(t => {
-      const started = !t.startDate || t.startDate <= dayEnd;
-      const notDone = !t.dueDate   || t.dueDate   >= d;
-      return started && notDone;
-    });
-    const dayScore = active.reduce((s, t) => s + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
-    const projected = dayScore + newWeight;
-    if (projected > maxScore) maxScore = projected;
-    if (projected > 12) conflictDays.push(d.toISOString().slice(0, 10));
-  }
-
-  res.json({ blocked: conflictDays.length > 0, conflictDays, maxScore });
+// ── Workload period-check — delegado ao ESCALA; sem bloqueio por complexidade ─
+router.get("/workload/period-check", requireCoordinator, async (_req, res): Promise<void> => {
+  res.json({ blocked: false, conflictDays: [], maxScore: 0 });
 });
 
 // ── Nível 2: agenda geral de todos os editores ────────────────────────────────
@@ -1942,6 +2202,7 @@ router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
       client:       tasksTable.client,
       startDate:    tasksTable.startDate,
       dueDate:      tasksTable.dueDate,
+      effortHours:  tasksTable.effortHours,
       assignedToId: tasksTable.assignedToId,
       createdById:  tasksTable.createdById,
     })
@@ -1979,6 +2240,35 @@ router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
     creators.forEach(c => creatorMap.set(c.id, c));
   }
 
+  // Alocações ESCALA v2 — para calcular horas reais por dia no frontend
+  const allTaskIds = tasks.map(t => t.id);
+  const allocRows = allTaskIds.length
+    ? await db
+        .select({
+          taskId:         taskAllocationsTable.taskId,
+          editorId:       taskAllocationsTable.editorId,
+          workDate:       taskAllocationsTable.workDate,
+          allocatedHours: taskAllocationsTable.allocatedHours,
+          startTime:      taskAllocationsTable.startTime,
+          endTime:        taskAllocationsTable.endTime,
+        })
+        .from(taskAllocationsTable)
+        .where(inArray(taskAllocationsTable.taskId, allTaskIds))
+    : [];
+
+  // Agrupa alocações por editor
+  const allocByEditor = new Map<number, { taskId: number; workDate: string; allocatedHours: number | null }[]>();
+  for (const a of allocRows) {
+    if (!allocByEditor.has(a.editorId)) allocByEditor.set(a.editorId, []);
+    allocByEditor.get(a.editorId)!.push({
+      taskId:         a.taskId,
+      workDate:       a.workDate,
+      allocatedHours: a.allocatedHours ? Number(a.allocatedHours) : null,
+      startTime:      a.startTime ?? null,
+      endTime:        a.endTime   ?? null,
+    });
+  }
+
   const result = editors.map(editor => {
     const extraIds = extraByEditor.get(editor.id) ?? new Set<number>();
     const editorTasks = tasks.filter(t =>
@@ -1987,18 +2277,20 @@ router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
     return {
       editor,
       tasks: editorTasks.map(t => ({
-        id:         t.id,
-        taskCode:   fmtCode(t.taskNumber ?? 0, t.taskYear ?? 0),
-        title:      t.title,
-        status:     t.status,
-        priority:   t.priority,
-        complexity: t.complexity,
-        color:      t.color,
-        client:     t.client,
-        startDate:  t.startDate ? t.startDate.toISOString() : null,
-        dueDate:    t.dueDate   ? t.dueDate.toISOString()   : null,
-        creator:    t.createdById ? (creatorMap.get(t.createdById) ?? null) : null,
+        id:          t.id,
+        taskCode:    fmtCode(t.taskNumber ?? 0, t.taskYear ?? 0),
+        title:       t.title,
+        status:      t.status,
+        priority:    t.priority,
+        complexity:  t.complexity,
+        color:       t.color,
+        client:      t.client,
+        startDate:   t.startDate ? t.startDate.toISOString() : null,
+        dueDate:     t.dueDate   ? t.dueDate.toISOString()   : null,
+        effortHours: t.effortHours ?? null,
+        creator:     t.createdById ? (creatorMap.get(t.createdById) ?? null) : null,
       })),
+      allocations: allocByEditor.get(editor.id) ?? [],
     };
   });
 
@@ -2212,6 +2504,7 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
       fromStatus: taskEventsTable.fromStatus,
       toStatus: taskEventsTable.toStatus,
       changedById: taskEventsTable.changedById,
+      meta: taskEventsTable.meta,
       createdAt: taskEventsTable.createdAt,
     }).from(taskEventsTable)
       .where(eq(taskEventsTable.taskId, id))
@@ -2254,13 +2547,15 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
   });
 
   for (const e of events) {
+    const parsedMeta = e.meta ? (() => { try { return JSON.parse(e.meta); } catch { return {}; } })() : {};
+    const isReviewEvent = e.toStatus === "file_uploaded" || e.toStatus === "comment_added";
     const step: Record<string, unknown> = {
-      type: "status_change",
-      at: e.createdAt,
-      by: e.changedById ? (personMap.get(e.changedById) ?? null) : null,
-      meta: { fromStatus: e.fromStatus, toStatus: e.toStatus },
+      type: isReviewEvent ? e.toStatus : "status_change",
+      at:   e.createdAt,
+      by:   e.changedById ? (personMap.get(e.changedById) ?? null) : null,
+      meta: isReviewEvent ? parsedMeta : { fromStatus: e.fromStatus, toStatus: e.toStatus, ...parsedMeta },
     };
-    if (e.toStatus === "in_revision" && revisionQueue.length > 0) {
+    if (e.toStatus === "review" && revisionQueue.length > 0) {
       const rev = revisionQueue.shift()!;
       (step.meta as Record<string, unknown>).revisionComment = rev.comment;
       (step.meta as Record<string, unknown>).revisionNumber = rev.revisionNumber;
@@ -2530,6 +2825,11 @@ router.post("/tasks/:id/reassign", requireCoordinator, async (req, res): Promise
     { taskId: id }
   );
 
+  // Re-aloca slots ESCALA para o novo editor
+  if (task.effortHours && newEditorId) {
+    await reallocTask(id, newEditorId, Number(task.effortHours), task.startDate, task.dueDate);
+  }
+
   // If subtask reassignment, recalculate parent
   if (task.taskType === "subtask" && task.parentTaskId) {
     await recalculateParentStatus(task.parentTaskId, req.session.userId!);
@@ -2537,6 +2837,221 @@ router.post("/tasks/:id/reassign", requireCoordinator, async (req, res): Promise
 
   broadcastTaskChange();
   res.json(updated);
+});
+
+// ── POST /api/tasks/:id/realloc ──────────────────────────────────────────────
+// Força re-alocação de slots ESCALA com parâmetros opcionais de override.
+// Usado pelo frontend após alterar prazo ou editor via UI.
+router.post("/tasks/:id/realloc", requireCoordinator, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+  if (!task) { res.status(404).json({ error: "Tarefa não encontrada" }); return; }
+  if (!task.effortHours) { res.status(400).json({ error: "Tarefa sem effortHours" }); return; }
+
+  const editorId = req.body.editorId ? parseInt(String(req.body.editorId), 10) : (task.assignedToId ?? null);
+  const startDate = req.body.startDate ? new Date(String(req.body.startDate)) : task.startDate;
+  const deadline  = req.body.deadline  ? new Date(String(req.body.deadline))  : task.dueDate;
+
+  if (!editorId) { res.status(400).json({ error: "Sem editor atribuído" }); return; }
+
+  await reallocTask(id, editorId, Number(task.effortHours), startDate, deadline);
+  broadcastTaskChange();
+  res.json({ ok: true });
+});
+
+// ── POST /api/tasks/:id/invite-reviewer ──────────────────────────────────────
+router.post("/tasks/:id/invite-reviewer", requireCoordinator, async (req, res): Promise<void> => {
+  const taskId = parseInt(req.params.id, 10);
+  if (isNaN(taskId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const { userIds, message } = req.body as { userIds: number[]; message?: string };
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    res.status(400).json({ error: "Informe ao menos um usuário" }); return;
+  }
+
+  const [task] = await db.select({ id: tasksTable.id, title: tasksTable.title })
+    .from(tasksTable).where(eq(tasksTable.id, taskId));
+  if (!task) { res.status(404).json({ error: "Tarefa não encontrada" }); return; }
+
+  const inviter = await db.select({ name: usersTable.name })
+    .from(usersTable).where(eq(usersTable.id, req.session.userId!));
+  const inviterName = inviter[0]?.name ?? "Alguém";
+
+  const notifMessage = message?.trim()
+    ? `${inviterName}: "${message.trim()}"`
+    : `${inviterName} convidou você para revisar esta entrega.`;
+
+  await Promise.all(userIds.map(uid =>
+    notify(uid, "review_invite",
+      `Revisão: ${task.title}`,
+      notifMessage,
+      { taskId }
+    )
+  ));
+
+  res.json({ ok: true, count: userIds.length });
+});
+
+// ── GET /api/coordinators — lista coordenadores/supervisores/admins ───────────
+router.get("/coordinators", requireCoordinator, async (req, res): Promise<void> => {
+  const coords = await db
+    .select({ id: usersTable.id, name: usersTable.name, role: usersTable.role, avatarUrl: usersTable.avatarUrl })
+    .from(usersTable)
+    .where(inArray(usersTable.role, ["coordinator", "supervisor", "admin"]));
+  res.json(coords.filter(c => c.id !== req.session.userId));
+});
+
+// ── GET /api/tasks/:id/coordinators ──────────────────────────────────────────
+router.get("/tasks/:id/coordinators", requireCoordinator, async (req, res): Promise<void> => {
+  const taskId = parseInt(req.params.id, 10);
+  if (isNaN(taskId)) { res.status(400).json({ error: "ID inválido" }); return; }
+  const rows = await db
+    .select({ id: usersTable.id, name: usersTable.name, role: usersTable.role, avatarUrl: usersTable.avatarUrl, addedAt: taskCoordinatorsTable.addedAt })
+    .from(taskCoordinatorsTable)
+    .innerJoin(usersTable, eq(taskCoordinatorsTable.userId, usersTable.id))
+    .where(eq(taskCoordinatorsTable.taskId, taskId));
+  res.json(rows);
+});
+
+// ── POST /api/tasks/:id/coordinators — só o titular pode adicionar ────────────
+router.post("/tasks/:id/coordinators", requireCoordinator, async (req, res): Promise<void> => {
+  const taskId = parseInt(req.params.id, 10);
+  if (isNaN(taskId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const [task] = await db.select({ id: tasksTable.id, title: tasksTable.title, createdById: tasksTable.createdById, taskType: tasksTable.taskType })
+    .from(tasksTable).where(eq(tasksTable.id, taskId));
+  if (!task) { res.status(404).json({ error: "Tarefa não encontrada" }); return; }
+  if (task.taskType !== "task") { res.status(400).json({ error: "Co-coordenadores só podem ser adicionados a tarefas simples" }); return; }
+
+  const userId = req.session.userId!;
+  const role   = req.session.userRole!;
+  if (role === "coordinator" && task.createdById !== userId) {
+    res.status(403).json({ error: "Apenas o titular da tarefa pode adicionar co-coordenadores" }); return;
+  }
+
+  const { targetUserId } = req.body as { targetUserId: number };
+  if (!targetUserId) { res.status(400).json({ error: "targetUserId obrigatório" }); return; }
+  if (targetUserId === task.createdById) { res.status(400).json({ error: "O titular já é responsável pela tarefa" }); return; }
+
+  const [targetUser] = await db.select({ id: usersTable.id, name: usersTable.name, role: usersTable.role })
+    .from(usersTable).where(eq(usersTable.id, targetUserId));
+  if (!targetUser || !["coordinator", "supervisor", "admin"].includes(targetUser.role)) {
+    res.status(400).json({ error: "Usuário não é coordenador" }); return;
+  }
+
+  // Upsert — não duplica
+  await db.insert(taskCoordinatorsTable)
+    .values({ taskId, userId: targetUserId })
+    .onConflictDoNothing();
+
+  const [inviter] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
+  await notify(targetUserId, "coord_added",
+    "Você foi adicionado como co-coordenador",
+    `${inviter?.name ?? "Alguém"} adicionou você à tarefa "${task.title}"`,
+    { taskId },
+  );
+
+  res.json({ ok: true });
+});
+
+// ── DELETE /api/tasks/:id/coordinators/:userId — só o titular pode remover ───
+router.delete("/tasks/:id/coordinators/:targetId", requireCoordinator, async (req, res): Promise<void> => {
+  const taskId   = parseInt(req.params.id, 10);
+  const targetId = parseInt(req.params.targetId, 10);
+  if (isNaN(taskId) || isNaN(targetId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const [task] = await db.select({ createdById: tasksTable.createdById, title: tasksTable.title })
+    .from(tasksTable).where(eq(tasksTable.id, taskId));
+  if (!task) { res.status(404).json({ error: "Tarefa não encontrada" }); return; }
+
+  const userId = req.session.userId!;
+  const role   = req.session.userRole!;
+  if (role === "coordinator" && task.createdById !== userId) {
+    res.status(403).json({ error: "Apenas o titular da tarefa pode remover co-coordenadores" }); return;
+  }
+
+  await db.delete(taskCoordinatorsTable)
+    .where(and(eq(taskCoordinatorsTable.taskId, taskId), eq(taskCoordinatorsTable.userId, targetId)));
+
+  res.json({ ok: true });
+});
+
+// ── POST /api/tasks/:id/transfer — transfere titularidade para outro coord ─────
+router.post("/tasks/:id/transfer", requireCoordinator, async (req, res): Promise<void> => {
+  const taskId = parseInt(req.params.id, 10);
+  if (isNaN(taskId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const [task] = await db
+    .select({ id: tasksTable.id, title: tasksTable.title, createdById: tasksTable.createdById, taskType: tasksTable.taskType, taskNumber: tasksTable.taskNumber, taskYear: tasksTable.taskYear })
+    .from(tasksTable).where(eq(tasksTable.id, taskId));
+  if (!task) { res.status(404).json({ error: "Tarefa não encontrada" }); return; }
+  if (task.taskType !== "task") { res.status(400).json({ error: "Transferência só é permitida para tarefas simples" }); return; }
+
+  const userId = req.session.userId!;
+  const role   = req.session.userRole!;
+  if (role === "coordinator" && task.createdById !== userId) {
+    res.status(403).json({ error: "Apenas o titular pode transferir a tarefa" }); return;
+  }
+
+  const { toUserId } = req.body as { toUserId: number };
+  if (!toUserId) { res.status(400).json({ error: "toUserId obrigatório" }); return; }
+  if (toUserId === task.createdById) { res.status(400).json({ error: "Este coordenador já é o titular" }); return; }
+
+  const [target] = await db.select({ id: usersTable.id, name: usersTable.name, role: usersTable.role })
+    .from(usersTable).where(eq(usersTable.id, toUserId));
+  if (!target || !["coordinator", "supervisor", "admin"].includes(target.role)) {
+    res.status(400).json({ error: "Usuário não é coordenador" }); return;
+  }
+
+  // Se o alvo já é co-coord, remove da tabela (vai virar titular)
+  await db.delete(taskCoordinatorsTable)
+    .where(and(eq(taskCoordinatorsTable.taskId, taskId), eq(taskCoordinatorsTable.userId, toUserId)));
+
+  // Troca o titular
+  await db.update(tasksTable)
+    .set({ createdById: toUserId, updatedAt: new Date() })
+    .where(eq(tasksTable.id, taskId));
+
+  // Registra evento no histórico
+  await db.insert(taskEventsTable).values({
+    taskId,
+    fromStatus: "transferred",
+    toStatus:   "transferred",
+    changedById: userId,
+    meta: JSON.stringify({ fromUserId: task.createdById, toUserId, toUserName: target.name }),
+  });
+
+  const [transferer] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
+  const taskCode = fmtCode(task.taskNumber, task.taskYear);
+
+  // Notifica o novo titular
+  await notify(toUserId, "task_transferred",
+    "Tarefa transferida para você",
+    `${transferer?.name ?? "Alguém"} transferiu "${taskCode} ${task.title}" para sua responsabilidade`,
+    { taskId },
+  );
+
+  broadcastTaskChange();
+  res.json({ ok: true });
+});
+
+// ── Mark review comments as read ──────────────────────────────────────────────
+router.post("/tasks/:id/review/mark-read", requireAuth, async (req, res): Promise<void> => {
+  const taskId = parseInt(req.params.id, 10);
+  const userId = req.session.userId!;
+  if (isNaN(taskId)) { res.status(400).json({ error: "invalid id" }); return; }
+
+  await db
+    .insert(reviewReadsTable)
+    .values({ userId, taskId, lastReadAt: new Date() })
+    .onConflictDoUpdate({
+      target: [reviewReadsTable.userId, reviewReadsTable.taskId],
+      set: { lastReadAt: new Date() },
+    });
+
+  res.json({ ok: true });
 });
 
 export default router;

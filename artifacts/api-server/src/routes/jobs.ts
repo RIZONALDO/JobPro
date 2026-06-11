@@ -4,7 +4,7 @@ import { eq, desc, asc, ne, isNotNull, or, sql, and, inArray } from "drizzle-orm
 import { requireAuth, requireCoordinator } from "../lib/auth.js";
 import { broadcastJobChange, broadcastProjectChange } from "../lib/broadcast.js";
 
-const ACTIVE_TASK_STATUSES = ["in_progress", "review", "in_revision"] as const;
+const ACTIVE_TASK_STATUSES = ["in_progress", "review"] as const;
 
 type CountMode = "all" | "active" | "incomplete";
 

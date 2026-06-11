@@ -398,13 +398,11 @@ export default function TasksRascunho() {
         </DialogContent>
       </Dialog>
 
-      {/* Form modal — sempre em modo rascunho (sem botão Publicar) */}
       <TaskFormModal
         open={formOpen}
         onOpenChange={setFormOpen}
         onSaved={() => load(true)}
         editTaskId={editTaskId}
-        hidePublish
       />
     </div>
   );

@@ -207,7 +207,7 @@ export function TaskModal({ taskId, onClose, onOpenTask, initialTab = "entrega",
 
   return (
     <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-3xl w-[calc(100vw-16px)] p-0 gap-0 overflow-hidden h-[90vh] flex flex-col rounded-2xl border border-[hsl(var(--border))] shadow-2xl bg-[hsl(var(--card))]">
+      <DialogContent className="max-w-3xl w-[calc(100vw-16px)] p-0 gap-0 overflow-hidden h-[90vh] flex flex-col rounded-3xl border border-[hsl(var(--border))] shadow-2xl bg-[hsl(var(--card))]">
 
         {loading || !task ? (
           <>
@@ -222,28 +222,44 @@ export function TaskModal({ taskId, onClose, onOpenTask, initialTab = "entrega",
             <DialogTitle className="sr-only">{task.title}</DialogTitle>
 
             {/* ── HEADER ── */}
-            <div className="shrink-0 px-5 pt-4 pb-0 border-b border-[hsl(var(--border))]">
-              <div className="flex items-baseline gap-2 flex-wrap mb-1">
-                {task.taskCode && <span className="font-mono text-xs text-[hsl(var(--muted-foreground))]/50 shrink-0">{task.taskCode}</span>}
-                <h2 className="text-base font-bold text-[hsl(var(--foreground))] leading-snug">{task.title}</h2>
+            <div className="shrink-0 px-6 pt-5 pb-0 border-b border-[hsl(var(--border))]">
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                {task.taskCode && (
+                  <span className="font-mono text-[11px] font-bold tracking-tight text-[hsl(var(--primary))]/60 shrink-0">
+                    {task.taskCode}
+                  </span>
+                )}
+                <h2 className="text-base font-black text-[hsl(var(--foreground))] leading-snug tracking-tight">
+                  {task.title}
+                </h2>
               </div>
-              <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <div className="flex items-center gap-2 mb-3.5 flex-wrap">
                 <span className={`inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none ${STATUS_CHIP[task.status] ?? "bg-slate-500/10 text-slate-500"}`}>
                   {STATUS_LABEL[task.status] ?? task.status}
                 </span>
                 {task.revisionCount > 0 && (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200/50 dark:border-amber-800/30">
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200/50 dark:border-amber-800/30">
                     <RotateCcw className="h-2.5 w-2.5" />{task.revisionCount} alt.
                   </span>
                 )}
-                {task.client && <span className="text-[11px] text-[hsl(var(--muted-foreground))]/50 flex items-center gap-1"><Tag className="h-3 w-3" />{task.client}</span>}
-                {task.editors?.[0] && <span className="text-[11px] text-[hsl(var(--muted-foreground))]/50 flex items-center gap-1.5"><AvatarDisplay name={task.editors[0].name} avatarUrl={task.editors[0].avatarUrl} size={14} />{task.editors[0].name.split(" ")[0]}</span>}
+                {task.client && (
+                  <span className="text-[11px] text-[hsl(var(--muted-foreground))]/50 flex items-center gap-1">
+                    <Tag className="h-3 w-3" />{task.client}
+                  </span>
+                )}
+                {task.editors?.[0] && (
+                  <span className="text-[11px] text-[hsl(var(--muted-foreground))]/50 flex items-center gap-1.5">
+                    <AvatarDisplay name={task.editors[0].name} avatarUrl={task.editors[0].avatarUrl} size={14} />
+                    {task.editors[0].name.split(" ")[0]}
+                  </span>
+                )}
               </div>
-              <div className="flex -mb-px">
+              <div className="flex -mb-px gap-1">
                 {tabs.map(tab => (
                   <button key={tab.id} onClick={() => !tab.disabled && setActiveTab(tab.id)} disabled={tab.disabled}
-                    className={`flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold border-b-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-                      activeTab === tab.id ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]"
+                    className={`flex items-center gap-1.5 px-4 py-2.5 text-[12px] font-bold border-b-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed rounded-t-lg ${
+                      activeTab === tab.id
+                        ? "border-[hsl(var(--primary))] text-[hsl(var(--primary))]"
                         : "border-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}>
                     {tab.icon}{tab.label}
                   </button>
@@ -274,15 +290,11 @@ export function TaskModal({ taskId, onClose, onOpenTask, initialTab = "entrega",
                       <div className="bg-black relative shrink-0">
                         {selected && isVideo(selected) && (
                           <VideoPlayer key={selected.id} src={streamUrl(selected)}
-                            reviewMode={reviewMode && canReview}
-                            seekTo={seekTarget} markers={allMarkers} onMarkerClick={handleMarkerClick}
-                            onCapture={reviewMode && canReview ? handleCapture : () => {}} />
+                            seekTo={seekTarget} markers={allMarkers} onMarkerClick={handleMarkerClick} />
                         )}
                         {selected && isAudio(selected) && (
                           <AudioPlayer key={selected.id} src={streamUrl(selected)} fileName={selected.fileName}
-                            reviewMode={reviewMode && canReview}
-                            seekTo={seekTarget} markers={allMarkers} onMarkerClick={handleMarkerClick}
-                            onCapture={reviewMode && canReview ? handleCapture : () => {}} />
+                            seekTo={seekTarget} markers={allMarkers} onMarkerClick={handleMarkerClick} />
                         )}
 
                         {/* Frame capture overlay */}

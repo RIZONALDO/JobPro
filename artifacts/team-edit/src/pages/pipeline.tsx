@@ -63,7 +63,6 @@ const COLUMNS: { key: string; label: string; desc: string; accent: string }[] = 
   { key: "pending",     label: "Pendente",      desc: "Aguardando início",        accent: "#94a3b8" },
   { key: "in_progress", label: "Em andamento",  desc: "Editor trabalhando",       accent: "#3b82f6" },
   { key: "review",      label: "Aprovação",     desc: "Aguardando aprovação",     accent: "#f59e0b" },
-  { key: "in_revision", label: "Em alteração",  desc: "Pedido de alteração",      accent: "#f97316" },
   { key: "completed",   label: "Aprovadas",     desc: "Tarefa concluída",         accent: "#22c55e" },
   { key: "paused",      label: "Pausadas",      desc: "Temporariamente pausada",  accent: "#a855f7" },
   { key: "cancelled",   label: "Canceladas",    desc: "Tarefa cancelada",         accent: "#ef4444" },

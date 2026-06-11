@@ -12,7 +12,7 @@ import { broadcastTaskChange } from "../lib/broadcast.js";
 const router = Router();
 
 // ── POST /api/tasks/:id/review-batches ────────────────────────────────────────
-// Coordinator submits a batch of frame comments → changes status to in_revision
+// Coordinator submits a batch of frame comments → incrementa revisionCount sem mudar status
 router.post("/tasks/:id/review-batches", requireCoordinator, async (req, res): Promise<void> => {
   const taskId = parseInt(req.params.id);
   const userId = req.session.userId!;
@@ -61,9 +61,8 @@ router.post("/tasks/:id/review-batches", requireCoordinator, async (req, res): P
 
   await db.insert(taskFrameCommentsTable).values(commentInserts);
 
-  // Update task status + revisionCount
+  // Incrementa revisionCount sem mudar status (fluxo colaborativo permanece em "review")
   await db.update(tasksTable).set({
-    status: "in_revision",
     revisionCount: newRevisionNumber,
   }).where(eq(tasksTable.id, taskId));
 
@@ -74,14 +73,6 @@ router.post("/tasks/:id/review-batches", requireCoordinator, async (req, res): P
     revisionNumber: newRevisionNumber,
     comment: summary,
     createdById: userId,
-  });
-
-  // Record event
-  await db.insert(taskEventsTable).values({
-    taskId,
-    fromStatus: "review",
-    toStatus: "in_revision",
-    changedById: userId,
   });
 
   // Notify editor and extra editors

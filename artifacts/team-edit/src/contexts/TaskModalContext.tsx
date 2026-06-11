@@ -20,26 +20,13 @@ export function TaskModalProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [, navigate] = useLocation();
 
-  const openTask = (taskId: number, tab: Tab = "entrega") => {
-    const isCoord = user?.role === "coordinator" || user?.role === "admin" || user?.role === "supervisor";
-    if (isCoord) {
-      navigate(`/review/${taskId}`);
-    } else {
-      setState({ id: taskId, tab });
-    }
+  const openTask = (taskId: number, _tab?: Tab) => {
+    navigate(`/review/${taskId}`);
   };
 
   return (
     <TaskModalContext.Provider value={{ openTask }}>
       {children}
-      {state !== null && (
-        <TaskModal
-          taskId={state.id}
-          initialTab={state.tab}
-          onClose={() => setState(null)}
-          onOpenTask={(id) => setState({ id, tab: "entrega" })}
-        />
-      )}
     </TaskModalContext.Provider>
   );
 }

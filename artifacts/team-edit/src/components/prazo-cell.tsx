@@ -1,4 +1,5 @@
-import { cn, fmtClosedCycle, fmtPrazoWeek, fmtDaysLeft } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { fmtDate, daysFromToday } from "@/lib/date";
 
 interface Props {
   dueDate: string | null;
@@ -9,62 +10,57 @@ interface Props {
   className?: string;
 }
 
-const BADGE_CLS: Record<string, string> = {
-  success:   "bg-emerald-50 border-emerald-200/80 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-800/50 dark:text-emerald-400",
-  late:      "bg-amber-50 border-amber-200/80 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800/50 dark:text-amber-400",
-  cancelled: "bg-[hsl(var(--muted))]/40 border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]/60",
-  neutral:   "bg-[hsl(var(--muted))]/40 border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]/60",
-};
+const TERMINAL = new Set(["completed", "cancelled", "paused"]);
 
-export function PrazoCell({ dueDate, status, updatedAt, overdue, reviewedAt, className }: Props) {
-  const closed = fmtClosedCycle(status, dueDate, updatedAt, reviewedAt);
-  if (closed) return (
-    <div className={cn("flex flex-col gap-1", className)}>
-      <span className="text-xs text-[hsl(var(--muted-foreground))]/60 tabular-nums leading-tight">
-        {closed.date}
+function diffDays(dueDate: string): number {
+  return daysFromToday(dueDate);
+}
+
+export function PrazoCell({ dueDate, status, className }: Props) {
+  if (!dueDate) {
+    return <span className={cn("text-[11px] text-[hsl(var(--muted-foreground))]/30", className)}>—</span>;
+  }
+
+  const date = fmtDate(dueDate) ?? "—";
+
+  if (TERMINAL.has(status)) {
+    return (
+      <span className={cn("text-xs text-[hsl(var(--muted-foreground))]/50 tabular-nums", className)}>
+        {date}
       </span>
-      {closed.badge && (
-        <span className={`inline-flex w-fit items-center px-1.5 py-0.5 rounded-md border text-[10px] font-medium leading-none ${BADGE_CLS[closed.variant]}`}>
-          {closed.badge}
-        </span>
-      )}
-    </div>
-  );
+    );
+  }
 
-  if (!dueDate) return (
-    <span className={cn("text-[11px] text-[hsl(var(--muted-foreground))]/30", className)}>—</span>
-  );
+  const diff = diffDays(dueDate);
 
-  const { label } = fmtPrazoWeek(dueDate);
-  const days = fmtDaysLeft(dueDate);
+  let countdown: string;
+  let countdownCls: string;
 
-  const dt    = new Date(dueDate.includes("T") ? dueDate : dueDate + "T00:00");
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const diff  = Math.round((new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime() - today.getTime()) / 86_400_000);
+  if (diff < 0) {
+    countdown = `há ${Math.abs(diff)}d`;
+    countdownCls = "text-red-500 font-semibold";
+  } else if (diff === 0) {
+    countdown = "hoje";
+    countdownCls = "text-amber-500 font-semibold";
+  } else if (diff === 1) {
+    countdown = "amanhã";
+    countdownCls = "text-amber-400";
+  } else if (diff <= 7) {
+    countdown = `em ${diff}d`;
+    countdownCls = "text-amber-400";
+  } else {
+    countdown = `em ${diff}d`;
+    countdownCls = "text-[hsl(var(--muted-foreground))]/50";
+  }
 
-  const inReview   = status === "review";
-  const inRevision = status === "in_revision";
-  const inWaiting  = inReview || inRevision;
-
-  const editorWasLate = inReview && diff < 0 && reviewedAt
-    ? new Date(reviewedAt) > dt
-    : false;
-
-  const daysCls = (!inWaiting && diff < 0) ? "text-red-400" : diff === 0 ? "text-amber-600" : "text-[hsl(var(--muted-foreground))]/55";
-  const lineColor  = (overdue && !inWaiting) ? "text-red-500" : "text-[hsl(var(--muted-foreground))]";
-  const lineWeight = (overdue && !inWaiting) ? "font-semibold" : "font-normal";
-
-  const AMBER_CHIP = "inline-flex w-fit items-center px-1.5 py-0.5 rounded-md border text-[10px] font-medium leading-none bg-amber-50 border-amber-200/80 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800/50 dark:text-amber-400";
+  const dateCls = diff < 0
+    ? "text-red-500 font-semibold"
+    : "text-[hsl(var(--muted-foreground))]";
 
   return (
     <div className={cn("flex flex-col gap-0.5", className)}>
-      <span className={`text-xs ${lineWeight} leading-tight ${lineColor}`}>{label}</span>
-      {inReview && diff < 0 && !editorWasLate
-        ? <span className={AMBER_CHIP}>Em aprovação</span>
-        : inRevision && diff < 0
-          ? <span className={AMBER_CHIP}>Em alteração</span>
-          : days && <span className={`leading-tight ${daysCls}`} style={{ fontSize: "9px" }}>{days.text}</span>
-      }
+      <span className={`text-xs tabular-nums leading-tight ${dateCls}`}>{date}</span>
+      <span className={`leading-tight tabular-nums ${countdownCls}`} style={{ fontSize: "9px" }}>{countdown}</span>
     </div>
   );
 }

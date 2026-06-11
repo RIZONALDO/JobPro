@@ -709,7 +709,7 @@ export function TaskFilesViewModal({
 
   const isCoordinator = user?.role === "coordinator" || user?.role === "admin" || user?.role === "supervisor";
   const canAct        = isCoordinator && taskStatus === "review";
-  const isInRevision  = taskStatus === "in_revision";
+  const isInRevision = false;
 
   useEffect(() => {
     if (!open) {

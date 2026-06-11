@@ -2,8 +2,8 @@ import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, FolderOpen, ListTodo, Users, Settings, LogOut,
   CalendarDays, Menu, Bell, BellRing, ChevronRight, X, UserCircle,
-  CalendarRange, BarChart3, Zap, AtSign, ClipboardList, LayoutGrid,
-  CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2, CalendarClock, Shield,
+  CalendarRange, BarChart3, Zap, AtSign, ClipboardList, LayoutGrid, CalendarPlus, MessageCircleMore, Sparkles, NotebookPen,
+  CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2, CalendarClock, Shield, ArrowUpRight, ArrowRightLeft,
   Palette, Sun, Moon, ALargeSmall, Volume2, VolumeX, Trash2, CheckCheck,
 } from "lucide-react";
 import * as Collapsible from "@radix-ui/react-collapsible";
@@ -55,6 +55,8 @@ const NOTIF_ICON: Record<string, React.ReactNode> = {
   project_completed:<FolderCheck  className="h-4 w-4 text-green-600" />,
   feed_mention:     <AtSign       className="h-4 w-4 text-violet-500" />,
   due_date_changed: <CalendarClock className="h-4 w-4 text-sky-500" />,
+  review_invite:    <Eye           className="h-4 w-4 text-violet-500" />,
+  task_transferred: <ArrowUpRight  className="h-4 w-4 text-indigo-500" />,
 };
 
 function timeAgo(dateStr: string): string {
@@ -79,8 +81,10 @@ const COORD_ACTIVE = ["supervisor", "coordinator"];
 const NAV_ITEMS: NavItem[] = [
   { href: "/",         label: "Dashboard",      icon: LayoutDashboard, roles: NON_ADMIN    },
   { href: "/tasks",    label: "Tarefas",         icon: ClipboardList,   roles: NON_ADMIN    },
-  { href: "/feed",     label: "Feed",             icon: Zap,             roles: NON_ADMIN    },
-  { href: "/agenda",   label: "Agenda Geral",     icon: LayoutGrid,      roles: COORD_ROLES  },
+  { href: "/feed",     label: "Feed",             icon: MessageCircleMore, roles: NON_ADMIN  },
+  { href: "/agenda",        label: "Grade",            icon: CalendarPlus,    roles: COORD_ROLES  },
+  { href: "/planejar",      label: "Planejar",        icon: NotebookPen,     roles: COORD_ROLES  },
+  { href: "/reagendamento", label: "Reagendar",        icon: ArrowRightLeft,  roles: COORD_ROLES  },
   { href: "/reports",  label: "Relatórios",       icon: BarChart3,       roles: COORD_ACTIVE },
   { href: "/team",     label: "Membros",          icon: Users,           roles: COORD_ROLES  },
   { href: "/duty",     label: "Plantões",         icon: Shield,          roles: ["admin","supervisor","coordinator","editor"] },
@@ -402,7 +406,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <div className="flex flex-col flex-1 min-w-0">
 
         {/* Top Header */}
-        <header className="h-14 shrink-0 border-b bg-[hsl(var(--card))] flex items-center px-4 gap-3 z-30">
+        <header className="h-14 shrink-0 border-b bg-[hsl(var(--card))] flex items-center px-4 gap-3 relative z-50">
 
           {/* Mobile hamburger */}
           <button
@@ -619,7 +623,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
                                   onClick={() => {
                                     markRead(n);
                                     setNotifOpen(false);
-                                    if (n.taskId) navigate(`/tasks?tab=lista&highlight=${n.taskId}`);
+                                    if (n.type === "review_invite" && n.taskId) navigate(`/review/${n.taskId}`);
+                                    else if (n.taskId) navigate(`/tasks?tab=lista&highlight=${n.taskId}`);
                                     else navigate("/");
                                   }}
                                   className={cn(

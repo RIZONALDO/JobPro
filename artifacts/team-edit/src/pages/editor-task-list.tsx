@@ -4,7 +4,7 @@ import { TaskFileUploadModal } from "@/components/TaskFileUploadModal";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerRow } from "@/lib/motion";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useSearch } from "wouter";
+import { useSearch, useLocation } from "wouter";
 import { apiFetch, apiPut, apiPost } from "@/lib/api";
 import { fmtClosedCycle, fmtPrazoWeek } from "@/lib/utils";
 import { PrazoCell } from "@/components/prazo-cell";
@@ -21,15 +21,16 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   AlertCircle, MoreVertical,
-  Info, Undo2, Search, X, Clock, FileVideo, Clapperboard, AudioLines,
+  Info, Undo2, Search, X, Clock, MessageSquare,
+  ChevronDown, ChevronRight as ChevronRightIcon, ExternalLink,
 } from "lucide-react";
-import { AvatarDisplay } from "@/components/ui/avatar-display";
+import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
 import { STATUS_LABEL, STATUS_CHIP, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
 import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
-import { ComplexityConfirmDialog, COMPLEXITY_MESSAGES } from "@/components/ui/complexity-confirm-dialog";
+import { EffortHoursDialog } from "@/components/ui/effort-hours-dialog";
 
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
 interface Task {
@@ -46,12 +47,17 @@ interface Task {
   color: string;
   number?: number;
   createdBy: { id: number; name: string; avatarUrl?: string | null } | null;
+  coCoordinators?: { id: number; name: string; avatarUrl?: string | null }[];
   revisions: Revision[];
   updatedAt: string;
   reviewedAt?: string | null;
-  editorComplexitySet?: boolean;
+  effortHours?: number | null;
+  editorEstimateHours?: number | null;
+  editorAcceptedAt?: string | null;
+  hasAllocToday?: boolean;
   fileCount?: number;
   fileKind?: "video" | "audio" | "mixed" | "other" | null;
+  unreadCommentCount?: number;
   // multi-task
   taskType?: string;
   parentTask?: { id: number; title: string; taskCode?: string } | null;
@@ -62,10 +68,13 @@ const TAB_TODAY_STR = (() => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 })();
-const ACTIVE_STATUSES = new Set(["pending", "in_progress", "in_revision", "review"]);
+const ACTIVE_STATUSES = new Set(["pending", "in_progress", "review"]);
 const SCHEDULED_STATUSES = new Set(["pending", "in_progress", "paused"]);
 function isTaskScheduled(t: Task): boolean {
   if (!SCHEDULED_STATUSES.has(t.status)) return false;
+  // v2 ESCALA (tem effortHours): tarefa pendente é agendada se não tem alocação hoje
+  if (t.effortHours != null && t.status === "pending") return !t.hasAllocToday;
+  // in_progress / paused: usa startDate
   const ref = t.startDate ?? (t.status === "pending" ? t.dueDate : null);
   if (!ref) return false;
   return ref.split("T")[0] > TAB_TODAY_STR;
@@ -73,10 +82,8 @@ function isTaskScheduled(t: Task): boolean {
 
 
 const transitions: Record<string, { next: string; label: string; shortLabel: string }> = {
-  pending:     { next: "in_progress", label: "Iniciar edição",         shortLabel: "Iniciar"  },
-  in_progress: { next: "review",      label: "Enviar para aprovação",  shortLabel: "Enviar"   },
-  in_revision: { next: "review",      label: "Enviar para aprovação",  shortLabel: "Enviar"   },
-  reopened:    { next: "in_progress", label: "Iniciar edição",         shortLabel: "Iniciar"  },
+  pending:  { next: "in_progress", label: "Iniciar edição", shortLabel: "Iniciar" },
+  reopened: { next: "in_progress", label: "Iniciar edição", shortLabel: "Iniciar" },
 };
 
 const STATUS_OPTIONS = [
@@ -84,7 +91,6 @@ const STATUS_OPTIONS = [
   { value: "active",      label: "Ativas" },
   { value: "pending",     label: "Pendente" },
   { value: "in_progress", label: "Em edição" },
-  { value: "in_revision", label: "Em alteração" },
   { value: "review",      label: "Em aprovação" },
   { value: "reopened",    label: "Reaberta" },
   { value: "paused",      label: "Pausada" },
@@ -95,7 +101,6 @@ const STATUS_OPTIONS = [
 const TASK_GROUPS = [
   { key: "pending",   label: "Pendentes",     statuses: ["pending"],      color: "#64748b" },
   { key: "editing",   label: "Em edição",     statuses: ["in_progress"],  color: "#3b82f6" },
-  { key: "revision",  label: "Em alteração",  statuses: ["in_revision"],  color: "#f97316" },
   { key: "approval",  label: "Em aprovação",  statuses: ["review"],       color: "#f59e0b" },
   { key: "reopened",  label: "Reabertas",     statuses: ["reopened"],     color: "#e11d48" },
   { key: "paused",    label: "Pausadas",      statuses: ["paused"],       color: "#a855f7" },
@@ -103,16 +108,31 @@ const TASK_GROUPS = [
   { key: "cancelled", label: "Canceladas",    statuses: ["cancelled"],    color: "#ef4444" },
 ];
 
+const TODAY_SECTIONS_EDITOR = [
+  { key: "start",    label: "Para iniciar",       statuses: ["pending", "reopened"], color: "#64748b", defaultCollapsed: false, canReview: false },
+  { key: "working",  label: "Trabalhando",         statuses: ["in_progress"],         color: "#3b82f6", defaultCollapsed: false, canReview: false },
+  { key: "waiting",  label: "Aguardando retorno",  statuses: ["review"],              color: "#f59e0b", defaultCollapsed: false, canReview: false },
+  { key: "done",     label: "Entregues hoje",      statuses: ["completed"],           color: "#22c55e", defaultCollapsed: true,  canReview: false },
+];
+
+const TODAY_SECTIONS_COORD = [
+  { key: "approve",  label: "Para aprovar",  statuses: ["review"],              color: "#f59e0b", defaultCollapsed: false, canReview: true  },
+  { key: "working",  label: "Em produção",   statuses: ["in_progress"],         color: "#3b82f6", defaultCollapsed: false, canReview: false },
+  { key: "start",    label: "Sem início",    statuses: ["pending", "reopened"], color: "#64748b", defaultCollapsed: false, canReview: false },
+  { key: "done",     label: "Entregues hoje",statuses: ["completed"],           color: "#22c55e", defaultCollapsed: true,  canReview: false },
+];
+
 function isOverdue(dueDate: string | null, status: string) {
   if (!dueDate || isTerminal(status) || status === "review") return false;
   return new Date(dueDate) < new Date(new Date().toDateString());
 }
 
-const STATUS_ORDER = ["pending", "in_progress", "in_revision", "review", "reopened", "paused", "completed", "cancelled"];
+const STATUS_ORDER = ["pending", "in_progress", "review", "reopened", "paused", "completed", "cancelled"];
 
 export default function EditorTaskList() {
   const { user } = useAuth();
   const { openTask } = useTaskModal();
+  const [, navigate] = useLocation();
 
 
   const [tasks,        setTasks]        = useState<Task[]>([]);
@@ -120,9 +140,16 @@ export default function EditorTaskList() {
   const [search,       setSearch]       = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [viewTab,      setViewTab]      = useState<"today" | "scheduled" | "all">("today");
-  const [complexityTarget, setComplexityTarget] = useState<Task | null>(null);
-  const [startingSaving,   setStartingSaving]   = useState(false);
-  const [definingSaving,   setDefiningSaving]   = useState(false);
+  const isEditor = user?.role === "editor";
+  const todaySections = isEditor ? TODAY_SECTIONS_EDITOR : TODAY_SECTIONS_COORD;
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
+    () => new Set(todaySections.filter(s => s.defaultCollapsed).map(s => s.key))
+  );
+  const toggleSection = (key: string) =>
+    setCollapsedSections(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  const [effortTarget,   setEffortTarget]   = useState<Task | null>(null);
+  const [startingSaving, setStartingSaving] = useState(false);
+  const [effortSaving,      setEffortSaving]      = useState(false);
 
   const urlSearch = useSearch();
   const [highlighted, setHighlighted] = useState<number | null>(() => {
@@ -171,24 +198,23 @@ export default function EditorTaskList() {
     }
   };
 
-  const saveComplexity = async (complexity: string, comment: string) => {
-    if (!complexityTarget) return;
-    setDefiningSaving(true);
+  const saveEffortHours = async (adjustedHours: number, comment: string) => {
+    if (!effortTarget) return;
+    setEffortSaving(true);
     try {
-      await apiPut(`/api/tasks/${complexityTarget.id}`, { complexity, startComment: comment });
-      setComplexityTarget(null);
+      await apiPut(`/api/tasks/${effortTarget.id}`, { editorEstimateHours: adjustedHours, startComment: comment });
+      setEffortTarget(null);
       load();
-      toast.success("Complexidade definida");
+      toast.success("Horas validadas");
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao salvar complexidade");
-    } finally { setDefiningSaving(false); }
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar estimativa");
+    } finally { setEffortSaving(false); }
   };
 
   const handleIniciarDireto = async (task: Task) => {
     setStartingSaving(true);
     try {
-      const startComment = COMPLEXITY_MESSAGES[task.complexity] ?? COMPLEXITY_MESSAGES.medium;
-      await apiPut(`/api/tasks/${task.id}`, { status: "in_progress", startComment });
+      await apiPut(`/api/tasks/${task.id}`, { status: "in_progress" });
       load();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao iniciar tarefa");
@@ -220,7 +246,10 @@ export default function EditorTaskList() {
   [tasks, search, filterStatus]);
 
   const tabFiltered = useMemo(() => {
-    if (viewTab === "today")     return filtered.filter(t => !isTaskScheduled(t) && ACTIVE_STATUSES.has(t.status));
+    if (viewTab === "today") return filtered.filter(t => {
+      if (t.status === "completed") return t.dueDate?.split("T")[0] === TAB_TODAY_STR;
+      return !isTaskScheduled(t) && ACTIVE_STATUSES.has(t.status);
+    });
     if (viewTab === "scheduled") return filtered.filter(t => isTaskScheduled(t));
     return filtered;
   }, [filtered, viewTab]);
@@ -271,11 +300,23 @@ export default function EditorTaskList() {
       cell: ({ row }) => {
         const t = row.original;
         return (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className={`inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none whitespace-nowrap shrink-0 ${STATUS_CHIP[t.status] ?? "bg-slate-500/10 text-slate-500"}`}>
-              {STATUS_LABEL[t.status] ?? t.status}
-            </span>
-            <MultiTaskBadge taskType={t.taskType ?? "task"} />
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className={`inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none whitespace-nowrap shrink-0 ${STATUS_CHIP[t.status] ?? "bg-slate-500/10 text-slate-500"}`}>
+                {STATUS_LABEL[t.status] ?? t.status}
+              </span>
+              <MultiTaskBadge taskType={t.taskType ?? "task"} />
+            </div>
+            {(t.unreadCommentCount ?? 0) > 0 && (
+              <button
+                onClick={e => { e.stopPropagation(); openTask(t.id, "entrega"); }}
+                className="inline-flex items-center gap-1 w-fit px-1.5 py-[3px] rounded-[4px] text-[10px] font-semibold transition-colors hover:opacity-80"
+                style={{ background: "rgba(239,68,68,0.10)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.20)" }}
+              >
+                <MessageSquare className="h-2.5 w-2.5 shrink-0" style={{ fill: "currentColor", stroke: "none" }} />
+                <span>ajustes</span>
+              </button>
+            )}
           </div>
         );
       },
@@ -330,39 +371,22 @@ export default function EditorTaskList() {
       cell: ({ row }) => {
         const t = row.original;
         if (!t.createdBy) return <span className="text-[hsl(var(--muted-foreground))]/30 text-sm">—</span>;
+        const allCoords = [t.createdBy, ...(t.coCoordinators ?? [])];
         return (
           <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-            <ChatAvatarButton userId={t.createdBy.id} name={t.createdBy.name} avatarUrl={t.createdBy.avatarUrl}
-              size={28} taskId={t.id} taskCode={t.taskCode} taskTitle={t.title} />
-            <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 truncate">{t.createdBy.name.split(" ")[0]}</span>
+            <div className="flex items-center" style={{ gap: 0 }}>
+              {allCoords.slice(0, 3).map((c, i) => (
+                <div key={c.id} style={{ marginLeft: i === 0 ? 0 : -9, zIndex: 3 - i }}>
+                  <ChatAvatarButton userId={c.id} name={c.name} avatarUrl={c.avatarUrl} size={26}
+                    taskId={t.id} taskCode={t.taskCode} taskTitle={t.title} />
+                </div>
+              ))}
+            </div>
+            {allCoords.length === 1 && (
+              <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 truncate">{t.createdBy.name.split(" ")[0]}</span>
+            )}
           </div>
         );
-      },
-    },
-    {
-      id: "midia",
-      header: "Mídia",
-      size: 40,
-      meta: { className: "text-center" },
-      cell: ({ row }) => {
-        const t = row.original;
-        return (t.fileCount ?? 0) > 0 ? (
-          <div className="flex justify-center" onClick={e => e.stopPropagation()}>
-            <button
-              title={`Ver mídia (${t.fileCount} arquivo${t.fileCount !== 1 ? "s" : ""})`}
-              onClick={() => openTask(t.id, "entrega")}
-              className={`flex items-center gap-0.5 px-1.5 h-7 rounded-lg transition-colors ${t.fileKind === "audio" ? "text-sky-500 hover:bg-sky-500/10" : "text-violet-500 hover:bg-violet-500/10"}`}
-            >
-              {t.fileKind === "audio" ? (
-                <AudioLines className="h-4 w-4" />
-              ) : t.fileKind === "mixed" ? (
-                <><Clapperboard className="h-3.5 w-3.5 text-violet-500" /><AudioLines className="h-3.5 w-3.5 text-sky-500" /></>
-              ) : (
-                <Clapperboard className="h-4 w-4" />
-              )}
-            </button>
-          </div>
-        ) : <span className="text-[hsl(var(--muted-foreground))]/30 flex justify-center">—</span>;
       },
     },
     {
@@ -375,10 +399,13 @@ export default function EditorTaskList() {
         const startAllowed = !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR;
         return (
           <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-            {t.status === "pending" && !t.editorComplexitySet && (
-              <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full" onClick={() => setComplexityTarget(t)}>Definir</Button>
+            {t.status === "pending" && t.effortHours != null && !t.editorAcceptedAt && (
+              <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/20"
+                onClick={() => setEffortTarget(t)}>
+                <Clock className="h-3 w-3 mr-1" />Horas
+              </Button>
             )}
-            {t.status === "pending" && t.editorComplexitySet && (
+            {t.status === "pending" && !(t.effortHours != null && !t.editorAcceptedAt) && (
               startAllowed
                 ? <Button size="sm" variant="default" className="h-7 text-xs px-3 w-full" onClick={() => handleIniciarDireto(t)}>Iniciar</Button>
                 : <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full" disabled>Agendada</Button>
@@ -402,7 +429,7 @@ export default function EditorTaskList() {
       size: 32,
       cell: ({ row }) => {
         const t = row.original;
-        const canReturn = ["pending","in_progress","in_revision"].includes(t.status);
+        const canReturn = ["pending","in_progress","review"].includes(t.status);
         return (
           <div onClick={e => e.stopPropagation()}>
             <DropdownMenu>
@@ -419,7 +446,7 @@ export default function EditorTaskList() {
       },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [viewTab, setComplexityTarget, setUploadTarget, setReturnTarget, openTask]);
+  ], [viewTab, setUploadTarget, setReturnTarget, openTask]);
 
   const table = useReactTable({
     data: tabFiltered,
@@ -525,23 +552,30 @@ export default function EditorTaskList() {
             <>
               {/* ── Mobile (< md) ────────────────────────────────────── */}
               <div className="md:hidden">
-                {TASK_GROUPS.map(group => {
+                {(viewTab === "today" ? todaySections : TASK_GROUPS).map(group => {
                   const groupTasks = tabFiltered.filter(t => group.statuses.includes(t.status));
                   if (!groupTasks.length) return null;
+                  const collapsed = viewTab === "today" && collapsedSections.has(group.key);
                   return (
                     <div key={group.key}>
-                      <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-2 mt-4 bg-[hsl(var(--card))]">
+                      <div className="flex items-center gap-3 px-4 py-2 mt-4 bg-[hsl(var(--card))]">
                         <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
                         <span className="text-[10px] font-semibold uppercase tracking-[0.12em] shrink-0" style={{ color: group.color, opacity: 0.75 }}>{group.label}</span>
                         <span className="flex-1 border-t border-dashed" style={{ borderColor: `${group.color}30` }} />
                         <span className="text-[10px] tabular-nums shrink-0" style={{ color: group.color, opacity: 0.5 }}>{groupTasks.length}</span>
+                        {viewTab === "today" && (
+                          <button onClick={() => toggleSection(group.key)} className="opacity-40 hover:opacity-80 transition-opacity">
+                            {collapsed ? <ChevronRightIcon className="h-3.5 w-3.5" style={{ color: group.color }} /> : <ChevronDown className="h-3.5 w-3.5" style={{ color: group.color }} />}
+                          </button>
+                        )}
                       </div>
-                      {groupTasks.map(t => {
+                      {!collapsed && groupTasks.map(t => {
                         const overdue = isOverdue(t.dueDate, t.status);
                         const accent = t.color ?? "#6366f1";
                         const trans = transitions[t.status];
-                        const canReturn = ["pending","in_progress","in_revision"].includes(t.status);
+                        const canReturn = ["pending","in_progress","review"].includes(t.status);
                         const isHighlighted = highlighted === t.id;
+                        const sectionCanReview = viewTab === "today" && (group as typeof TODAY_SECTIONS_COORD[0]).canReview;
                         return (
                           <motion.div key={t.id} ref={isHighlighted ? highlightRef : null} variants={staggerRow}
                             className="flex items-stretch border-b last:border-0 hover:bg-[hsl(var(--muted))]/20 transition-all cursor-pointer"
@@ -565,14 +599,14 @@ export default function EditorTaskList() {
                                 </div>
                               </div>
                               <div className="flex flex-col items-end gap-2 shrink-0" onClick={e => e.stopPropagation()}>
-                                {t.status === "pending" && !t.editorComplexitySet && <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap" onClick={e => { e.stopPropagation(); setComplexityTarget(t); }}>Definir complexidade</Button>}
-                                {t.status === "pending" && t.editorComplexitySet && (() => {
+                                {t.status === "pending" && !(t.effortHours != null && !t.editorAcceptedAt) && (() => {
                                   const ok = !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR;
                                   return ok
                                     ? <Button size="sm" variant="default" className="h-8 text-xs px-3 whitespace-nowrap" onClick={e => { e.stopPropagation(); handleIniciarDireto(t); }}>Iniciar</Button>
                                     : <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap" disabled>Agendada</Button>;
                                 })()}
                                 {trans && t.status !== "pending" && <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap" onClick={e => { e.stopPropagation(); trans.next === "review" ? setUploadTarget(t) : updateStatus(t, trans.next); }}>{trans.shortLabel}</Button>}
+                                {sectionCanReview && <Button size="sm" variant="outline" className="h-8 text-xs px-3 whitespace-nowrap" onClick={e => { e.stopPropagation(); navigate(`/review/${t.id}`); }}><ExternalLink className="h-3 w-3 mr-1" />Revisar</Button>}
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8" onClick={e => e.stopPropagation()}><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
@@ -607,22 +641,28 @@ export default function EditorTaskList() {
                   ))}
                 </thead>
                 <tbody>
-                  {TASK_GROUPS.map(group => {
+                  {(viewTab === "today" ? todaySections : TASK_GROUPS).map(group => {
                     const groupRows = table.getRowModel().rows.filter(r => group.statuses.includes(r.original.status));
                     if (!groupRows.length) return null;
+                    const collapsed = viewTab === "today" && collapsedSections.has(group.key);
                     return (
                       <React.Fragment key={group.key}>
-                        <tr className="sticky top-10 z-10">
+                        <tr>
                           <td colSpan={columns.length} className="bg-[hsl(var(--card))] px-4 py-2 border-b border-[hsl(var(--border))]/30">
                             <div className="flex items-center gap-3">
                               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
                               <span className="text-[10px] font-semibold uppercase tracking-[0.12em] shrink-0" style={{ color: group.color, opacity: 0.75 }}>{group.label}</span>
                               <span className="flex-1 border-t border-dashed" style={{ borderColor: `${group.color}30` }} />
                               <span className="text-[10px] tabular-nums shrink-0" style={{ color: group.color, opacity: 0.5 }}>{groupRows.length}</span>
+                              {viewTab === "today" && (
+                                <button onClick={() => toggleSection(group.key)} className="ml-1 opacity-40 hover:opacity-80 transition-opacity">
+                                  {collapsed ? <ChevronRightIcon className="h-3.5 w-3.5" style={{ color: group.color }} /> : <ChevronDown className="h-3.5 w-3.5" style={{ color: group.color }} />}
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
-                        {groupRows.map(row => {
+                        {!collapsed && groupRows.map(row => {
                           const t = row.original;
                           const isHighlighted = highlighted === t.id;
                           return (
@@ -639,6 +679,15 @@ export default function EditorTaskList() {
                                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                 </td>
                               ))}
+                              {viewTab === "today" && (group as typeof TODAY_SECTIONS_COORD[0]).canReview && (
+                                <td className="px-3 py-2.5 align-middle">
+                                  <button
+                                    onClick={e => { e.stopPropagation(); navigate(`/review/${t.id}`); }}
+                                    className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--foreground))]/70 whitespace-nowrap">
+                                    <ExternalLink className="h-3 w-3" />Revisar
+                                  </button>
+                                </td>
+                              )}
                             </tr>
                           );
                         })}
@@ -683,13 +732,13 @@ export default function EditorTaskList() {
         </DialogContent>
       </Dialog>
 
-      {complexityTarget && (
-        <ComplexityConfirmDialog
-          open={!!complexityTarget}
-          task={complexityTarget}
-          onSave={saveComplexity}
-          onCancel={() => setComplexityTarget(null)}
-          saving={definingSaving}
+      {effortTarget && (
+        <EffortHoursDialog
+          open={!!effortTarget}
+          task={{ ...effortTarget, effortHours: effortTarget.effortHours! }}
+          onSave={saveEffortHours}
+          onCancel={() => setEffortTarget(null)}
+          saving={effortSaving}
         />
       )}
 

@@ -314,3 +314,71 @@ Editar no Cowork → git add + commit → git push → ssh deploy na VPS
 | Multi-tarefa com subtarefas expansíveis | `task-form-modal.tsx`, `tasks-overview.tsx`, backend `tasks.ts` |
 | Chat DM com paginação e scroll inteligente | `ChatWidget`, `dm.ts` |
 | Sistema de rascunhos de tarefa | `tasks-rascunho.tsx`, lógica de status `rascunho` |
+| **Sistema de revisão estilo Frame.io** | `review-task.tsx`, `review-file.tsx`, `ComparePlayer.tsx`, `player.tsx` |
+
+---
+
+## Sistema de Revisão (Frame.io style)
+
+### Regra: 1 ativo por tarefa
+
+- Cada tarefa tem **um único ativo** (vídeo/áudio) que evolui em versões
+- Arquivos agrupados por `fileName` — mesmo nome = versões do mesmo ativo
+- Botão "Enviar entrega" só aparece quando não há ativo ainda (primeira entrega)
+- Novas versões: arrastar arquivo sobre o card existente **OU** botão "Nova versão" dentro do `review-file`
+- Upload sempre renomeia o arquivo para o `fileName` do ativo atual → garante agrupamento correto
+
+### Páginas
+
+- `/review/:taskId` → `review-task.tsx` — grid de ativos, drag-drop para nova versão, botão "Comparar" para coordenador
+- `/review/:taskId/:fileId` → `review-file.tsx` — player, sidebar comentários, modo compare, anotações
+
+### Compare Mode (`review-file.tsx`)
+
+- Ativado pelo botão "Comparar" na topbar ou via `?compare=1` na URL (vindo do card da lista)
+- Padrão: esquerda = v(N-1), direita = v(N) atual
+- Clicar num lado → sidebar muda para os comentários daquele lado
+- Anotações: overlay renderizado como **sibling** do `ComparePlayer` (não como prop) — crucial para updates imediatos durante desenho
+- `compareCommentsMap: Record<number, ReviewComment[]>` — mapa fileId → comentários, compartilhado entre compare mode e toggle de versão anterior
+
+### Toggle "Versão anterior" na sidebar
+
+- Aparece quando há versão anterior disponível
+- Mostra comentários de v(N-1) como referência somente-leitura (sem edit/delete/resolve)
+- Útil para o editor ver o que foi pedido enquanto trabalha na nova versão
+
+### ComparePlayer (`components/ComparePlayer.tsx`)
+
+- `forwardRef` expondo `PlayerHandle` (inclui `seekTo`, `pause`, `getCurrentTime`, `getNaturalAr`, `capture`)
+- Left = master, Right = slave (sync por `timeupdate`)
+- `isLoading` ref bloqueia sync durante troca de versão; `pendingLoad` cancela loads anteriores
+- Dropdown de versões ancorado ao chip `v1 ▾` — lado pai sem `overflow-hidden` para não cortar o popup
+
+### PlayerHandle — interface completa
+
+```ts
+interface PlayerHandle {
+  capture(): { time: number; dataUrl: string | null } | null
+  getCurrentTime(): number
+  getTimeFormat(): TimeFormat
+  getNaturalAr(): number
+  pause(): void
+  seekTo(t: number): void
+}
+```
+
+Implementado em: `VideoPlayer`, `AudioPlayer`, `ComparePlayer`.
+
+### activePlayer() em `review-file.tsx`
+
+```ts
+const activePlayer = () => compareModeRef.current ? comparePlayerRef.current : playerRef.current;
+```
+
+Usado em: RAF do timecode badge, `handleOpenDrawer`, `handleSubmit` (captura de tempo), seek de marcadores.
+
+### Schema — migração já rodada
+
+```sql
+ALTER TABLE te_review_comments ADD COLUMN IF NOT EXISTS annotations text;
+```

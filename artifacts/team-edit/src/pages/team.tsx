@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Users, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, ChevronDown, ChevronRight, LockKeyhole } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { STATUS_LABEL, STATUS_CHIP } from "@/lib/status";
 import { usePageTitle } from "@/lib/use-page-title";
@@ -34,12 +34,8 @@ interface EditorWorkload {
   login: string;
   avatarUrl: string | null;
   taskCount: number;
-  scheduledCount?: number;
-  score: number;
-  scheduledScore?: number;
-  projectedScore?: number;
-  byComplexity: { low: number; medium: number; high: number };
-  byStatus: { pending: number; in_progress: number; in_revision: number; review: number };
+  hoursToday: number;
+  dailyCap: number;
 }
 
 interface EditorTask {
@@ -58,22 +54,22 @@ import { ROLE_LABEL, ROLE_OPTIONS } from "@/lib/roles";
 const STATUS_BAR: Record<string, string> = {
   pending:     "bg-slate-300",
   in_progress: "bg-blue-400",
-  in_revision: "bg-orange-400",
   review:      "bg-amber-400",
   completed:   "bg-green-500",
 };
 
-// cinza=disponível | verde=ocupado | laranja=muito ocupado | vermelho=no limite
-function scoreColor(score: number): string {
-  if (score === 0)   return "#94a3b8"; // cinza  — Disponível
-  if (score <= 6)    return "#eab308"; // amarelo — Ocupado
-  if (score <= 11)   return "#f97316"; // laranja — Muito ocupado
-  return "#ef4444";                    // vermelho — No limite
+function loadColor(hours: number, cap: number): string {
+  if (cap === 0 || hours === 0) return "#94a3b8";
+  const pct = hours / cap;
+  if (pct <= 0.5) return "#eab308";
+  if (pct < 1.0)  return "#f97316";
+  return "#ef4444";
 }
-function scoreLabel(score: number): string {
-  if (score === 0)   return "Disponível";
-  if (score <= 6)    return "Ocupado";
-  if (score <= 11)   return "Muito ocupado";
+function loadLabel(hours: number, cap: number): string {
+  if (cap === 0 || hours === 0) return "Disponível";
+  const pct = hours / cap;
+  if (pct <= 0.5) return "Ocupado";
+  if (pct < 1.0)  return "Muito ocupado";
   return "No limite";
 }
 
@@ -128,7 +124,7 @@ export default function Team() {
 
     if (isCoordinator) {
       apiFetch<EditorWorkload[]>("/api/workload")
-        .then(data => setWorkload([...data].sort((a, b) => b.score - a.score)))
+        .then(data => setWorkload([...data].sort((a, b) => b.hoursToday - a.hoursToday)))
         .catch(() => {});
     }
   };
@@ -198,7 +194,7 @@ export default function Team() {
     catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Erro ao remover"); }
   };
 
-  const maxScore = Math.max(...workload.map(e => e.score), 1);
+  const maxHours = Math.max(...workload.map(e => e.hoursToday), 1);
   const others = users.filter(u => u.role !== "editor" && (isAdmin || u.role !== "admin"));
 
   return (
@@ -239,7 +235,7 @@ export default function Team() {
               ) : (
                 <div className="space-y-2">
                   {workload.map(editor => {
-                    const color = scoreColor(editor.score);
+                    const color = loadColor(editor.hoursToday, editor.dailyCap);
                     const initials = editor.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
                     const expanded = expandedEditors.has(editor.id);
                     const tasks = editorTasks[editor.id];
@@ -270,14 +266,10 @@ export default function Team() {
 
                           {/* Carga: atual + agendada */}
                           <div className="flex flex-col items-end shrink-0 gap-0.5">
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>
-                              {scoreLabel(editor.score)}
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: `${color}22`, color }}>
+                              {editor.dailyCap > 0 && editor.hoursToday / editor.dailyCap >= 0.5 && <LockKeyhole className="h-2.5 w-2.5 shrink-0" />}
+                              {loadLabel(editor.hoursToday, editor.dailyCap)}
                             </span>
-                            {(editor.scheduledCount ?? 0) > 0 && (
-                              <span className="text-[8px] text-sky-500 leading-none pr-0.5">
-                                +{editor.scheduledCount} agend.
-                              </span>
-                            )}
                           </div>
 
                           {/* Chevron */}
