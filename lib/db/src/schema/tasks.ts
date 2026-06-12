@@ -8,7 +8,6 @@ export const tasksTable = pgTable("te_tasks", {
   title: text("title").notNull(),
   description: text("description"),
   client: text("client"),
-  color: text("color").notNull().default("#6366f1"),
   notes: text("notes"),
   startDate: timestamp("start_date", { withTimezone: true }),
   dueDate: timestamp("due_date", { withTimezone: true }),

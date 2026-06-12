@@ -82,7 +82,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/",         label: "Dashboard",      icon: LayoutDashboard, roles: NON_ADMIN    },
   { href: "/tasks",    label: "Tarefas",         icon: ClipboardList,   roles: NON_ADMIN    },
   { href: "/feed",     label: "Feed",             icon: MessageCircleMore, roles: NON_ADMIN  },
-  { href: "/agenda",        label: "Grade",            icon: CalendarPlus,    roles: COORD_ROLES  },
+  { href: "/agenda",        label: "Agenda",           icon: CalendarPlus,    roles: COORD_ROLES  },
   { href: "/planejar",      label: "Planejar",        icon: NotebookPen,     roles: COORD_ROLES  },
   { href: "/reagendamento", label: "Reagendar",        icon: ArrowRightLeft,  roles: COORD_ROLES  },
   { href: "/reports",  label: "Relatórios",       icon: BarChart3,       roles: COORD_ACTIVE },

@@ -167,7 +167,8 @@ export function fmtDaysLeft(
 
 /** True se o expediente de hoje (08–18h) já encerrou */
 export function workdayOver(): boolean {
-  return new Date().getHours() >= 18;
+  const h = new Date().getHours();
+  return h >= 18 || h < 8; // antes das 08:00 ou depois das 18:00 → expediente encerrado
 }
 
 /** Data de amanhã como "YYYY-MM-DD" */

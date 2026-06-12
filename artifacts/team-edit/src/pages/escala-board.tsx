@@ -1,916 +1,377 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
-import { useLocation, useSearch } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
+import { Search, Plus, X, CalendarOff, ChevronRight } from "lucide-react";
 import { apiFetch, apiPut } from "@/lib/api";
 import { usePageTitle } from "@/lib/use-page-title";
-import { useRealtime } from "@/hooks/use-realtime";
-import { useTaskModal } from "@/contexts/TaskModalContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { AvatarDisplay } from "@/components/ui/avatar-display";
-import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Sparkles, CalendarDays, Plus, Trash2, Inbox } from "lucide-react";
-import { toast } from "sonner";
+import { todayStr, parseDate } from "@/lib/date";
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
-interface AgendaTask {
-  id:          number;
-  taskCode:    string;
-  title:       string;
-  status:      string;
-  color:       string;
-  client:      string | null;
-  dueDate:     string | null;
-  effortHours: number | null;
+interface WorkloadEditor {
+  id: number; name: string; login: string; avatarUrl: string | null;
+  hoursToday: number; dailyCap: number; taskCount: number;
+  byStatus: { pending: number; in_progress: number; review: number };
 }
 
-interface AllocRow {
-  taskId:         number;
-  workDate:       string;
-  allocatedHours: number | null;
-  startTime:      string | null;
-  endTime:        string | null;
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function scoreInfo(hoursToday: number, dailyCap: number) {
+  const cap = dailyCap || 8;
+  if (hoursToday === 0)     return { label: "disponível",    color: "hsl(var(--primary))", order: 0 };
+  if (hoursToday < cap / 2) return { label: "ocupado",       color: "#facc15",             order: 1 };
+  if (hoursToday < cap)     return { label: "muito ocupado", color: "#fb923c",             order: 2 };
+  return                           { label: "no limite",     color: "#f87171",             order: 3 };
 }
 
-interface EditorRow {
-  editor:      { id: number; name: string; avatarUrl: string | null };
-  tasks:       AgendaTask[];
-  allocations: AllocRow[];
+const DOW_PT = ["dom","seg","ter","qua","qui","sex","sáb"];
+const MON_PT = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+
+function fmtToday(): string {
+  const d = new Date();
+  return `${DOW_PT[d.getDay()]} ${String(d.getDate()).padStart(2,"0")}/${MON_PT[d.getMonth()]}`;
 }
 
-type WhoFilter    = "all" | number | null;
-type PeriodFilter = "today" | "week" | "8days";
-
-// ── Utilitários ───────────────────────────────────────────────────────────────
-
-const WEEK_PT  = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
-const MON_PT   = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
-const MON_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-
-function d0(d: Date): Date { const r = new Date(d); r.setHours(0,0,0,0); return r; }
-function addDays(d: Date, n: number): Date { const r = new Date(d); r.setDate(r.getDate()+n); return r; }
-function toDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-}
-function parseDate(s: string): Date {
-  const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d);
-}
-function isSat(d: Date | string): boolean {
-  return (typeof d === "string" ? parseDate(d) : d).getDay() === 6;
-}
-function dayCapacity(ds: string): number { return isSat(ds) ? 5 : 8; }
-function fmtTime(t: string): string {
-  const [h,m] = t.split(":").map(Number);
-  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2,"0")}`;
-}
-function fmtRange(s: string, e: string) { return `${fmtTime(s)}–${fmtTime(e)}`; }
-function fmtHours(h: number): string {
-  if (h <= 0) return "0h";
-  if (h < 1) return `${Math.round(h * 60)}min`;
-  const full = Math.floor(h);
-  const mins = Math.round((h - full) * 60);
-  return mins > 0 ? `${full}h${String(mins).padStart(2,"0")}` : `${full}h`;
-}
-
-const TODAY_OBJ = d0(new Date());
-const TODAY_STR = toDateStr(TODAY_OBJ);
-const TOMORROW  = toDateStr(addDays(TODAY_OBJ, 1));
-
-function humanDate(dateStr: string): string {
-  if (dateStr === TODAY_STR) return "hoje";
-  if (dateStr === TOMORROW)  return "amanhã";
+function fmtHoliday(dateStr: string) {
   const d = parseDate(dateStr);
-  return `${WEEK_PT[d.getDay()]} ${d.getDate()} ${MON_PT[d.getMonth()]}`;
+  return {
+    dow:  DOW_PT[d.getDay()],
+    day:  String(d.getDate()).padStart(2, "0"),
+    mon:  MON_PT[d.getMonth()],
+    year: String(d.getFullYear()),
+  };
 }
 
-function lastAllocation(allocs: AllocRow[]): { dateStr: string; endTime: string | null } | null {
-  const future = allocs
-    .filter(a => a.workDate >= TODAY_STR && a.allocatedHours)
-    .sort((a, b) => b.workDate.localeCompare(a.workDate));
-  if (!future.length) return null;
-  const lastDate = future[0].workDate;
-  const onLast   = future.filter(a => a.workDate === lastDate && a.endTime);
-  const lastEnd  = onLast.length
-    ? onLast.reduce((mx, a) => a.endTime! > mx ? a.endTime! : mx, onLast[0].endTime!)
-    : null;
-  return { dateStr: lastDate, endTime: lastEnd };
+// ── Avatar ────────────────────────────────────────────────────────────────────
+
+function Avatar({ name, avatarUrl, size = 48 }: { name: string; avatarUrl: string | null; size?: number }) {
+  const initials = name.split(" ").filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+  if (avatarUrl) return <img src={avatarUrl} alt={name} className="rounded-full object-cover w-full h-full" />;
+  const bg = ["#6366f1","#8b5cf6","#ec4899","#14b8a6","#f59e0b","#3b82f6","#22c55e","#ef4444"][name.charCodeAt(0) % 8];
+  return (
+    <div className="rounded-full flex items-center justify-center text-white font-black w-full h-full"
+      style={{ background: bg, fontSize: size * 0.36 }}>{initials}</div>
+  );
 }
 
-function buildDays(period: PeriodFilter, holidays: string[]): Date[] {
-  const days: Date[] = [];
-  if (period === "today") {
-    return [new Date(TODAY_OBJ)];
-  }
-  if (period === "week") {
-    const dow = TODAY_OBJ.getDay();
-    const diffToMon = dow === 0 ? 0 : 1 - dow;
-    let d = addDays(TODAY_OBJ, diffToMon < 0 ? 0 : diffToMon);
-    const weekStart = new Date(d);
-    while (d <= addDays(weekStart, 6)) {
-      if (d.getDay() !== 0 && !holidays.includes(toDateStr(d))) days.push(new Date(d));
-      d = addDays(d, 1);
-    }
-    // garante que hoje aparece mesmo que a semana seja no meio
-    if (!days.find(x => toDateStr(x) === TODAY_STR)) {
-      let d2 = new Date(TODAY_OBJ);
-      while (days.length < 5) {
-        if (d2.getDay() !== 0 && !holidays.includes(toDateStr(d2))) days.push(new Date(d2));
-        d2 = addDays(d2, 1);
-      }
-      days.sort((a, b) => toDateStr(a).localeCompare(toDateStr(b)));
-    }
-    return days;
-  }
-  // 8 days
-  let d = new Date(TODAY_OBJ);
-  while (days.length < 8) {
-    if (d.getDay() !== 0 && !holidays.includes(toDateStr(d))) days.push(new Date(d));
-    d = addDays(d, 1);
-  }
-  return days;
-}
+// ── Holiday Panel ─────────────────────────────────────────────────────────────
 
-// ── Timeline diária ───────────────────────────────────────────────────────────
+function HolidayPanel() {
+  const [holidays, setHolidays] = useState<string[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [saving,   setSaving]   = useState(false);
+  const [newDate,  setNewDate]  = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const today = todayStr();
 
-const PX_PER_HOUR = 38;
+  useEffect(() => {
+    apiFetch<{ holidays: string[] }>("/api/calendar-config")
+      .then(d => setHolidays(d.holidays ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
-function timeToMin(t: string): number {
-  const [h, m] = t.split(":").map(Number);
-  return h * 60 + m;
-}
+  const save = async (list: string[]) => {
+    setSaving(true);
+    try {
+      const res = await apiPut<{ holidays: string[] }>("/api/calendar-config", { holidays: list });
+      setHolidays(res.holidays);
+    } catch {} finally { setSaving(false); }
+  };
 
-function DayTimeline({
-  dateStr,
-  allocs,
-  tasks,
-  overdueTasks,
-  onTaskOpen,
-}: {
-  dateStr:      string;
-  allocs:       AllocRow[];
-  tasks:        AgendaTask[];
-  overdueTasks: AgendaTask[];
-  onTaskOpen:   (id: number) => void;
-}) {
-  const sat       = isSat(dateStr);
-  const START_H   = 8;
-  const END_H     = sat ? 13 : 18;
-  const totalMins = (END_H - START_H) * 60;
-  const totalH    = (END_H - START_H) * PX_PER_HOUR;
-  const hours     = Array.from({ length: END_H - START_H + 1 }, (_, i) => START_H + i);
+  const add = async () => {
+    if (!newDate || holidays.includes(newDate)) return;
+    await save([...holidays, newDate].sort());
+    setNewDate("");
+    inputRef.current?.focus();
+  };
 
-  const blocks = useMemo(() => {
-    return allocs
-      .filter(a => a.workDate === dateStr && a.allocatedHours && a.startTime && a.endTime)
-      .map(a => {
-        const startMin = timeToMin(a.startTime!) - START_H * 60;
-        const endMin   = timeToMin(a.endTime!)   - START_H * 60;
-        const top      = Math.max(0, (startMin / totalMins) * totalH);
-        const height   = Math.max(14, ((endMin - startMin) / totalMins) * totalH);
-        const task     = tasks.find(t => t.id === a.taskId);
-        return { a, task, top, height, durationMin: endMin - startMin };
-      })
-      .filter(b => b.task != null) as {
-        a: AllocRow; task: AgendaTask;
-        top: number; height: number; durationMin: number;
-      }[];
-  }, [allocs, dateStr, tasks, totalH, totalMins]);
-
-  // tarefas sem horário definido
-  const unscheduled = useMemo(() =>
-    allocs
-      .filter(a => a.workDate === dateStr && a.allocatedHours && (!a.startTime || !a.endTime))
-      .map(a => tasks.find(t => t.id === a.taskId))
-      .filter(Boolean) as AgendaTask[],
-  [allocs, dateStr, tasks]);
-
-  const showOverdue = dateStr === TODAY_STR && overdueTasks.length > 0;
+  const future = holidays.filter(h => h >= today).sort();
+  const past   = holidays.filter(h => h < today).sort().reverse().slice(0, 5);
 
   return (
-    <div className="px-3 py-2">
-
-      {/* ── Atrasadas (só em "Hoje") ── */}
-      {showOverdue && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          className="mb-3 rounded-xl overflow-hidden"
-          style={{ border: "1px dashed #fca5a5", background: "#fef2f2" }}
-        >
-          <div className="flex items-center gap-1.5 px-3 pt-2 pb-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
-            <span className="text-[9px] font-black uppercase tracking-widest text-red-400">
-              {overdueTasks.length === 1 ? "1 tarefa atrasada" : `${overdueTasks.length} tarefas atrasadas`}
-            </span>
-          </div>
-          <div className="pb-2">
-            {overdueTasks.map((t, i) => (
-              <motion.button
-                key={t.id}
-                onClick={() => onTaskOpen(t.id)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left"
-                whileHover={{ background: "#fee2e2" }}
-                whileTap={{ scale: 0.98 }}
-                style={{ borderTop: i > 0 ? "1px solid #fecaca" : "none" }}
-              >
-                <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: t.color }} />
-                <span className="text-[10px] font-bold shrink-0" style={{ color: t.color }}>{t.taskCode}</span>
-                <span className="text-[11px] font-medium truncate flex-1" style={{ color: "#dc2626" }}>{t.title}</span>
-                <span className="text-[9px] shrink-0 font-bold text-red-400">atrasada</span>
-              </motion.button>
-            ))}
-          </div>
-        </motion.div>
-      )}
-
-      <div className="flex gap-0">
-        {/* Coluna de horas */}
-        <div className="shrink-0 select-none" style={{ width: 26 }}>
-          {hours.map(h => (
-            <div key={h} style={{ height: h === END_H ? 0 : PX_PER_HOUR, position: "relative" }}>
-              <span className="absolute top-0 right-1 text-[8px] tabular-nums leading-none"
-                style={{ color: "hsl(var(--muted-foreground)/0.35)", transform: "translateY(-50%)" }}>
-                {h}h
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* Área de timeline */}
-        <div className="relative flex-1" style={{ height: totalH }}>
-          {/* Gridlines por hora */}
-          {hours.map(h => (
-            <div key={h} style={{
-              position: "absolute",
-              top:   ((h - START_H) / (END_H - START_H)) * totalH,
-              left:  0, right: 0, height: 1,
-              background: "hsl(var(--border)/0.25)",
-            }} />
-          ))}
-
-          {/* Gridlines meia-hora (mais sutis) */}
-          {hours.slice(0, -1).map(h => (
-            <div key={`${h}.5`} style={{
-              position: "absolute",
-              top:   ((h - START_H + 0.5) / (END_H - START_H)) * totalH,
-              left:  0, right: 0, height: 1,
-              background: "hsl(var(--border)/0.10)",
-              borderTop: "1px dashed hsl(var(--border)/0.15)",
-            }} />
-          ))}
-
-          {/* Blocos de tarefas */}
-          {blocks.map((b, i) => {
-            const small = b.durationMin < 45;
-            return (
-              <motion.button
-                key={i}
-                data-task-id={b.task.id}
-                onClick={() => onTaskOpen(b.task.id)}
-                title={`${b.task.taskCode} — ${b.task.title}`}
-                initial={{ opacity: 0, scaleY: 0.85 }}
-                animate={{ opacity: 1, scaleY: 1 }}
-                transition={{ duration: 0.22, delay: i * 0.04, ease: "easeOut" }}
-                whileHover={{ scale: 1.015, filter: "brightness(1.1)" }}
-                whileTap={{ scale: 0.98 }}
-                style={{
-                  position:    "absolute",
-                  top:         b.top + 1,
-                  height:      b.height - 2,
-                  left:        2, right: 2,
-                  borderRadius: 5,
-                  borderLeft:  `3px solid ${b.task.color}`,
-                  background:  `${b.task.color}1A`,
-                  display:     "flex",
-                  alignItems:  small ? "center" : "flex-start",
-                  gap:         4,
-                  padding:     small ? "0 6px" : "3px 6px",
-                  overflow:    "hidden",
-                  textAlign:   "left",
-                  cursor:      "pointer",
-                  transformOrigin: "top",
-                }}
-              >
-                <span className="text-[9px] font-black shrink-0 tabular-nums"
-                  style={{ color: b.task.color }}>
-                  {b.task.taskCode}
-                </span>
-                {!small && (
-                  <span className="text-[10px] font-medium truncate leading-snug"
-                    style={{ color: "hsl(var(--foreground)/0.75)" }}>
-                    {b.task.title}
-                  </span>
-                )}
-              </motion.button>
-            );
-          })}
-
-        </div>
+    <div className="mt-14 max-w-sm">
+      <div className="flex items-center gap-3 mb-6">
+        <CalendarOff className="h-4 w-4" style={{ color: "hsl(var(--muted-foreground))" }} />
+        <p className="text-xs font-black uppercase tracking-widest"
+          style={{ color: "hsl(var(--muted-foreground))" }}>feriados</p>
+        <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full"
+          style={{ background: "hsl(var(--primary)/0.1)", color: "hsl(var(--primary))" }}>
+          supervisor
+        </span>
       </div>
 
-      {/* Tarefas sem horário */}
-      {unscheduled.length > 0 && (
-        <div className="mt-2 pt-2 flex flex-wrap gap-1.5"
-          style={{ borderTop: "1px dashed hsl(var(--border)/0.25)" }}>
-          {unscheduled.map(t => (
-            <button key={t.id}
-              onClick={() => onTaskOpen(t.id)}
-              className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-semibold"
-              style={{ background: `${t.color}15`, color: t.color }}>
-              <div style={{ width: 5, height: 5, borderRadius: "50%", background: t.color, flexShrink: 0 }} />
-              {t.taskCode}
-            </button>
+      <div className="flex gap-2 mb-6">
+        <input ref={inputRef} type="date" value={newDate}
+          onChange={e => setNewDate(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && add()}
+          className="flex-1 h-10 px-3 text-sm rounded-xl focus:outline-none"
+          style={{ background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))" }} />
+        <button onClick={add} disabled={!newDate || saving}
+          className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 disabled:opacity-30"
+          style={{ background: "hsl(var(--primary))" }}>
+          <Plus className="h-4 w-4 text-white" />
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">
+          {[...Array(2)].map((_, i) => (
+            <div key={i} className="h-11 rounded-xl animate-pulse" style={{ background: "hsl(var(--muted))" }} />
           ))}
+        </div>
+      ) : future.length === 0 ? (
+        <p className="text-sm" style={{ color: "hsl(var(--muted-foreground)/0.4)" }}>
+          nenhum feriado cadastrado.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {future.map(date => {
+            const { dow, day, mon, year } = fmtHoliday(date);
+            return (
+              <div key={date} className="flex items-center gap-3 rounded-xl px-4 py-2.5"
+                style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+                <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "#f59e0b" }} />
+                <span className="text-[9px] font-black uppercase tracking-widest w-6"
+                  style={{ color: "hsl(var(--muted-foreground)/0.5)" }}>{dow}</span>
+                <span className="text-sm font-black tabular-nums flex-1">
+                  {day} <span className="font-medium text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+                    {mon}{year !== String(new Date().getFullYear()) ? ` ${year}` : ""}
+                  </span>
+                </span>
+                <button onClick={() => save(holidays.filter(h => h !== date))} disabled={saving}
+                  className="h-6 w-6 rounded-lg flex items-center justify-center hover:opacity-60 disabled:opacity-30"
+                  style={{ background: "hsl(var(--muted))" }}>
+                  <X className="h-3 w-3" style={{ color: "hsl(var(--muted-foreground))" }} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {past.length > 0 && (
+        <div className="mt-4 space-y-1">
+          <p className="text-[9px] font-black uppercase tracking-widest mb-2"
+            style={{ color: "hsl(var(--muted-foreground)/0.3)" }}>anteriores</p>
+          {past.map(date => {
+            const { dow, day, mon } = fmtHoliday(date);
+            return (
+              <div key={date} className="flex items-center gap-3 px-3 py-1.5 rounded-lg opacity-35">
+                <span className="text-[9px] font-black uppercase tracking-widest w-6"
+                  style={{ color: "hsl(var(--muted-foreground))" }}>{dow}</span>
+                <span className="text-xs font-bold tabular-nums flex-1">{day} {mon}</span>
+                <button onClick={() => save(holidays.filter(h => h !== date))} disabled={saving}
+                  className="h-5 w-5 rounded flex items-center justify-center hover:opacity-60">
+                  <X className="h-3 w-3" style={{ color: "hsl(var(--muted-foreground))" }} />
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-// ── Card do editor ────────────────────────────────────────────────────────────
-
-function EditorCard({
-  row,
-  days,
-  onTaskOpen,
-  initialTab,
-}: {
-  row:         EditorRow;
-  days:        Date[];
-  onTaskOpen:  (id: number) => void;
-  initialTab?: string;
-}) {
-  const [activeTab, setActiveTab] = useState<"info" | string>(initialTab ?? "info");
-
-  const last = useMemo(() => lastAllocation(row.allocations), [row.allocations]);
-
-  const freeColor = !last ? "#10b981"
-    : last.dateStr <= TOMORROW ? "#f59e0b"
-    : "hsl(var(--muted-foreground)/0.60)";
-
-  const queueCount = useMemo(() => {
-    const ids = new Set(
-      row.allocations
-        .filter(a => a.workDate >= TODAY_STR && a.allocatedHours)
-        .map(a => a.taskId)
-    );
-    return ids.size;
-  }, [row.allocations]);
-
-  const stats = useMemo(() => {
-    const horasHoje = row.allocations
-      .filter(a => a.workDate === TODAY_STR && a.allocatedHours)
-      .reduce((s, a) => s + Number(a.allocatedHours), 0);
-
-    const futureDates = [...new Set(
-      row.allocations
-        .filter(a => a.workDate >= TODAY_STR && a.allocatedHours)
-        .map(a => a.workDate)
-    )].sort();
-    const proxLivre = futureDates.find(ds => {
-      const used = row.allocations
-        .filter(a => a.workDate === ds && a.allocatedHours)
-        .reduce((s, a) => s + Number(a.allocatedHours), 0);
-      return used < dayCapacity(ds);
-    }) ?? null;
-
-    return { horasHoje, proxLivre, capHoje: dayCapacity(TODAY_STR) };
-  }, [row.allocations]);
-
-  const overdueTasks = useMemo(() => {
-    const ids = new Set<number>();
-    const result: AgendaTask[] = [];
-    row.allocations
-      .filter(a => a.workDate < TODAY_STR && a.allocatedHours)
-      .forEach(a => {
-        if (ids.has(a.taskId)) return;
-        const task = row.tasks.find(t => t.id === a.taskId);
-        if (task && !["completed", "cancelled"].includes(task.status)) {
-          ids.add(a.taskId);
-          result.push(task);
-        }
-      });
-    return result;
-  }, [row.allocations, row.tasks]);
-
-  const overdueCount = overdueTasks.length;
-
-  function dotColors(ds: string): string[] {
-    if (ds === TODAY_STR && overdueCount > 0) {
-      return ["#ef4444", ...row.allocations
-        .filter(a => a.workDate === ds && a.allocatedHours)
-        .slice(0, 2)
-        .map(a => row.tasks.find(t => t.id === a.taskId)?.color ?? "hsl(var(--primary))")];
-    }
-    return row.allocations
-      .filter(a => a.workDate === ds && a.allocatedHours)
-      .slice(0, 3)
-      .map(a => row.tasks.find(t => t.id === a.taskId)?.color ?? "hsl(var(--primary))");
-  }
-
-  // se só tem 1 dia (hoje), abre direto nele
-  useEffect(() => {
-    if (days.length === 1) setActiveTab(toDateStr(days[0]));
-  }, [days]);
-
-  const tabIndId = `tab-ind-${row.editor.id}`;
-
-  return (
-    <motion.div
-      className="rounded-2xl overflow-hidden"
-      style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.28, ease: "easeOut" }}
-    >
-      {/* ── Barra de abas ── */}
-      <div
-        className="flex w-full items-stretch"
-        style={{ background: "hsl(var(--muted)/0.30)", borderBottom: "1px solid hsl(var(--border)/0.50)" }}
-      >
-        {/* Tab 1 — resumo (escondida quando período = hoje) */}
-        {days.length > 1 && (
-          <>
-            <motion.button
-              onClick={() => setActiveTab("info")}
-              className="flex items-center gap-2 px-3 shrink-0 relative"
-              style={{ borderBottom: "2px solid transparent" }}
-              whileTap={{ scale: 0.94 }}
-            >
-              <motion.div whileHover={{ scale: 1.08 }} transition={{ type: "spring", stiffness: 400, damping: 20 }}>
-                <AvatarDisplay name={row.editor.name} avatarUrl={row.editor.avatarUrl} size={26} className="shrink-0" />
-              </motion.div>
-              <div className="text-left">
-                <p className="text-[12px] font-black leading-none">{row.editor.name.split(" ")[0]}</p>
-                {queueCount > 0 && (
-                  <p className="text-[9px] leading-none mt-0.5 tabular-nums" style={{ color: freeColor }}>
-                    {queueCount} {queueCount === 1 ? "tarefa" : "tarefas"}
-                  </p>
-                )}
-              </div>
-            </motion.button>
-            <div className="w-px self-stretch my-1.5 shrink-0" style={{ background: "hsl(var(--border)/0.50)" }} />
-          </>
-        )}
-
-        {/* Abas de dia */}
-        {days.map(d => {
-          const ds      = toDateStr(d);
-          const isToday = ds === TODAY_STR;
-          const active  = activeTab === ds;
-          const dots    = dotColors(ds);
-
-          return (
-            <motion.button
-              key={ds}
-              data-date={ds}
-              onClick={() => setActiveTab(ds)}
-              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 relative"
-              style={{
-                minWidth:   0,
-                background: active ? "hsl(var(--card))" : isToday ? "hsl(var(--primary)/0.07)" : "transparent",
-              }}
-              whileTap={{ scale: 0.92 }}
-              transition={{ type: "spring", stiffness: 400, damping: 22 }}
-            >
-              <span className="text-[8px] font-black uppercase tracking-wide leading-none"
-                style={{
-                  color: active ? "hsl(var(--primary))"
-                    : isToday ? "hsl(var(--primary)/0.65)"
-                    : "hsl(var(--muted-foreground)/0.45)",
-                }}>
-                {isToday ? "HOJE" : WEEK_PT[d.getDay()]}
-              </span>
-              <span className="text-[13px] font-black tabular-nums leading-none"
-                style={{
-                  color: active ? "hsl(var(--primary))"
-                    : isToday ? "hsl(var(--foreground))"
-                    : "hsl(var(--foreground)/0.55)",
-                }}>
-                {d.getDate()}
-              </span>
-              <div className="flex gap-[3px] items-center" style={{ minHeight: 5 }}>
-                {dots.map((c, i) => (
-                  <div key={i} style={{
-                    width: 4, height: 4, borderRadius: "50%",
-                    background: c, opacity: active ? 1 : 0.45,
-                  }} />
-                ))}
-              </div>
-              {/* indicador deslizante */}
-              {active && (
-                <motion.div
-                  layoutId={tabIndId}
-                  className="absolute bottom-0 left-0 right-0"
-                  style={{ height: 2, background: "hsl(var(--primary))", borderRadius: 1 }}
-                  transition={{ type: "spring", stiffness: 500, damping: 35 }}
-                />
-              )}
-            </motion.button>
-          );
-        })}
-
-        {/* Nome do editor quando período = hoje */}
-        {days.length === 1 && (
-          <div className="flex items-center gap-2 px-3 ml-auto">
-            <AvatarDisplay name={row.editor.name} avatarUrl={row.editor.avatarUrl} size={22} className="shrink-0" />
-            <span className="text-[12px] font-black">{row.editor.name.split(" ")[0]}</span>
-          </div>
-        )}
-      </div>
-
-      {/* ── Conteúdo com AnimatePresence ── */}
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={activeTab}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -4 }}
-          transition={{ duration: 0.18, ease: "easeOut" }}
-          style={{ minHeight: 44 }}
-        >
-          {activeTab === "info" ? (
-            <div className="px-4 py-3">
-              {(() => {
-                const livreAgora = !last;
-                const livreHoje  = stats.horasHoje < stats.capHoje;
-                const proxLabel  = stats.proxLivre ? humanDate(stats.proxLivre) : null;
-
-                let frase: string;
-                let cor: string;
-
-                if (livreAgora || (livreHoje && queueCount === 0)) {
-                  frase = "Disponível — sem tarefas agendadas";
-                  cor   = "#16a34a";
-                } else if (livreHoje && queueCount > 0) {
-                  frase = `Disponível hoje · ${queueCount} ${queueCount === 1 ? "tarefa" : "tarefas"} na fila`;
-                  cor   = "#ca8a04";
-                } else if (proxLabel) {
-                  frase = queueCount > 0
-                    ? `Ocupado — próximo espaço ${proxLabel} · ${queueCount} ${queueCount === 1 ? "tarefa" : "tarefas"} na fila`
-                    : `Ocupado — próximo espaço ${proxLabel}`;
-                  cor   = "#f97316";
-                } else {
-                  frase = queueCount > 0
-                    ? `${queueCount} ${queueCount === 1 ? "tarefa" : "tarefas"} na fila`
-                    : "Sem atividade agendada";
-                  cor   = "hsl(var(--muted-foreground))";
-                }
-
-                return (
-                <div className="flex flex-col gap-1">
-                  {overdueCount > 0 && (
-                    <span className="text-[11px] font-bold" style={{ color: "#ef4444" }}>
-                      ⚠ {overdueCount} {overdueCount === 1 ? "tarefa atrasada" : "tarefas atrasadas"}
-                    </span>
-                  )}
-                  <span className="text-[12px] font-semibold" style={{ color: cor }}>
-                    {frase}
-                  </span>
-                </div>
-              );
-              })()}
-            </div>
-          ) : (
-            <DayTimeline
-              dateStr={activeTab}
-              allocs={row.allocations}
-              tasks={row.tasks}
-              overdueTasks={overdueTasks}
-              onTaskOpen={onTaskOpen}
-            />
-          )}
-        </motion.div>
-      </AnimatePresence>
-    </motion.div>
-  );
-}
-
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function EscalaBoard() {
-  usePageTitle("Grade");
-  const [, navigate]  = useLocation();
-  const search        = useSearch();
-  const { openTask }  = useTaskModal();
-  const { user }      = useAuth();
-  const isCoordinator = user?.role === "admin" || user?.role === "coordinator";
-  const isSupervisor  = user?.role === "admin" || user?.role === "supervisor";
+  usePageTitle("Agenda");
+  const [, navigate] = useLocation();
+  const { user }     = useAuth();
+  const [editors, setEditors] = useState<WorkloadEditor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search,  setSearch]  = useState("");
+  const pageRef = useRef<HTMLDivElement>(null);
 
-  const [rows,       setRows]       = useState<EditorRow[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [holidays,   setHolidays]   = useState<string[]>([]);
-  const [newHoliday, setNewHoliday] = useState("");
-  const [savingHols, setSavingHols] = useState(false);
+  const isSupervisor = user?.role === "supervisor" || user?.role === "admin";
 
-  // Params vindos do Planejar após criação: ?editor=X&date=YYYY-MM-DD&task=ID
-  const urlParams    = new URLSearchParams(search);
-  const urlEditor    = urlParams.get("editor");
-  const urlDate      = urlParams.get("date");
-  const urlTask      = urlParams.get("task");
-
-  const [whoFilter, setWhoFilter] = useState<WhoFilter>(() => {
-    if (urlEditor) return Number(urlEditor) as WhoFilter;
-    const v = localStorage.getItem("escala:who");
-    if (!v || v === "null") return null;
-    if (v === "all") return "all";
-    return Number(v) as WhoFilter;
-  });
-  const [period, setPeriod] = useState<PeriodFilter>(() => {
-    if (urlEditor) return "8days";
-    const v = localStorage.getItem("escala:period");
-    return (v === "today" || v === "week" || v === "8days" ? v : "8days") as PeriodFilter;
-  });
-
-  // Limpa os params da URL sem recarregar (evita que refresh reaplique)
   useEffect(() => {
-    if (urlEditor) navigate("/agenda", { replace: true });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => { localStorage.setItem("escala:who",    String(whoFilter)); }, [whoFilter]);
-  useEffect(() => { localStorage.setItem("escala:period", period);            }, [period]);
-
-  const load = useCallback(() => {
-    apiFetch<EditorRow[]>("/api/agenda")
-      .then(r => { setRows(r); setLoading(false); })
-      .catch(() => setLoading(false));
+    let el: HTMLElement | null = pageRef.current?.parentElement ?? null;
+    while (el) {
+      const { overflowY } = getComputedStyle(el);
+      if (overflowY === "auto" || overflowY === "scroll") { el.scrollTop = 0; break; }
+      el = el.parentElement;
+    }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
-  useRealtime({ onTasksChanged: load });
-
-  // Revela a tarefa recém-criada: scroll até o bloco e pisca
   useEffect(() => {
-    if (!urlTask || loading) return;
-    setTimeout(() => {
-      const el = document.querySelector(`[data-task-id="${urlTask}"]`) as HTMLElement | null;
-      if (!el) return;
-      el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-      // Pisca 3x com brilho
-      let count = 0;
-      const interval = setInterval(() => {
-        el.style.filter = count % 2 === 0 ? "brightness(1.6)" : "brightness(1)";
-        count++;
-        if (count >= 6) { clearInterval(interval); el.style.filter = ""; }
-      }, 200);
-    }, 500);
-  }, [urlTask, loading]);
-
-  useEffect(() => {
-    apiFetch<{ holidays: string[] }>("/api/calendar-config")
-      .then(r => setHolidays(r.holidays ?? [])).catch(() => {});
+    apiFetch<WorkloadEditor[]>("/api/workload")
+      .then(setEditors).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
-  const saveHolidays = async (next: string[]) => {
-    setSavingHols(true);
-    try {
-      const r = await apiPut<{ holidays: string[] }>("/api/calendar-config", { holidays: next });
-      setHolidays(r.holidays);
-    } catch { toast.error("Erro ao salvar feriados"); }
-    finally { setSavingHols(false); }
+  const filtered = editors
+    .filter(e =>
+      e.name.toLowerCase().includes(search.toLowerCase()) ||
+      e.login.toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => scoreInfo(a.hoursToday, a.dailyCap).order - scoreInfo(b.hoursToday, b.dailyCap).order);
+
+  // Stats
+  const stats = {
+    disponivel:   editors.filter(e => scoreInfo(e.hoursToday, e.dailyCap).order === 0).length,
+    ocupado:      editors.filter(e => scoreInfo(e.hoursToday, e.dailyCap).order === 1).length,
+    muitoOcupado: editors.filter(e => scoreInfo(e.hoursToday, e.dailyCap).order === 2).length,
+    noLimite:     editors.filter(e => scoreInfo(e.hoursToday, e.dailyCap).order === 3).length,
   };
 
-  const days        = useMemo(() => buildDays(period, holidays), [period, holidays]);
-  const editors     = useMemo(() => rows.map(r => r.editor), [rows]);
-  const visibleRows = useMemo(() => {
-    if (whoFilter === null)  return [];
-    if (whoFilter === "all") return rows;
-    return rows.filter(r => r.editor.id === whoFilter);
-  }, [rows, whoFilter]);
-
-  const PERIODS: { value: PeriodFilter; label: string }[] = [
-    { value: "today", label: "Hoje"     },
-    { value: "week",  label: "Semana"   },
-    { value: "8days", label: "8 dias"   },
-  ];
-
   return (
-    <div className="flex flex-col min-h-0 h-full">
+    <div ref={pageRef} className="min-h-screen px-6 py-10 max-w-2xl mx-auto">
 
       {/* ── Header ── */}
-      <div className="shrink-0 px-4 sm:px-6 pt-5 pb-3">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h1 className="text-xl font-black tracking-tight">
-            Grade
+      <div className="mb-8">
+        <div className="flex items-end justify-between">
+          <h1 className="text-7xl font-black tracking-tighter leading-none select-none"
+            style={{ letterSpacing: "-0.04em" }}>
+            agenda
           </h1>
+          <span className="text-sm font-black tabular-nums mb-1"
+            style={{ color: "hsl(var(--muted-foreground)/0.5)" }}>
+            {fmtToday()}
+          </span>
+        </div>
 
-          <div className="flex items-center gap-2">
-            {isCoordinator && (
-              <button
-                onClick={() => navigate("/planejar")}
-                className="flex items-center gap-2 h-9 px-4 text-[13px] font-bold rounded-xl border transition-all"
-                style={{
-                  background:  "hsl(var(--primary)/0.10)",
-                  borderColor: "hsl(var(--primary)/0.35)",
-                  color:       "hsl(var(--primary))",
-                }}
-              >
-                Planejar
-              </button>
+        {/* Stats strip */}
+        {!loading && (
+          <div className="flex flex-wrap gap-2 mt-4">
+            {stats.disponivel > 0 && (
+              <span className="text-[10px] font-black px-2.5 py-1 rounded-full"
+                style={{ background: "hsl(var(--primary)/0.1)", color: "hsl(var(--primary))" }}>
+                {stats.disponivel} disponível{stats.disponivel !== 1 ? "is" : ""}
+              </span>
             )}
-
-            {isSupervisor && (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs">
-                    <CalendarDays className="h-3.5 w-3.5" />
-                    Feriados
-                    {holidays.length > 0 && (
-                      <span className="h-4 min-w-[16px] px-1 rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center">
-                        {holidays.length}
-                      </span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-72 p-4 space-y-3">
-                  <p className="text-[11px] font-bold uppercase tracking-widest"
-                    style={{ color: "hsl(var(--muted-foreground)/0.50)" }}>
-                    Feriados / Dias não úteis
-                  </p>
-                  <div className="space-y-1 max-h-44 overflow-y-auto">
-                    {holidays.length === 0 && (
-                      <p className="text-xs py-2 text-center" style={{ color: "hsl(var(--muted-foreground))" }}>
-                        Nenhum feriado cadastrado
-                      </p>
-                    )}
-                    {[...holidays].sort().map(h => {
-                      const [y, m, dd] = h.split("-");
-                      return (
-                        <div key={h} className="flex items-center justify-between px-2 py-1.5 rounded-lg"
-                          style={{ background: "hsl(var(--muted)/0.40)" }}>
-                          <span className="text-sm font-semibold tabular-nums">{dd}/{m}/{y}</span>
-                          <button onClick={() => saveHolidays(holidays.filter(x => x !== h))}
-                            disabled={savingHols}
-                            className="hover:text-red-500 transition-colors"
-                            style={{ color: "hsl(var(--muted-foreground))" }}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="flex gap-2 pt-2 border-t" style={{ borderColor: "hsl(var(--border))" }}>
-                    <input type="date" value={newHoliday} onChange={e => setNewHoliday(e.target.value)}
-                      className="flex-1 h-8 rounded-md border px-2 text-sm"
-                      style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--background))" }} />
-                    <Button size="sm" className="h-8 w-8 p-0 shrink-0"
-                      disabled={!newHoliday || savingHols}
-                      onClick={() => {
-                        if (!newHoliday || holidays.includes(newHoliday)) return;
-                        saveHolidays([...holidays, newHoliday]);
-                        setNewHoliday("");
-                      }}>
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
+            {stats.ocupado > 0 && (
+              <span className="text-[10px] font-black px-2.5 py-1 rounded-full"
+                style={{ background: "#fef9c320", color: "#ca8a04" }}>
+                {stats.ocupado} ocupado{stats.ocupado !== 1 ? "s" : ""}
+              </span>
+            )}
+            {stats.muitoOcupado > 0 && (
+              <span className="text-[10px] font-black px-2.5 py-1 rounded-full"
+                style={{ background: "#fff7ed40", color: "#ea580c" }}>
+                {stats.muitoOcupado} muito ocupado{stats.muitoOcupado !== 1 ? "s" : ""}
+              </span>
+            )}
+            {stats.noLimite > 0 && (
+              <span className="text-[10px] font-black px-2.5 py-1 rounded-full"
+                style={{ background: "#fef2f220", color: "#dc2626" }}>
+                {stats.noLimite} no limite
+              </span>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* ── Filtros estilo stories ── */}
-      <div className="shrink-0 px-4 sm:px-6 pb-4">
-
-        {/* Avatares — scroll horizontal */}
-        <div className="flex gap-4 overflow-x-auto" style={{ scrollbarWidth: "none", padding: "6px 4px 8px" }}>
-
-          {/* Todos */}
-          <motion.button
-            onClick={() => setWhoFilter("all")}
-            className="shrink-0 flex flex-col items-center gap-1.5"
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.90 }}
-            transition={{ type: "spring", stiffness: 420, damping: 20 }}
-          >
-            <div
-              className="flex items-center justify-center rounded-full"
-              style={{ width: 52, height: 52, background: "hsl(var(--muted)/0.55)" }}
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-                stroke="hsl(var(--muted-foreground))"
-                strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                <circle cx="9" cy="7" r="4"/>
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold leading-none"
-              style={{ color: "hsl(var(--muted-foreground)/0.60)" }}>
-              Todos
-            </span>
-          </motion.button>
-
-          {/* Um editor */}
-          {editors.map(e => {
-            const active = whoFilter === e.id;
-            return (
-              <motion.button
-                key={e.id}
-                onClick={() => setWhoFilter(active ? null : e.id)}
-                className="shrink-0 flex flex-col items-center gap-1.5"
-                whileHover={{ scale: 1.08 }}
-                whileTap={{ scale: 0.88 }}
-                transition={{ type: "spring", stiffness: 420, damping: 20 }}
-              >
-                <motion.div
-                  animate={{
-                    padding: active ? 2 : 2,
-                    background: active
-                      ? "linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary)/0.55))"
-                      : "transparent",
-                    outline: active ? "none" : "2px solid hsl(var(--border)/0.50)",
-                  }}
-                  transition={{ duration: 0.2 }}
-                  style={{ borderRadius: "50%", outlineOffset: 1 }}
-                >
-                  <AvatarDisplay
-                    name={e.name}
-                    avatarUrl={e.avatarUrl}
-                    size={44}
-                    style={{ display: "block" }}
-                  />
-                </motion.div>
-                <motion.span
-                  className="text-[10px] font-bold leading-none"
-                  animate={{ color: active ? "hsl(var(--primary))" : "hsl(var(--muted-foreground)/0.60)" }}
-                  transition={{ duration: 0.18 }}
-                >
-                  {e.name.split(" ")[0]}
-                </motion.span>
-              </motion.button>
-            );
-          })}
-        </div>
-
-        {/* Período — pills pequenas, alinhadas à esquerda */}
-        <div className="flex gap-1.5 mt-3">
-          {PERIODS.map(p => (
-            <motion.button
-              key={p.value}
-              onClick={() => setPeriod(p.value)}
-              className="h-7 px-3 rounded-full text-[11px] font-bold"
-              animate={{
-                background: period === p.value ? "hsl(var(--primary))"            : "hsl(var(--muted)/0.45)",
-                color:      period === p.value ? "hsl(var(--primary-foreground))" : "hsl(var(--muted-foreground))",
-              }}
-              whileTap={{ scale: 0.90 }}
-              transition={{ type: "spring", stiffness: 400, damping: 22 }}
-            >
-              {p.label}
-            </motion.button>
-          ))}
-        </div>
-
-      </div>
-
-      {/* ── Cards ── */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 pb-10">
-        {whoFilter === null ? (
-          <div className="py-24 text-center flex flex-col items-center gap-3"
-            style={{ color: "hsl(var(--muted-foreground)/0.40)" }}>
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-            </svg>
-            <span className="text-[13px] font-medium">Selecione um editor acima</span>
-          </div>
-        ) : loading ? (
-          <div className="py-20 text-center text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
-            Carregando…
-          </div>
-        ) : visibleRows.length === 0 ? (
-          <div className="py-20 text-center flex flex-col items-center gap-2"
-            style={{ color: "hsl(var(--muted-foreground))" }}>
-            <Inbox className="h-8 w-8 opacity-30" />
-            <span className="text-sm">Nenhum editor encontrado</span>
-          </div>
-        ) : (
-          <motion.div
-            className="flex flex-col gap-3"
-            initial="hidden"
-            animate="visible"
-            variants={{ visible: { transition: { staggerChildren: 0.07 } } }}
-          >
-            {visibleRows.map(row => (
-              <EditorCard
-                key={`${row.editor.id}-${whoFilter}-${period}`}
-                row={row}
-                days={days}
-                onTaskOpen={id => openTask(id)}
-                initialTab={urlDate ?? undefined}
-              />
-            ))}
-          </motion.div>
         )}
       </div>
 
+      {/* ── Search ── */}
+      <div className="relative max-w-sm mb-6">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none"
+          style={{ color: "hsl(var(--muted-foreground))" }} />
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="buscar editor…"
+          className="w-full h-10 pl-11 pr-4 rounded-full text-sm font-medium focus:outline-none"
+          style={{
+            background: "hsl(var(--muted))",
+            border: "1px solid hsl(var(--border))",
+            color: "hsl(var(--foreground))",
+          }}
+        />
+      </div>
+
+      {/* ── Lista de editores ── */}
+      <div className="space-y-2">
+        {loading ? (
+          [...Array(5)].map((_, i) => (
+            <div key={i} className="h-16 rounded-2xl animate-pulse" style={{ background: "hsl(var(--muted))" }} />
+          ))
+        ) : filtered.length === 0 ? (
+          <p className="py-12 text-center text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
+            nenhum editor encontrado
+          </p>
+        ) : (
+          filtered.map(editor => {
+            const { label, color } = scoreInfo(editor.hoursToday, editor.dailyCap);
+            return (
+              <button
+                key={editor.id}
+                onClick={() => navigate(`/agenda/${editor.id}`)}
+                className="w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-left transition-all duration-150"
+                style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
+                onMouseEnter={e => {
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.transform = "translateX(4px)";
+                  el.style.borderColor = `${color}50`;
+                  el.style.background = `hsl(var(--card))`;
+                  el.style.boxShadow = `0 2px 16px ${color}18`;
+                }}
+                onMouseLeave={e => {
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.transform = "";
+                  el.style.borderColor = "hsl(var(--border))";
+                  el.style.boxShadow = "";
+                }}
+              >
+                {/* Avatar */}
+                <div className="shrink-0" style={{ width: 44, height: 44 }}>
+                  <div className="w-full h-full rounded-full overflow-hidden"
+                    style={{ boxShadow: `0 0 0 2px ${color}` }}>
+                    <Avatar name={editor.name} avatarUrl={editor.avatarUrl} size={44} />
+                  </div>
+                </div>
+
+                {/* Nome + login */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-black leading-tight truncate">
+                    {editor.name}
+                  </p>
+                  <p className="text-[11px] font-mono mt-0.5 truncate"
+                    style={{ color: "hsl(var(--muted-foreground))" }}>
+                    {editor.login}
+                  </p>
+                </div>
+
+                {/* Status + breakdown */}
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                  <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full"
+                    style={{ background: `${color}18`, color }}>
+                    {label}
+                  </span>
+                  {editor.taskCount > 0 && (
+                    <div className="flex items-center gap-1">
+                      {editor.byStatus.pending > 0 && (
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+                          style={{ background: "#fef3c730", color: "#d97706" }}>
+                          {editor.byStatus.pending}p
+                        </span>
+                      )}
+                      {editor.byStatus.in_progress > 0 && (
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+                          style={{ background: "hsl(var(--primary)/0.1)", color: "hsl(var(--primary))" }}>
+                          {editor.byStatus.in_progress}e
+                        </span>
+                      )}
+                      {editor.byStatus.review > 0 && (
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+                          style={{ background: "#f3e8ff30", color: "#9333ea" }}>
+                          {editor.byStatus.review}r
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Seta */}
+                <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "hsl(var(--muted-foreground)/0.4)" }} />
+              </button>
+            );
+          })
+        )}
+      </div>
+
+      {/* ── Holiday panel ── */}
+      {isSupervisor && <HolidayPanel />}
     </div>
   );
 }

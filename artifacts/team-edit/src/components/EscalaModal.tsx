@@ -21,11 +21,6 @@ const PRIORITY_OPTS = [
   { value: "low",    label: "Baixa"  },
 ];
 
-const COLOR_OPTS = [
-  "#6366f1","#3b82f6","#22c55e","#f59e0b","#ef4444",
-  "#8b5cf6","#ec4899","#14b8a6","#f97316","#64748b",
-];
-
 // Presets de horas comuns em uma agência de vídeo
 const HOUR_PRESETS = [
   { label: "30min", value: 0.5  },
@@ -46,7 +41,7 @@ for (let h = 8; h <= 18; h++) {
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
-export type QuizStep = "q1" | "q2" | "q3" | "q4" | "q5" | "q6" | "review" | "searching" | "results" | "confirm" | "conflict" | "displacement-preview";
+export type QuizStep = "q1" | "q2" | "q3" | "q4" | "q5" | "q6" | "review" | "searching" | "results" | "confirm" | "conflict" | "displacement-preview" | "window-infeasible";
 const QUIZ_STEPS_BASE: QuizStep[] = ["q1","q2","q3","q4","q5","review"];
 const QUIZ_STEPS_WITH_Q6: QuizStep[] = ["q1","q2","q3","q4","q6","q5","review"];
 
@@ -88,20 +83,26 @@ interface EditorOption {
 }
 
 interface EscalaResult {
-  target:              EditorOption | null;
-  alternatives:        EditorOption[];
-  windowDays:          number;
-  calculatedDeadline:  string | null;
+  target:                  EditorOption | null;
+  alternatives:            EditorOption[];
+  windowDays:              number;
+  calculatedDeadline:      string | null;
+  windowFeasible:          boolean;
+  theoreticalMinDeadline:  string | null;
+  windowCapacityHours:     number;
 }
 
 interface Props {
-  open:             boolean;
-  onClose:          () => void;
-  onCreated:        (info: { editorId: number; firstDate: string; taskId: number }) => void;
-  onStepChange?:    (step: QuizStep) => void;
-  initialDate?:     string;     // YYYY-MM-DD
-  initialEditorId?: number;     // pré-seleciona editor no passo Q5
-  mode?:            "modal" | "page"; // "page" renderiza sem Dialog overlay
+  open:                boolean;
+  onClose:             () => void;
+  onCreated:           (info: { editorId: number; firstDate: string; taskId: number }) => void;
+  onStepChange?:       (step: QuizStep) => void;
+  initialDate?:        string;  // YYYY-MM-DD
+  initialEditorId?:    number;  // pré-seleciona editor no passo Q5
+  initialStartTime?:   string;  // "HH:MM" — horário de início do drag
+  initialEndTime?:     string;  // "HH:MM" — deadline de entrega (pré-preenche Q4)
+  initialEffortHours?: number;  // horas de esforço (pré-seleciona Q2)
+  mode?:               "modal" | "page"; // "page" renderiza sem Dialog overlay
 }
 
 // ── Aliases locais dos utilitários canônicos ──────────────────────────────────
@@ -115,36 +116,23 @@ function fmtDate(d: string): string {
 }
 
 // Espelha calcTheoreticalCompletion do backend — apenas para preview na UI
-function calcMinCompletion(sd: string, st: string, hours: number): string {
+// Usa dailyCapacity (8h/5h) igual ao backend, não clock time (10h/dia)
+function calcMinCompletion(sd: string, _st: string, hours: number): string {
   const DAILY_CAP = (dow: number) => dow === 0 ? 0 : dow === 6 ? 5 : 8;
-  const WORK_END  = (dow: number) => dow === 6 ? 13 : 18;
-  let remaining = hours;
+  let remaining = Math.round(hours * 100) / 100;
   const d = parseDate(sd);
-  d.setHours(parseInt(st.slice(0, 2)), parseInt(st.slice(3, 5)), 0, 0);
+  d.setHours(12, 0, 0, 0); // noon local — evita drift UTC igual ao backend
   while (remaining > 0.01) {
-    const dow  = d.getDay();
-    const cap  = DAILY_CAP(dow);
+    const cap = DAILY_CAP(d.getDay());
     if (cap > 0) {
-      const endH   = WORK_END(dow);
-      const curH   = d.getHours() + d.getMinutes() / 60;
-      const startH = Math.max(curH, 8);
-      const avail  = Math.max(0, endH - startH);
-      if (avail > 0.01) {
-        const use = Math.min(avail, remaining);
-        remaining = Math.round((remaining - use) * 100) / 100;
-        if (remaining <= 0.01) {
-          const finH = startH + use;
-          d.setHours(Math.floor(finH), Math.round((finH % 1) * 60), 0, 0);
-          const dd = String(d.getDate()).padStart(2, "0");
-          const mm = String(d.getMonth() + 1).padStart(2, "0");
-          const hh = String(d.getHours()).padStart(2, "0");
-          const mi = String(d.getMinutes()).padStart(2, "0");
-          return `${dd}/${mm} às ${hh}:${mi}`;
-        }
+      remaining = Math.round((remaining - Math.min(cap, remaining)) * 100) / 100;
+      if (remaining <= 0.01) {
+        const dd = String(d.getDate()).padStart(2, "0");
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        return `${dd}/${mm}`;
       }
     }
     d.setDate(d.getDate() + 1);
-    d.setHours(8, 0, 0, 0);
   }
   return toLocalDateStr(d);
 }
@@ -166,6 +154,9 @@ function fmtHours(h: number): string {
 }
 function fmtDateTime(date: string, time: string): string {
   return `${fmtDate(date)} ${time}`;
+}
+function roundH(h: number): number {
+  return Math.round(h * 100) / 100;
 }
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
@@ -221,7 +212,7 @@ function TimePicker({ value, onChange, label, options = TIME_OPTIONS }: {
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
-export function EscalaModal({ open, onClose, onCreated, onStepChange, initialDate, initialEditorId, mode = "modal" }: Props) {
+export function EscalaModal({ open, onClose, onCreated, onStepChange, initialDate, initialEditorId, initialStartTime, initialEndTime, initialEffortHours, mode = "modal" }: Props) {
   const [step, setStep] = useState<QuizStep>("q1");
 
   const goTo = useCallback((s: QuizStep) => {
@@ -268,7 +259,6 @@ export function EscalaModal({ open, onClose, onCreated, onStepChange, initialDat
   const [folderUrl,   setFolderUrl]   = useState("");
   const [complexity,  setComplexity]  = useState("medium");
   const [priority,    setPriority]    = useState("medium");
-  const [color,       setColor]       = useState("#6366f1");
   const [saving,      setSaving]      = useState(false);
 
   const titleRef = useRef<HTMLInputElement>(null);
@@ -286,13 +276,6 @@ export function EscalaModal({ open, onClose, onCreated, onStepChange, initialDat
     if (open) {
       goTo("q1");
       setTitle("");
-      setEffortHours(0);
-      setCustomHours("");
-      setUseCustom(false);
-      setStartMode(null);
-      const earliest = earliestStartDate();
-      setStartDate(initialDate && initialDate >= earliest ? initialDate : earliest);
-      setStartTime(workdayOver() ? "08:00" : "08:00");
       setDeadlineMode(null);
       setDeadline("");
       setDeadlineTime("18:00");
@@ -308,11 +291,37 @@ export function EscalaModal({ open, onClose, onCreated, onStepChange, initialDat
       setFolderUrl("");
       setComplexity("medium");
       setPriority("medium");
-      setColor("#6366f1");
       setConflictData(null);
       setDisplacementPlan(null);
+
+      // Horas de esforço
+      if (initialEffortHours && initialEffortHours > 0) {
+        const match = HOUR_PRESETS.find(p => p.value === initialEffortHours);
+        if (match) { setEffortHours(match.value); setUseCustom(false); setCustomHours(""); }
+        else        { setCustomHours(String(initialEffortHours)); setUseCustom(true); setEffortHours(0); }
+      } else {
+        setEffortHours(0); setCustomHours(""); setUseCustom(false);
+      }
+
+      // Data e horário de início
+      const earliest = earliestStartDate();
+      setStartDate(initialDate && initialDate >= earliest ? initialDate : earliest);
+      if (initialStartTime) {
+        setStartMode("manual");
+        setStartTime(initialStartTime);
+      } else {
+        setStartMode(null);
+        setStartTime("08:00");
+      }
+
+      // Deadline pré-preenchida quando vem do drag (via URL params)
+      if (initialEndTime && initialDate) {
+        setDeadlineMode("client");
+        setDeadline(initialDate);
+        setDeadlineTime(initialEndTime);
+      }
     }
-  }, [open, initialDate, initialEditorId]);
+  }, [open, initialDate, initialEditorId, initialStartTime, initialEndTime, initialEffortHours]);
 
   useEffect(() => {
     if (step === "q1") setTimeout(() => titleRef.current?.focus(), 80);
@@ -359,21 +368,35 @@ export function EscalaModal({ open, onClose, onCreated, onStepChange, initialDat
         apiFetch<EscalaResult>(`/api/escala/options?${params}`),
         new Promise(r => setTimeout(r, 2000)),
       ]);
-      setResult(data as EscalaResult);
-      const candidates = [data.target, ...(data as EscalaResult).alternatives].filter(Boolean) as EditorOption[];
+      const escalaData = data as EscalaResult;
+      setResult(escalaData);
+
+      const candidates = [escalaData.target, ...escalaData.alternatives].filter(Boolean) as EditorOption[];
       setSelected(candidates.find(c => c.possible) ?? null);
-      goTo("results");
+
+      // Janela matematicamente inviável — tela dedicada em vez de resultados
+      if (!escalaData.windowFeasible) {
+        goTo("window-infeasible");
+      } else {
+        goTo("results");
+      }
     } catch {
       toast.error("Erro ao buscar disponibilidade");
       goTo("q5");
     }
-  }, [activeHours, startMode, startDate, startTime, effectiveStartDate, effectiveStartTime, deadline, deadlineTime, prefEditorId, deadlineMode]);
+  }, [activeHours, startMode, startDate, startTime, effectiveStartDate, effectiveStartTime, deadline, deadlineTime, reviewHours, prefEditorId, deadlineMode]);
 
   // Calcula dueDate a partir do modo escolhido (compartilhado por createTask e confirmDisplacement)
-  const resolveDueDate = (lastSlotDate?: string): string | null => {
-    if (deadlineMode === "urgent" && result?.calculatedDeadline) return localISO(result.calculatedDeadline.slice(0, 10), "18:00");
+  // urgent → hora real de conclusão = endTime do último slot (não 18:00 hardcoded)
+  // open   → fim da janela + 18:00 (limite externo)
+  // client → exatamente o que o coordenador digitou na Q4
+  const resolveDueDate = (lastSlot?: { date: string; endTime?: string }): string | null => {
+    if (deadlineMode === "urgent") {
+      if (!lastSlot) return null;
+      return localISO(lastSlot.date, lastSlot.endTime ?? "18:00");
+    }
     if (deadlineMode === "open") {
-      const endDate = result?.calculatedDeadline || lastSlotDate;
+      const endDate = result?.calculatedDeadline || lastSlot?.date;
       return endDate ? localISO(endDate.slice(0, 10), "18:00") : null;
     }
     return deadline ? localISO(deadline, deadlineTime) : null;
@@ -407,7 +430,7 @@ export function EscalaModal({ open, onClose, onCreated, onStepChange, initialDat
       // Sem conflitos — fluxo normal
       const firstSlot = selected.slots[0];
       const lastSlot  = selected.slots[selected.slots.length - 1];
-      const dueDate   = resolveDueDate(lastSlot?.date);
+      const dueDate   = resolveDueDate(lastSlot);
 
       if (client.trim()) await apiPost("/api/clients", { name: client.trim() }).catch(() => {});
 
@@ -417,11 +440,11 @@ export function EscalaModal({ open, onClose, onCreated, onStepChange, initialDat
         folderUrl:     folderUrl.trim(),
         client:        client.trim() || null,
         priority,
-        color,
         complexity,
         assignedToId:  selected.editor.id,
-        startDate:     firstSlot ? localISO(firstSlot.date, firstSlot.date === effectiveStartDate ? effectiveStartTime : "08:00") : null,
+        startDate:     firstSlot ? localISO(firstSlot.date, firstSlot.startTime ?? "08:00") : null,
         dueDate,
+        effortHours:   activeHours,
         status:        "pending",
         escalaManaged: true,
       }) as { id: number };
@@ -466,7 +489,7 @@ export function EscalaModal({ open, onClose, onCreated, onStepChange, initialDat
     try {
       const firstSlot = selected.slots[0];
       const lastSlot  = selected.slots[selected.slots.length - 1];
-      const dueDate   = resolveDueDate(lastSlot?.date);
+      const dueDate   = resolveDueDate(lastSlot);
 
       if (client.trim()) await apiPost("/api/clients", { name: client.trim() }).catch(() => {});
 
@@ -476,11 +499,11 @@ export function EscalaModal({ open, onClose, onCreated, onStepChange, initialDat
         folderUrl:     folderUrl.trim(),
         client:        client.trim() || null,
         priority,
-        color,
         complexity,
         assignedToId:  selected.editor.id,
-        startDate:     firstSlot ? localISO(firstSlot.date, firstSlot.date === effectiveStartDate ? effectiveStartTime : "08:00") : null,
+        startDate:     firstSlot ? localISO(firstSlot.date, firstSlot.startTime ?? "08:00") : null,
         dueDate,
+        effortHours:   activeHours,
         status:        "pending",
         escalaManaged: true,
       }) as { id: number };
@@ -966,6 +989,109 @@ export function EscalaModal({ open, onClose, onCreated, onStepChange, initialDat
           </div>
         )}
 
+        {/* ── Window Infeasible ─────────────────────────────────────────────── */}
+        {step === "window-infeasible" && result && (() => {
+          const fitsH     = result.windowCapacityHours ?? 0;
+          const gapH      = roundH(activeHours - fitsH);
+          const minDate   = result.theoreticalMinDeadline
+            ? new Date(result.theoreticalMinDeadline + "T12:00:00").toLocaleDateString("pt-BR")
+            : "—";
+          const startLabel = startMode === "auto"
+            ? `mais cedo possível · ${effectiveStartTime}`
+            : `${fmtDate(effectiveStartDate)} · ${effectiveStartTime}`;
+          // gapH pode ser <= 0 quando o estouro é mínimo (ex: início 08:30 → só 7h30 cabem no dia)
+          const tinyOverflow = gapH <= 0;
+
+          return (
+            <div className="flex flex-col px-7 py-8" style={{ minHeight: 340, gap: 20 }}>
+
+              {/* Headline */}
+              <p className="font-black leading-tight tracking-tight" style={{ fontSize: 28 }}>
+                {tinyOverflow
+                  ? <>o prazo não<br />comporta o início.</>
+                  : <>{fmtHours(activeHours)} de esforço<br />ultrapassam o prazo.</>
+                }
+              </p>
+
+              {/* Contexto */}
+              <div className="flex flex-col gap-1 text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
+                <div className="flex justify-between">
+                  <span>início</span>
+                  <span className="font-black" style={{ color: "hsl(var(--foreground))" }}>
+                    {startLabel}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>horas de trabalho</span>
+                  <span className="font-black" style={{ color: "hsl(var(--foreground))" }}>
+                    {fmtHours(activeHours)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>prazo do cliente</span>
+                  <span className="font-black" style={{ color: "hsl(var(--foreground))" }}>
+                    {fmtDate(deadline)} · {deadlineTime}
+                  </span>
+                </div>
+                {deadlineMode === "client" && reviewHours > 0 && (
+                  <div className="flex justify-between">
+                    <span>margem de aprovação</span>
+                    <span className="font-black" style={{ color: "#f59e0b" }}>
+                      − {fmtReviewHours(reviewHours)}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span>cabe nessa janela</span>
+                  <span className="font-black" style={{ color: "hsl(var(--foreground))" }}>
+                    {fmtHours(fitsH)}
+                  </span>
+                </div>
+              </div>
+
+              {/* O que falta / contexto de estouro mínimo */}
+              {tinyOverflow ? (
+                <div className="rounded-2xl px-4 py-3 text-sm"
+                  style={{ background: "hsl(var(--muted))" }}>
+                  Com início às <strong>{effectiveStartTime}</strong> a janela disponível é de{" "}
+                  <strong>{fmtHours(fitsH)}</strong> — menos do que as{" "}
+                  <strong>{fmtHours(activeHours)}</strong> necessárias.
+                </div>
+              ) : (
+                <div className="rounded-2xl px-4 py-3 flex justify-between items-center"
+                  style={{ background: "hsl(var(--muted))" }}>
+                  <span className="text-sm font-medium">faltam</span>
+                  <span className="font-black text-lg">{fmtHours(gapH)}</span>
+                </div>
+              )}
+
+              {/* Sugestão */}
+              <div className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
+                Ajuste o prazo para{" "}
+                <span className="font-black" style={{ color: "hsl(var(--foreground))" }}>
+                  {minDate}
+                </span>{" "}
+                ou reduza as horas de trabalho.
+              </div>
+
+              <div className="flex gap-2 mt-auto">
+                <button
+                  onClick={() => goTo("q2")}
+                  className="h-11 flex-1 rounded-full text-sm font-black tracking-wide border border-[hsl(var(--border))]"
+                  style={{ color: "hsl(var(--foreground))" }}>
+                  reduzir horas
+                </button>
+                <button
+                  onClick={() => goTo("q4")}
+                  className="h-11 flex-1 rounded-full text-sm font-black text-white tracking-wide"
+                  style={{ background: "hsl(var(--primary))" }}>
+                  ajustar prazo
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ── Searching ─────────────────────────────────────────────────────── */}
         {step === "searching" && (
           <div className="flex items-center justify-center px-6 py-16" style={{ minHeight: 340 }}>
@@ -1129,7 +1255,7 @@ export function EscalaModal({ open, onClose, onCreated, onStepChange, initialDat
                 <div key={c.taskId} className="rounded-2xl p-3.5 flex items-start gap-3"
                   style={{
                     background:  "hsl(var(--muted)/0.7)",
-                    borderLeft:  `3px solid ${c.color ?? "#6366f1"}`,
+                    borderLeft:  "3px solid hsl(var(--primary))",
                   }}>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-black truncate">{c.title}</p>
@@ -1218,7 +1344,7 @@ export function EscalaModal({ open, onClose, onCreated, onStepChange, initialDat
                   <div key={c.taskId} className="rounded-2xl p-3.5"
                     style={{
                       background:  c.possible ? "hsl(var(--muted)/0.6)" : "#fef2f220",
-                      borderLeft:  `3px solid ${c.possible ? (c.color ?? "#6366f1") : "#ef4444"}`,
+                      borderLeft:  `3px solid ${c.possible ? "hsl(var(--primary))" : "#ef4444"}`,
                       outline:     c.possible ? "none" : "1px solid #ef444430",
                     }}>
                     <div className="flex items-start justify-between gap-2 mb-1">

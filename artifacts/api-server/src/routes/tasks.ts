@@ -322,7 +322,7 @@ async function getSubtaskProgressMap(parentIds: number[]): Promise<Map<number, {
 // ── Create task ──────────────────────────────────────────────────────────────
 router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
   const { title, description, startDate, dueDate, priority, complexity, assignedToId, editorIds,
-          folderUrl, client, color, status, taskType, parentTaskId, subtasks, effortHours } = req.body ?? {};
+          folderUrl, client, status, taskType, parentTaskId, subtasks, effortHours } = req.body ?? {};
 
   if (!title) { res.status(400).json({ error: "Título obrigatório" }); return; }
 
@@ -427,7 +427,6 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
     title: String(title),
     description: description ? String(description) : null,
     client: client ? String(client) : null,
-    color: color ? String(color) : "#6366f1",
     startDate: resolvedStart,
     dueDate: parsedDue,
     priority: priority ?? "medium",
@@ -479,7 +478,6 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
         title: String(sub.title),
         description: sub.description ? String(sub.description) : null,
         client: client ? String(client) : null,
-        color: color ? String(color) : "#6366f1",
         dueDate: (() => { const d = parseDateSafe(sub.dueDate) ?? parseDateSafe(dueDate); return d && d !== "invalid" ? d : null; })(),
         priority: sub.priority ?? priority ?? "medium",
         complexity: sub.complexity ?? complexity ?? "medium",
@@ -982,7 +980,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   const role = req.session.userRole!;
   const userId = req.session.userId!;
 
-  const { title, description, startDate, dueDate, priority, complexity, assignedToId, folderUrl, status, revisionComment, startComment, client, color, effortHours } = req.body ?? {};
+  const { title, description, startDate, dueDate, priority, complexity, assignedToId, folderUrl, status, revisionComment, startComment, client, effortHours } = req.body ?? {};
   const update: Record<string, unknown> = {};
   let eventComment: string | undefined;
 
@@ -1102,7 +1100,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     if (title) update.title = String(title);
     if (description !== undefined) update.description = description ? String(description) : null;
     if (client !== undefined) update.client = client ? String(client) : null;
-    if (color) update.color = String(color);
+    
     if (startDate !== undefined) {
       const ps = parseDateSafe(startDate);
       if (ps === "invalid") { res.status(400).json({ error: "Data de início inválida" }); return; }
@@ -1585,7 +1583,7 @@ router.post("/tasks/:id/subtasks", requireCoordinator, async (req, res): Promise
     title: String(title),
     description: description ? String(description) : null,
     client: parent.client,
-    color: parent.color,
+    
     dueDate: dueDate ? new Date(String(dueDate)) : parent.dueDate,
     priority: priority ?? parent.priority ?? "medium",
     complexity: complexity ?? parent.complexity ?? "medium",
@@ -2031,7 +2029,7 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
       priority: tasksTable.priority,
       startDate: tasksTable.startDate,
       dueDate: tasksTable.dueDate,
-      color: tasksTable.color,
+      
       client: tasksTable.client,
       assignedToId: tasksTable.assignedToId,
       createdById: tasksTable.createdById,
@@ -2198,7 +2196,6 @@ router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
       status:       tasksTable.status,
       priority:     tasksTable.priority,
       complexity:   tasksTable.complexity,
-      color:        tasksTable.color,
       client:       tasksTable.client,
       startDate:    tasksTable.startDate,
       dueDate:      tasksTable.dueDate,
@@ -2283,7 +2280,6 @@ router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
         status:      t.status,
         priority:    t.priority,
         complexity:  t.complexity,
-        color:       t.color,
         client:      t.client,
         startDate:   t.startDate ? t.startDate.toISOString() : null,
         dueDate:     t.dueDate   ? t.dueDate.toISOString()   : null,
@@ -2318,7 +2314,7 @@ router.get("/dashboard-extras", requireAuth, async (_req, res): Promise<void> =>
       dueDate: tasksTable.dueDate,
       assignedToId: tasksTable.assignedToId,
       client: tasksTable.client,
-      color: tasksTable.color,
+      
       taskNumber: tasksTable.taskNumber,
       taskYear: tasksTable.taskYear,
     })
@@ -2377,7 +2373,7 @@ router.get("/deadline-overview", requireAuth, async (req, res): Promise<void> =>
     .select({
       id: tasksTable.id, title: tasksTable.title, status: tasksTable.status,
       priority: tasksTable.priority, dueDate: tasksTable.dueDate,
-      assignedToId: tasksTable.assignedToId, client: tasksTable.client, color: tasksTable.color,
+      assignedToId: tasksTable.assignedToId, client: tasksTable.client, 
       taskNumber: tasksTable.taskNumber, taskYear: tasksTable.taskYear,
     })
     .from(tasksTable).where(taskWhere).orderBy(asc(tasksTable.dueDate));
@@ -2415,7 +2411,7 @@ router.get("/deadline-overview", requireAuth, async (req, res): Promise<void> =>
 
   const urgent = urgentRows.map(t => ({
     id: t.id, taskCode: fmtCode(t.taskNumber, t.taskYear), title: t.title, status: t.status, priority: t.priority,
-    dueDate: t.dueDate, client: t.client, color: t.color,
+    dueDate: t.dueDate, client: t.client, 
     assigneeName: t.assignedToId ? (assigneeMap.get(t.assignedToId) ?? null) : null,
     bucket: getBucket(dueDateKey(t.dueDate)),
   }));
@@ -2451,7 +2447,7 @@ router.get("/pipeline", requireAuth, async (req, res): Promise<void> => {
     .select({
       id: tasksTable.id, title: tasksTable.title, status: tasksTable.status,
       priority: tasksTable.priority, complexity: tasksTable.complexity,
-      dueDate: tasksTable.dueDate, color: tasksTable.color, client: tasksTable.client,
+      dueDate: tasksTable.dueDate,  client: tasksTable.client,
       revisionCount: tasksTable.revisionCount, assignedToId: tasksTable.assignedToId,
       createdById: tasksTable.createdById, createdAt: tasksTable.createdAt,
       taskNumber: tasksTable.taskNumber, taskYear: tasksTable.taskYear,
@@ -2543,7 +2539,7 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
     type: "created",
     at: task.createdAt,
     by: task.createdById ? (personMap.get(task.createdById) ?? null) : null,
-    meta: { title: task.title, client: task.client, priority: task.priority, color: task.color },
+    meta: { title: task.title, client: task.client, priority: task.priority,  },
   });
 
   for (const e of events) {
@@ -2577,7 +2573,7 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
       priority: task.priority,
       complexity: task.complexity,
       client: task.client,
-      color: task.color,
+      
       dueDate: task.dueDate,
       revisionCount: task.revisionCount ?? 0,
       taskType: task.taskType,
@@ -2607,7 +2603,7 @@ router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
       priority: tasksTable.priority,
       complexity: tasksTable.complexity,
       dueDate: tasksTable.dueDate,
-      color: tasksTable.color,
+      
       client: tasksTable.client,
       revisionCount: tasksTable.revisionCount,
       folderUrl: tasksTable.folderUrl,
@@ -2647,7 +2643,7 @@ router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
     priority: t.priority,
     complexity: t.complexity,
     dueDate: t.dueDate,
-    color: t.color,
+    
     client: t.client,
     revisionCount: t.revisionCount,
     folderUrl: t.folderUrl,
@@ -2713,7 +2709,7 @@ router.get("/reports", requireCoordinator, async (req, res): Promise<void> => {
       priority: r.priority,
       complexity: r.complexity,
       client: r.client,
-      color: r.color,
+      
       revisionCount: r.revisionCount,
       dueDate: r.dueDate,
       createdAt: r.createdAt,

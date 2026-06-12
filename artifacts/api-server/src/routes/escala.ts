@@ -5,7 +5,7 @@
  */
 import { Router } from "express";
 import { db, tasksTable, usersTable, taskAllocationsTable, appSettingsTable } from "@workspace/db";
-import { eq, ne, and, inArray, isNotNull } from "drizzle-orm";
+import { eq, ne, and, inArray, isNotNull, gte, lte } from "drizzle-orm";
 import { requireCoordinator } from "../lib/auth.js";
 import { broadcastTaskChange } from "../lib/broadcast.js";
 import { notify } from "../lib/notify.js";
@@ -99,20 +99,36 @@ function subWorkingHours(d: Date, hours: number, holidays: Set<string> = new Set
   return r;
 }
 
-// Data mais cedo em que effortHours terminaria com agenda vazia.
-// Usa noon local como ancoragem para evitar drift UTC.
-// Usa dailyCapacity (8h/5h) — espelha a capacidade real do findHourSlots.
+// Data/hora mais cedo em que effortHours terminaria com agenda vazia.
+// Respeita horário de início do 1º dia e retorna o TIMESTAMP real de conclusão
+// (não apenas a data) — necessário para comparação com deadline com hora explícita.
 function calcTheoreticalCompletion(start: Date, effortHours: number, holidays: Set<string> = new Set()): Date {
   let remaining = roundH(effortHours);
   const d = new Date(start);
-  d.setHours(12, 0, 0, 0); // noon local — evita drift de fuso
+  const startDateStr = toLocalDateStr(start);
   while (remaining > 0.01) {
     const cap = dailyCapacity(d, holidays);
     if (cap > 0) {
-      remaining = roundH(remaining - Math.min(cap, remaining));
-      if (remaining <= 0.01) return new Date(d);
+      const dow        = d.getDay();
+      const isStartDay = toLocalDateStr(d) === startDateStr;
+      const offset     = isStartDay ? clockToEffortHours(start.getHours() + start.getMinutes() / 60, dow) : 0;
+      const available  = Math.max(0, cap - offset);
+      const use        = Math.min(available, remaining);
+      remaining        = roundH(remaining - use);
+      if (remaining <= 0.01) {
+        // Retorna o horário real em que o trabalho TERMINA (não o próximo horário disponível).
+        // Usa <= 4 para que 4h de esforço = 12:00 (não 14:00, que seria o reinício pós-almoço).
+        const totalUsed = roundH(offset + use);
+        const h = dow === 6
+          ? 8 + totalUsed
+          : totalUsed <= 4 ? 8 + totalUsed : 14 + (totalUsed - 4);
+        const result = new Date(d);
+        result.setHours(Math.floor(h), Math.round((h % 1) * 60), 0, 0);
+        return result;
+      }
     }
     d.setDate(d.getDate() + 1);
+    d.setHours(8, 0, 0, 0);
   }
   return d;
 }
@@ -131,6 +147,16 @@ function roundH(h: number): number {
  *
  * Sábado (sem almoço): 0h → 08:00, 5h → 13:00
  */
+// Inverso de hoursToClockTime: converte hora de relógio em horas de esforço já consumidas no dia.
+// Usado para calcular o offset do horário de início no primeiro dia de trabalho.
+function clockToEffortHours(clockH: number, dow: number): number {
+  if (dow === 6) return Math.max(0, Math.min(clockH - 8, 5)); // sáb: linear 08–13
+  if (clockH <= 8)  return 0;
+  if (clockH <= 12) return clockH - 8;                 // manhã: 08–12
+  if (clockH <= 14) return 4;                          // almoço 12–14 → 4h consumidas
+  return Math.min(4 + (clockH - 14), 8);              // tarde: 14–18
+}
+
 function hoursToClockTime(used: number, dow: number): string {
   let h: number;
   if (dow === 6) {
@@ -226,20 +252,29 @@ async function findHourSlots(
   const slots: HourSlot[] = [];
   let remaining = effortHours;
   const now = new Date();
+  const startDateStr = toLocalDateStr(startDate); // para detectar o primeiro dia
 
-  const current = new Date(startDate);
-  current.setHours(12, 0, 0, 0);
+  const current = new Date(startDate); // preserva horário real de início
 
   while (current <= deadline && remaining > 0.01) {
     if (isPastWorkday(current, now)) {
       current.setDate(current.getDate() + 1);
+      current.setHours(8, 0, 0, 0);
       continue;
     }
     const dow = current.getDay();
     const cap = dailyCapacity(current, holidays);
     if (cap > 0) {
-      const used      = await escalaHoursUsed(editorId, current, excludeTaskId);
-      const available = roundH(cap - used);
+      const dbUsed      = await escalaHoursUsed(editorId, current, excludeTaskId);
+      // Offset do horário de início no 1º dia
+      const isStartDay  = toLocalDateStr(current) === startDateStr;
+      const startOffset = isStartDay ? clockToEffortHours(startDate.getHours() + startDate.getMinutes() / 60, dow) : 0;
+      // No dia do deadline, limita as horas disponíveis pelo horário de entrega
+      const isDeadlineDay   = toLocalDateStr(current) === toLocalDateStr(deadline);
+      const deadlineOffset  = isDeadlineDay ? clockToEffortHours(deadline.getHours() + deadline.getMinutes() / 60, dow) : cap;
+      const effectiveCap    = Math.min(cap, deadlineOffset);
+      const used            = Math.max(dbUsed, startOffset);
+      const available       = roundH(effectiveCap - used);
       if (available > 0.01) {
         const allocate  = roundH(Math.min(available, remaining));
         const startTime = hoursToClockTime(used, dow);
@@ -249,6 +284,7 @@ async function findHourSlots(
       }
     }
     current.setDate(current.getDate() + 1);
+    current.setHours(8, 0, 0, 0);
   }
 
   const last = slots[slots.length - 1];
@@ -334,12 +370,41 @@ router.get("/escala/options", requireCoordinator, async (req, res): Promise<void
   const windowDays   = allResults[0]?.windowDays ?? 0;
 
   // Verifica se a janela comporta effortHours com agenda vazia (validação independente de disponibilidade)
-  // Comparação por string local para evitar falso negativo por diferença de timestamp
+  // Compara timestamps: calcTheoreticalCompletion retorna o horário real de conclusão,
+  // então 12h que terminam às 12:00 de sábado != deadline de 10:00 no mesmo sábado.
   const theoreticalEnd         = calcTheoreticalCompletion(start, effort, holidays);
   const theoreticalMinDeadline = toLocalDateStr(theoreticalEnd);
-  const windowFeasible         = theoreticalMinDeadline <= toLocalDateStr(end);
+  const windowFeasible         = theoreticalEnd.getTime() <= end.getTime();
 
-  res.json({ target, alternatives, windowDays, calculatedDeadline, windowFeasible, theoreticalMinDeadline });
+  // Capacidade total da janela com agenda vazia, respeitando horário de início e horário do deadline.
+  // Mesma lógica de findHourSlots sem ocupação (dbUsed=0).
+  const windowCapacityHours = (() => {
+    let total = 0;
+    const d = new Date(start);
+    const startDateStr = toLocalDateStr(start);
+    while (toLocalDateStr(d) <= toLocalDateStr(end)) {
+      const cap = dailyCapacity(d, holidays);
+      if (cap > 0) {
+        const dow = d.getDay();
+        const isStartDay    = toLocalDateStr(d) === startDateStr;
+        const startOffset   = isStartDay
+          ? clockToEffortHours(start.getHours() + start.getMinutes() / 60, dow)
+          : 0;
+        const isDeadlineDay  = toLocalDateStr(d) === toLocalDateStr(end);
+        const deadlineOffset = isDeadlineDay
+          ? clockToEffortHours(end.getHours() + end.getMinutes() / 60, dow)
+          : cap;
+        const effectiveCap  = Math.min(cap, deadlineOffset);
+        const available     = roundH(Math.max(0, effectiveCap - startOffset));
+        total = roundH(total + available);
+      }
+      d.setDate(d.getDate() + 1);
+      d.setHours(8, 0, 0, 0);
+    }
+    return total;
+  })();
+
+  res.json({ target, alternatives, windowDays, calculatedDeadline, windowFeasible, theoreticalMinDeadline, windowCapacityHours });
 });
 
 // ── POST /api/escala/tasks/:id/allocate ──────────────────────────────────────
@@ -391,7 +456,7 @@ interface ConflictSlot { date: string; startTime: string; endTime: string; hours
 interface ConflictInfo {
   taskId:          number;
   title:           string;
-  color:           string | null;
+  
   client:          string | null;
   dueDate:         string | null;
   coordinatorId:   number | null;
@@ -416,7 +481,6 @@ async function findConflictingAllocations(
       endTime:        taskAllocationsTable.endTime,
       allocatedHours: taskAllocationsTable.allocatedHours,
       title:          tasksTable.title,
-      color:          tasksTable.color,
       client:         tasksTable.client,
       dueDate:        tasksTable.dueDate,
       effortHours:    tasksTable.effortHours,
@@ -459,7 +523,6 @@ async function findConflictingAllocations(
     return {
       taskId,
       title:           first.title,
-      color:           first.color,
       client:          first.client,
       dueDate:         first.dueDate ? toDateStr(first.dueDate instanceof Date ? first.dueDate : new Date(first.dueDate as any)) : null,
       coordinatorId:   first.createdById,
@@ -490,30 +553,38 @@ async function findHourSlotsWithExtra(
   let remaining = effortHours;
   const now = new Date();
 
-  const current = new Date(startDate);
-  current.setHours(12, 0, 0, 0);
+  const current = new Date(startDate); // preserva horário real de início
+  const startDateStr = toLocalDateStr(startDate);
 
   while (current <= deadline && remaining > 0.01) {
     if (isPastWorkday(current, now)) {
       current.setDate(current.getDate() + 1);
+      current.setHours(8, 0, 0, 0);
       continue;
     }
     const dow = current.getDay();
     const cap = dailyCapacity(current, holidays);
     if (cap > 0) {
-      const dateStr   = toDateStr(current);
-      const used      = await escalaHoursUsed(editorId, current, excludeTaskId);
-      const extra     = additionalOccupied?.[dateStr] ?? 0;
-      const available = roundH(cap - used - extra);
+      const dateStr        = toDateStr(current);
+      const dbUsed         = await escalaHoursUsed(editorId, current, excludeTaskId);
+      const extra          = additionalOccupied?.[dateStr] ?? 0;
+      const isStartDay     = toLocalDateStr(current) === startDateStr;
+      const startOffset    = isStartDay ? clockToEffortHours(startDate.getHours() + startDate.getMinutes() / 60, dow) : 0;
+      const isDeadlineDay  = toLocalDateStr(current) === toLocalDateStr(deadline);
+      const deadlineOffset = isDeadlineDay ? clockToEffortHours(deadline.getHours() + deadline.getMinutes() / 60, dow) : cap;
+      const effectiveCap   = Math.min(cap, deadlineOffset);
+      const used           = Math.max(dbUsed + extra, startOffset);
+      const available      = roundH(effectiveCap - used);
       if (available > 0.01) {
         const allocate  = roundH(Math.min(available, remaining));
-        const startTime = hoursToClockTime(roundH(used + extra), dow);
-        const endTime   = hoursToClockTime(roundH(used + extra + allocate), dow);
+        const startTime = hoursToClockTime(used, dow);
+        const endTime   = hoursToClockTime(roundH(used + allocate), dow);
         slots.push({ date: dateStr, hours: allocate, startTime, endTime });
         remaining = roundH(remaining - allocate);
       }
     }
     current.setDate(current.getDate() + 1);
+    current.setHours(8, 0, 0, 0);
   }
 
   const last = slots[slots.length - 1];
@@ -564,7 +635,6 @@ router.post("/escala/preview-displacement", requireCoordinator, async (req, res)
     .select({
       id:          tasksTable.id,
       title:       tasksTable.title,
-      color:       tasksTable.color,
       client:      tasksTable.client,
       effortHours: tasksTable.effortHours,
       dueDate:     tasksTable.dueDate,
@@ -589,7 +659,7 @@ router.post("/escala/preview-displacement", requireCoordinator, async (req, res)
   const cascade: {
     taskId:          number;
     title:           string;
-    color:           string | null;
+    
     coordinatorName: string;
     dueDate:         string | null;
     originalSlots:   HourSlot[];
@@ -661,7 +731,6 @@ router.post("/escala/preview-displacement", requireCoordinator, async (req, res)
     cascade.push({
       taskId:          task.id,
       title:           task.title,
-      color:           task.color,
       coordinatorName: coords.find(c => c.id === task.createdById)?.name ?? "Coordenador",
       dueDate:         rawDue ? toDateStr(rawDue) : null,
       deadlineExpired,
@@ -758,6 +827,126 @@ router.post("/escala/confirm-displacement", requireCoordinator, async (req, res)
     }
   }
 
+  res.json({ ok: true });
+});
+
+// ── GET /api/escala/allocations-on — editores com alocações numa data ────────
+// Usado pelo painel de feriados para avisar conflitos antes de salvar.
+router.get("/escala/allocations-on", requireCoordinator, async (req, res): Promise<void> => {
+  const date = typeof req.query.date === "string" ? req.query.date : null;
+  if (!date) { res.status(400).json({ error: "date obrigatório" }); return; }
+
+  const rows = await db
+    .select({ editorId: taskAllocationsTable.editorId, name: usersTable.name })
+    .from(taskAllocationsTable)
+    .innerJoin(tasksTable,  eq(taskAllocationsTable.taskId,   tasksTable.id))
+    .innerJoin(usersTable,  eq(taskAllocationsTable.editorId, usersTable.id))
+    .where(and(
+      eq(taskAllocationsTable.workDate, date),
+      inArray(tasksTable.status, ACTIVE_STATUSES),
+      ne(tasksTable.taskType, "multi_task"),
+    ));
+
+  const editors = [...new Map(rows.map(r => [r.editorId, r.name])).values()];
+  res.json({ editors });
+});
+
+// ── GET /api/escala/editor/:id/schedule ─────────────────────────────────────
+// Retorna alocações de um editor agrupadas por data, para os próximos N dias.
+router.get("/escala/editor/:id/schedule", requireCoordinator, async (req, res): Promise<void> => {
+  const editorId = parseInt(req.params.id as string, 10);
+  if (isNaN(editorId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const now  = new Date();
+  const from = typeof req.query.from === "string" ? req.query.from : toLocalDateStr(now);
+  const to   = typeof req.query.to   === "string" ? req.query.to   : toLocalDateStr(addDays(now, 14));
+
+  const coordAlias = db.$with("coord").as(
+    db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+      .from(usersTable)
+  );
+
+  const rows = await db
+    .select({
+      workDate:       taskAllocationsTable.workDate,
+      startTime:      taskAllocationsTable.startTime,
+      endTime:        taskAllocationsTable.endTime,
+      hours:          taskAllocationsTable.allocatedHours,
+      taskId:         tasksTable.id,
+      taskNumber:     tasksTable.taskNumber,
+      taskYear:       tasksTable.taskYear,
+      taskTitle:      tasksTable.title,
+      client:         tasksTable.client,
+      status:         tasksTable.status,
+      description:    tasksTable.description,
+      priority:       tasksTable.priority,
+      coordId:        tasksTable.createdById,
+    })
+    .from(taskAllocationsTable)
+    .innerJoin(tasksTable, eq(taskAllocationsTable.taskId, tasksTable.id))
+    .where(and(
+      eq(taskAllocationsTable.editorId, editorId),
+      gte(taskAllocationsTable.workDate, from),
+      lte(taskAllocationsTable.workDate, to),
+      inArray(tasksTable.status, [...ACTIVE_STATUSES, "completed"]),
+      ne(tasksTable.taskType, "multi_task"),
+    ))
+    .orderBy(taskAllocationsTable.workDate, taskAllocationsTable.startTime);
+
+  // Busca nomes e avatares dos coordenadores em lote
+  const coordIds = [...new Set(rows.map(r => r.coordId).filter((id): id is number => id !== null))];
+  const coords   = coordIds.length > 0
+    ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+        .from(usersTable).where(inArray(usersTable.id, coordIds))
+    : [];
+  const coordMap = new Map(coords.map(c => [c.id, c]));
+
+  type SlotOut = {
+    taskId: number; taskCode: string; taskTitle: string;
+    client: string | null; startTime: string | null; endTime: string | null;
+    hours: number | null; status: string;
+    description: string | null; priority: string | null;
+    coordinator: { id: number; name: string; avatarUrl: string | null } | null;
+  };
+  const byDate = new Map<string, { date: string; slots: SlotOut[] }>();
+  for (const r of rows) {
+    if (!byDate.has(r.workDate)) byDate.set(r.workDate, { date: r.workDate, slots: [] });
+    const coord = r.coordId ? (coordMap.get(r.coordId) ?? null) : null;
+    byDate.get(r.workDate)!.slots.push({
+      taskId:      r.taskId,
+      taskCode:    String(r.taskNumber).padStart(3, "0") + "." + String(r.taskYear).slice(-2),
+      taskTitle:   r.taskTitle,
+      client:      r.client,
+      startTime:   r.startTime,
+      endTime:     r.endTime,
+      hours:       r.hours,
+      status:      r.status,
+      description: r.description ?? null,
+      priority:    r.priority ?? null,
+      coordinator: coord ? { id: coord.id, name: coord.name, avatarUrl: coord.avatarUrl } : null,
+    });
+  }
+
+  res.json([...byDate.values()]);
+});
+
+// ── POST /api/escala/tasks/:id/resize-slot ───────────────────────────────────
+// Atualiza startTime / endTime / allocatedHours de um slot específico.
+router.post("/escala/tasks/:id/resize-slot", requireCoordinator, async (req, res): Promise<void> => {
+  const taskId = parseInt(req.params.id as string, 10);
+  const { workDate, newWorkDate, startTime, endTime, allocatedHours } = req.body as {
+    workDate: string; newWorkDate?: string; startTime: string; endTime: string; allocatedHours: number;
+  };
+
+  if (!workDate || !startTime || !endTime || allocatedHours == null) {
+    res.status(400).json({ error: "Parâmetros inválidos" }); return;
+  }
+
+  await db.update(taskAllocationsTable)
+    .set({ workDate: newWorkDate ?? workDate, startTime, endTime, allocatedHours })
+    .where(and(eq(taskAllocationsTable.taskId, taskId), eq(taskAllocationsTable.workDate, workDate)));
+
+  broadcastTaskChange();
   res.json({ ok: true });
 });
 

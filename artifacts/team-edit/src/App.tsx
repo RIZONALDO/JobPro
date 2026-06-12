@@ -24,7 +24,8 @@ import TasksOverview from "@/pages/tasks-overview";
 import TasksHub      from "@/pages/tasks-hub";
 import DutyPage      from "@/pages/duty";
 import FaviconDebugPage from "@/pages/favicon-debug";
-import EscalaBoard from "@/pages/escala-board";
+import EscalaBoard from "@/pages/escala-board-v0";
+import AgendaEditorPage from "@/pages/agenda-editor-v3";
 import PlanejarPage from "@/pages/planejar";
 import ReagendamentoPage from "@/pages/reagendamento";
 import TaskPublicView from "@/pages/task-public-view";
@@ -96,6 +97,7 @@ function Router() {
         <Route path="/tasks" component={TasksHub} />
         <Route path="/duty" component={DutyPage} />
         <Route path="/agenda" component={EscalaBoard} />
+        <Route path="/agenda/:id" component={AgendaEditorPage} />
         <Route path="/planejar" component={PlanejarPage} />
         <Route path="/reagendamento" component={ReagendamentoPage} />
         <Route path="/review/:taskId/:fileId"><ReviewFilePage /></Route>
