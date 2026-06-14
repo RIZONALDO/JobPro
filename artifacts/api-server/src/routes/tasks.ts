@@ -743,8 +743,6 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     unreadCommentCount:  overviewReviewCommentMap.get(r.id) ?? 0,
     effortHours:         r.effortHours ?? null,
     editorComplexitySet: r.editorComplexitySet,
-    editorEstimateHours: r.editorEstimateHours ?? null,
-    editorAcceptedAt:    r.editorAcceptedAt ?? null,
     hasAllocToday:       overviewTodayAllocIds.has(r.id),
   })));
 });
@@ -1021,69 +1019,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
 
 
     // ── Editor valida/ajusta horas estimadas pelo ESCALA ──
-    const rawEditorHours = (req.body ?? {}).editorEstimateHours;
-    if (rawEditorHours !== undefined && task.effortHours != null) {
-      const adjusted = parseFloat(String(rawEditorHours));
-      if (!isNaN(adjusted) && adjusted > 0) {
-        update.editorEstimateHours = adjusted;
-        update.editorAcceptedAt    = new Date();
-
-        if (task.createdById) {
-          const [editor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
-          const editorName = editor?.name ?? "Editor";
-          const taskCode   = fmtCode(task.taskNumber ?? 0, task.taskYear ?? 0);
-          const original   = task.effortHours;
-          const changed    = Math.abs(adjusted - original) > 0.01;
-          const obs        = (req.body ?? {}).startComment ? ` Observação: ${String((req.body ?? {}).startComment).slice(0, 200)}` : "";
-
-          // Check if editor's estimate would exceed dueDate
-          let exceedsDue = false;
-          if (task.dueDate) {
-            const startFrom = task.startDate ?? new Date();
-            let remaining = adjusted;
-            const d = new Date(startFrom);
-            d.setHours(8, 0, 0, 0);
-            const DAILY_CAP = (dow: number) => (dow === 0 ? 0 : dow === 6 ? 5 : 8);
-            const WORK_END  = (dow: number) => (dow === 6 ? 13 : 18);
-            while (remaining > 0.01) {
-              const dow = d.getDay();
-              const cap = DAILY_CAP(dow);
-              if (cap > 0) {
-                const avail = Math.max(0, WORK_END(dow) - 8);
-                if (avail > 0.01) {
-                  remaining = Math.round((remaining - Math.min(avail, remaining)) * 100) / 100;
-                  if (remaining <= 0.01) break;
-                }
-              }
-              d.setDate(d.getDate() + 1);
-              d.setHours(8, 0, 0, 0);
-            }
-            const compDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-            const dueStr   = task.dueDate.toISOString().slice(0, 10);
-            exceedsDue = compDate > dueStr;
-          }
-
-          if (changed && exceedsDue) {
-            await notify(
-              task.createdById,
-              "estimate_conflict",
-              "Horas ultrapassam o prazo",
-              `${editorName} ajustou as horas de "${taskCode} ${task.title}" de ${original}h para ${adjusted}h. A conclusão estimada ultrapassa o prazo de entrega.${obs}`,
-              { taskId: id }
-            );
-          } else if (changed) {
-            await notify(
-              task.createdById,
-              "estimate_adjusted",
-              "Horas ajustadas pelo editor",
-              `${editorName} ajustou as horas de "${taskCode} ${task.title}" de ${original}h para ${adjusted}h.${obs}`,
-              { taskId: id }
-            );
-          }
-        }
-      }
-    }
-
     if (folderUrl !== undefined) update.folderUrl = folderUrl ? String(folderUrl) : null;
   } else {
     if (role === "coordinator" && task.createdById !== userId) {

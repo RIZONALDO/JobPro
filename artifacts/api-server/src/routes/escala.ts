@@ -4,8 +4,8 @@
  * Modelo único: effortHours + allocated_hours por slot (te_task_allocations)
  */
 import { Router } from "express";
-import { db, tasksTable, usersTable, taskAllocationsTable, appSettingsTable } from "@workspace/db";
-import { eq, ne, and, inArray, isNotNull, gte, lte } from "drizzle-orm";
+import { db, tasksTable, usersTable, taskAllocationsTable, taskCoordinatorsTable, appSettingsTable } from "@workspace/db";
+import { eq, ne, and, inArray, or, isNotNull, gte, lte, sql } from "drizzle-orm";
 import { requireCoordinator } from "../lib/auth.js";
 import { broadcastTaskChange } from "../lib/broadcast.js";
 import { notify } from "../lib/notify.js";
@@ -880,6 +880,8 @@ router.get("/escala/editor/:id/schedule", requireCoordinator, async (req, res): 
       status:         tasksTable.status,
       description:    tasksTable.description,
       priority:       tasksTable.priority,
+      startDate:      tasksTable.startDate,
+      dueDate:        tasksTable.dueDate,
       coordId:        tasksTable.createdById,
     })
     .from(taskAllocationsTable)
@@ -906,6 +908,7 @@ router.get("/escala/editor/:id/schedule", requireCoordinator, async (req, res): 
     client: string | null; startTime: string | null; endTime: string | null;
     hours: number | null; status: string;
     description: string | null; priority: string | null;
+    startDate: string | null; dueDate: string | null;
     coordinator: { id: number; name: string; avatarUrl: string | null } | null;
   };
   const byDate = new Map<string, { date: string; slots: SlotOut[] }>();
@@ -923,12 +926,181 @@ router.get("/escala/editor/:id/schedule", requireCoordinator, async (req, res): 
       status:      r.status,
       description: r.description ?? null,
       priority:    r.priority ?? null,
+      startDate:   r.startDate ? toDateStr(r.startDate instanceof Date ? r.startDate : new Date(r.startDate as any)) : null,
+      dueDate:     r.dueDate   ? toDateStr(r.dueDate   instanceof Date ? r.dueDate   : new Date(r.dueDate   as any)) : null,
       coordinator: coord ? { id: coord.id, name: coord.name, avatarUrl: coord.avatarUrl } : null,
     });
   }
 
   res.json([...byDate.values()]);
 });
+
+// ── GET /api/my-schedule ─────────────────────────────────────────────────────
+// Retorna os slots de alocação futuros do editor logado (um slot = um dia de trabalho).
+// Usado na tab Agendadas para mostrar tarefas intercaladas corretamente.
+router.get("/my-schedule", async (req: any, res: any): Promise<void> => {
+  const editorId = req.session?.userId;
+  if (!editorId) { res.status(401).json({ error: "Não autenticado" }); return; }
+
+  const now  = new Date();
+  const from = toLocalDateStr(now);
+  const to   = typeof req.query.to === "string" ? req.query.to : toLocalDateStr(addDays(now, 90));
+
+  const rows = await db
+    .select({
+      workDate:   taskAllocationsTable.workDate,
+      startTime:  taskAllocationsTable.startTime,
+      endTime:    taskAllocationsTable.endTime,
+      hours:      taskAllocationsTable.allocatedHours,
+      taskId:     tasksTable.id,
+      taskNumber: tasksTable.taskNumber,
+      taskYear:   tasksTable.taskYear,
+      taskTitle:  tasksTable.title,
+      client:     tasksTable.client,
+      status:     tasksTable.status,
+      priority:   tasksTable.priority,
+      revisionCount: tasksTable.revisionCount,
+      createdById:   tasksTable.createdById,
+    })
+    .from(taskAllocationsTable)
+    .innerJoin(tasksTable, eq(taskAllocationsTable.taskId, tasksTable.id))
+    .where(and(
+      eq(taskAllocationsTable.editorId, editorId),
+      gte(taskAllocationsTable.workDate, from),
+      lte(taskAllocationsTable.workDate, to),
+      inArray(tasksTable.status, ACTIVE_STATUSES),
+      ne(tasksTable.taskType, "multi_task"),
+    ))
+    .orderBy(taskAllocationsTable.workDate, taskAllocationsTable.startTime);
+
+  const coordIds = [...new Set(rows.map(r => r.createdById).filter((id): id is number => id !== null))];
+  const coords   = coordIds.length > 0
+    ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+        .from(usersTable).where(inArray(usersTable.id, coordIds))
+    : [];
+  const coordMap = new Map(coords.map(c => [c.id, c]));
+
+  const slots = rows.map(r => ({
+    workDate:      r.workDate,
+    startTime:     r.startTime,
+    endTime:       r.endTime,
+    hours:         r.hours,
+    taskId:        r.taskId,
+    taskCode:      String(r.taskNumber).padStart(3, "0") + "." + String(r.taskYear).slice(-2),
+    taskTitle:     r.taskTitle,
+    client:        r.client,
+    color:         null,
+    status:        r.status,
+    priority:      r.priority,
+    revisionCount: r.revisionCount ?? 0,
+    coordinator:   r.createdById ? (coordMap.get(r.createdById) ?? null) : null,
+  }));
+
+  res.json(slots);
+});
+
+// ── GET /api/coordinator-schedule ────────────────────────────────────────────
+// Retorna slots de alocação futuros de todas as tarefas do coordenador logado.
+router.get("/coordinator-schedule", requireCoordinator, async (req: any, res: any): Promise<void> => {
+  const userId = req.session?.userId;
+  if (!userId) { res.status(401).json({ error: "Não autenticado" }); return; }
+
+  const now  = new Date();
+  const from = toLocalDateStr(now);
+  const to   = typeof req.query.to === "string" ? req.query.to : toLocalDateStr(addDays(now, 90));
+
+  // IDs das tarefas que o coordenador criou ou é co-coordenador
+  const coCoordTaskIds = await db
+    .select({ taskId: taskCoordinatorsTable.taskId })
+    .from(taskCoordinatorsTable)
+    .where(eq(taskCoordinatorsTable.userId, userId));
+  const coIds = coCoordTaskIds.map(r => r.taskId);
+
+  const taskCondition = coIds.length > 0
+    ? or(eq(tasksTable.createdById, userId), inArray(tasksTable.id, coIds))!
+    : eq(tasksTable.createdById, userId);
+
+  const rows = await db
+    .select({
+      workDate:      taskAllocationsTable.workDate,
+      startTime:     taskAllocationsTable.startTime,
+      endTime:       taskAllocationsTable.endTime,
+      hours:         taskAllocationsTable.allocatedHours,
+      taskId:        tasksTable.id,
+      taskNumber:    tasksTable.taskNumber,
+      taskYear:      tasksTable.taskYear,
+      taskTitle:     tasksTable.title,
+      client:        tasksTable.client,
+      status:        tasksTable.status,
+      priority:      tasksTable.priority,
+      revisionCount: tasksTable.revisionCount,
+      editorId:      tasksTable.assignedToId,
+    })
+    .from(taskAllocationsTable)
+    .innerJoin(tasksTable, eq(taskAllocationsTable.taskId, tasksTable.id))
+    .where(and(
+      taskCondition,
+      gte(taskAllocationsTable.workDate, from),
+      lte(taskAllocationsTable.workDate, to),
+      inArray(tasksTable.status, ACTIVE_STATUSES),
+      ne(tasksTable.taskType, "multi_task"),
+    ))
+    .orderBy(taskAllocationsTable.workDate, taskAllocationsTable.startTime);
+
+  // Busca nomes dos editores em lote
+  const editorIds = [...new Set(rows.map(r => r.editorId).filter((id): id is number => id !== null))];
+  const editors   = editorIds.length > 0
+    ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+        .from(usersTable).where(inArray(usersTable.id, editorIds))
+    : [];
+  const editorMap = new Map(editors.map(e => [e.id, e]));
+
+  const slots = rows.map(r => ({
+    workDate:      r.workDate,
+    startTime:     r.startTime,
+    endTime:       r.endTime,
+    hours:         r.hours,
+    taskId:        r.taskId,
+    taskCode:      String(r.taskNumber).padStart(3, "0") + "." + String(r.taskYear).slice(-2),
+    taskTitle:     r.taskTitle,
+    client:        r.client,
+    color:         null,
+    status:        r.status,
+    priority:      r.priority,
+    revisionCount: r.revisionCount ?? 0,
+    editor:        r.editorId ? (editorMap.get(r.editorId) ?? null) : null,
+  }));
+
+  res.json(slots);
+});
+
+// ── syncTaskDates ─────────────────────────────────────────────────────────────
+// Recalcula startDate e dueDate da tarefa a partir das alocações reais.
+// startDate = data+hora do primeiro slot; dueDate = data+hora do último slot.
+async function syncTaskDates(taskId: number): Promise<void> {
+  const allocs = await db
+    .select({
+      workDate:  taskAllocationsTable.workDate,
+      startTime: taskAllocationsTable.startTime,
+      endTime:   taskAllocationsTable.endTime,
+    })
+    .from(taskAllocationsTable)
+    .where(eq(taskAllocationsTable.taskId, taskId))
+    .orderBy(taskAllocationsTable.workDate, taskAllocationsTable.startTime);
+
+  if (allocs.length === 0) return;
+
+  const first = allocs[0];
+  const last  = allocs[allocs.length - 1];
+
+  // Constrói datetimes locais: "YYYY-MM-DDTHH:MM:00"
+  const newStart = new Date(`${first.workDate}T${first.startTime ?? "08:00"}:00`);
+  const newDue   = new Date(`${last.workDate}T${last.endTime   ?? "18:00"}:00`);
+
+  await db.update(tasksTable)
+    .set({ startDate: newStart, dueDate: newDue })
+    .where(eq(tasksTable.id, taskId));
+}
 
 // ── POST /api/escala/tasks/:id/resize-slot ───────────────────────────────────
 // Atualiza startTime / endTime / allocatedHours de um slot específico.
@@ -946,6 +1118,48 @@ router.post("/escala/tasks/:id/resize-slot", requireCoordinator, async (req, res
     .set({ workDate: newWorkDate ?? workDate, startTime, endTime, allocatedHours })
     .where(and(eq(taskAllocationsTable.taskId, taskId), eq(taskAllocationsTable.workDate, workDate)));
 
+  await syncTaskDates(taskId);
+  broadcastTaskChange();
+  res.json({ ok: true });
+});
+
+// ── POST /api/escala/tasks/:id/add-day ──────────────────────────────────────
+// Upsert de um slot em um dia específico (usado para "estender" — mantém slot original).
+router.post("/escala/tasks/:id/add-day", requireCoordinator, async (req, res): Promise<void> => {
+  const taskId = parseInt(req.params.id as string, 10);
+  const { workDate, startTime, endTime, allocatedHours } = req.body as {
+    workDate: string; startTime: string; endTime: string; allocatedHours: number;
+  };
+  if (!workDate || !startTime || !endTime || allocatedHours == null) {
+    res.status(400).json({ error: "Parâmetros inválidos" }); return;
+  }
+  const [task] = await db.select({ editorId: tasksTable.assignedToId })
+    .from(tasksTable).where(eq(tasksTable.id, taskId));
+  if (!task?.editorId) { res.status(404).json({ error: "Tarefa sem editor" }); return; }
+
+  await db.insert(taskAllocationsTable)
+    .values({ taskId, editorId: task.editorId, workDate, startTime, endTime, allocatedHours })
+    .onConflictDoUpdate({
+      target: [taskAllocationsTable.taskId, taskAllocationsTable.workDate],
+      set: { startTime, endTime, allocatedHours },
+    });
+
+  await syncTaskDates(taskId);
+  broadcastTaskChange();
+  res.json({ ok: true });
+});
+
+// ── DELETE /api/escala/tasks/:id/remove-day ──────────────────────────────────
+// Remove a alocação de um dia específico sem excluir a tarefa.
+router.delete("/escala/tasks/:id/remove-day", requireCoordinator, async (req, res): Promise<void> => {
+  const taskId  = parseInt(req.params.id as string);
+  const workDate = req.query.workDate as string;
+  if (isNaN(taskId) || !workDate) { res.status(400).json({ error: "Parâmetros inválidos" }); return; }
+
+  await db.delete(taskAllocationsTable)
+    .where(and(eq(taskAllocationsTable.taskId, taskId), eq(taskAllocationsTable.workDate, workDate)));
+
+  await syncTaskDates(taskId);
   broadcastTaskChange();
   res.json({ ok: true });
 });

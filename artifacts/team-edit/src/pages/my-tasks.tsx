@@ -19,7 +19,6 @@ import { useTaskModal } from "@/contexts/TaskModalContext";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
 import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
-import { EffortHoursDialog } from "@/components/ui/effort-hours-dialog";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
@@ -34,8 +33,6 @@ interface Task {
   priority: string;
   complexity: string;
   effortHours?: number | null;
-  editorEstimateHours?: number | null;
-  editorAcceptedAt?: string | null;
   hasAllocToday?: boolean;
   folderUrl: string | null;
   revisionCount: number;
@@ -98,9 +95,7 @@ export default function MyTasks() {
   const [revisionSubmitting, setRevisionSubmitting] = useState(false);
   const [returnTarget, setReturnTarget] = useState<Task | null>(null);
   const [returning, setReturning] = useState(false);
-  const [effortTarget,   setEffortTarget]   = useState<Task | null>(null);
   const [startingSaving, setStartingSaving] = useState(false);
-  const [effortSaving,     setEffortSaving]     = useState(false);
   const load = useCallback(() => {
     apiFetch<Task[]>("/api/my-tasks")
       .then(setTasks)
@@ -111,19 +106,6 @@ export default function MyTasks() {
   useEffect(() => { load(); }, [load]);
 
   useRealtime({ onTasksChanged: load });
-
-  const saveEffortHours = async (adjustedHours: number, comment: string) => {
-    if (!effortTarget) return;
-    setEffortSaving(true);
-    try {
-      await apiPut(`/api/tasks/${effortTarget.id}`, { editorEstimateHours: adjustedHours, startComment: comment });
-      setEffortTarget(null);
-      load();
-      toast.success("Horas validadas");
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao salvar estimativa");
-    } finally { setEffortSaving(false); }
-  };
 
   const handleIniciarDireto = async (task: Task) => {
     setStartingSaving(true);
@@ -383,22 +365,8 @@ export default function MyTasks() {
               ))}
             </div>
           )}
-          {/* Botões pending: Validar horas → Definir complexidade → Iniciar */}
-          {isEditor && t.status === "pending" && t.effortHours != null && !t.editorAcceptedAt && (
-            <button
-              onClick={e => { e.stopPropagation(); setEffortTarget(t); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 3,
-                fontSize: 9, fontWeight: 600, padding: "2px 7px", borderRadius: 99,
-                background: "#fef3c7", color: "#92400e",
-                border: "1px solid #fcd34d", cursor: "pointer", flexShrink: 0,
-              }}
-            >
-              <Clock style={{ width: 7, height: 7 }} />
-              Horas
-            </button>
-          )}
-          {isEditor && t.status === "pending" && !(t.effortHours != null && !t.editorAcceptedAt) && (() => {
+          {/* Botões pending: Iniciar */}
+          {isEditor && t.status === "pending" && (() => {
             const startAllowed = !t.startDate || t.startDate.split("T")[0] <= TODAY_STR;
             return startAllowed ? (
               <button
@@ -536,9 +504,16 @@ export default function MyTasks() {
           ) : (
             <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm overflow-hidden">
               {scheduledTasks.map((t, i) => {
-                const startParts = t.startDate ? fmtDateParts(t.startDate) : null;
-                const dueParts   = t.dueDate   ? fmtDateParts(t.dueDate)   : null;
-                const sameDay    = startParts && dueParts && startParts.date === dueParts.date;
+                const fmtDT = (d: string) => {
+                  const dt = new Date(d);
+                  const day = dt.getDate(); const mon = dt.getMonth() + 1;
+                  const h = dt.getHours(); const m = dt.getMinutes();
+                  const time = m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, "0")}`;
+                  return `${day}/${mon} ${time}`;
+                };
+                const sStart      = t.startDate ? fmtDT(t.startDate) : null;
+                const sDue        = t.dueDate   ? fmtDT(t.dueDate)   : null;
+                const sameDay     = t.startDate && t.dueDate && t.startDate.slice(0, 10) === t.dueDate.slice(0, 10);
                 const schedOverdue = isOverdue(t.dueDate) && t.status !== "review";
                 return (
                   <div
@@ -548,19 +523,19 @@ export default function MyTasks() {
                   >
                     {/* Pill de período início → prazo */}
                     <div className="shrink-0 flex items-center gap-1 px-2.5 py-2 rounded-xl bg-sky-50 border border-sky-200 dark:bg-sky-950/40 dark:border-sky-800">
-                      {startParts ? (
-                        <span className="text-[11px] font-bold text-sky-600 dark:text-sky-400 tabular-nums leading-none whitespace-nowrap">{startParts.date}</span>
+                      {sStart ? (
+                        <span className="text-[11px] font-bold text-sky-600 dark:text-sky-400 tabular-nums leading-none whitespace-nowrap">{sStart}</span>
                       ) : (
                         <Clock className="h-3.5 w-3.5 text-sky-500 opacity-50" />
                       )}
-                      {startParts && dueParts && !sameDay && (
+                      {sStart && sDue && !sameDay && (
                         <>
                           <span className="text-[10px] text-sky-400/50 leading-none">→</span>
-                          <span className={`text-[11px] font-bold tabular-nums leading-none whitespace-nowrap ${schedOverdue ? "text-red-500" : "text-slate-600 dark:text-slate-300"}`}>{dueParts.date}</span>
+                          <span className={`text-[11px] font-bold tabular-nums leading-none whitespace-nowrap ${schedOverdue ? "text-red-500" : "text-slate-600 dark:text-slate-300"}`}>{sDue}</span>
                         </>
                       )}
-                      {!startParts && dueParts && (
-                        <span className={`text-[11px] font-bold tabular-nums leading-none whitespace-nowrap ${schedOverdue ? "text-red-500" : "text-sky-600 dark:text-sky-400"}`}>{dueParts.date}</span>
+                      {!sStart && sDue && (
+                        <span className={`text-[11px] font-bold tabular-nums leading-none whitespace-nowrap ${schedOverdue ? "text-red-500" : "text-sky-600 dark:text-sky-400"}`}>{sDue}</span>
                       )}
                     </div>
 
@@ -653,15 +628,6 @@ export default function MyTasks() {
         </DialogContent>
       </Dialog>
 
-      {effortTarget && (
-        <EffortHoursDialog
-          open={!!effortTarget}
-          task={{ ...effortTarget, effortHours: effortTarget.effortHours! }}
-          onSave={saveEffortHours}
-          onCancel={() => setEffortTarget(null)}
-          saving={effortSaving}
-        />
-      )}
     </div>
   );
 }

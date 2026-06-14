@@ -24,8 +24,6 @@ export const tasksTable = pgTable("te_tasks", {
   subtaskOrder: integer("subtask_order").notNull().default(0),
   editorComplexitySet: boolean("editor_complexity_set").notNull().default(false),
   effortHours:         real("effort_hours"),
-  editorEstimateHours: real("editor_estimate_hours"),  // ajuste do editor ao aceitar a tarefa
-  editorAcceptedAt:    timestamp("editor_accepted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

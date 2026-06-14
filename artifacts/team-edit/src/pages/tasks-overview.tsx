@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
-  ClipboardList, MoreVertical,
+  ClipboardList, MoreVertical, Calendar, Info, Undo2,
   ArrowUpRight, X, PauseCircle, XCircle, Check,
   Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Send,
   SlidersHorizontal, Search, CalendarClock, ChevronRight, ExternalLink,
@@ -470,6 +470,16 @@ export default function TasksOverview() {
 
   // View tabs: todas / tarefas do dia / agendadas
   const [viewTab, setViewTab] = useState<"all" | "today" | "scheduled">("today");
+
+  // Slots de alocação para tab Agendadas do coordenador
+  interface CoordScheduleSlot {
+    workDate: string; startTime: string | null; endTime: string | null; hours: number | null;
+    taskId: number; taskCode: string; taskTitle: string; client: string | null;
+    color: string | null; status: string; priority: string | null; revisionCount: number;
+    editor: { id: number; name: string; avatarUrl?: string | null } | null;
+  }
+  const [coordSlots, setCoordSlots] = useState<CoordScheduleSlot[]>([]);
+  const [coordSlotsLoading, setCoordSlotsLoading] = useState(false);
   const [, navigate] = useLocation();
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
     () => new Set(TODAY_SECTIONS_COORD.filter(s => s.defaultCollapsed).map(s => s.key))
@@ -550,6 +560,16 @@ export default function TasksOverview() {
   // Keep a ref that always reflects the current expandedIds set (to avoid stale closure in the realtime callback)
   const expandedIdsRef = useRef<Set<number>>(expandedIds);
   useEffect(() => { expandedIdsRef.current = expandedIds; }, [expandedIds]);
+
+  // Carrega slots na montagem — garante contador correto em qualquer aba
+  useEffect(() => {
+    setCoordSlotsLoading(viewTab === "scheduled");
+    apiFetch<CoordScheduleSlot[]>("/api/coordinator-schedule")
+      .then(setCoordSlots)
+      .catch(() => {})
+      .finally(() => setCoordSlotsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useRealtime({
     onTasksChanged: () => load(true),
@@ -918,7 +938,7 @@ export default function TasksOverview() {
     {
       id: "entrega",
       header: () => viewTab === "scheduled"
-        ? <span>Período</span>
+        ? <span>Data agendada</span>
         : <span className="flex items-center gap-1"><Clock className="h-3 w-3 shrink-0" />Entrega</span>,
       size: viewTab === "scheduled" ? 176 : 112,
       meta: { className: "hidden lg:table-cell" },
@@ -926,9 +946,17 @@ export default function TasksOverview() {
         const t = row.original;
         const overdue = isOverdue(t);
         if (viewTab === "scheduled") {
-          const fmtD = (d: string) => d.split("T")[0].split("-").slice(1).reverse().join("/");
-          const s = t.startDate ? fmtD(t.startDate) : null;
-          const e = t.dueDate ? fmtD(t.dueDate) : null;
+          const fmtDT = (d: string) => {
+            const dt  = new Date(d);
+            const day = dt.getDate();
+            const mon = dt.getMonth() + 1;
+            const h   = dt.getHours();
+            const m   = dt.getMinutes();
+            const time = m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, "0")}`;
+            return `${day}/${mon} ${time}`;
+          };
+          const s = t.startDate ? fmtDT(t.startDate) : null;
+          const e = t.dueDate   ? fmtDT(t.dueDate)   : null;
           return (
             <span className="flex items-center gap-1 tabular-nums text-xs font-semibold">
               {s && <span className="text-sky-500">{s}</span>}
@@ -1259,7 +1287,7 @@ export default function TasksOverview() {
         <div className="flex shrink-0 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20 px-2">
           {([
             { key: "today",     label: "Tarefas do dia", count: sorted.filter(t => !isTaskScheduled(t) && ACTIVE_STATUSES.has(t.status)).length },
-            { key: "scheduled", label: "Agendadas",      count: sorted.filter(t => isTaskScheduled(t)).length },
+            { key: "scheduled", label: "Agendadas",      count: coordSlots.length || sorted.filter(t => isTaskScheduled(t)).length },
             { key: "all",       label: "Todas",          count: sorted.length },
           ] as const).map(tab => (
             <button
@@ -1325,6 +1353,92 @@ export default function TasksOverview() {
             )}
           </div>
 
+        ) : viewTab === "scheduled" ? (
+          /* ── Agendadas — um card por slot de alocação real ───── */
+          (() => {
+            const DAY_NAMES = ["DOM","SEG","TER","QUA","QUI","SEX","SÁB"];
+            const MON_NAMES = ["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"];
+            const fmtSlotTime = (t: string) => {
+              const [h, m] = t.split(":").map(Number);
+              return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, "0")}`;
+            };
+
+            if (coordSlotsLoading) return (
+              <div className="py-12 flex items-center justify-center gap-3">
+                <div className="h-4 w-4 rounded-full border-2 border-[hsl(var(--primary))]/20 border-t-[hsl(var(--primary))] animate-spin" />
+                <span className="text-sm text-[hsl(var(--muted-foreground))]">Carregando agenda…</span>
+              </div>
+            );
+
+            if (coordSlots.length === 0) return (
+              <div className="py-16 text-center">
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">Nenhuma sessão agendada.</p>
+              </div>
+            );
+
+            return (
+              <div className="divide-y divide-[hsl(var(--border))]/25">
+                {coordSlots.map((s, idx) => {
+                  const d = new Date(s.workDate + "T12:00:00");
+                  return (
+                    <div
+                      key={`${s.taskId}-${s.workDate}-${idx}`}
+                      onClick={() => { setEditTaskId(s.taskId); setFormOpen(true); }}
+                      className="flex items-stretch cursor-pointer hover:bg-[hsl(var(--muted))]/20 transition-colors"
+                      style={{ borderLeft: `3px solid ${s.color ?? "#6366f1"}` }}
+                    >
+                      {/* Date column */}
+                      <div className="w-16 shrink-0 flex flex-col items-center justify-center gap-0 py-4 border-r border-[hsl(var(--border))]/25">
+                        <span className="text-[9px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/35">{DAY_NAMES[d.getDay()]}</span>
+                        <span className="text-[22px] font-black tabular-nums leading-none text-[hsl(var(--foreground))]/50">{d.getDate()}</span>
+                        <span className="text-[9px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/35">{MON_NAMES[d.getMonth()]}</span>
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0 flex items-center gap-3 px-4 py-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-2 min-w-0">
+                            {s.taskCode && <span className="shrink-0 text-xs font-mono font-semibold text-[hsl(var(--primary))]/70">{s.taskCode}</span>}
+                            <p className="text-sm font-semibold truncate text-[hsl(var(--foreground))]/90">{s.taskTitle}</p>
+                            {s.client && <span className="shrink-0 text-xs font-medium text-[hsl(var(--muted-foreground))]/40 truncate max-w-[120px]">{s.client}</span>}
+                            {s.revisionCount > 0 && (
+                              <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600/70 border border-amber-200/60 dark:border-amber-800/30">
+                                {s.revisionCount} alt.
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1.5">
+                            <span className="flex items-center gap-2 w-fit">
+                              {s.startTime && <span className="text-sm font-semibold tabular-nums whitespace-nowrap text-[hsl(var(--muted-foreground))]/70">{fmtSlotTime(s.startTime)}</span>}
+                              {s.startTime && s.endTime && <span className="text-[hsl(var(--muted-foreground))]/20 text-xs font-normal leading-none">→</span>}
+                              {s.endTime && <span className="text-sm font-semibold tabular-nums whitespace-nowrap text-[hsl(var(--muted-foreground))]/70">{fmtSlotTime(s.endTime)}</span>}
+                              <Calendar className="h-3 w-3 text-[hsl(var(--primary))]/60 shrink-0" />
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Editor + menu */}
+                        <div className="shrink-0 flex items-center gap-1.5 opacity-50 hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                          {s.editor && (
+                            <ChatAvatarButton userId={s.editor.id} name={s.editor.name} avatarUrl={s.editor.avatarUrl} size={24}
+                              taskId={s.taskId} taskCode={s.taskCode} taskTitle={s.taskTitle} />
+                          )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-7 w-7"><MoreVertical className="h-3.5 w-3.5" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => { setEditTaskId(s.taskId); setFormOpen(true); }}><Info className="h-3.5 w-3.5 mr-2" />Editar tarefa</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()
         ) : (
           <>
             {/* ── Mobile (< md) ─────────────────────────────────── */}
@@ -1446,20 +1560,7 @@ export default function TasksOverview() {
                         </span>
                         {isUnassigned && <span className="text-[11px] text-slate-400 shrink-0">sem editor</span>}
                         <PriorityBadge priority={t.priority} />
-                        {viewTab === "scheduled" ? (
-                          (t.startDate || t.dueDate) && (() => {
-                            const fmtD = (d: string) => d.split("T")[0].split("-").slice(1).reverse().join("/");
-                            const s = t.startDate ? fmtD(t.startDate) : null;
-                            const e = t.dueDate   ? fmtD(t.dueDate)   : null;
-                            return (
-                              <span className="flex items-center gap-1 text-xs tabular-nums shrink-0 font-semibold">
-                                {s && <span className="text-sky-500">{s}</span>}
-                                {s && e && <><span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span><span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/75"}>{e}</span></> }
-                                {!s && e && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/75"}>{e}</span>}
-                              </span>
-                            );
-                          })()
-                        ) : (() => {
+                        {(() => {
                           const closed = fmtClosedCycle(t.status, t.dueDate, t.updatedAt, t.reviewedAt);
                           if (closed) {
                             const badgeCls: Record<string, string> = {
@@ -1688,28 +1789,10 @@ export default function TasksOverview() {
                     )}
                   </div>
 
-                  {/* Período / Prazo — desktop lg+ */}
-                  {viewTab === "scheduled" ? (
-                    <div className="hidden lg:flex w-44 shrink-0 items-center gap-1 tabular-nums text-xs font-semibold">
-                      {(() => {
-                        const fmtD = (d: string) => d.split("T")[0].split("-").slice(1).reverse().join("/");
-                        const s = t.startDate ? fmtD(t.startDate) : null;
-                        const e = t.dueDate   ? fmtD(t.dueDate)   : null;
-                        return (
-                          <>
-                            {s && <span className="text-sky-500">{s}</span>}
-                            {s && e && <><span className="text-[hsl(var(--muted-foreground))]/40 font-normal">→</span><span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/80"}>{e}</span></> }
-                            {!s && e && <span className={overdue ? "text-red-500" : "text-[hsl(var(--foreground))]/80"}>{e}</span>}
-                            {!s && !e && <span className="text-[hsl(var(--muted-foreground))]/30">—</span>}
-                          </>
-                        );
-                      })()}
-                    </div>
-                  ) : (
-                    <div className="hidden lg:flex w-28 shrink-0 items-center">
-                      <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} reviewedAt={t.reviewedAt} />
-                    </div>
-                  )}
+                  {/* Prazo — desktop lg+ */}
+                  <div className="hidden lg:flex w-28 shrink-0 items-center">
+                    <PrazoCell dueDate={t.dueDate} status={t.status} updatedAt={t.updatedAt} overdue={overdue} reviewedAt={t.reviewedAt} />
+                  </div>
 
                   {/* Coordenador — only on xl+ */}
                   <div className="hidden xl:flex w-24 shrink-0 items-center gap-1.5">

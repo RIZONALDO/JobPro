@@ -1,13 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { animate } from "framer-motion";
 import { useParams } from "wouter";
-import { ArrowLeft } from "lucide-react";
-import { apiFetch, apiPost } from "@/lib/api";
+import { ArrowLeft, Trash2 } from "lucide-react";
+import { apiFetch, apiPost, apiDelete } from "@/lib/api";
 import { todayStr, toLocalDateStr, parseDate } from "@/lib/date";
 import { usePageTitle } from "@/lib/use-page-title";
 import { useAuth } from "@/contexts/AuthContext";
 import { AgendaDragModal } from "@/components/AgendaDragModal";
+import { TaskFormModal } from "@/components/task-form-modal";
 import { toast } from "sonner";
+import {
+  DndContext, PointerSensor, useSensor, useSensors,
+  useDraggable, useDroppable,
+} from "@dnd-kit/core";
+import type { DragStartEvent, DragMoveEvent, DragEndEvent } from "@dnd-kit/core";
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -22,6 +28,8 @@ interface ScheduleSlot {
   status:      string;
   description: string | null;
   priority:    string | null;
+  startDate:   string | null;
+  dueDate:     string | null;
   coordinator: { id: number; name: string; avatarUrl: string | null } | null;
 }
 interface ScheduleDay { date: string; slots: ScheduleSlot[]; }
@@ -34,22 +42,12 @@ interface ResizeDrag {
   current: number;
 }
 
-interface BlockDragState {
+// Estado do drag ativo (block drag via @dnd-kit)
+interface ActiveDrag {
   slot:        ScheduleSlot;
   fromDate:    string;
   durationMin: number;
   offsetMin:   number;
-  curDate:     string;
-  curStartMin: number;
-  fits:        boolean;
-  clickX:      number;
-  clickY:      number;
-}
-
-interface SlotPopoverState {
-  slot: ScheduleSlot;
-  x:    number;
-  y:    number;
 }
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -122,27 +120,204 @@ function CoordAvatar({ name, avatarUrl }: { name: string; avatarUrl: string | nu
   );
 }
 
+// ── SlotItem — useDraggable por slot ─────────────────────────────────────────
+
+interface SlotItemProps {
+  slot:             ScheduleSlot;
+  i:                number;
+  dow:              number;
+  dayEnd:           number;
+  total:            number;
+  date:             string;
+  isDraggable:      boolean;
+  resizeDrag:       ResizeDrag | null;
+  getResizeClamped: (rd: ResizeDrag) => { newStart: number; newEnd: number };
+  onResizeStart:    (slotIdx: number, side: "left"|"right", fixed: number, current: number) => void;
+  onSlotClick?:     (slot: ScheduleSlot) => void;
+  onRemoveDay?:     (slot: ScheduleSlot, date: string) => void;
+  blockDropPreview: { startMin: number; endMin: number; fits: boolean; taskId: number } | null | undefined;
+  barRef:           React.RefObject<HTMLDivElement | null>;
+  lastPointerDown:  React.MutableRefObject<{ clientX: number; clientY: number; date: string } | null>;
+}
+
+function SlotItem({
+  slot, i, dow, dayEnd, total, date, isDraggable, resizeDrag, getResizeClamped,
+  onResizeStart, onSlotClick, onRemoveDay, blockDropPreview, barRef, lastPointerDown,
+}: SlotItemProps) {
+  const { user } = useAuth();
+  // Coordenadores só podem mover/redimensionar as próprias tarefas
+  const isOwner = user?.role === "admin"
+    || !slot.coordinator?.id
+    || slot.coordinator.id === user?.id;
+  const canInteract = isDraggable && isOwner;
+
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id:       `slot-${slot.taskId}-${date}`,
+    data:     { slot, fromDate: date },
+    disabled: !canInteract,
+  });
+
+  if (!slot.startTime || !slot.endTime) return null;
+
+  const isResizing     = resizeDrag?.slotIdx === i;
+  const isDraggingThis = isDragging || blockDropPreview?.taskId === slot.taskId;
+
+  const { newStart: displayStart, newEnd: displayEnd } = isResizing
+    ? getResizeClamped(resizeDrag!)
+    : { newStart: toMin(slot.startTime), newEnd: toMin(slot.endTime) };
+
+  const left  = pct(displayStart - DAY_START, total);
+  const width = pct(displayEnd - displayStart, total);
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      className="group absolute top-2 bottom-2 flex flex-col justify-center px-3 gap-0.5"
+      style={{
+        left:        `calc(${left}% + 4px)`,
+        width:       `calc(${width}% - 8px)`,
+        background:  isResizing ? "hsl(var(--primary)/0.35)" : "hsl(var(--primary)/0.25)",
+        border:      isResizing ? "1.5px solid hsl(var(--primary)/0.8)" : "1px solid hsl(var(--primary)/0.4)",
+        cursor:      isResizing ? "ew-resize" : "default",
+        opacity:     isDraggingThis ? 0.35 : 1,
+        zIndex:      2,
+        transition:  isResizing ? "none" : "opacity 0.15s",
+        touchAction: "none",
+      }}
+      onClick={() => onSlotClick?.(slot)}
+      onPointerDown={ev => {
+        ev.stopPropagation();
+        if (!slot.startTime || !slot.endTime || !barRef.current) return;
+        if (!canInteract) return; // tarefa de outro coordenador — só leitura
+        const slotRect = ev.currentTarget.getBoundingClientRect();
+        const relX     = ev.clientX - slotRect.left;
+        const EDGE     = 12;
+        if (relX <= EDGE) {
+          barRef.current.setPointerCapture(ev.pointerId);
+          onResizeStart(i, "left", toMin(slot.endTime), toMin(slot.startTime));
+        } else if (relX >= slotRect.width - EDGE) {
+          barRef.current.setPointerCapture(ev.pointerId);
+          onResizeStart(i, "right", toMin(slot.startTime), toMin(slot.endTime));
+        } else {
+          // Block drag — @dnd-kit suprime o click subsequente se arrastar ≥ 8px
+          lastPointerDown.current = { clientX: ev.clientX, clientY: ev.clientY, date };
+          listeners?.onPointerDown?.(ev);
+        }
+      }}
+      onMouseMove={ev => {
+        if (isResizing || !canInteract) return;
+        const r  = ev.currentTarget.getBoundingClientRect();
+        const rx = ev.clientX - r.left;
+        ev.currentTarget.style.cursor = (rx <= 12 || rx >= r.width - 12) ? "ew-resize" : "default";
+      }}
+      onMouseEnter={ev => {
+        if (isResizing) return;
+        (ev.currentTarget as HTMLElement).style.background = "hsl(var(--primary)/0.45)";
+        (ev.currentTarget as HTMLElement).style.borderColor = "hsl(var(--primary)/0.7)";
+      }}
+      onMouseLeave={ev => {
+        if (isResizing) return;
+        (ev.currentTarget as HTMLElement).style.background = "hsl(var(--primary)/0.25)";
+        (ev.currentTarget as HTMLElement).style.borderColor = "hsl(var(--primary)/0.4)";
+      }}
+    >
+      {/* Indicadores visuais de resize — só para tarefas do próprio coordenador */}
+      {canInteract && <>
+        <div className="absolute left-0 top-0 bottom-0 w-3 flex items-center justify-center
+                        opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+          style={{ zIndex: 4 }}>
+          <div className="w-px h-5 rounded-full" style={{ background: "hsl(var(--primary))" }} />
+        </div>
+        <div className="absolute right-0 top-0 bottom-0 w-3 flex items-center justify-center
+                        opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+          style={{ zIndex: 4 }}>
+          <div className="w-px h-5 rounded-full" style={{ background: "hsl(var(--primary))" }} />
+        </div>
+        {onRemoveDay && (
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); onRemoveDay(slot, date); }}
+            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity rounded p-0.5 hover:bg-red-500/20"
+            style={{ zIndex: 20 }}
+            title="Remover este dia"
+          >
+            <Trash2 className="h-3 w-3" style={{ color: "#ef4444" }} />
+          </button>
+        )}
+      </>}
+
+      {width > 8 && (
+        isResizing ? (
+          <div className="flex items-center justify-center gap-1 select-none pointer-events-none">
+            <span className="text-[10px] font-black" style={{ color: "hsl(var(--primary))" }}>
+              {minToTime(displayStart)}
+            </span>
+            <span className="text-[10px]" style={{ color: "hsl(var(--primary)/0.5)" }}>–</span>
+            <span className="text-[10px] font-black" style={{ color: "hsl(var(--primary))" }}>
+              {minToTime(displayEnd)}
+            </span>
+            {width > 14 && (
+              <span className="text-[9px] ml-1" style={{ color: "hsl(var(--primary)/0.7)" }}>
+                · {fmtH(effortFromRange(displayStart, displayEnd, dow))}
+              </span>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-1.5 overflow-hidden">
+              <span className="text-[9px] font-black font-mono shrink-0" style={{ color: "hsl(var(--primary)/0.7)" }}>
+                {slot.taskCode}
+              </span>
+              <span
+                className="text-[11px] font-black truncate"
+                style={{ color: "hsl(var(--foreground))" }}
+              >
+                {slot.taskTitle}
+              </span>
+            </div>
+            {slot.coordinator && (
+              <div className="flex items-center gap-1 overflow-hidden">
+                <CoordAvatar name={slot.coordinator.name} avatarUrl={slot.coordinator.avatarUrl} />
+                <span className="text-[9px] font-medium truncate" style={{ color: "hsl(var(--muted-foreground))" }}>
+                  {slot.coordinator.name.split(" ")[0]}
+                </span>
+              </div>
+            )}
+          </>
+        )
+      )}
+    </div>
+  );
+}
+
 // ── DayBar ────────────────────────────────────────────────────────────────────
 
 interface DayBarProps {
-  slots:             ScheduleSlot[];
-  dow:               number;
-  isHoliday:         boolean;
-  isDraggable?:      boolean;
-  onDragSelect?:     (st: string, et: string, eh: number) => void;
-  onSlotResize?:     (slot: ScheduleSlot, ns: string, ne: string, nh: number) => void;
-  onBlockDragStart?: (slot: ScheduleSlot, offsetMin: number, slotStartMin: number, slotEndMin: number, clientX: number, clientY: number) => void;
-  onSlotClick?:      (slot: ScheduleSlot, clientX: number, clientY: number) => void;
-  onBarRef?:         (el: HTMLDivElement | null) => void;
+  slots:            ScheduleSlot[];
+  dow:              number;
+  isHoliday:        boolean;
+  date:             string;
+  isDraggable?:     boolean;
+  onDragSelect?:    (st: string, et: string, eh: number) => void;
+  onSlotResize?:    (slot: ScheduleSlot, ns: string, ne: string, nh: number) => void;
+  onSlotClick?:     (slot: ScheduleSlot) => void;
+  onRemoveDay?:     (slot: ScheduleSlot, date: string) => void;
+  onBarRef?:        (el: HTMLDivElement | null) => void;
   blockDropPreview?: { startMin: number; endMin: number; fits: boolean; taskId: number } | null;
+  lastPointerDown:  React.MutableRefObject<{ clientX: number; clientY: number; date: string } | null>;
+  onCrossDayResizeStart?: (slot: ScheduleSlot, fromDate: string, fromEndMin: number) => void;
 }
 
-function DayBar({ slots, dow, isHoliday, isDraggable, onDragSelect, onSlotResize,
-                  onBlockDragStart, onSlotClick, onBarRef, blockDropPreview }: DayBarProps) {
+function DayBar({ slots, dow, isHoliday, date, isDraggable, onDragSelect, onSlotResize,
+                  onSlotClick, onRemoveDay, onBarRef, blockDropPreview, lastPointerDown, onCrossDayResizeStart }: DayBarProps) {
   const barRef                      = useRef<HTMLDivElement>(null);
   const [drag, setDrag]             = useState<{ anchor: number; cur: number } | null>(null);
   const [hoverMin, setHoverMin]     = useState<number | null>(null);
   const [resizeDrag, setResizeDrag] = useState<ResizeDrag | null>(null);
+
+  // Integração @dnd-kit: barra é uma zona droppável
+  const { setNodeRef: setDropRef } = useDroppable({ id: date });
 
   const isSun    = dow === 0 || isHoliday;
   const isSat    = dow === 6 && !isHoliday;
@@ -151,18 +326,75 @@ function DayBar({ slots, dow, isHoliday, isDraggable, onDragSelect, onSlotResize
   const hasLunch = !isSat && !isSun;
   const ticks    = Array.from({ length: total / 60 + 1 }, (_, i) => DAY_START / 60 + i);
 
+  const isToday  = date === todayStr() && !isSun;
+
+  // Minuto atual em tempo real — atualiza a cada 30s, só para a barra de hoje
+  const getNowMin = () => {
+    if (!isToday) return null;
+    const n = new Date();
+    return Math.max(DAY_START, Math.min(dayEnd, n.getHours() * 60 + n.getMinutes()));
+  };
+  const [nowMin, setNowMin] = useState<number | null>(getNowMin);
+
+  useEffect(() => {
+    if (!isToday) return;
+    setNowMin(getNowMin()); // sync imediato ao montar/re-renderizar
+    const id = setInterval(() => setNowMin(getNowMin()), 30_000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isToday, dayEnd]);
+
+  const handleResizeStart = useCallback((slotIdx: number, side: "left"|"right", fixed: number, current: number) => {
+    setResizeDrag({ slotIdx, side, fixed, current });
+  }, []);
+
+  const getResizeClamped = useCallback((rd: ResizeDrag): { newStart: number; newEnd: number } => {
+    const others = slots.filter((_, j) => j !== rd.slotIdx);
+    if (rd.side === "left") {
+      // impede resize para antes do horário atual em "hoje"
+      const pastBarrier = nowMin ?? DAY_START;
+      const leftBarrier = Math.max(
+        pastBarrier,
+        others.filter(s => s.endTime && toMin(s.endTime) <= rd.fixed)
+              .reduce((max, s) => Math.max(max, toMin(s.endTime!)), DAY_START),
+      );
+      const clamped = Math.max(leftBarrier, Math.min(rd.current, rd.fixed - SNAP_MIN));
+      return { newStart: clamped, newEnd: rd.fixed };
+    } else {
+      const rightBarrier = others
+        .filter(s => s.startTime && toMin(s.startTime) >= rd.fixed)
+        .reduce((min, s) => Math.min(min, toMin(s.startTime!)), dayEnd);
+      const clamped = Math.min(rightBarrier, Math.max(rd.current, rd.fixed + SNAP_MIN));
+      return { newStart: rd.fixed, newEnd: clamped };
+    }
+  }, [slots, dayEnd, nowMin]);
+
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDraggable || !barRef.current) return;
     e.preventDefault();
     const min = xToMin(e.clientX, barRef.current.getBoundingClientRect(), dayEnd);
+    // Bloqueia criação em horários passados dentro de "hoje"
+    if (nowMin !== null && min < nowMin) return;
     barRef.current.setPointerCapture(e.pointerId);
     setDrag({ anchor: min, cur: min });
-  }, [isDraggable, dayEnd]);
+  }, [isDraggable, dayEnd, nowMin]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!barRef.current) return;
-    const min = xToMin(e.clientX, barRef.current.getBoundingClientRect(), dayEnd);
+    const rect = barRef.current.getBoundingClientRect();
+    const min  = xToMin(e.clientX, rect, dayEnd);
     if (resizeDrag) {
+      // Detecta saída vertical da barra (threshold de 24px) → inicia cross-day
+      if (onCrossDayResizeStart && resizeDrag.side === "right" &&
+          (e.clientY > rect.bottom + 24 || e.clientY < rect.top - 24)) {
+        const slot = slots[resizeDrag.slotIdx];
+        if (slot?.endTime) {
+          barRef.current.releasePointerCapture(e.pointerId);
+          onCrossDayResizeStart(slot, date, toMin(slot.endTime));
+          setResizeDrag(null);
+          return;
+        }
+      }
       setResizeDrag(prev => prev ? { ...prev, current: min } : null);
     } else if (drag) {
       setDrag(prev => prev ? { ...prev, cur: min } : null);
@@ -171,36 +403,12 @@ function DayBar({ slots, dow, isHoliday, isDraggable, onDragSelect, onSlotResize
     }
   }, [drag, resizeDrag, dayEnd, isDraggable]);
 
-  // Calcula os limites reais do resize considerando slots vizinhos
-  const getResizeClamped = useCallback((rd: ResizeDrag): { newStart: number; newEnd: number } => {
-    const others = slots.filter((_, j) => j !== rd.slotIdx);
-    if (rd.side === "left") {
-      // handle esquerdo: fixed = endTime do slot; current = startTime sendo arrastado
-      // limite: não pode cruzar o fim do slot mais próximo à esquerda
-      const leftBarrier = others
-        .filter(s => s.endTime && toMin(s.endTime) <= rd.fixed)
-        .reduce((max, s) => Math.max(max, toMin(s.endTime!)), DAY_START);
-      const clamped = Math.max(leftBarrier, Math.min(rd.current, rd.fixed - SNAP_MIN));
-      return { newStart: clamped, newEnd: rd.fixed };
-    } else {
-      // handle direito: fixed = startTime do slot; current = endTime sendo arrastado
-      // limite: não pode cruzar o início do slot mais próximo à direita
-      const rightBarrier = others
-        .filter(s => s.startTime && toMin(s.startTime) >= rd.fixed)
-        .reduce((min, s) => Math.min(min, toMin(s.startTime!)), dayEnd);
-      const clamped = Math.min(rightBarrier, Math.max(rd.current, rd.fixed + SNAP_MIN));
-      return { newStart: rd.fixed, newEnd: clamped };
-    }
-  }, [slots, dayEnd]);
-
   const handlePointerUp = useCallback(() => {
     if (resizeDrag) {
       const slot = slots[resizeDrag.slotIdx];
-      if (slot && slot.startTime && slot.endTime) {
+      if (slot?.startTime && slot?.endTime) {
         const { newStart, newEnd } = getResizeClamped(resizeDrag);
-        const originalStart = toMin(slot.startTime);
-        const originalEnd   = toMin(slot.endTime);
-        const changed = newStart !== originalStart || newEnd !== originalEnd;
+        const changed = newStart !== toMin(slot.startTime) || newEnd !== toMin(slot.endTime);
         if (changed) {
           const newHours = effortFromRange(newStart, newEnd, dow);
           if (newHours > 0) onSlotResize?.(slot, minToTime(newStart), minToTime(newEnd), newHours);
@@ -210,13 +418,16 @@ function DayBar({ slots, dow, isHoliday, isDraggable, onDragSelect, onSlotResize
       return;
     }
     if (!drag) return;
-    const s = Math.min(drag.anchor, drag.cur), e = Math.max(drag.anchor, drag.cur);
+    // Clamp esquerdo ao horário atual quando em "hoje"
+    const rawS = Math.min(drag.anchor, drag.cur);
+    const s    = nowMin !== null ? Math.max(rawS, nowMin) : rawS;
+    const e    = Math.max(drag.anchor, drag.cur);
     if (e - s >= SNAP_MIN) {
       const effort = effortFromRange(s, e, dow);
       if (effort > 0) onDragSelect?.(minToTime(s), minToTime(e), effort);
     }
     setDrag(null);
-  }, [drag, resizeDrag, dow, slots, onDragSelect, onSlotResize]);
+  }, [drag, resizeDrag, dow, slots, onDragSelect, onSlotResize, getResizeClamped, nowMin]);
 
   if (isSun) return (
     <div className="h-10 rounded-md flex items-center justify-center gap-2"
@@ -231,9 +442,11 @@ function DayBar({ slots, dow, isHoliday, isDraggable, onDragSelect, onSlotResize
     </div>
   );
 
-  // Ghost criação de nova tarefa
+  // Ghost de criação (drag-to-create na barra livre)
   const ghost = drag ? (() => {
-    const s = Math.min(drag.anchor, drag.cur), e = Math.max(drag.anchor, drag.cur);
+    const rawS = Math.min(drag.anchor, drag.cur);
+    const s    = nowMin !== null ? Math.max(rawS, nowMin) : rawS;
+    const e    = Math.max(drag.anchor, drag.cur);
     const left = pct(s - DAY_START, total), width = pct(e - s, total);
     const effort = effortFromRange(s, e, dow);
     return (
@@ -257,7 +470,11 @@ function DayBar({ slots, dow, isHoliday, isDraggable, onDragSelect, onSlotResize
   return (
     <div>
       <div
-        ref={el => { (barRef as React.MutableRefObject<HTMLDivElement | null>).current = el; onBarRef?.(el); }}
+        ref={el => {
+          (barRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+          setDropRef(el);
+          onBarRef?.(el);
+        }}
         className="relative h-20 max-h-20 rounded-md overflow-hidden select-none"
         style={{
           background: "hsl(var(--muted)/0.4)",
@@ -270,7 +487,32 @@ function DayBar({ slots, dow, isHoliday, isDraggable, onDragSelect, onSlotResize
         onPointerCancel={() => { setDrag(null); setHoverMin(null); setResizeDrag(null); }}
         onPointerLeave={() => { if (!drag && !resizeDrag) setHoverMin(null); }}
       >
-        {/* Lunch */}
+        {/* Overlay do passado — área levemente escurecida sem pointer events */}
+        {nowMin !== null && nowMin > DAY_START && (
+          <div className="absolute top-0 bottom-0 left-0 pointer-events-none"
+            style={{
+              width:      `${pct(Math.min(nowMin, dayEnd) - DAY_START, total)}%`,
+              background: "hsl(var(--muted-foreground)/0.07)",
+              zIndex:     6,
+            }} />
+        )}
+
+        {/* Linha "agora" — cursor em tempo real no dia de hoje */}
+        {nowMin !== null && nowMin > DAY_START && nowMin < dayEnd && (
+          <div className="absolute top-0 bottom-0 pointer-events-none"
+            style={{
+              left:      `${pct(nowMin - DAY_START, total)}%`,
+              width:     2,
+              background: "hsl(var(--primary))",
+              zIndex:    9,
+              transform: "translateX(-1px)",
+            }}>
+            <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full"
+              style={{ background: "hsl(var(--primary))" }} />
+          </div>
+        )}
+
+        {/* Almoço */}
         {hasLunch && (
           <div className="absolute top-0 bottom-0 pointer-events-none"
             style={{
@@ -281,123 +523,27 @@ function DayBar({ slots, dow, isHoliday, isDraggable, onDragSelect, onSlotResize
             }} />
         )}
 
-        {/* Slots */}
-        {slots.map((slot, i) => {
-          if (!slot.startTime || !slot.endTime) return null;
-          const isResizing    = resizeDrag?.slotIdx === i;
-          const isDraggingThis = blockDropPreview?.taskId === slot.taskId;
-
-          const { newStart: displayStart, newEnd: displayEnd } = isResizing
-            ? getResizeClamped(resizeDrag)
-            : { newStart: toMin(slot.startTime), newEnd: toMin(slot.endTime) };
-
-          const left  = pct(displayStart - DAY_START, total);
-          const width = pct(displayEnd - displayStart, total);
-
-          return (
-            <div key={i}
-              className="group absolute top-2 bottom-2 flex flex-col justify-center px-3 overflow-hidden gap-0.5"
-              style={{
-                left:       `calc(${left}% + 4px)`,
-                width:      `calc(${width}% - 8px)`,
-                background: isResizing ? "hsl(var(--primary)/0.35)" : "hsl(var(--primary)/0.25)",
-                border:     isResizing ? "1.5px solid hsl(var(--primary)/0.8)" : "1px solid hsl(var(--primary)/0.4)",
-                cursor:     "default",
-                opacity:    isDraggingThis ? 0.35 : 1,
-                zIndex:     2,
-                transition: isResizing ? "none" : "opacity 0.15s",
-              }}
-              onPointerDown={ev => {
-                ev.stopPropagation();
-                if (!slot.startTime || !slot.endTime || !barRef.current) return;
-                const rect     = barRef.current.getBoundingClientRect();
-                const tot      = dayEnd - DAY_START;
-                const x        = Math.max(0, Math.min(ev.clientX - rect.left, rect.width));
-                const clickMin = DAY_START + (x / rect.width) * tot;
-                const startMin = toMin(slot.startTime);
-                const offsetMin = clickMin - startMin;
-                onBlockDragStart?.(slot, offsetMin, startMin, toMin(slot.endTime), ev.clientX, ev.clientY);
-              }}
-              onMouseEnter={ev => {
-                if (isResizing) return;
-                (ev.currentTarget as HTMLElement).style.background = "hsl(var(--primary)/0.45)";
-                (ev.currentTarget as HTMLElement).style.borderColor = "hsl(var(--primary)/0.7)";
-              }}
-              onMouseLeave={ev => {
-                if (isResizing) return;
-                (ev.currentTarget as HTMLElement).style.background = "hsl(var(--primary)/0.25)";
-                (ev.currentTarget as HTMLElement).style.borderColor = "hsl(var(--primary)/0.4)";
-              }}>
-
-              {/* Handle esquerdo — resize */}
-              <div className="absolute left-0 top-0 bottom-0 w-3 flex items-center justify-center
-                              opacity-0"
-                style={{ cursor: "ew-resize", zIndex: 4 }}
-                onPointerDown={ev => {
-                  ev.stopPropagation();
-                  if (!slot.startTime || !slot.endTime) return;
-                  barRef.current?.setPointerCapture(ev.pointerId);
-                  setResizeDrag({ slotIdx: i, side: "left", fixed: toMin(slot.endTime), current: toMin(slot.startTime) });
-                }}>
-                <div className="w-px h-5 rounded-full pointer-events-none"
-                  style={{ background: "hsl(var(--primary))" }} />
-              </div>
-
-              {/* Handle direito — resize */}
-              <div className="absolute right-0 top-0 bottom-0 w-3 flex items-center justify-center
-                              opacity-0"
-                style={{ cursor: "ew-resize", zIndex: 4 }}
-                onPointerDown={ev => {
-                  ev.stopPropagation();
-                  if (!slot.startTime || !slot.endTime) return;
-                  barRef.current?.setPointerCapture(ev.pointerId);
-                  setResizeDrag({ slotIdx: i, side: "right", fixed: toMin(slot.startTime), current: toMin(slot.endTime) });
-                }}>
-                <div className="w-px h-5 rounded-full pointer-events-none"
-                  style={{ background: "hsl(var(--primary))" }} />
-              </div>
-
-              {width > 8 && (
-                isResizing ? (
-                  <div className="flex items-center justify-center gap-1 select-none pointer-events-none">
-                    <span className="text-[10px] font-black" style={{ color: "hsl(var(--primary))" }}>
-                      {minToTime(displayStart)}
-                    </span>
-                    <span className="text-[10px]" style={{ color: "hsl(var(--primary)/0.5)" }}>–</span>
-                    <span className="text-[10px] font-black" style={{ color: "hsl(var(--primary))" }}>
-                      {minToTime(displayEnd)}
-                    </span>
-                    {width > 14 && (
-                      <span className="text-[9px] ml-1" style={{ color: "hsl(var(--primary)/0.7)" }}>
-                        · {fmtH(effortFromRange(displayStart, displayEnd, dow))}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-[9px] font-black font-mono shrink-0" style={{ color: "hsl(var(--primary)/0.7)" }}>{slot.taskCode}</span>
-                      <span
-                        className="text-[11px] font-black truncate cursor-pointer hover:underline"
-                        style={{ color: "hsl(var(--foreground))" }}
-                        onClick={ev => { ev.stopPropagation(); onSlotClick?.(slot, ev.clientX, ev.clientY); }}>
-                        {slot.taskTitle}
-                      </span>
-                    </div>
-                    {slot.coordinator && (
-                      <div className="flex items-center gap-1 min-w-0">
-                        <CoordAvatar name={slot.coordinator.name} avatarUrl={slot.coordinator.avatarUrl} />
-                        <span className="text-[9px] font-medium truncate" style={{ color: "hsl(var(--muted-foreground))" }}>
-                          {slot.coordinator.name.split(" ")[0]}
-                        </span>
-                      </div>
-                    )}
-                  </>
-                )
-              )}
-            </div>
-          );
-        })}
+        {/* Slots — cada um é um SlotItem com useDraggable */}
+        {slots.map((slot, i) => (
+          <SlotItem
+            key={i}
+            slot={slot}
+            i={i}
+            dow={dow}
+            dayEnd={dayEnd}
+            total={total}
+            date={date}
+            isDraggable={!!isDraggable}
+            resizeDrag={resizeDrag}
+            getResizeClamped={getResizeClamped}
+            onResizeStart={handleResizeStart}
+            onSlotClick={onSlotClick}
+            onRemoveDay={onRemoveDay}
+            blockDropPreview={blockDropPreview}
+            barRef={barRef}
+            lastPointerDown={lastPointerDown}
+          />
+        ))}
 
         {/* Preview de destino do block drag */}
         {blockDropPreview && (
@@ -412,8 +558,9 @@ function DayBar({ slots, dow, isHoliday, isDraggable, onDragSelect, onSlotResize
           />
         )}
 
-        {/* Hover cell — só em células sem tarefa */}
+        {/* Hover cell — só em células livres e no futuro */}
         {isDraggable && !drag && !resizeDrag && hoverMin !== null && (() => {
+          if (nowMin !== null && hoverMin < nowMin) return null; // passado
           const cellEnd  = hoverMin + SNAP_MIN;
           const occupied = slots.some(s => {
             if (!s.startTime || !s.endTime) return false;
@@ -430,7 +577,7 @@ function DayBar({ slots, dow, isHoliday, isDraggable, onDragSelect, onSlotResize
         {ghost}
       </div>
 
-      {/* Ticks */}
+      {/* Ticks de hora */}
       <div className="relative h-4 mt-0.5 mx-0.5">
         {ticks.map(h => (
           <span key={h} className="absolute text-[8px] font-mono -translate-x-1/2 select-none"
@@ -455,44 +602,71 @@ export default function AgendaEditorV3() {
   const [holidays,   setHolidays]   = useState<Set<string>>(new Set());
   const [loading,    setLoading]    = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
-  const todayRef = useRef<HTMLDivElement>(null);
+  const todayRef    = useRef<HTMLDivElement>(null);
+  const initialLoad = useRef(true);
 
-  // Criar nova tarefa via drag na barra
+  // Criar nova tarefa via drag na barra livre
   const [dragModal, setDragModal] = useState<{
     date: string; startTime: string; endTime: string; effortHours: number;
   } | null>(null);
 
-  // Block drag — mover slot existente
-  const [blockDrag,    setBlockDrag]    = useState<BlockDragState | null>(null);
+  // Block drag via @dnd-kit
+  const [activeDrag,  setActiveDrag]  = useState<ActiveDrag | null>(null);
+  const [dropPreview, setDropPreview] = useState<{
+    date: string; startMin: number; endMin: number; fits: boolean;
+  } | null>(null);
   const [dragPos,      setDragPos]      = useState({ x: 0, y: 0 });
-  const [slotPopover,  setSlotPopover]  = useState<SlotPopoverState | null>(null);
-  const blockDragRef     = useRef<BlockDragState | null>(null);
-  const blockDragMoved   = useRef(false);
+  const [editTaskId,   setEditTaskId]   = useState<number | null>(null);
+
+  // Cross-day resize (arrastar handle direito para outro dia)
+  const [crossDayPreview, setCrossDayPreview] = useState<{
+    date: string; startMin: number; endMin: number;
+  } | null>(null);
+  const crossDayRef = useRef<{
+    slot: ScheduleSlot; fromDate: string;
+  } | null>(null);
+  const crossDayPreviewRef = useRef<typeof crossDayPreview>(null);
+
+  // Refs para acesso sem re-render em callbacks do @dnd-kit
+  const lastPointerDown  = useRef<{ clientX: number; clientY: number; date: string } | null>(null);
   const barRefs          = useRef<Map<string, HTMLDivElement>>(new Map());
   const holidaysRef      = useRef<Set<string>>(new Set());
   const scheduleRef      = useRef<Map<string, ScheduleSlot[]>>(new Map());
+  const cursorPos        = useRef({ x: 0, y: 0 });
 
   const isCoordinator = user?.role === "coordinator" || user?.role === "admin";
   const today         = todayStr();
   const fromStr       = toLocalDateStr(new Date(parseDate(today).getTime() - 7  * 86_400_000));
   const toStr         = toLocalDateStr(new Date(parseDate(today).getTime() + 29 * 86_400_000));
 
-  // Mantém refs sincronizados para uso em closures dos event listeners
+  // Rastreia cursor globalmente — usado durante o drag para posicionar o ghost
+  useEffect(() => {
+    const track = (e: PointerEvent) => { cursorPos.current = { x: e.clientX, y: e.clientY }; };
+    window.addEventListener("pointermove", track, { passive: true });
+    return () => window.removeEventListener("pointermove", track);
+  }, []);
+
+  // Sync refs
   useEffect(() => { holidaysRef.current = holidays; }, [holidays]);
   useEffect(() => { scheduleRef.current = new Map(schedule.map(d => [d.date, d.slots])); }, [schedule]);
 
   usePageTitle(editor ? editor.name.split(" ")[0] : "Agenda");
 
+  useEffect(() => { initialLoad.current = true; }, [editorId]);
+
   useEffect(() => {
     if (isNaN(editorId)) return;
-    setLoading(true);
+    const isFirst = initialLoad.current;
+    if (isFirst) setLoading(true);
     Promise.all([
       apiFetch<EditorInfo[]>("/api/users").then(u => u.find(x => x.id === editorId) ?? null),
       apiFetch<ScheduleDay[]>(`/api/escala/editor/${editorId}/schedule?from=${fromStr}&to=${toStr}`),
       apiFetch<{ holidays: string[] }>("/api/calendar-config").then(d => new Set(d.holidays ?? [])),
     ]).then(([ed, sched, hols]) => { setEditor(ed); setSchedule(sched); setHolidays(hols); })
       .catch(() => {}).finally(() => {
+        if (!isFirst) return;
         setLoading(false);
+        initialLoad.current = false;
         setTimeout(() => {
           const el = todayRef.current;
           if (!el) return;
@@ -512,7 +686,180 @@ export default function AgendaEditorV3() {
       });
   }, [editorId, refreshKey]);
 
-  // Drag criar tarefa
+  // @dnd-kit sensors — PointerSensor com threshold de 8px para distinguir clique de drag
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+
+  // Calcula dropPreview a partir da posição do cursor + barRefs
+  const computeDropPreview = useCallback((curX: number, curY: number, cur: ActiveDrag) => {
+    const hols = holidaysRef.current;
+    let targetDate: string | null = null;
+    let targetRect: DOMRect | null = null;
+    let nearestDist = Infinity;
+
+    for (const [d, barEl] of barRefs.current) {
+      const rect = barEl.getBoundingClientRect();
+      if (curY >= rect.top && curY <= rect.bottom) { targetDate = d; targetRect = rect; break; }
+      const dist = curY < rect.top ? rect.top - curY : curY - rect.bottom;
+      if (dist < nearestDist) { nearestDist = dist; targetDate = d; targetRect = rect; }
+    }
+
+    if (!targetDate || !targetRect) return null;
+    const dow = parseDate(targetDate).getDay();
+    if (dow === 0 || hols.has(targetDate) || targetDate < today) return null;
+
+    const dEnd = dayEndFor(dow, hols.has(targetDate));
+    const x    = Math.max(0, Math.min(curX - targetRect.left, targetRect.width));
+    const cursorMin = DAY_START + (x / targetRect.width) * (dEnd - DAY_START);
+    let startMin = Math.round((cursorMin - cur.offsetMin) / SNAP_MIN) * SNAP_MIN;
+    startMin = Math.max(DAY_START, Math.min(dEnd - cur.durationMin, startMin));
+    const endMin = startMin + cur.durationMin;
+
+    // Bloqueia drop em horários passados dentro de "hoje"
+    if (targetDate === today) {
+      const n      = new Date();
+      const nowRaw = n.getHours() * 60 + n.getMinutes();
+      if (startMin < nowRaw) {
+        return { date: targetDate, startMin, endMin, fits: false };
+      }
+    }
+
+    const fits = !(scheduleRef.current.get(targetDate) ?? []).some(s => {
+      if (s.taskId === cur.slot.taskId || !s.startTime || !s.endTime) return false;
+      return toMin(s.startTime) < endMin && toMin(s.endTime) > startMin;
+    });
+
+    return { date: targetDate, startMin, endMin, fits };
+  }, [today]);
+
+  const handleDragStart = useCallback(({ active }: DragStartEvent) => {
+    const { slot, fromDate } = active.data.current as { slot: ScheduleSlot; fromDate: string };
+    const pd = lastPointerDown.current;
+    let offsetMin = 0;
+    if (pd) {
+      const barEl = barRefs.current.get(pd.date);
+      if (barEl) {
+        const barRect = barEl.getBoundingClientRect();
+        const dow     = parseDate(pd.date).getDay();
+        const dEnd    = dayEndFor(dow, holidaysRef.current.has(pd.date));
+        const x       = Math.max(0, Math.min(pd.clientX - barRect.left, barRect.width));
+        const clickMin = DAY_START + (x / barRect.width) * (dEnd - DAY_START);
+        offsetMin = clickMin - toMin(slot.startTime ?? "08:00");
+      }
+    }
+    const durationMin = toMin(slot.endTime ?? "18:00") - toMin(slot.startTime ?? "08:00");
+    setActiveDrag({ slot, fromDate, durationMin, offsetMin });
+    setDragPos({ x: cursorPos.current.x, y: cursorPos.current.y });
+  }, []);
+
+  const handleDragMove = useCallback((_ev: DragMoveEvent) => {
+    const { x, y } = cursorPos.current;
+    setDragPos({ x, y });
+    setActiveDrag(cur => {
+      if (!cur) return cur;
+      const preview = computeDropPreview(x, y, cur);
+      setDropPreview(preview);
+      return cur;
+    });
+  }, [computeDropPreview]);
+
+  const handleDragEnd = useCallback((_ev: DragEndEvent) => {
+    const cur     = activeDrag;
+    const preview = dropPreview;
+    setActiveDrag(null);
+    setDropPreview(null);
+    if (!cur || !preview || !preview.fits) return;
+    // Defesa: coordenador só move tarefas próprias
+    if (user?.role === "coordinator" && cur.slot.coordinator?.id && cur.slot.coordinator.id !== user.id) return;
+
+    const { date: toDate, startMin, endMin } = preview;
+    const dow = parseDate(toDate).getDay();
+    const h   = effortFromRange(startMin, endMin, dow);
+    if (h <= 0) return;
+
+    const ns      = minToTime(startMin);
+    const ne      = minToTime(endMin);
+    const sameDay = toDate === cur.fromDate;
+    const originalStart = toMin(cur.slot.startTime ?? "08:00");
+
+    if (sameDay) {
+      if (startMin !== originalStart) handleBlockMove(cur.slot, cur.fromDate, ns, ne, h);
+    } else {
+      // Cross-day: move direto (sem dialog) — "estender" é feito pelo handle
+      handleBlockMove(cur.slot, cur.fromDate, ns, ne, h, toDate);
+    }
+  }, [activeDrag, dropPreview]);
+
+  const handleDragCancel = useCallback(() => {
+    setActiveDrag(null);
+    setDropPreview(null);
+  }, []);
+
+  // Cross-day resize — arrastar handle direito para um dia posterior
+  const handleCrossDayResizeStart = useCallback((
+    slot: ScheduleSlot, fromDate: string, _fromEndMin: number,
+  ) => {
+    crossDayRef.current = { slot, fromDate };
+    crossDayPreviewRef.current = null;
+
+    const onMove = (e: PointerEvent) => {
+      const hols = holidaysRef.current;
+      // Encontra a barra sob o cursor (hit exato por Y)
+      let targetDate: string | null = null;
+      let targetRect: DOMRect | null = null;
+      for (const [d, barEl] of barRefs.current) {
+        const r = barEl.getBoundingClientRect();
+        if (e.clientY >= r.top && e.clientY <= r.bottom) { targetDate = d; targetRect = r; break; }
+      }
+      if (!targetDate || !targetRect || targetDate === fromDate) {
+        setCrossDayPreview(null); crossDayPreviewRef.current = null; return;
+      }
+      const dow = parseDate(targetDate).getDay();
+      if (dow === 0 || hols.has(targetDate) || targetDate <= fromDate) {
+        setCrossDayPreview(null); crossDayPreviewRef.current = null; return;
+      }
+      const dEnd    = dayEndFor(dow, hols.has(targetDate));
+      const x       = Math.max(0, Math.min(e.clientX - targetRect.left, targetRect.width));
+      const endMin  = snapToGrid(DAY_START + (x / targetRect.width) * (dEnd - DAY_START), dEnd);
+      const preview = { date: targetDate, startMin: DAY_START, endMin };
+      crossDayPreviewRef.current = preview;
+      setCrossDayPreview(preview);
+    };
+
+    const onUp = async () => {
+      window.removeEventListener("pointermove", onMove);
+      const cur     = crossDayRef.current;
+      const preview = crossDayPreviewRef.current;
+      crossDayRef.current = null;
+      crossDayPreviewRef.current = null;
+      setCrossDayPreview(null);
+      if (!cur || !preview) return;
+
+      const dow = parseDate(preview.date).getDay();
+      const h   = effortFromRange(preview.startMin, preview.endMin, dow);
+      if (h <= 0) return;
+
+      try {
+        // add-day já sincroniza startDate/dueDate via syncTaskDates no backend
+        await apiPost(`/api/escala/tasks/${cur.slot.taskId}/add-day`, {
+          workDate: preview.date,
+          startTime: minToTime(preview.startMin),
+          endTime:   minToTime(preview.endMin),
+          allocatedHours: h,
+        });
+        toast.success("Tarefa estendida para " + preview.date);
+        setRefreshKey(k => k + 1);
+      } catch {
+        toast.error("Erro ao estender tarefa");
+      }
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+  }, []);
+
+  // Drag criar tarefa (range selection na barra livre)
   const handleDragSelect = useCallback((date: string, startTime: string, endTime: string, effortHours: number) => {
     setDragModal({ date, startTime, endTime, effortHours });
   }, []);
@@ -533,362 +880,214 @@ export default function AgendaEditorV3() {
       await apiPost(`/api/escala/tasks/${slot.taskId}/resize-slot`, {
         workDate: date, startTime: newStart, endTime: newEnd, allocatedHours: newHours,
       });
-      toast.success("Horário atualizado com sucesso");
+      toast.success("Horário atualizado");
     } catch {
       toast.error("Erro ao redimensionar slot");
       setRefreshKey(k => k + 1);
     }
   }, []);
 
-  // Block drag — iniciar
-  const handleBlockDragStart = useCallback((
-    slot: ScheduleSlot, date: string, offsetMin: number, slotStartMin: number, slotEndMin: number,
-    clientX: number, clientY: number,
-  ) => {
-    if (!isCoordinator) return;
-    blockDragMoved.current = false;
-    setDragPos({ x: clientX, y: clientY });
-    const state: BlockDragState = {
-      slot, fromDate: date,
-      durationMin: slotEndMin - slotStartMin,
-      offsetMin,
-      curDate: date, curStartMin: slotStartMin, fits: true,
-      clickX: clientX, clickY: clientY,
-    };
-    blockDragRef.current = state;
-    setBlockDrag(state);
-  }, [isCoordinator]);
-
-  // Window listeners para block drag
-  useEffect(() => {
-    if (!blockDrag) return;
-
-    const onMove = (e: PointerEvent) => {
-      setDragPos({ x: e.clientX, y: e.clientY });
-      const cur = blockDragRef.current;
-      if (!cur) return;
-
-      // Encontra a barra sob o cursor
-      let targetDate: string | null = null;
-      let targetRect: DOMRect | null = null;
-      for (const [date, barEl] of barRefs.current) {
-        const rect = barEl.getBoundingClientRect();
-        if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
-          targetDate = date; targetRect = rect; break;
-        }
-      }
-      if (!targetDate || !targetRect) return;
-
-      const d        = parseDate(targetDate);
-      const dow      = d.getDay();
-      const hols     = holidaysRef.current;
-      if (dow === 0 || hols.has(targetDate) || targetDate < today) return;
-
-      const dEnd     = dayEndFor(dow, hols.has(targetDate));
-      const total    = dEnd - DAY_START;
-      const x        = Math.max(0, Math.min(e.clientX - targetRect.left, targetRect.width));
-      const cursorMin = DAY_START + (x / targetRect.width) * total;
-
-      // Posição snapped levando em conta onde o usuário clicou dentro do bloco
-      let startMin = Math.round((cursorMin - cur.offsetMin) / SNAP_MIN) * SNAP_MIN;
-      startMin = Math.max(DAY_START, Math.min(dEnd - cur.durationMin, startMin));
-      const endMin = startMin + cur.durationMin;
-
-      // Verifica se encaixa (check local, sem API)
-      const daySlots = scheduleRef.current.get(targetDate) ?? [];
-      const fits = !daySlots.some(s => {
-        if (s.taskId === cur.slot.taskId) return false;
-        if (!s.startTime || !s.endTime) return false;
-        return toMin(s.startTime) < endMin && toMin(s.endTime) > startMin;
-      });
-
-      if (!blockDragMoved.current) {
-        blockDragMoved.current = true;
-        document.body.style.cursor = "grabbing";
-      }
-      const updated = { ...cur, curDate: targetDate, curStartMin: startMin, fits };
-      blockDragRef.current = updated;
-      setBlockDrag(updated);
-    };
-
-    const onUp = () => {
-      document.body.style.cursor = "";
-      const cur = blockDragRef.current;
-      if (cur && cur.fits) {
-        const originalStart = toMin(cur.slot.startTime ?? "08:00");
-        const moved = cur.curDate !== cur.fromDate || cur.curStartMin !== originalStart;
-        if (moved) {
-          const newStart = minToTime(cur.curStartMin);
-          const newEnd   = minToTime(cur.curStartMin + cur.durationMin);
-          const dow      = parseDate(cur.curDate).getDay();
-          const newHours = effortFromRange(cur.curStartMin, cur.curStartMin + cur.durationMin, dow);
-          if (newHours > 0) handleBlockMove(cur.slot, cur.fromDate, cur.curDate, newStart, newEnd, newHours);
-        }
-      }
-      setBlockDrag(null);
-      blockDragRef.current = null;
-    };
-
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp, { once: true });
-    return () => {
-      document.body.style.cursor = "";
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-  }, [blockDrag]);
-
-  // Popover de detalhes — abre ao clicar no título
-  const handleSlotClick = useCallback((slot: ScheduleSlot, clientX: number, clientY: number) => {
-    const pw = 256, ph = 240, margin = 8;
-    const x = Math.max(margin, Math.min(clientX - pw / 2, window.innerWidth - pw - margin));
-    const y = clientY - ph - 12 > margin ? clientY - ph - 12 : clientY + 12;
-    setSlotPopover({ slot, x, y });
-  }, []);
-
-  // Block drag — confirmar movimento
+  // Block move — mesmo dia (optimistic) ou outro dia (reload)
   const handleBlockMove = useCallback(async (
-    slot: ScheduleSlot, fromDate: string, toDate: string,
-    newStart: string, newEnd: string, newHours: number,
+    slot: ScheduleSlot, fromDate: string, newStart: string, newEnd: string, newHours: number,
+    toDate?: string,
   ) => {
-    // Optimistic update
-    setSchedule(prev => {
-      const without = prev.map(day =>
+    const crossDay = toDate && toDate !== fromDate;
+    if (!crossDay) {
+      setSchedule(prev => prev.map(day =>
         day.date !== fromDate ? day : {
           ...day,
-          slots: day.slots.filter(s => !(s.taskId === slot.taskId && s.startTime === slot.startTime)),
+          slots: day.slots.map(s =>
+            s.taskId === slot.taskId ? { ...s, startTime: newStart, endTime: newEnd, hours: newHours } : s
+          ),
         }
-      );
-      const moved = { ...slot, startTime: newStart, endTime: newEnd, hours: newHours };
-      const toDay  = without.find(d => d.date === toDate);
-      if (toDay) {
-        return without.map(day =>
-          day.date !== toDate ? day : { ...day, slots: [...day.slots, moved] }
-        );
-      }
-      return [...without, { date: toDate, slots: [moved] }];
-    });
-
+      ));
+    }
     try {
       await apiPost(`/api/escala/tasks/${slot.taskId}/resize-slot`, {
         workDate:       fromDate,
-        newWorkDate:    toDate !== fromDate ? toDate : undefined,
+        newWorkDate:    crossDay ? toDate : undefined,
         startTime:      newStart,
         endTime:        newEnd,
         allocatedHours: newHours,
       });
-      toast.success(toDate !== fromDate ? "Tarefa movida para outro dia" : "Tarefa reposicionada");
+      toast.success(crossDay ? "Tarefa movida para outro dia" : "Tarefa reposicionada");
+      if (crossDay) setRefreshKey(k => k + 1);
     } catch {
       toast.error("Erro ao mover tarefa");
       setRefreshKey(k => k + 1);
     }
   }, []);
 
+  const handleSlotClick = useCallback((slot: ScheduleSlot) => {
+    setEditTaskId(slot.taskId);
+  }, []);
+
+  const handleRemoveDay = useCallback(async (slot: ScheduleSlot, date: string) => {
+    try {
+      await apiDelete(`/api/escala/tasks/${slot.taskId}/remove-day?workDate=${date}`);
+      toast.success("Dia removido");
+      setRefreshKey(k => k + 1);
+    } catch {
+      toast.error("Erro ao remover dia");
+    }
+  }, []);
+
+
   const scheduleMap = new Map(schedule.map(d => [d.date, d.slots]));
   const allDates    = buildDates(fromStr, 37);
 
   return (
-    <div className="min-h-screen" style={{ background: "hsl(var(--background))" }}>
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <div className="min-h-screen" style={{ background: "hsl(var(--background))" }}>
 
-      {/* Top bar */}
-      <div className="sticky top-0 z-20 px-5 py-3.5 flex items-center gap-3"
-        style={{ background: "hsl(var(--background)/0.88)", backdropFilter: "blur(16px)", borderBottom: "1px solid hsl(var(--border))" }}>
-        <button onClick={() => history.back()}
-          className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest transition-opacity hover:opacity-50"
-          style={{ color: "hsl(var(--muted-foreground))" }}>
-          <ArrowLeft className="h-3.5 w-3.5" /> agenda
-        </button>
-        {editor && (
-          <>
-            <div className="w-px h-4 mx-1" style={{ background: "hsl(var(--border))" }} />
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-full overflow-hidden shrink-0">
-                <Avatar name={editor.name} avatarUrl={editor.avatarUrl} size={24} />
+        {/* Top bar */}
+        <div className="sticky top-0 z-20 px-5 py-3.5 flex items-center gap-3"
+          style={{ background: "hsl(var(--background)/0.88)", backdropFilter: "blur(16px)", borderBottom: "1px solid hsl(var(--border))" }}>
+          <button onClick={() => history.back()}
+            className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest transition-opacity hover:opacity-50"
+            style={{ color: "hsl(var(--muted-foreground))" }}>
+            <ArrowLeft className="h-3.5 w-3.5" /> agenda
+          </button>
+          {editor && (
+            <>
+              <div className="w-px h-4 mx-1" style={{ background: "hsl(var(--border))" }} />
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full overflow-hidden shrink-0">
+                  <Avatar name={editor.name} avatarUrl={editor.avatarUrl} size={24} />
+                </div>
+                <span className="text-sm font-black">{editor.name.split(" ")[0]}</span>
               </div>
-              <span className="text-sm font-black">{editor.name.split(" ")[0]}</span>
+              {isCoordinator && (
+                <span className="ml-auto text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full"
+                  style={{ background: "hsl(var(--primary)/0.1)", color: "hsl(var(--primary))" }}>
+                  arrastar para alocar
+                </span>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Days */}
+        <div className="px-5 py-6 max-w-2xl mx-auto space-y-7"
+          style={editTaskId !== null ? { pointerEvents: "none" } : undefined}>
+          {loading
+            ? [...Array(4)].map((_, i) => (
+                <div key={i} className="space-y-2">
+                  <div className="h-4 w-20 rounded animate-pulse" style={{ background: "hsl(var(--muted))" }} />
+                  <div className="h-11 rounded-2xl animate-pulse" style={{ background: "hsl(var(--muted))" }} />
+                </div>
+              ))
+            : allDates.map(date => {
+                const d         = parseDate(date);
+                const dow       = d.getDay();
+                const isToday   = date === today;
+                const isHoliday = holidays.has(date);
+                const isPast    = date < today;
+                const slots     = scheduleMap.get(date) ?? [];
+                const day       = String(d.getDate()).padStart(2, "0");
+                const mon       = String(d.getMonth() + 1).padStart(2, "0");
+                const draggable = isCoordinator && !isPast && !isHoliday && dow !== 0;
+
+                const blockDP = (() => {
+                  if (activeDrag && dropPreview && dropPreview.date === date)
+                    return { startMin: dropPreview.startMin, endMin: dropPreview.endMin,
+                             fits: dropPreview.fits, taskId: activeDrag.slot.taskId };
+                  if (crossDayPreview && crossDayPreview.date === date)
+                    return { startMin: crossDayPreview.startMin, endMin: crossDayPreview.endMin,
+                             fits: true, taskId: -1 }; // -1 = não faz fade em nenhum slot
+                  return null;
+                })();
+
+                return (
+                  <div key={date} ref={isToday ? todayRef : undefined}
+                    style={isPast ? { opacity: 0.2 } : undefined}>
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full"
+                        style={isToday
+                          ? { background: "hsl(var(--primary))", color: "white" }
+                          : isHoliday
+                            ? { background: "#fef3c7", color: "#d97706" }
+                            : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
+                        {isToday ? "hoje" : DOW_PT[dow]}
+                      </span>
+                      <span className="text-sm font-black"
+                        style={{ color: isToday ? "hsl(var(--primary))" : isHoliday ? "#d97706" : "hsl(var(--muted-foreground)/0.5)" }}>
+                        {day}/{mon}
+                      </span>
+                      {isHoliday && (
+                        <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full"
+                          style={{ background: "#fef3c7", color: "#d97706" }}>feriado</span>
+                      )}
+                    </div>
+                    <DayBar
+                      slots={slots} dow={dow} isHoliday={isHoliday} date={date}
+                      isDraggable={draggable}
+                      onDragSelect={(st, et, eh) => handleDragSelect(date, st, et, eh)}
+                      onSlotResize={(slot, st, et, h) => handleSlotResize(slot, date, st, et, h)}
+                      onSlotClick={handleSlotClick}
+                      onRemoveDay={draggable ? handleRemoveDay : undefined}
+                      onBarRef={el => { if (el) barRefs.current.set(date, el); else barRefs.current.delete(date); }}
+                      blockDropPreview={blockDP}
+                      lastPointerDown={lastPointerDown}
+                      onCrossDayResizeStart={draggable ? handleCrossDayResizeStart : undefined}
+                    />
+                  </div>
+                );
+              })
+          }
+        </div>
+
+        {/* Ghost chip do block drag — segue o cursor */}
+        {activeDrag && (
+          <div className="fixed pointer-events-none z-50 select-none"
+            style={{ left: dragPos.x + 10, top: dragPos.y - 18 }}>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-black shadow-xl"
+              style={{
+                background: dropPreview?.fits !== false ? "hsl(var(--primary))" : "#ef4444",
+                color:      "white",
+                maxWidth:   200,
+                transition: "background 0.1s",
+              }}>
+              <span className="font-mono opacity-75 shrink-0">{activeDrag.slot.taskCode}</span>
+              <span className="truncate">{activeDrag.slot.taskTitle}</span>
+              {dropPreview?.fits === false && (
+                <span className="shrink-0 opacity-80 ml-1">bloqueado</span>
+              )}
             </div>
-            {isCoordinator && (
-              <span className="ml-auto text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full"
-                style={{ background: "hsl(var(--primary)/0.1)", color: "hsl(var(--primary))" }}>
-                arrastar para alocar
-              </span>
-            )}
-          </>
+          </div>
+        )}
+
+        {/* Modal de edição */}
+        <TaskFormModal
+          open={editTaskId !== null}
+          onOpenChange={open => { if (!open) setEditTaskId(null); }}
+          editTaskId={editTaskId}
+          onSaved={() => setRefreshKey(k => k + 1)}
+        />
+
+        {/* Modal criar tarefa por drag-to-create */}
+        {dragModal && editor && (
+          <AgendaDragModal
+            open={!!dragModal}
+            onClose={() => setDragModal(null)}
+            onCreated={() => { setDragModal(null); setRefreshKey(k => k + 1); }}
+            editorId={editorId}
+            editorName={editor.name}
+            editorAvatar={editor.avatarUrl}
+            date={dragModal.date}
+            startTime={dragModal.startTime}
+            endTime={dragModal.endTime}
+            effortHours={dragModal.effortHours}
+          />
         )}
       </div>
-
-      {/* Days */}
-      <div className="px-5 py-6 max-w-2xl mx-auto space-y-7">
-        {loading
-          ? [...Array(4)].map((_, i) => (
-              <div key={i} className="space-y-2">
-                <div className="h-4 w-20 rounded animate-pulse" style={{ background: "hsl(var(--muted))" }} />
-                <div className="h-11 rounded-2xl animate-pulse" style={{ background: "hsl(var(--muted))" }} />
-              </div>
-            ))
-          : allDates.map(date => {
-              const d         = parseDate(date);
-              const dow       = d.getDay();
-              const isToday   = date === today;
-              const isHoliday = holidays.has(date);
-              const isPast    = date < today;
-              const slots     = scheduleMap.get(date) ?? [];
-              const day       = String(d.getDate()).padStart(2, "0");
-              const mon       = String(d.getMonth() + 1).padStart(2, "0");
-              const draggable = isCoordinator && !isPast && !isHoliday && dow !== 0;
-
-              // Preview do block drag neste dia
-              const dropPreview = (blockDrag && blockDrag.curDate === date)
-                ? {
-                    startMin: blockDrag.curStartMin,
-                    endMin:   blockDrag.curStartMin + blockDrag.durationMin,
-                    fits:     blockDrag.fits,
-                    taskId:   blockDrag.slot.taskId,
-                  }
-                : null;
-
-              return (
-                <div key={date} ref={isToday ? todayRef : undefined} className="group"
-                  style={isPast ? { opacity: 0.2 } : undefined}>
-                  <div className="flex items-center gap-2 mb-2.5">
-                    <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full"
-                      style={isToday
-                        ? { background: "hsl(var(--primary))", color: "white" }
-                        : isHoliday
-                          ? { background: "#fef3c7", color: "#d97706" }
-                          : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>
-                      {isToday ? "hoje" : DOW_PT[dow]}
-                    </span>
-                    <span className="text-sm font-black"
-                      style={{ color: isToday ? "hsl(var(--primary))" : isHoliday ? "#d97706" : "hsl(var(--muted-foreground)/0.5)" }}>
-                      {day}/{mon}
-                    </span>
-                    {isHoliday && (
-                      <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full"
-                        style={{ background: "#fef3c7", color: "#d97706" }}>feriado</span>
-                    )}
-                  </div>
-                  <DayBar
-                    slots={slots} dow={dow} isHoliday={isHoliday}
-                    isDraggable={draggable}
-                    onDragSelect={(st, et, eh) => handleDragSelect(date, st, et, eh)}
-                    onSlotResize={(slot, st, et, h) => handleSlotResize(slot, date, st, et, h)}
-                    onBlockDragStart={(slot, off, sMin, eMin, cx, cy) => handleBlockDragStart(slot, date, off, sMin, eMin, cx, cy)}
-                    onSlotClick={(slot, cx, cy) => handleSlotClick(slot, cx, cy)}
-                    onBarRef={el => { if (el) barRefs.current.set(date, el); else barRefs.current.delete(date); }}
-                    blockDropPreview={dropPreview}
-                  />
-                </div>
-              );
-            })
-        }
-      </div>
-
-      {/* Ghost do block drag */}
-      {blockDrag && (
-        <div className="fixed pointer-events-none z-50 select-none"
-          style={{ left: dragPos.x + 10, top: dragPos.y - 18 }}>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-black shadow-xl"
-            style={{
-              background: blockDrag.fits ? "hsl(var(--primary))" : "#ef4444",
-              color: "white", maxWidth: 200,
-              transition: "background 0.1s",
-            }}>
-            <span className="font-mono opacity-75 shrink-0">{blockDrag.slot.taskCode}</span>
-            <span className="truncate">{blockDrag.slot.taskTitle}</span>
-            {!blockDrag.fits && (
-              <span className="shrink-0 opacity-80 ml-1">bloqueado</span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Popover de detalhes do slot */}
-      {slotPopover && (() => {
-        const s    = slotPopover.slot;
-        const prio = s.priority;
-        const prioLabel = prio === "high" ? "Alta" : prio === "medium" ? "Média" : prio === "low" ? "Baixa" : null;
-        const prioColor = prio === "high" ? "#f87171" : prio === "medium" ? "#fbbf24" : "#4ade80";
-        const prioBg    = prio === "high" ? "#f8717120" : prio === "medium" ? "#fbbf2420" : "#4ade8020";
-        return (
-          <>
-            <div className="fixed inset-0 z-40" onPointerDown={() => setSlotPopover(null)} />
-            <div className="fixed z-50 w-64 rounded-2xl overflow-hidden shadow-2xl"
-              style={{
-                left:       slotPopover.x,
-                top:        slotPopover.y,
-                background: "#111215",
-                border:     "1px solid rgba(255,255,255,0.08)",
-              }}>
-              <div className="px-4 pt-4 pb-5 space-y-3.5">
-
-                {/* Código + título */}
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-widest mb-1"
-                    style={{ color: "rgba(255,255,255,0.3)" }}>tarefa</p>
-                  <p className="text-sm font-black leading-snug" style={{ color: "white" }}>
-                    {s.taskTitle}
-                  </p>
-                  <p className="text-[10px] font-mono mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>
-                    {s.taskCode}
-                  </p>
-                </div>
-
-                {/* Cliente */}
-                {s.client && (
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-widest mb-0.5"
-                      style={{ color: "rgba(255,255,255,0.3)" }}>cliente</p>
-                    <p className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>
-                      {s.client}
-                    </p>
-                  </div>
-                )}
-
-                {/* Briefing */}
-                {s.description && (
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-widest mb-0.5"
-                      style={{ color: "rgba(255,255,255,0.3)" }}>briefing</p>
-                    <p className="text-xs leading-relaxed line-clamp-4"
-                      style={{ color: "rgba(255,255,255,0.6)" }}>
-                      {s.description}
-                    </p>
-                  </div>
-                )}
-
-                {/* Prioridade */}
-                {prioLabel && (
-                  <div className="flex items-center gap-2">
-                    <p className="text-[9px] font-black uppercase tracking-widest"
-                      style={{ color: "rgba(255,255,255,0.3)" }}>prioridade</p>
-                    <span className="text-[9px] font-black px-2 py-0.5 rounded-full"
-                      style={{ background: prioBg, color: prioColor }}>
-                      {prioLabel}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
-        );
-      })()}
-
-      {/* Modal criar tarefa por drag */}
-      {dragModal && editor && (
-        <AgendaDragModal
-          open={!!dragModal}
-          onClose={() => setDragModal(null)}
-          onCreated={() => { setDragModal(null); setRefreshKey(k => k + 1); }}
-          editorId={editorId}
-          editorName={editor.name}
-          editorAvatar={editor.avatarUrl}
-          date={dragModal.date}
-          startTime={dragModal.startTime}
-          endTime={dragModal.endTime}
-          effortHours={dragModal.effortHours}
-        />
-      )}
-    </div>
+    </DndContext>
   );
 }

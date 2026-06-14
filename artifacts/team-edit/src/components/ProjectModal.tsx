@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Briefcase, Pencil, Trash2, MoreVertical, MessageSquare, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Undo2, FolderOpen, ExternalLink, PauseCircle, XCircle } from "lucide-react";
+import { Plus, Briefcase, Pencil, Trash2, MoreVertical, MessageSquare, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Undo2, FolderOpen, Copy, Check, ExternalLink, PauseCircle, XCircle } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { CoordinatorAvatar, EditorAvatars } from "@/components/ui/avatar-group";
 import { STATUS_LABEL, STATUS_CHIP } from "@/lib/status";
@@ -128,6 +128,7 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
   const [revisionComment, setRevisionComment] = useState("");
   const [sendingRevision, setSendingRevision] = useState(false);
   const [expandedRev,     setExpandedRev]     = useState<Set<number>>(new Set());
+  const [copiedFolder,    setCopiedFolder]    = useState(false);
 
   // ── Loaders ───────────────────────────────────────────────────────────────
   const loadProject = useCallback(() => {
@@ -891,10 +892,10 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                 <div className="flex gap-1.5">
                   <Input value={taskForm.folderUrl} onChange={e => setTaskForm(f => ({ ...f, folderUrl: e.target.value }))} placeholder="https://… ou smb://…" />
                   {taskForm.folderUrl && (
-                    <a href={taskForm.folderUrl} target="_blank" rel="noreferrer"
+                    <button type="button" onClick={() => { navigator.clipboard.writeText(taskForm.folderUrl); setCopiedFolder(true); setTimeout(() => setCopiedFolder(false), 2000); }}
                       className="inline-flex items-center justify-center h-9 w-9 shrink-0 rounded-md border bg-[hsl(var(--muted))]/40 hover:bg-[hsl(var(--muted))] transition-colors">
-                      <ExternalLink className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-                    </a>
+                      {copiedFolder ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />}
+                    </button>
                   )}
                 </div>
               </div>
