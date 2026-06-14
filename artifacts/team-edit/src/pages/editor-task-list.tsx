@@ -150,6 +150,36 @@ export default function EditorTaskList() {
   }
   const [scheduleSlots, setScheduleSlots] = useState<ScheduleSlot[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
+
+  // ── MONITOR: slots de hoje do editor ─────────────────────────────────────
+  interface TodaySlot {
+    id: number; taskId: number; taskCode: string; taskTitle: string;
+    client: string | null; status: string;
+    startTime: string | null; endTime: string | null; allocatedHours: number | null;
+    execStatus: string; actualHours: number | null; execNote: string | null;
+  }
+  const [todaySlots, setTodaySlots]   = useState<TodaySlot[]>([]);
+  const [confirmingSlot, setConfirmingSlot] = useState<number | null>(null);
+
+  const loadTodaySlots = useCallback(() => {
+    if (!isEditor) return;
+    apiFetch<TodaySlot[]>("/api/monitor/my-today").then(setTodaySlots).catch(() => {});
+  }, [isEditor]);
+
+  const confirmSlot = async (slot: TodaySlot, execStatus: "done" | "missed", actualHours?: number) => {
+    setConfirmingSlot(slot.id);
+    try {
+      if (execStatus === "done") {
+        await apiPost(`/api/monitor/slots/${slot.id}/confirm`, { actualHours: actualHours ?? slot.allocatedHours });
+        toast.success("Sessão confirmada!");
+      } else {
+        await apiPost(`/api/monitor/slots/${slot.id}/miss`, {});
+        toast.success("Sessão registrada como não executada");
+      }
+      loadTodaySlots();
+    } catch { toast.error("Erro ao registrar sessão"); }
+    finally { setConfirmingSlot(null); }
+  };
   const isEditor = user?.role === "editor";
   const todaySections = isEditor ? TODAY_SECTIONS_EDITOR : TODAY_SECTIONS_COORD;
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
@@ -193,7 +223,8 @@ export default function EditorTaskList() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-  useRealtime({ onTasksChanged: load });
+  useEffect(() => { loadTodaySlots(); }, [loadTodaySlots]);
+  useRealtime({ onTasksChanged: () => { load(); loadTodaySlots(); } });
 
   // Carrega slots reais de alocação — na montagem e quando tarefas mudam (só editor)
   const loadScheduleSlots = useCallback(() => {
@@ -478,6 +509,56 @@ export default function EditorTaskList() {
 
   return (
     <div className="space-y-4">
+
+      {/* ── MONITOR: sessões de hoje ─────────────────────────────────────── */}
+      {isEditor && todaySlots.length > 0 && (
+        <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[hsl(var(--border))]/30 bg-[hsl(var(--muted))]/20">
+            <Clock className="h-3.5 w-3.5 text-[hsl(var(--primary))]/60 shrink-0" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-[hsl(var(--foreground))]/50">Sessões de hoje</span>
+          </div>
+          {todaySlots.map(slot => {
+            const fmtT = (t: string) => { const [h,m] = t.split(":").map(Number); return m===0?`${h}h`:`${h}h${String(m).padStart(2,"0")}`; };
+            const isDone   = slot.execStatus === "done" || slot.execStatus === "partial";
+            const isMissed = slot.execStatus === "missed";
+            const isPending = slot.execStatus === "scheduled";
+            return (
+              <div key={slot.id} className="flex items-center gap-3 px-4 py-3 border-b border-[hsl(var(--border))]/20 last:border-0">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-[10px] font-mono font-semibold text-[hsl(var(--primary))]/60">{slot.taskCode}</span>
+                    <span className="text-sm font-semibold truncate text-[hsl(var(--foreground))]/85">{slot.taskTitle}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {slot.startTime && slot.endTime && (
+                      <span className="text-xs tabular-nums text-[hsl(var(--muted-foreground))]/55">
+                        {fmtT(slot.startTime)} → {fmtT(slot.endTime)}
+                        {slot.allocatedHours ? ` · ${slot.allocatedHours}h` : ""}
+                      </span>
+                    )}
+                    {isDone   && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 border border-emerald-200/60">✓ Concluída</span>}
+                    {isMissed && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-50 dark:bg-red-950/30 text-red-500 border border-red-200/60">✗ Não executada</span>}
+                  </div>
+                </div>
+                {isPending && (
+                  <div className="shrink-0 flex items-center gap-1.5">
+                    <Button size="sm" variant="outline" className="h-7 text-xs px-2.5 gap-1"
+                      disabled={confirmingSlot === slot.id}
+                      onClick={() => confirmSlot(slot, "done")}>
+                      ✓ Concluí
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-[hsl(var(--muted-foreground))]/60 hover:text-red-500"
+                      disabled={confirmingSlot === slot.id}
+                      onClick={() => confirmSlot(slot, "missed")}>
+                      ✗
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className="flex items-center gap-2.5 flex-wrap rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm px-4 py-3">

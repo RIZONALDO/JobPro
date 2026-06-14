@@ -16,6 +16,7 @@ import taskFilesRouter from "./task-files.js";
 import taskReviewRouter from "./task-review.js";
 import reviewCommentsRouter from "./review-comments.js";
 import escalaRouter from "./escala.js";
+import monitorRouter from "./monitor.js";
 import contestationsRouter from "./contestations.js";
 
 const router = Router();
@@ -36,6 +37,7 @@ router.use(taskFilesRouter);
 router.use(taskReviewRouter);
 router.use(reviewCommentsRouter);
 router.use(escalaRouter);
+router.use(monitorRouter);
 router.use(contestationsRouter);
 
 export default router;

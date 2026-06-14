@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { staggerContainer, staggerRow } from "@/lib/motion";
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useSearch, useLocation } from "wouter";
-import { apiFetch, apiPut, apiPatch, apiDelete } from "@/lib/api";
+import { apiFetch, apiPost, apiPut, apiPatch, apiDelete } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useRealtime } from "@/hooks/use-realtime";
@@ -36,7 +36,7 @@ import { ReassignEditorModal } from "@/components/reassign-editor-modal";
 import { EditorAvailabilityModal } from "@/components/editor-availability-modal";
 import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
 import { SubtaskProgressBar } from "@/components/ui/subtask-progress-bar";
-import { RefreshCw, UserPlus } from "lucide-react";
+import { RefreshCw, UserPlus, ShieldAlert } from "lucide-react";
 import { fmtClosedCycle, fmtPrazoWeek, fmtDate } from "@/lib/utils";
 import { PrazoCell } from "@/components/prazo-cell";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
@@ -486,6 +486,35 @@ export default function TasksOverview() {
   );
   const toggleSection = (key: string) =>
     setCollapsedSections(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+
+  // ── MONITOR ──────────────────────────────────────────────────────────────────
+  interface MonitorRisk {
+    taskId: number; taskCode: string; taskTitle: string;
+    editorName: string | null; riskLevel: "at_risk"|"critical"|"overdue"|"not_started";
+    riskScore: number; missedSlots: number; hoursLost: number;
+    remainingEffort: number; remainingCapacity: number;
+    daysUntilDeadline: number; dueDate: string | null; status: string; nextSlot: string | null;
+  }
+  interface MonitorDashboard { slotsToday: number; pendingToday: number; overdue: number; missedTotal: number; }
+  const [monitorRisks,     setMonitorRisks]     = useState<MonitorRisk[]>([]);
+  const [monitorDashboard, setMonitorDashboard] = useState<MonitorDashboard | null>(null);
+  const [monitorOpen,      setMonitorOpen]      = useState(false);
+  const [monitorLoading,   setMonitorLoading]   = useState(false);
+
+  const loadMonitor = useCallback(async () => {
+    setMonitorLoading(true);
+    try {
+      const [risks, dash] = await Promise.all([
+        apiFetch<MonitorRisk[]>("/api/monitor/risks"),
+        apiFetch<MonitorDashboard>("/api/monitor/dashboard"),
+      ]);
+      setMonitorRisks(risks);
+      setMonitorDashboard(dash);
+    } catch { toast.error("Erro ao carregar MONITOR"); }
+    finally { setMonitorLoading(false); }
+  }, []);
+
+  useEffect(() => { loadMonitor(); }, [loadMonitor]);
 
   // EscalaModal (criação de nova tarefa)
   const [escalaOpen, setEscalaOpen] = useState(false);
@@ -1275,10 +1304,125 @@ export default function TasksOverview() {
             <Plus className="h-3.5 w-3.5" />Nova tarefa
           </Button>
         )}
+        {/* MONITOR — botão de alerta */}
+        {monitorDashboard && (monitorDashboard.overdue > 0 || monitorDashboard.missedTotal > 0 || monitorRisks.length > 0) && (
+          <button
+            onClick={() => { setMonitorOpen(o => !o); }}
+            className="flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-semibold transition-colors border"
+            style={{
+              background: monitorDashboard.overdue > 0 ? "rgba(239,68,68,0.08)" : "rgba(245,158,11,0.08)",
+              borderColor: monitorDashboard.overdue > 0 ? "rgba(239,68,68,0.3)" : "rgba(245,158,11,0.3)",
+              color: monitorDashboard.overdue > 0 ? "#ef4444" : "#f59e0b",
+            }}
+          >
+            <AlertTriangle className="h-3.5 w-3.5" />
+            {monitorRisks.length} alerta{monitorRisks.length !== 1 ? "s" : ""}
+          </button>
+        )}
         <span className={`text-xs text-[hsl(var(--muted-foreground))] shrink-0 ${!canCreate ? "ml-auto" : ""}`}>
           {tabFiltered.length} tarefa{tabFiltered.length !== 1 ? "s" : ""}
         </span>
       </div>
+
+      {/* ── Painel MONITOR ───────────────────────────────────────────────── */}
+      {monitorOpen && (
+        <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-[hsl(var(--border))]/40 bg-[hsl(var(--muted))]/20">
+            <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+            <span className="text-xs font-black uppercase tracking-widest text-[hsl(var(--foreground))]/70">Monitor de execução</span>
+            {monitorDashboard && (
+              <div className="flex items-center gap-3 ml-2">
+                {monitorDashboard.overdue > 0 && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20">
+                    {monitorDashboard.overdue} atrasada{monitorDashboard.overdue !== 1 ? "s" : ""}
+                  </span>
+                )}
+                {monitorDashboard.missedTotal > 0 && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                    {monitorDashboard.missedTotal} sessão não executada{monitorDashboard.missedTotal !== 1 ? "s" : ""}
+                  </span>
+                )}
+                {monitorDashboard.pendingToday > 0 && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                    {monitorDashboard.pendingToday} sessão hoje sem confirmação
+                  </span>
+                )}
+              </div>
+            )}
+            <button onClick={loadMonitor} className="ml-auto opacity-40 hover:opacity-80 transition-opacity">
+              <RefreshCw className={`h-3.5 w-3.5 ${monitorLoading ? "animate-spin" : ""}`} />
+            </button>
+            <button onClick={() => setMonitorOpen(false)} className="opacity-40 hover:opacity-80 transition-opacity">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {/* Lista de riscos */}
+          {monitorLoading ? (
+            <div className="py-8 flex items-center justify-center gap-2">
+              <div className="h-4 w-4 rounded-full border-2 border-amber-500/30 border-t-amber-500 animate-spin" />
+              <span className="text-xs text-[hsl(var(--muted-foreground))]">Analisando…</span>
+            </div>
+          ) : monitorRisks.length === 0 ? (
+            <div className="py-8 text-center">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Nenhum alerta no momento.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-[hsl(var(--border))]/30">
+              {monitorRisks.map(r => {
+                const RISK_COLOR: Record<string, string> = {
+                  overdue: "#ef4444", critical: "#f97316", not_started: "#8b5cf6", at_risk: "#f59e0b",
+                };
+                const RISK_LABEL: Record<string, string> = {
+                  overdue: "Atrasada", critical: "Crítico", not_started: "Não iniciada", at_risk: "Em risco",
+                };
+                const color = RISK_COLOR[r.riskLevel] ?? "#94a3b8";
+                return (
+                  <div key={r.taskId}
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/20 cursor-pointer transition-colors"
+                    onClick={() => { setEditTaskId(r.taskId); setFormOpen(true); setMonitorOpen(false); }}
+                  >
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-[10px] font-mono font-semibold text-[hsl(var(--primary))]/60">{r.taskCode}</span>
+                        <span className="text-sm font-semibold truncate text-[hsl(var(--foreground))]/85">{r.taskTitle}</span>
+                        {r.editorName && <span className="text-xs text-[hsl(var(--muted-foreground))]/45 truncate shrink-0">{r.editorName.split(" ")[0]}</span>}
+                      </div>
+                      <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border" style={{ color, borderColor: `${color}40`, background: `${color}10` }}>
+                          {RISK_LABEL[r.riskLevel]}
+                        </span>
+                        {r.missedSlots > 0 && (
+                          <span className="text-[10px] text-[hsl(var(--muted-foreground))]/55">
+                            {r.missedSlots} sessão{r.missedSlots !== 1 ? "ões" : ""} perdida{r.missedSlots !== 1 ? "s" : ""} · {r.hoursLost}h
+                          </span>
+                        )}
+                        {r.remainingEffort > 0 && (
+                          <span className="text-[10px] text-[hsl(var(--muted-foreground))]/55">
+                            {r.remainingEffort}h restantes
+                            {r.remainingCapacity > 0 ? ` / ${r.remainingCapacity}h capacidade` : " · sem slots futuros"}
+                          </span>
+                        )}
+                        {r.dueDate && (
+                          <span className="text-[10px] text-[hsl(var(--muted-foreground))]/55">
+                            prazo {r.daysUntilDeadline < 0 ? `há ${Math.abs(r.daysUntilDeadline)}d` : r.daysUntilDeadline === 0 ? "hoje" : `em ${r.daysUntilDeadline}d`}
+                          </span>
+                        )}
+                        {r.nextSlot && (
+                          <span className="text-[10px] text-[hsl(var(--muted-foreground))]/55">
+                            próxima sessão {new Date(r.nextSlot + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Table ────────────────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm overflow-hidden flex flex-col">
