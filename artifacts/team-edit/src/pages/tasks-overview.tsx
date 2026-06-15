@@ -2079,6 +2079,11 @@ export default function TasksOverview() {
                         <span className="text-sm font-semibold truncate flex-1 min-w-0 leading-snug">
                           {t.title}
                         </span>
+                        {t.totalSlots && t.totalSlots > 1 && (
+                          <span className="shrink-0 text-[10px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]/70 border border-[hsl(var(--primary))]/20 whitespace-nowrap">
+                            {t.todaySlotIndex ? (t.todaySlotIndex === t.totalSlots ? "Etapa final" : `Etapa ${t.todaySlotIndex}/${t.totalSlots}`) : `${t.totalSlots} sessões`}
+                          </span>
+                        )}
                         {t.revisionCount > 0 && (
                           <span className="shrink-0 text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap leading-none">
                             {t.revisionCount} {t.revisionCount === 1 ? "alteração" : "alterações"}
@@ -2267,6 +2272,11 @@ export default function TasksOverview() {
                         </span>
                       )}
                       <span className="text-sm font-semibold truncate leading-snug">{t.title}</span>
+                      {t.totalSlots && t.totalSlots > 1 && (
+                        <span className="shrink-0 text-[10px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]/70 border border-[hsl(var(--primary))]/20 whitespace-nowrap">
+                          {t.todaySlotIndex ? (t.todaySlotIndex === t.totalSlots ? "Etapa final" : `Etapa ${t.todaySlotIndex}/${t.totalSlots}`) : `${t.totalSlots} sessões`}
+                        </span>
+                      )}
                       {t.revisionCount > 0 && (
                         <span className="shrink-0 text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap leading-none">
                           {t.revisionCount} {t.revisionCount === 1 ? "alteração" : "alterações"}
