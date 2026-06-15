@@ -970,8 +970,9 @@ router.get("/my-schedule", async (req: any, res: any): Promise<void> => {
   const editorId = req.session?.userId;
   if (!editorId) { res.status(401).json({ error: "Não autenticado" }); return; }
 
-  const now  = new Date();
-  const from = toLocalDateStr(now);
+  const now      = new Date();
+  const tomorrow = addDays(now, 1);
+  const from = toLocalDateStr(tomorrow); // hoje já aparece em "Tarefas do dia"
   const to   = typeof req.query.to === "string" ? req.query.to : toLocalDateStr(addDays(now, 90));
 
   const rows = await db
@@ -1057,8 +1058,9 @@ router.get("/coordinator-schedule", requireCoordinator, async (req: any, res: an
   const userId = req.session?.userId;
   if (!userId) { res.status(401).json({ error: "Não autenticado" }); return; }
 
-  const now  = new Date();
-  const from = toLocalDateStr(now);
+  const now      = new Date();
+  const tomorrow = addDays(now, 1);
+  const from = toLocalDateStr(tomorrow); // hoje já aparece em "Tarefas do dia"
   const to   = typeof req.query.to === "string" ? req.query.to : toLocalDateStr(addDays(now, 90));
 
   // IDs das tarefas que o coordenador criou ou é co-coordenador
