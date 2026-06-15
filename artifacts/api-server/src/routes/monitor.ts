@@ -22,7 +22,7 @@ const router = Router();
 const ACTIVE_STATUSES = ["pending", "in_progress", "review", "reopened"] as const;
 
 type ExecStatus = "scheduled" | "done" | "partial" | "missed";
-type RiskLevel  = "ok" | "at_risk" | "critical" | "overdue" | "not_started";
+type RiskLevel  = "ok" | "at_risk" | "critical" | "overdue" | "recovering" | "not_started";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -95,14 +95,19 @@ function calcRisk(
   let riskLevel: RiskLevel = "ok";
 
   if (dueDateStr && dueDateStr < today && !["completed","cancelled"].includes(task.status)) {
-    riskLevel = "overdue";
-  } else if (task.status === "pending" && pastSlots.length > 0 && missedSlots.length === pastSlots.length) {
-    riskLevel = "not_started"; // tinha slots, nunca iniciou
-  } else if (riskScore > 1 || (remainingEffort > 0 && remainingCapacity === 0)) {
-    riskLevel = "critical";   // matematicamente impossível no prazo
-  } else if (riskScore > 0.85 || missedSlots.length > 0 || daysUntilDeadline <= 1) {
-    riskLevel = "at_risk";
+    // Prazo do cliente venceu — distingue "abandonada" de "em recuperação"
+    riskLevel = futureSlots.length > 0 ? "recovering" : "overdue";
+  } else if (pastSlots.length === 0) {
+    // Nenhum slot passou ainda — execução não iniciou, não há desvio real para detectar
+    riskLevel = "ok";
+  } else if (task.status === "pending" && missedSlots.length === pastSlots.length) {
+    riskLevel = "not_started"; // tinha slots, nunca confirmou nada
+  } else if (riskScore > 1.2 || (remainingEffort > 0 && remainingCapacity === 0)) {
+    riskLevel = "critical";   // capacidade futura insuficiente em >20%
+  } else if (riskScore > 1.0 || daysUntilDeadline <= 1) {
+    riskLevel = "at_risk";    // levemente insuficiente ou entrega amanhã
   }
+  // riskScore ≤ 1.0 → ok: sessões perdidas já estão refletidas no riskScore via remainingEffort
 
   return {
     taskId:            task.id,
@@ -196,7 +201,7 @@ router.get("/monitor/risks", requireCoordinator, async (req: any, res: any): Pro
     ))
     .filter(r => r.riskLevel !== "ok")  // só retorna os que têm problema
     .sort((a, b) => {
-      const order: RiskLevel[] = ["overdue","critical","not_started","at_risk","ok"];
+      const order: RiskLevel[] = ["overdue","critical","not_started","at_risk","recovering","ok"];
       return order.indexOf(a.riskLevel) - order.indexOf(b.riskLevel);
     });
 

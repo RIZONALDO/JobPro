@@ -30,10 +30,10 @@ interface ScheduleSlot {
   priority:    string | null;
   startDate:   string | null;
   dueDate:     string | null;
-  coordinator: { id: number; name: string; avatarUrl: string | null } | null;
+  coordinator: { id: number; name: string; avatarUrl: string | null; profileColor?: string | null } | null;
 }
 interface ScheduleDay { date: string; slots: ScheduleSlot[]; }
-interface EditorInfo   { id: number; name: string; login: string; avatarUrl: string | null; role: string; }
+interface EditorInfo   { id: number; name: string; login: string; avatarUrl: string | null; role: string; profileColor?: string | null; }
 
 interface ResizeDrag {
   slotIdx: number;
@@ -130,6 +130,7 @@ interface SlotItemProps {
   total:            number;
   date:             string;
   isDraggable:      boolean;
+  editorColor:      string | null;
   resizeDrag:       ResizeDrag | null;
   getResizeClamped: (rd: ResizeDrag) => { newStart: number; newEnd: number };
   onResizeStart:    (slotIdx: number, side: "left"|"right", fixed: number, current: number) => void;
@@ -141,7 +142,7 @@ interface SlotItemProps {
 }
 
 function SlotItem({
-  slot, i, dow, dayEnd, total, date, isDraggable, resizeDrag, getResizeClamped,
+  slot, i, dow, dayEnd, total, date, isDraggable, editorColor, resizeDrag, getResizeClamped,
   onResizeStart, onSlotClick, onRemoveDay, blockDropPreview, barRef, lastPointerDown,
 }: SlotItemProps) {
   const { user } = useAuth();
@@ -150,6 +151,8 @@ function SlotItem({
     || !slot.coordinator?.id
     || slot.coordinator.id === user?.id;
   const canInteract = isDraggable && isOwner;
+  // Cor do coordenador do slot (cada tarefa herda a cor de quem a criou)
+  const coordColor = slot.coordinator?.profileColor ?? editorColor ?? null;
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id:       `slot-${slot.taskId}-${date}`,
@@ -177,8 +180,12 @@ function SlotItem({
       style={{
         left:        `calc(${left}% + 4px)`,
         width:       `calc(${width}% - 8px)`,
-        background:  isResizing ? "hsl(var(--primary)/0.35)" : "hsl(var(--primary)/0.25)",
-        border:      isResizing ? "1.5px solid hsl(var(--primary)/0.8)" : "1px solid hsl(var(--primary)/0.4)",
+        background:  coordColor
+          ? isResizing ? `${coordColor}55` : `${coordColor}33`
+          : isResizing ? "hsl(var(--primary)/0.35)" : "hsl(var(--primary)/0.25)",
+        border:      coordColor
+          ? isResizing ? `1.5px solid ${coordColor}cc` : `1px solid ${coordColor}66`
+          : isResizing ? "1.5px solid hsl(var(--primary)/0.8)" : "1px solid hsl(var(--primary)/0.4)",
         cursor:      isResizing ? "ew-resize" : "default",
         opacity:     isDraggingThis ? 0.35 : 1,
         zIndex:      2,
@@ -213,13 +220,13 @@ function SlotItem({
       }}
       onMouseEnter={ev => {
         if (isResizing) return;
-        (ev.currentTarget as HTMLElement).style.background = "hsl(var(--primary)/0.45)";
-        (ev.currentTarget as HTMLElement).style.borderColor = "hsl(var(--primary)/0.7)";
+        (ev.currentTarget as HTMLElement).style.background = coordColor ? `${coordColor}77` : "hsl(var(--primary)/0.45)";
+        (ev.currentTarget as HTMLElement).style.borderColor = coordColor ? `${coordColor}cc` : "hsl(var(--primary)/0.7)";
       }}
       onMouseLeave={ev => {
         if (isResizing) return;
-        (ev.currentTarget as HTMLElement).style.background = "hsl(var(--primary)/0.25)";
-        (ev.currentTarget as HTMLElement).style.borderColor = "hsl(var(--primary)/0.4)";
+        (ev.currentTarget as HTMLElement).style.background = coordColor ? `${coordColor}33` : "hsl(var(--primary)/0.25)";
+        (ev.currentTarget as HTMLElement).style.borderColor = coordColor ? `${coordColor}66` : "hsl(var(--primary)/0.4)";
       }}
     >
       {/* Indicadores visuais de resize — só para tarefas do próprio coordenador */}
@@ -299,6 +306,7 @@ interface DayBarProps {
   isHoliday:        boolean;
   date:             string;
   isDraggable?:     boolean;
+  editorColor?:     string | null;
   onDragSelect?:    (st: string, et: string, eh: number) => void;
   onSlotResize?:    (slot: ScheduleSlot, ns: string, ne: string, nh: number) => void;
   onSlotClick?:     (slot: ScheduleSlot) => void;
@@ -309,7 +317,7 @@ interface DayBarProps {
   onCrossDayResizeStart?: (slot: ScheduleSlot, fromDate: string, fromEndMin: number) => void;
 }
 
-function DayBar({ slots, dow, isHoliday, date, isDraggable, onDragSelect, onSlotResize,
+function DayBar({ slots, dow, isHoliday, date, isDraggable, editorColor, onDragSelect, onSlotResize,
                   onSlotClick, onRemoveDay, onBarRef, blockDropPreview, lastPointerDown, onCrossDayResizeStart }: DayBarProps) {
   const barRef                      = useRef<HTMLDivElement>(null);
   const [drag, setDrag]             = useState<{ anchor: number; cur: number } | null>(null);
@@ -534,6 +542,7 @@ function DayBar({ slots, dow, isHoliday, date, isDraggable, onDragSelect, onSlot
             total={total}
             date={date}
             isDraggable={!!isDraggable}
+            editorColor={editorColor ?? null}
             resizeDrag={resizeDrag}
             getResizeClamped={getResizeClamped}
             onResizeStart={handleResizeStart}
@@ -1029,6 +1038,7 @@ export default function AgendaEditorV3() {
                     <DayBar
                       slots={slots} dow={dow} isHoliday={isHoliday} date={date}
                       isDraggable={draggable}
+                      editorColor={editor?.profileColor ?? null}
                       onDragSelect={(st, et, eh) => handleDragSelect(date, st, et, eh)}
                       onSlotResize={(slot, st, et, h) => handleSlotResize(slot, date, st, et, h)}
                       onSlotClick={handleSlotClick}

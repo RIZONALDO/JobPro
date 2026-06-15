@@ -17,6 +17,7 @@ import taskReviewRouter from "./task-review.js";
 import reviewCommentsRouter from "./review-comments.js";
 import escalaRouter from "./escala.js";
 import monitorRouter from "./monitor.js";
+import replanoRouter from "./replano.js";
 import contestationsRouter from "./contestations.js";
 
 const router = Router();
@@ -38,6 +39,7 @@ router.use(taskReviewRouter);
 router.use(reviewCommentsRouter);
 router.use(escalaRouter);
 router.use(monitorRouter);
+router.use(replanoRouter);
 router.use(contestationsRouter);
 
 export default router;

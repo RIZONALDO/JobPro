@@ -50,6 +50,7 @@ router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
     phone: user.phone ?? null,
     avatarUrl: user.avatarUrl ?? null,
     theme: (user as any).theme ?? "dark",
+    profileColor: (user as any).profileColor ?? null,
   });
 });
 
@@ -62,7 +63,7 @@ router.put("/auth/theme", requireAuth, async (req, res): Promise<void> => {
 
 router.put("/auth/profile", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
-  const { name, email, phone, avatarUrl, currentPassword, newPassword } = req.body ?? {};
+  const { name, email, phone, avatarUrl, profileColor, currentPassword, newPassword } = req.body ?? {};
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
   if (!user) { res.status(404).json({ error: "Usuário não encontrado" }); return; }
@@ -71,6 +72,7 @@ router.put("/auth/profile", requireAuth, async (req, res): Promise<void> => {
   if (name?.trim())          update.name      = String(name).trim();
   if (email  !== undefined)  update.email     = email  ? String(email).trim()  : null;
   if (phone  !== undefined)  update.phone     = phone  ? String(phone).trim()  : null;
+  if (profileColor !== undefined) update.profileColor = profileColor ? String(profileColor).slice(0, 20) : null;
   if (avatarUrl !== undefined) {
     if (typeof avatarUrl === "string" && avatarUrl.length > 200_000) {
       res.status(400).json({ error: "Imagem muito grande — use o botão de câmera para comprimir" }); return;
@@ -100,6 +102,7 @@ router.put("/auth/profile", requireAuth, async (req, res): Promise<void> => {
     email: updated.email ?? null,
     phone: updated.phone ?? null,
     avatarUrl: updated.avatarUrl ?? null,
+    profileColor: (updated as any).profileColor ?? null,
   });
 });
 

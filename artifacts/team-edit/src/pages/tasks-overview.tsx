@@ -490,7 +490,7 @@ export default function TasksOverview() {
   // ── MONITOR ──────────────────────────────────────────────────────────────────
   interface MonitorRisk {
     taskId: number; taskCode: string; taskTitle: string;
-    editorName: string | null; riskLevel: "at_risk"|"critical"|"overdue"|"not_started";
+    editorName: string | null; riskLevel: "at_risk"|"critical"|"overdue"|"recovering"|"not_started";
     riskScore: number; missedSlots: number; hoursLost: number;
     remainingEffort: number; remainingCapacity: number;
     daysUntilDeadline: number; dueDate: string | null; status: string; nextSlot: string | null;
@@ -515,6 +515,108 @@ export default function TasksOverview() {
   }, []);
 
   useEffect(() => { loadMonitor(); }, [loadMonitor]);
+
+  // ── REPLANO ───────────────────────────────────────────────────────────────────
+  interface ReplanSlot { date: string; hours: number; startTime: string; endTime: string; }
+  interface ReplanContext {
+    taskId: number; taskTitle: string; taskStatus: string;
+    currentEditorId: number; currentEditorName: string | null; currentEditorAvatar: string | null;
+    effortHours: number; confirmedHours: number; remainingEffort: number;
+    missedSlots: number; hoursLost: number;
+    originalDueDate: string | null; daysUntilDeadline: number;
+  }
+  interface ReplanEditorOption {
+    id: number; name: string; avatarUrl: string | null;
+    isCurrent: boolean; feasible: boolean;
+    completionDate: string | null; daysToFinish: number | null;
+  }
+  interface ReplanPreview {
+    newSlots: ReplanSlot[]; feasible: boolean;
+    deadlineExtended: boolean; originalDueDate: string | null; suggestedDueDate: string | null;
+    message?: string;
+  }
+
+  const [replanoTaskId,    setReplanoTaskId]    = useState<number | null>(null);
+  const [replanoStep,      setReplanoStep]      = useState(0);
+  const [replanoCtx,       setReplanoCtx]       = useState<ReplanContext | null>(null);
+  const [replanoEditors,   setReplanoEditors]   = useState<ReplanEditorOption[]>([]);
+  const [replanoPreview,   setReplanoPreview]   = useState<ReplanPreview | null>(null);
+  const [replanoEditorId,  setReplanoEditorId]  = useState<number | null>(null);
+  const [replanoMode,      setReplanoMode]      = useState<"consecutive"|"alternating">("consecutive");
+  const [replanoLoading,   setReplanoLoading]   = useState(false);
+  const [replanoPreviewLoading, setReplanoPreviewLoading] = useState(false);
+  const [replanoApplying,  setReplanoApplying]  = useState(false);
+  const [replanoNewDate,   setReplanoNewDate]   = useState<string>("");
+
+  // Carrega slots na montagem — garante contador correto em qualquer aba
+  const loadCoordSlots = useCallback(() => {
+    setCoordSlotsLoading(viewTab === "scheduled");
+    apiFetch<CoordScheduleSlot[]>("/api/coordinator-schedule")
+      .then(setCoordSlots)
+      .catch(() => {})
+      .finally(() => setCoordSlotsLoading(false));
+  }, [viewTab]);
+
+  const refreshEditors = useCallback(async (taskId: number, mode: "consecutive"|"alternating") => {
+    setReplanoPreviewLoading(true);
+    try {
+      const editors = await apiFetch<ReplanEditorOption[]>(`/api/replano/editors/${taskId}?mode=${mode}`);
+      setReplanoEditors(editors);
+      // Se o editor selecionado sumiu do ranking, mantém mas a data de conclusão atualiza
+    } catch {}
+    finally { setReplanoPreviewLoading(false); }
+  }, []);
+
+  const refreshPreview = useCallback(async (taskId: number, editorId: number, mode: "consecutive"|"alternating") => {
+    setReplanoPreviewLoading(true);
+    try {
+      const preview = await apiFetch<ReplanPreview>(
+        `/api/replano/preview/${taskId}?editorId=${editorId}&mode=${mode}`
+      );
+      setReplanoPreview(preview);
+      setReplanoNewDate(prev => prev || (preview.suggestedDueDate ?? preview.originalDueDate ?? ""));
+    } catch {}
+    finally { setReplanoPreviewLoading(false); }
+  }, []);
+
+  const openReplano = useCallback(async (taskId: number) => {
+    setReplanoTaskId(taskId);
+    setReplanoStep(0);
+    setReplanoCtx(null);
+    setReplanoEditors([]);
+    setReplanoPreview(null);
+    setReplanoNewDate("");
+    setReplanoMode("consecutive");
+    setReplanoLoading(true);
+    try {
+      const [ctx, editors] = await Promise.all([
+        apiFetch<ReplanContext>(`/api/replano/context/${taskId}`),
+        apiFetch<ReplanEditorOption[]>(`/api/replano/editors/${taskId}?mode=consecutive`),
+      ]);
+      setReplanoCtx(ctx);
+      setReplanoEditors(editors);
+      setReplanoEditorId(ctx.currentEditorId);
+      await refreshPreview(taskId, ctx.currentEditorId, "consecutive");
+    } catch { toast.error("Erro ao carregar dados do replano"); setReplanoTaskId(null); }
+    finally { setReplanoLoading(false); }
+  }, [refreshPreview]);
+
+  const applyReplano = useCallback(async () => {
+    if (!replanoTaskId || !replanoPreview || !replanoEditorId) return;
+    setReplanoApplying(true);
+    try {
+      await apiPost(`/api/replano/apply/${replanoTaskId}`, {
+        editorId:   replanoEditorId,
+        mode:       replanoMode,
+        newDueDate: replanoNewDate || undefined,
+      });
+      toast.success("Nova agenda confirmada!");
+      setReplanoTaskId(null);
+      loadMonitor();
+      loadCoordSlots();
+    } catch { toast.error("Erro ao confirmar agenda"); }
+    finally { setReplanoApplying(false); }
+  }, [replanoTaskId, replanoPreview, replanoEditorId, replanoMode, replanoNewDate, loadMonitor, loadCoordSlots]);
 
   // EscalaModal (criação de nova tarefa)
   const [escalaOpen, setEscalaOpen] = useState(false);
@@ -590,15 +692,7 @@ export default function TasksOverview() {
   const expandedIdsRef = useRef<Set<number>>(expandedIds);
   useEffect(() => { expandedIdsRef.current = expandedIds; }, [expandedIds]);
 
-  // Carrega slots na montagem — garante contador correto em qualquer aba
-  useEffect(() => {
-    setCoordSlotsLoading(viewTab === "scheduled");
-    apiFetch<CoordScheduleSlot[]>("/api/coordinator-schedule")
-      .then(setCoordSlots)
-      .catch(() => {})
-      .finally(() => setCoordSlotsLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { loadCoordSlots(); }, []);
 
   useRealtime({
     onTasksChanged: () => load(true),
@@ -1305,14 +1399,14 @@ export default function TasksOverview() {
           </Button>
         )}
         {/* MONITOR — botão de alerta */}
-        {monitorDashboard && (monitorDashboard.overdue > 0 || monitorDashboard.missedTotal > 0 || monitorRisks.length > 0) && (
+        {monitorRisks.length > 0 && (
           <button
             onClick={() => { setMonitorOpen(o => !o); }}
             className="flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-semibold transition-colors border"
             style={{
-              background: monitorDashboard.overdue > 0 ? "rgba(239,68,68,0.08)" : "rgba(245,158,11,0.08)",
-              borderColor: monitorDashboard.overdue > 0 ? "rgba(239,68,68,0.3)" : "rgba(245,158,11,0.3)",
-              color: monitorDashboard.overdue > 0 ? "#ef4444" : "#f59e0b",
+              background: monitorRisks.some(r => r.riskLevel === "overdue") ? "rgba(239,68,68,0.08)" : "rgba(245,158,11,0.08)",
+              borderColor: monitorRisks.some(r => r.riskLevel === "overdue") ? "rgba(239,68,68,0.3)" : "rgba(245,158,11,0.3)",
+              color: monitorRisks.some(r => r.riskLevel === "overdue") ? "#ef4444" : "#f59e0b",
             }}
           >
             <AlertTriangle className="h-3.5 w-3.5" />
@@ -1331,23 +1425,47 @@ export default function TasksOverview() {
           <div className="flex items-center gap-3 px-4 py-3 border-b border-[hsl(var(--border))]/40 bg-[hsl(var(--muted))]/20">
             <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
             <span className="text-xs font-black uppercase tracking-widest text-[hsl(var(--foreground))]/70">Monitor de execução</span>
-            {monitorDashboard && (
+            {monitorRisks.length > 0 && (
               <div className="flex items-center gap-3 ml-2">
-                {monitorDashboard.overdue > 0 && (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20">
-                    {monitorDashboard.overdue} atrasada{monitorDashboard.overdue !== 1 ? "s" : ""}
-                  </span>
-                )}
-                {monitorDashboard.missedTotal > 0 && (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                    {monitorDashboard.missedTotal} sessão não executada{monitorDashboard.missedTotal !== 1 ? "s" : ""}
-                  </span>
-                )}
-                {monitorDashboard.pendingToday > 0 && (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                    {monitorDashboard.pendingToday} sessão hoje sem confirmação
-                  </span>
-                )}
+                {(() => {
+                  const nOverdue     = monitorRisks.filter(r => r.riskLevel === "overdue").length;
+                  const nNotStarted  = monitorRisks.filter(r => r.riskLevel === "not_started").length;
+                  const nCritical    = monitorRisks.filter(r => r.riskLevel === "critical").length;
+                  const nAtRisk      = monitorRisks.filter(r => r.riskLevel === "at_risk").length;
+                  const nRecovering  = monitorRisks.filter(r => r.riskLevel === "recovering").length;
+                  return (<>
+                    {nOverdue > 0 && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20">
+                        {nOverdue} prazo vencido{nOverdue !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {nCritical > 0 && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-500 border border-orange-500/20">
+                        {nCritical} crítica{nCritical !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {nNotStarted > 0 && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-500 border border-violet-500/20">
+                        {nNotStarted} não iniciada{nNotStarted !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {nAtRisk > 0 && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                        {nAtRisk} em risco
+                      </span>
+                    )}
+                    {nRecovering > 0 && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-500 border border-cyan-500/20">
+                        {nRecovering} em recuperação
+                      </span>
+                    )}
+                    {monitorDashboard && monitorDashboard.pendingToday > 0 && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                        {monitorDashboard.pendingToday} {monitorDashboard.pendingToday !== 1 ? "sessões" : "sessão"} hoje sem confirmação
+                      </span>
+                    )}
+                  </>);
+                })()}
               </div>
             )}
             <button onClick={loadMonitor} className="ml-auto opacity-40 hover:opacity-80 transition-opacity">
@@ -1371,19 +1489,22 @@ export default function TasksOverview() {
             <div className="divide-y divide-[hsl(var(--border))]/30">
               {monitorRisks.map(r => {
                 const RISK_COLOR: Record<string, string> = {
-                  overdue: "#ef4444", critical: "#f97316", not_started: "#8b5cf6", at_risk: "#f59e0b",
+                  overdue: "#ef4444", critical: "#f97316", not_started: "#8b5cf6",
+                  at_risk: "#f59e0b", recovering: "#06b6d4",
                 };
                 const RISK_LABEL: Record<string, string> = {
-                  overdue: "Atrasada", critical: "Crítico", not_started: "Não iniciada", at_risk: "Em risco",
+                  overdue: "Prazo vencido", critical: "Crítico", not_started: "Não iniciada",
+                  at_risk: "Em risco", recovering: "Em recuperação",
                 };
                 const color = RISK_COLOR[r.riskLevel] ?? "#94a3b8";
+                const canReplan = ["critical","at_risk","not_started","overdue","recovering"].includes(r.riskLevel);
                 return (
-                  <div key={r.taskId}
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/20 cursor-pointer transition-colors"
-                    onClick={() => { setEditTaskId(r.taskId); setFormOpen(true); setMonitorOpen(false); }}
-                  >
+                  <div key={r.taskId} className="flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/20 transition-colors group">
                     <div className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
-                    <div className="flex-1 min-w-0">
+                    <div
+                      className="flex-1 min-w-0 cursor-pointer"
+                      onClick={() => { setEditTaskId(r.taskId); setFormOpen(true); setMonitorOpen(false); }}
+                    >
                       <div className="flex items-baseline gap-2">
                         <span className="text-[10px] font-mono font-semibold text-[hsl(var(--primary))]/60">{r.taskCode}</span>
                         <span className="text-sm font-semibold truncate text-[hsl(var(--foreground))]/85">{r.taskTitle}</span>
@@ -1395,18 +1516,18 @@ export default function TasksOverview() {
                         </span>
                         {r.missedSlots > 0 && (
                           <span className="text-[10px] text-[hsl(var(--muted-foreground))]/55">
-                            {r.missedSlots} sessão{r.missedSlots !== 1 ? "ões" : ""} perdida{r.missedSlots !== 1 ? "s" : ""} · {r.hoursLost}h
+                            {r.missedSlots} {r.missedSlots !== 1 ? "sessões" : "sessão"} não executada{r.missedSlots !== 1 ? "s" : ""} · {r.hoursLost}h
                           </span>
                         )}
                         {r.remainingEffort > 0 && (
                           <span className="text-[10px] text-[hsl(var(--muted-foreground))]/55">
                             {r.remainingEffort}h restantes
-                            {r.remainingCapacity > 0 ? ` / ${r.remainingCapacity}h capacidade` : " · sem slots futuros"}
+                            {r.remainingCapacity > 0 ? ` / ${r.remainingCapacity}h disponíveis` : " · sem sessões futuras"}
                           </span>
                         )}
                         {r.dueDate && (
                           <span className="text-[10px] text-[hsl(var(--muted-foreground))]/55">
-                            prazo {r.daysUntilDeadline < 0 ? `há ${Math.abs(r.daysUntilDeadline)}d` : r.daysUntilDeadline === 0 ? "hoje" : `em ${r.daysUntilDeadline}d`}
+                            entrega {r.daysUntilDeadline < 0 ? `atrasada ${Math.abs(r.daysUntilDeadline)}d` : r.daysUntilDeadline === 0 ? "hoje" : `em ${r.daysUntilDeadline}d`}
                           </span>
                         )}
                         {r.nextSlot && (
@@ -1416,6 +1537,17 @@ export default function TasksOverview() {
                         )}
                       </div>
                     </div>
+                    {canReplan && (
+                      <button
+                        onClick={e => { e.stopPropagation(); openReplano(r.taskId); }}
+                        className="shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-full border transition-all
+                          opacity-0 group-hover:opacity-100
+                          bg-[hsl(var(--primary))]/5 border-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]
+                          hover:bg-[hsl(var(--primary))]/15"
+                      >
+                        Replaneja
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -1423,6 +1555,283 @@ export default function TasksOverview() {
           )}
         </div>
       )}
+
+      {/* ── Modal REPLANO (wizard 5 steps) ──────────────────────────────── */}
+      {(() => {
+        const STEPS = ["O que aconteceu", "Como e quem?", "Prazo do cliente", "Confirmar"];
+        const closeReplano = () => { setReplanoTaskId(null); setReplanoCtx(null); setReplanoPreview(null); setReplanoStep(0); };
+        const selectedEditor = replanoEditors.find(e => e.id === replanoEditorId);
+        const canNext =
+          replanoStep === 0 ? true :
+          replanoStep === 1 ? !!replanoEditorId :
+          replanoStep === 2 ? !!replanoNewDate :
+          false;
+
+        return (
+          <Dialog open={!!replanoTaskId} onOpenChange={open => { if (!open) closeReplano(); }}>
+            <DialogContent className="w-[calc(100vw-16px)] sm:max-w-md p-0 gap-0 overflow-hidden rounded-3xl border border-[hsl(var(--border))] shadow-2xl bg-[hsl(var(--card))] [&>button]:hidden flex flex-col max-h-[88vh]">
+              <DialogTitle className="sr-only">Recuperar atraso</DialogTitle>
+
+              {/* ── Step indicator ─────────────────────────────────────── */}
+              <div className="px-6 pt-5 pb-4 shrink-0">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
+                    {replanoLoading ? "Carregando…" : `Passo ${replanoStep + 1} de ${STEPS.length}`}
+                  </span>
+                  <span className="text-[11px] font-semibold text-[hsl(var(--primary))]">{STEPS[replanoStep]}</span>
+                </div>
+                <div className="flex gap-1.5">
+                  {STEPS.map((_, i) => (
+                    <div key={i} className={`h-1 flex-1 rounded-full transition-all duration-300 ${
+                      i < replanoStep ? "bg-[hsl(var(--primary))]" :
+                      i === replanoStep ? "bg-[hsl(var(--primary))]/60" :
+                      "bg-[hsl(var(--border))]"
+                    }`} />
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Body ───────────────────────────────────────────────── */}
+              <div className="flex-1 overflow-y-auto overscroll-contain">
+                {replanoLoading ? (
+                  <div className="px-6 py-12 flex items-center justify-center gap-3">
+                    <div className="h-5 w-5 rounded-full border-2 border-[hsl(var(--primary))]/20 border-t-[hsl(var(--primary))] animate-spin" />
+                    <span className="text-sm text-[hsl(var(--muted-foreground))]">Analisando a situação…</span>
+                  </div>
+                ) : replanoCtx && (
+                  <div className="px-6 pb-5">
+
+                    {/* Título da tarefa (sempre visível) */}
+                    <p className="text-xl font-black border-b-2 pb-1 mb-5"
+                      style={{ borderBottomColor: "hsl(var(--primary))", opacity: 0.8 }}>
+                      {replanoCtx.taskTitle}
+                    </p>
+
+                    {/* ── STEP 1: O que aconteceu ─────────────────────── */}
+                    {replanoStep === 0 && (
+                      <div className="space-y-3">
+                        <div className="rounded-2xl bg-[hsl(var(--muted))]/30 divide-y divide-[hsl(var(--border))]/30">
+                          {replanoCtx.missedSlots > 0 && (
+                            <div className="flex items-center justify-between px-4 py-3">
+                              <span className="text-sm text-[hsl(var(--foreground))]/70">{replanoCtx.currentEditorName?.split(" ")[0]} não foi em</span>
+                              <span className="text-sm font-bold text-red-500">{replanoCtx.missedSlots} {replanoCtx.missedSlots !== 1 ? "sessões" : "sessão"} · {replanoCtx.hoursLost}h</span>
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between px-4 py-3">
+                            <span className="text-sm text-[hsl(var(--foreground))]/70">Já foi feito</span>
+                            <span className="text-sm font-bold text-emerald-500">{replanoCtx.confirmedHours}h</span>
+                          </div>
+                          <div className="flex items-center justify-between px-4 py-3">
+                            <span className="text-sm text-[hsl(var(--foreground))]/70">Ainda falta</span>
+                            <span className="text-sm font-bold text-[hsl(var(--foreground))]">{replanoCtx.remainingEffort}h</span>
+                          </div>
+                          <div className="flex items-center justify-between px-4 py-3">
+                            <span className="text-sm text-[hsl(var(--foreground))]/70">Prazo do cliente</span>
+                            <span className={`text-sm font-bold ${replanoCtx.daysUntilDeadline < 0 ? "text-red-500" : replanoCtx.daysUntilDeadline <= 3 ? "text-amber-500" : "text-[hsl(var(--foreground))]"}`}>
+                              {replanoCtx.daysUntilDeadline < 0
+                                ? `atrasou ${Math.abs(replanoCtx.daysUntilDeadline)}d`
+                                : replanoCtx.daysUntilDeadline === 0 ? "hoje"
+                                : `daqui ${replanoCtx.daysUntilDeadline}d`}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── STEP 2: Como distribuir + quem recupera (juntos) ── */}
+                    {replanoStep === 1 && (
+                      <div className="space-y-4">
+                        {/* Toggle modo — afeta o ranking abaixo */}
+                        <div className="space-y-1.5">
+                          <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Como distribuir os dias?</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {([
+                              { value: "consecutive" as const, label: "Dias seguidos", desc: "Termina mais rápido" },
+                              { value: "alternating" as const, label: "Dias alternados", desc: "Folga entre sessões" },
+                            ]).map(opt => (
+                              <button key={opt.value} onClick={() => {
+                                setReplanoMode(opt.value);
+                                if (replanoTaskId) {
+                                  refreshEditors(replanoTaskId, opt.value);
+                                  if (replanoEditorId) refreshPreview(replanoTaskId, replanoEditorId, opt.value);
+                                }
+                              }}
+                                className={`flex flex-col items-start px-4 py-3 rounded-2xl border transition-all ${
+                                  replanoMode === opt.value
+                                    ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/5"
+                                    : "border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/30"
+                                }`}>
+                                <span className={`text-sm font-bold ${replanoMode === opt.value ? "text-[hsl(var(--primary))]" : ""}`}>{opt.label}</span>
+                                <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 mt-0.5">{opt.desc}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Ranking de editores (atualiza quando modo muda) */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Quem vai recuperar?</p>
+                            {replanoPreviewLoading && <div className="h-3 w-3 rounded-full border-2 border-[hsl(var(--primary))]/20 border-t-[hsl(var(--primary))] animate-spin" />}
+                          </div>
+                          {replanoEditors.map((e, i) => (
+                            <button key={e.id} onClick={() => {
+                              setReplanoEditorId(e.id);
+                              if (replanoTaskId) refreshPreview(replanoTaskId, e.id, replanoMode);
+                            }}
+                              className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border transition-all text-left ${
+                                replanoEditorId === e.id
+                                  ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/5"
+                                  : "border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/30"
+                              }`}>
+                              <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${replanoEditorId === e.id ? "border-[hsl(var(--primary))]" : "border-[hsl(var(--muted-foreground))]/30"}`}>
+                                {replanoEditorId === e.id && <div className="w-2 h-2 rounded-full bg-[hsl(var(--primary))]" />}
+                              </div>
+                              <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={28} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-sm font-semibold">{e.name}</span>
+                                  {e.isCurrent && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]">mesmo editor</span>}
+                                  {i === 0 && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600">mais rápido</span>}
+                                </div>
+                                <span className="text-[11px] text-[hsl(var(--muted-foreground))]/60">
+                                  {e.feasible && e.completionDate
+                                    ? `termina em ${new Date(e.completionDate + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`
+                                    : "sem disponibilidade"}
+                                </span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── STEP 3: Prazo do cliente ────────────────────── */}
+                    {replanoStep === 2 && (
+                      <div className="space-y-3">
+                        {replanoPreview?.deadlineExtended ? (
+                          <div className="flex items-start gap-3 px-4 py-3 rounded-2xl bg-amber-500/8 border border-amber-500/20">
+                            <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-sm font-bold text-amber-600 dark:text-amber-400">O prazo atual não dá mais tempo</p>
+                              <p className="text-xs text-amber-500/80 mt-0.5">A nova agenda termina depois do prazo combinado com o cliente. Defina uma nova data abaixo.</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-start gap-3 px-4 py-3 rounded-2xl bg-emerald-500/8 border border-emerald-500/20">
+                            <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                            <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">A nova agenda termina antes do prazo combinado com o cliente.</p>
+                          </div>
+                        )}
+                        <div className="space-y-1.5">
+                          <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Quando o cliente precisa receber?</p>
+                          <input
+                            type="date"
+                            value={replanoNewDate}
+                            onChange={e => setReplanoNewDate(e.target.value)}
+                            className="w-full h-10 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]/30"
+                          />
+                          {replanoCtx.originalDueDate && replanoNewDate !== replanoCtx.originalDueDate && (
+                            <p className="text-[11px] text-[hsl(var(--muted-foreground))]/60">
+                              Prazo original: {new Date(replanoCtx.originalDueDate + "T12:00:00").toLocaleDateString("pt-BR")}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── STEP 4: Resumo e confirmação ────────────────── */}
+                    {replanoStep === 3 && replanoPreview && (
+                      <div className="space-y-4">
+                        <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Isso é o que vai acontecer</p>
+
+                        {/* Quem */}
+                        <div className="rounded-2xl bg-[hsl(var(--muted))]/30 px-4 py-3 flex items-center gap-3">
+                          {selectedEditor && <AvatarDisplay name={selectedEditor.name} avatarUrl={selectedEditor.avatarUrl} size={32} />}
+                          <div>
+                            <p className="text-sm font-bold">{selectedEditor?.name ?? "—"}</p>
+                            <p className="text-[11px] text-[hsl(var(--muted-foreground))]/60">
+                              {replanoMode === "consecutive" ? "dias seguidos" : "dias alternados"} · {replanoCtx.remainingEffort}h restantes
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Sessões */}
+                        <div className="space-y-1.5">
+                          <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                            {replanoPreview.newSlots.length} {replanoPreview.newSlots.length !== 1 ? "novas sessões" : "nova sessão"} agendada{replanoPreview.newSlots.length !== 1 ? "s" : ""}
+                          </p>
+                          {replanoPreview.newSlots.map((s, i) => (
+                            <div key={i} className="flex items-center justify-between rounded-2xl bg-[hsl(var(--muted))]/30 px-4 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--primary))]/60 shrink-0" />
+                                <span className="text-sm font-semibold capitalize">
+                                  {new Date(s.date + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" })}
+                                </span>
+                              </div>
+                              <span className="text-xs text-[hsl(var(--muted-foreground))]/60 tabular-nums">
+                                {s.startTime} – {s.endTime} · <span className="font-bold text-[hsl(var(--foreground))]/70">{s.hours}h</span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Prazo */}
+                        <div className="rounded-2xl bg-[hsl(var(--muted))]/30 px-4 py-3 flex items-center justify-between">
+                          <span className="text-sm text-[hsl(var(--foreground))]/70">Prazo do cliente</span>
+                          <span className="text-sm font-bold">
+                            {replanoNewDate
+                              ? new Date(replanoNewDate + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "long" })
+                              : "—"}
+                            {replanoPreview.deadlineExtended && replanoCtx.originalDueDate && replanoNewDate !== replanoCtx.originalDueDate && (
+                              <span className="ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500">ajustado</span>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+                )}
+              </div>
+
+              {/* ── Footer (navegação) ──────────────────────────────────── */}
+              <div className="px-6 py-4 border-t border-[hsl(var(--border))]/60 shrink-0 bg-[hsl(var(--card))]">
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => replanoStep === 0 ? closeReplano() : setReplanoStep(s => s - 1)}
+                    className="h-9 px-4 rounded-full text-sm font-medium border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/60 transition-colors"
+                  >
+                    {replanoStep === 0 ? "Cancelar" : "Voltar"}
+                  </button>
+
+                  {replanoStep < 3 ? (
+                    <button
+                      onClick={() => setReplanoStep(s => s + 1)}
+                      disabled={!canNext || replanoLoading}
+                      className="h-9 px-6 rounded-full text-sm font-black text-white disabled:opacity-40 transition-colors"
+                      style={{ background: "hsl(var(--primary))" }}
+                    >
+                      Próximo
+                    </button>
+                  ) : (
+                    <button
+                      onClick={applyReplano}
+                      disabled={replanoApplying || !replanoPreview?.feasible || !replanoEditorId}
+                      className="h-9 px-6 rounded-full text-sm font-black text-white disabled:opacity-40 transition-colors flex items-center gap-1.5"
+                      style={{ background: "hsl(var(--primary))" }}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      {replanoApplying ? "Confirmando…" : "Confirmar nova agenda"}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
       {/* ── Table ────────────────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm overflow-hidden flex flex-col">

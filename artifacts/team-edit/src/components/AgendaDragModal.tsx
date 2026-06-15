@@ -9,6 +9,7 @@ import { apiFetch, apiPost } from "@/lib/api";
 import { localISOString } from "@/lib/date";
 import { toast } from "sonner";
 import { Loader2, AlertTriangle, Calendar } from "lucide-react";
+import { DatePicker } from "@/components/ui/date-picker";
 
 // ── Tipos internos ────────────────────────────────────────────────────────────
 
@@ -108,7 +109,7 @@ function Avatar({ name, avatarUrl, size = 32 }: { name: string; avatarUrl: strin
 
 // ── Componente ────────────────────────────────────────────────────────────────
 
-type Step = "title" | "confirm" | "searching" | "conflict" | "displacement";
+type Step = "title" | "deadline" | "confirm" | "searching" | "conflict" | "displacement";
 
 export function AgendaDragModal({
   open, onClose, onCreated,
@@ -119,14 +120,15 @@ export function AgendaDragModal({
   const [step, setStep] = useState<Step>("title");
 
   // Form
-  const [title,        setTitle]       = useState("");
-  const [client,       setClient]      = useState("");
-  const [clientSearch, setClientSearch]= useState("");
-  const [clientOpen,   setClientOpen]  = useState(false);
-  const [description,  setDescription] = useState("");
-  const [folderUrl,    setFolderUrl]   = useState("");
-  const [priority,     setPriority]    = useState("medium");
-  const [saving,       setSaving]      = useState(false);
+  const [title,           setTitle]          = useState("");
+  const [client,          setClient]         = useState("");
+  const [clientSearch,    setClientSearch]   = useState("");
+  const [clientOpen,      setClientOpen]     = useState(false);
+  const [description,     setDescription]    = useState("");
+  const [folderUrl,       setFolderUrl]      = useState("");
+  const [priority,        setPriority]       = useState("medium");
+  const [clientDeadline,  setClientDeadline] = useState("");  // prazo do cliente (dueDate)
+  const [saving,          setSaving]         = useState(false);
 
   // Data
   const [clients,         setClients]        = useState<{ id: number; name: string }[]>([]);
@@ -139,7 +141,7 @@ export function AgendaDragModal({
     if (!open) return;
     setStep("title");
     setTitle(""); setClient(""); setClientSearch(""); setClientOpen(false);
-    setDescription(""); setFolderUrl(""); setPriority("medium");
+    setDescription(""); setFolderUrl(""); setPriority("medium"); setClientDeadline("");
     setSaving(false); setSelected(null); setConflictData(null); setDisplacement(null);
     apiFetch<{ id: number; name: string }[]>("/api/clients").then(setClients).catch(() => {});
     setTimeout(() => titleInputRef.current?.focus(), 80);
@@ -216,7 +218,7 @@ export function AgendaDragModal({
       priority,
       assignedToId:  opt.editor.id,
       startDate:     firstSlot ? localISOString(firstSlot.date, firstSlot.startTime ?? startTime) : null,
-      dueDate:       localISOString(date, endTime),
+      dueDate:       clientDeadline ? clientDeadline + "T23:59:59" : localISOString(date, endTime),
       effortHours,
       status:        "pending",
       escalaManaged: true,
@@ -266,7 +268,7 @@ export function AgendaDragModal({
         priority,
         assignedToId:  selected.editor.id,
         startDate:     firstSlot ? localISOString(firstSlot.date, firstSlot.startTime ?? startTime) : null,
-        dueDate:       localISOString(date, endTime),
+        dueDate:       clientDeadline ? clientDeadline + "T23:59:59" : localISOString(date, endTime),
         effortHours,
         status:        "pending",
         escalaManaged: true,
@@ -292,8 +294,8 @@ export function AgendaDragModal({
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  // Dots: step 0 = title, step 1 = confirm. Searching/conflict/displacement não mostram dots.
-  const dotIdx = step === "title" ? 0 : step === "confirm" ? 1 : -1;
+  // Dots: 0=title, 1=deadline, 2=confirm. Searching/conflict/displacement não mostram dots.
+  const dotIdx = step === "title" ? 0 : step === "deadline" ? 1 : step === "confirm" ? 2 : -1;
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
@@ -305,7 +307,7 @@ export function AgendaDragModal({
         {/* Step dots */}
         {dotIdx >= 0 && (
           <div className="flex items-center justify-end gap-1.5 px-6 pt-5 pb-1">
-            {[0, 1].map(i => (
+            {[0, 1, 2].map(i => (
               <div key={i} className="h-1 rounded-full transition-all duration-300"
                 style={{
                   width:      i === dotIdx ? 22 : 5,
@@ -323,7 +325,7 @@ export function AgendaDragModal({
             <div>
               <p className="text-4xl font-black leading-none tracking-tight">tarefa?</p>
               <p className="text-sm mt-2" style={{ color: "hsl(var(--muted-foreground))" }}>
-                informe o nome da tarefa
+                qual é o nome da tarefa?
               </p>
             </div>
 
@@ -331,7 +333,7 @@ export function AgendaDragModal({
               ref={titleInputRef}
               value={title}
               onChange={e => setTitle(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && title.trim() && setStep("confirm")}
+              onKeyDown={e => e.key === "Enter" && title.trim() && setStep("deadline")}
               placeholder="ex: edição spot 30s…"
               className="w-full h-12 px-0 text-lg font-medium border-0 border-b-2 bg-transparent focus:outline-none transition-colors placeholder:text-[hsl(var(--muted-foreground))]/25"
               style={{ borderBottomColor: title ? "hsl(var(--primary))" : "hsl(var(--border))" }}
@@ -352,7 +354,54 @@ export function AgendaDragModal({
             </div>
 
             <div className="flex justify-end mt-auto">
-              <button disabled={!title.trim()} onClick={() => setStep("confirm")}
+              <button disabled={!title.trim()} onClick={() => setStep("deadline")}
+                className="h-11 px-7 rounded-full text-sm font-black text-white disabled:opacity-30 tracking-wide"
+                style={{ background: "hsl(var(--primary))" }}>
+                próximo →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── deadline ────────────────────────────────────────────────────── */}
+        {step === "deadline" && (
+          <div className="px-6 pt-8 pb-6 flex flex-col gap-6" style={{ minHeight: 340 }}>
+            <div>
+              <p className="text-4xl font-black leading-none tracking-tight">quando<br />entrega?</p>
+              <p className="text-sm mt-2" style={{ color: "hsl(var(--muted-foreground))" }}>
+                qual a data limite pra chegar no cliente?
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <DatePicker
+                value={clientDeadline}
+                onChange={setClientDeadline}
+                placeholder="escolha a data…"
+                minDate={date}
+                className="h-12 rounded-2xl text-base"
+              />
+              {clientDeadline && (
+                <p className="text-sm font-semibold" style={{ color: "hsl(var(--primary))" }}>
+                  {new Date(clientDeadline + "T12:00:00").toLocaleDateString("pt-BR", {
+                    weekday: "long", day: "2-digit", month: "long"
+                  })}
+                </p>
+              )}
+              <p className="text-xs" style={{ color: "hsl(var(--muted-foreground)/0.5)" }}>
+                o sistema usa isso pra te avisar se tiver atrasando e pra reagendar quando precisar.
+              </p>
+            </div>
+
+            <div className="flex justify-between mt-auto">
+              <button onClick={() => setStep("title")}
+                className="h-11 px-5 rounded-full text-sm font-medium hover:bg-[hsl(var(--muted))] transition-colors"
+                style={{ color: "hsl(var(--muted-foreground))" }}>
+                ← voltar
+              </button>
+              <button
+                disabled={!clientDeadline}
+                onClick={() => setStep("confirm")}
                 className="h-11 px-7 rounded-full text-sm font-black text-white disabled:opacity-30 tracking-wide"
                 style={{ background: "hsl(var(--primary))" }}>
                 próximo →
@@ -366,41 +415,57 @@ export function AgendaDragModal({
           <div className="flex flex-col" style={{ maxHeight: "calc(90vh - 68px)" }}>
             <div className="px-5 py-4 overflow-y-auto flex-1 space-y-5">
 
-              {/* Card editor + contexto */}
-              <div className="rounded-2xl p-4 flex items-start gap-3"
-                style={{ background: "hsl(var(--primary)/0.06)", outline: "1px solid hsl(var(--primary)/0.15)" }}>
-                <Avatar name={editorName} avatarUrl={editorAvatar} size={40} />
-                <div className="min-w-0 flex-1">
-                  <p className="font-black text-sm">{editorName}</p>
-                  <p className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
-                    {fmtH(effortHours)} · {fmtWeekDay(date)} {fmtDate(date)}
-                  </p>
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md"
-                      style={{ background: "hsl(var(--primary)/0.1)", color: "hsl(var(--primary))" }}>
-                      {startTime}–{endTime}
-                    </span>
-                  </div>
-                </div>
-              </div>
+              {/* Card resumo */}
+              <div className="rounded-2xl overflow-hidden"
+                style={{ outline: "1px solid hsl(var(--primary)/0.18)" }}>
 
-              {/* Tarefa — read-only */}
-              <div className="space-y-1">
-                <p className="text-[9px] font-black uppercase tracking-[0.15em]"
-                  style={{ color: "hsl(var(--muted-foreground)/0.5)" }}>tarefa</p>
-                <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
-                  style={{ background: "hsl(var(--muted)/0.5)" }}>
-                  <span className="text-sm font-medium flex-1 truncate">{title}</span>
+                {/* Linha 1 — data do cliente (destaque) */}
+                <div className="flex items-center justify-between px-4 py-3"
+                  style={{ background: "hsl(var(--primary)/0.10)" }}>
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-[9px] font-black uppercase tracking-[0.15em]"
+                      style={{ color: "hsl(var(--primary)/0.7)" }}>data do cliente</p>
+                    <p className="text-sm font-black" style={{ color: "hsl(var(--primary))" }}>
+                      {new Date(clientDeadline + "T12:00:00").toLocaleDateString("pt-BR", {
+                        weekday: "long", day: "2-digit", month: "short"
+                      })}
+                    </p>
+                  </div>
+                  <button onClick={() => setStep("deadline")}
+                    className="text-[10px] font-black uppercase tracking-widest transition-opacity hover:opacity-60"
+                    style={{ color: "hsl(var(--primary))" }}>trocar</button>
+                </div>
+
+                {/* Linha 2 — job */}
+                <div className="flex items-center justify-between px-4 py-3"
+                  style={{ background: "hsl(var(--primary)/0.04)", borderTop: "1px solid hsl(var(--primary)/0.10)" }}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[9px] font-black uppercase tracking-[0.12em] shrink-0"
+                      style={{ color: "hsl(var(--muted-foreground)/0.5)" }}>tarefa</span>
+                    <span className="text-sm font-bold truncate">{title}</span>
+                  </div>
                   <button onClick={() => setStep("title")}
-                    className="text-[10px] font-black uppercase tracking-widest shrink-0 transition-opacity hover:opacity-60"
-                    style={{ color: "hsl(var(--primary))" }}>editar</button>
+                    className="text-[10px] font-black uppercase tracking-widest shrink-0 ml-3 transition-opacity hover:opacity-60"
+                    style={{ color: "hsl(var(--primary))" }}>trocar</button>
+                </div>
+
+                {/* Linha 3 — editor + sessão */}
+                <div className="flex items-center gap-3 px-4 py-3"
+                  style={{ borderTop: "1px solid hsl(var(--primary)/0.10)" }}>
+                  <Avatar name={editorName} avatarUrl={editorAvatar} size={30} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-black">{editorName.split(" ")[0]}</p>
+                    <p className="text-[11px] mt-0.5 tabular-nums" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      {fmtWeekDay(date)} {fmtDate(date)} · {startTime}–{endTime} · {fmtH(effortHours)}
+                    </p>
+                  </div>
                 </div>
               </div>
 
               {/* Cliente */}
               <div className="space-y-1">
                 <p className="text-[9px] font-black uppercase tracking-[0.15em]"
-                  style={{ color: "hsl(var(--muted-foreground)/0.5)" }}>cliente</p>
+                  style={{ color: "hsl(var(--muted-foreground)/0.5)" }}>pra qual cliente?</p>
                 <div className="relative">
                   <input
                     value={clientSearch || client}
@@ -441,14 +506,14 @@ export function AgendaDragModal({
                 <p className="text-[9px] font-black uppercase tracking-[0.15em]"
                   style={{ color: "hsl(var(--muted-foreground)/0.5)" }}>briefing</p>
                 <textarea value={description} onChange={e => setDescription(e.target.value)}
-                  placeholder="descreve o que precisa ser feito…" rows={3}
+                  placeholder="descreve o job, referências, o que não pode falhar…" rows={3}
                   className="w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.2)]" />
               </div>
 
               {/* Pasta */}
               <div className="space-y-1">
                 <p className="text-[9px] font-black uppercase tracking-[0.15em]"
-                  style={{ color: "hsl(var(--muted-foreground)/0.5)" }}>pasta / link dos arquivos</p>
+                  style={{ color: "hsl(var(--muted-foreground)/0.5)" }}>pasta / arquivos</p>
                 <input value={folderUrl} onChange={e => setFolderUrl(e.target.value)}
                   placeholder="https://drive.google.com/…"
                   className="w-full h-10 px-3 text-sm rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.2)]" />
@@ -457,7 +522,7 @@ export function AgendaDragModal({
               {/* Prioridade */}
               <div className="space-y-2">
                 <p className="text-[9px] font-black uppercase tracking-[0.15em]"
-                  style={{ color: "hsl(var(--muted-foreground)/0.5)" }}>prioridade</p>
+                  style={{ color: "hsl(var(--muted-foreground)/0.5)" }}>urgência</p>
                 <div className="flex gap-2">
                   {PRIORITY_OPTS.map(p => (
                     <button key={p.value} onClick={() => setPriority(p.value)}
@@ -470,10 +535,11 @@ export function AgendaDragModal({
                   ))}
                 </div>
               </div>
+
             </div>
 
             <div className="flex justify-between px-5 py-4 border-t border-[hsl(var(--border))] shrink-0">
-              <button onClick={() => setStep("title")}
+              <button onClick={() => setStep("deadline")}
                 className="h-11 px-5 rounded-full text-sm font-medium hover:bg-[hsl(var(--muted))] transition-colors"
                 style={{ color: "hsl(var(--muted-foreground))" }}>
                 ← voltar
@@ -482,8 +548,8 @@ export function AgendaDragModal({
                 className="h-11 px-7 rounded-full text-sm font-black text-white disabled:opacity-60 flex items-center gap-2 tracking-wide"
                 style={{ background: "hsl(var(--primary))" }}>
                 {saving
-                  ? <><Loader2 className="h-4 w-4 animate-spin" /> calculando…</>
-                  : <><Calendar className="h-4 w-4" /> criar tarefa</>}
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> buscando slot…</>
+                  : <><Calendar className="h-4 w-4" /> confirmar tarefa</>}
               </button>
             </div>
           </div>

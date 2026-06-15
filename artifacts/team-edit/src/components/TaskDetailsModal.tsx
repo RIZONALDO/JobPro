@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
 import { toast } from "sonner";
 import { FolderOpen, Copy, Check, Layers, FileText, Calendar } from "lucide-react";
+import { DatePicker } from "@/components/ui/date-picker";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
 
@@ -175,26 +176,32 @@ export function TaskDetailsModal({ open, onOpenChange, taskId }: Props) {
                 </div>
               </div>
 
-              {/* ── Agenda ─────────────────────────────────────────────── */}
-              {(task.startDate || task.dueDate) && (
+              {/* ── Data do cliente ────────────────────────────────────── */}
+              <div className="space-y-2">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Data do cliente</p>
+                <DatePicker
+                  value={task.dueDate ?? ""}
+                  onChange={() => {}}
+                  placeholder="Sem prazo definido"
+                  className="opacity-70 pointer-events-none"
+                />
+              </div>
+
+              {/* ── Agenda (sessões de trabalho) ────────────────────────── */}
+              {task.startDate && (
                 <div className="space-y-2">
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Agenda</p>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Sessões de trabalho</p>
                   <div className="h-10 flex items-center gap-2 px-3 rounded-2xl bg-[hsl(var(--muted))]/30 border border-[hsl(var(--border))] opacity-70">
                     <Calendar className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]/50 shrink-0" />
-                    {task.startDate && (
-                      <span className="text-sm font-semibold tabular-nums">{fmtTime(task.startDate)}</span>
-                    )}
-                    {task.startDate && task.dueDate && (
-                      <span className="text-[hsl(var(--muted-foreground))]/30 text-xs">→</span>
-                    )}
+                    <span className="text-sm font-semibold tabular-nums">{fmtTime(task.startDate)}</span>
                     {task.dueDate && (() => {
-                      const sameDay = task.startDate &&
-                        new Date(task.startDate).toDateString() === new Date(task.dueDate!).toDateString();
-                      return (
-                        <span className="text-sm font-semibold tabular-nums">
-                          {sameDay ? fmtTime(task.dueDate) : fmtDT(task.dueDate)}
-                        </span>
-                      );
+                      const sameDay = new Date(task.startDate!).toDateString() === new Date(task.dueDate!).toDateString();
+                      return !sameDay ? (
+                        <>
+                          <span className="text-[hsl(var(--muted-foreground))]/30 text-xs">→</span>
+                          <span className="text-sm font-semibold tabular-nums">{fmtDT(task.dueDate!)}</span>
+                        </>
+                      ) : null;
                     })()}
                   </div>
                 </div>

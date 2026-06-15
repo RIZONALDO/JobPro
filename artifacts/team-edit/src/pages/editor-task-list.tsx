@@ -151,6 +151,8 @@ export default function EditorTaskList() {
   const [scheduleSlots, setScheduleSlots] = useState<ScheduleSlot[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
 
+  const isEditor = user?.role === "editor";
+
   // ── MONITOR: slots de hoje do editor ─────────────────────────────────────
   interface TodaySlot {
     id: number; taskId: number; taskCode: string; taskTitle: string;
@@ -180,7 +182,6 @@ export default function EditorTaskList() {
     } catch { toast.error("Erro ao registrar sessão"); }
     finally { setConfirmingSlot(null); }
   };
-  const isEditor = user?.role === "editor";
   const todaySections = isEditor ? TODAY_SECTIONS_EDITOR : TODAY_SECTIONS_COORD;
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
     () => new Set(todaySections.filter(s => s.defaultCollapsed).map(s => s.key))

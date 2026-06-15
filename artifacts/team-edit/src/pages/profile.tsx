@@ -16,10 +16,11 @@ export default function Profile() {
   const { user, refresh } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [name,     setName]     = useState(user?.name     ?? "");
-  const [email,    setEmail]    = useState(user?.email    ?? "");
-  const [phone,    setPhone]    = useState(user?.phone    ?? "");
-  const [avatar,   setAvatar]   = useState(user?.avatarUrl ?? "");
+  const [name,         setName]         = useState(user?.name         ?? "");
+  const [email,        setEmail]        = useState(user?.email        ?? "");
+  const [phone,        setPhone]        = useState(user?.phone        ?? "");
+  const [avatar,       setAvatar]       = useState(user?.avatarUrl    ?? "");
+  const [profileColor, setProfileColor] = useState((user as any)?.profileColor ?? "");
 
   const [curPwd,   setCurPwd]   = useState("");
   const [newPwd,   setNewPwd]   = useState("");
@@ -37,6 +38,7 @@ export default function Profile() {
       setEmail(user.email ?? "");
       setPhone(user.phone ?? "");
       setAvatar(user.avatarUrl ?? "");
+      setProfileColor((user as any).profileColor ?? "");
     }
   }, [user]);
 
@@ -63,9 +65,10 @@ export default function Profile() {
     try {
       await apiPut("/api/auth/profile", {
         name:      name.trim() || undefined,
-        email:     email || null,
-        phone:     phone || null,
-        avatarUrl: avatar || null,
+        email:        email || null,
+        phone:        phone || null,
+        avatarUrl:    avatar || null,
+        profileColor: profileColor || null,
         ...(newPwd ? { currentPassword: curPwd, newPassword: newPwd } : {}),
       });
       await refresh();
@@ -162,6 +165,40 @@ export default function Profile() {
                   <Phone className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" /> Telefone
                 </Label>
                 <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(00) 00000-0000" />
+              </div>
+
+              {/* Minha cor */}
+              <div className="space-y-1.5">
+                <Label className="flex items-center gap-1.5">
+                  <span className="h-3.5 w-3.5 rounded-full border border-[hsl(var(--border))] shrink-0"
+                    style={{ background: profileColor || "hsl(var(--muted-foreground)/0.3)" }} />
+                  Minha cor
+                </Label>
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap gap-2">
+                    {["#6366f1","#8b5cf6","#ec4899","#ef4444","#f97316","#eab308","#22c55e","#14b8a6","#3b82f6","#64748b"].map(c => (
+                      <button key={c} type="button" onClick={() => setProfileColor(c)}
+                        className="h-7 w-7 rounded-full border-2 transition-transform hover:scale-110"
+                        style={{
+                          background: c,
+                          borderColor: profileColor === c ? "hsl(var(--foreground))" : "transparent",
+                          boxShadow: profileColor === c ? `0 0 0 2px hsl(var(--background)), 0 0 0 4px ${c}` : "none",
+                        }} />
+                    ))}
+                    <button type="button" onClick={() => setProfileColor("")}
+                      className="h-7 w-7 rounded-full border-2 border-dashed border-[hsl(var(--border))] transition-opacity hover:opacity-60 flex items-center justify-center text-[10px] text-[hsl(var(--muted-foreground))]"
+                      title="Sem cor">
+                      ×
+                    </button>
+                  </div>
+                  {profileColor && (
+                    <div className="h-7 w-7 rounded-full shrink-0 border border-[hsl(var(--border))]"
+                      style={{ background: profileColor }} />
+                  )}
+                </div>
+                <p className="text-[11px] text-[hsl(var(--muted-foreground))]/60">
+                  Usada para identificar suas tarefas na agenda individual.
+                </p>
               </div>
             </div>
           </div>

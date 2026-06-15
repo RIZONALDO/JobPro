@@ -898,7 +898,7 @@ router.get("/escala/editor/:id/schedule", requireCoordinator, async (req, res): 
   // Busca nomes e avatares dos coordenadores em lote
   const coordIds = [...new Set(rows.map(r => r.coordId).filter((id): id is number => id !== null))];
   const coords   = coordIds.length > 0
-    ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+    ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, profileColor: usersTable.profileColor })
         .from(usersTable).where(inArray(usersTable.id, coordIds))
     : [];
   const coordMap = new Map(coords.map(c => [c.id, c]));
@@ -909,7 +909,7 @@ router.get("/escala/editor/:id/schedule", requireCoordinator, async (req, res): 
     hours: number | null; status: string;
     description: string | null; priority: string | null;
     startDate: string | null; dueDate: string | null;
-    coordinator: { id: number; name: string; avatarUrl: string | null } | null;
+    coordinator: { id: number; name: string; avatarUrl: string | null; profileColor: string | null } | null;
   };
   const byDate = new Map<string, { date: string; slots: SlotOut[] }>();
   for (const r of rows) {
@@ -928,7 +928,7 @@ router.get("/escala/editor/:id/schedule", requireCoordinator, async (req, res): 
       priority:    r.priority ?? null,
       startDate:   r.startDate ? toDateStr(r.startDate instanceof Date ? r.startDate : new Date(r.startDate as any)) : null,
       dueDate:     r.dueDate   ? toDateStr(r.dueDate   instanceof Date ? r.dueDate   : new Date(r.dueDate   as any)) : null,
-      coordinator: coord ? { id: coord.id, name: coord.name, avatarUrl: coord.avatarUrl } : null,
+      coordinator: coord ? { id: coord.id, name: coord.name, avatarUrl: coord.avatarUrl, profileColor: coord.profileColor ?? null } : null,
     });
   }
 

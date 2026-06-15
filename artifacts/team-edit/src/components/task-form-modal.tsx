@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ClientCombobox } from "@/components/ui/client-combobox";
 import { FolderOpen, Copy, Check, Save, Layers, FileText, Trash2 } from "lucide-react";
+import { DatePicker } from "@/components/ui/date-picker";
 
 interface Props {
   open: boolean;
@@ -40,6 +41,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, onDelet
   const [taskCode, setTaskCode]   = useState("");
   const [taskType, setTaskType]   = useState("task");
   const [createdById, setCreatedById] = useState<number | null>(null);
+  const [dueDate,  setDueDate]    = useState("");
   const [saving, setSaving]       = useState(false);
   const [loading, setLoading]     = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -56,12 +58,13 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, onDelet
       title: string; description: string | null; client: string | null;
       folderUrl: string | null; priority: string; complexity: string;
       taskNumber?: number; taskYear?: number; taskType: string;
-      createdById?: number | null;
+      createdById?: number | null; dueDate?: string | null;
     }>(`/api/tasks/${editTaskId}`)
       .then(t => {
         setTaskCode(t.taskNumber && t.taskYear ? `${String(t.taskNumber).padStart(3,"0")}.${String(t.taskYear).slice(-2)}` : "");
         setTaskType(t.taskType ?? "task");
         setCreatedById(t.createdById ?? null);
+        setDueDate(t.dueDate ?? "");
         setForm({
           title:       t.title ?? "",
           description: t.description ?? "",
@@ -89,6 +92,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, onDelet
         client:      form.client || null,
         folderUrl:   form.folderUrl || null,
         priority:    form.priority,
+        dueDate:     dueDate || null,
         ...(!hideComplexity ? { complexity: form.complexity } : {}),
       });
       toast.success("Tarefa atualizada");
@@ -248,6 +252,29 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, onDelet
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* ── Data do cliente ────────────────────────────────────── */}
+              <div className="space-y-2">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                  Data do cliente
+                </p>
+                {isReadOnly ? (
+                  <div className="flex items-center h-9 px-3 gap-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20 opacity-70">
+                    <span className="text-sm text-[hsl(var(--muted-foreground))]">
+                      {dueDate
+                        ? new Date(dueDate.includes("T") ? dueDate : dueDate + "T12:00:00")
+                            .toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
+                        : "—"}
+                    </span>
+                  </div>
+                ) : (
+                  <DatePicker
+                    value={dueDate}
+                    onChange={setDueDate}
+                    placeholder="Quando o cliente precisa receber?"
+                  />
+                )}
               </div>
 
               {/* ── Complexidade (admin) ────────────────────────────────── */}

@@ -15,6 +15,7 @@ export const usersTable = pgTable("te_users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   theme: text("theme").notNull().default("dark"),
+  profileColor: text("profile_color"),  // cor pessoal do usuário (hex), usada para organização visual
 });
 
 export type User = typeof usersTable.$inferSelect;

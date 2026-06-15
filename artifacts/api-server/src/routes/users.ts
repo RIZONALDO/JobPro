@@ -19,6 +19,7 @@ router.get("/users", requireAuth, async (req, res): Promise<void> => {
     status: usersTable.status,
     avatarUrl: usersTable.avatarUrl,
     jobTitle: usersTable.jobTitle,
+    profileColor: usersTable.profileColor,
     createdAt: usersTable.createdAt,
   }).from(usersTable).orderBy(usersTable.name);
 
