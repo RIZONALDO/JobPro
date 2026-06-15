@@ -183,6 +183,7 @@ export default function EditorTaskList() {
         toast.success("Sessão registrada como não executada");
       }
       loadTodaySlots();
+      load(); // atualiza task list para refletir nova confirmação
     } catch { toast.error("Erro ao registrar sessão"); }
     finally { setConfirmingSlot(null); }
   };
@@ -452,8 +453,87 @@ export default function EditorTaskList() {
       header: "Ação",
       size: 128,
       cell: ({ row }) => {
-        const t = row.original;
-        const trans = transitions[t.status];
+        const t    = row.original;
+        const slot = todaySlots.find(s => s.taskId === t.id) ?? null;
+        const isEscala      = t.effortHours != null;
+        const hasSlotToday  = !!slot;
+        const slotScheduled = slot?.execStatus === "scheduled";
+        const slotDone      = slot && (slot.execStatus === "done" || slot.execStatus === "partial");
+        const isMulti       = (slot?.totalSlots ?? 0) > 1;
+        const isLast        = slot ? slot.slotIndex === slot.totalSlots : false;
+        const etapaLabel    = isMulti
+          ? (isLast ? "Etapa final" : `Etapa ${slot!.slotIndex}/${slot!.totalSlots}`)
+          : null;
+
+        // ── Tarefa ESCALA com sessão hoje ─────────────────────────────────────
+        if (isEscala && hasSlotToday) {
+          // pending → ainda não iniciou: "Iniciar [Etapa N/T]"
+          if (t.status === "pending" && slotScheduled) {
+            const label = etapaLabel ? `Iniciar · ${etapaLabel}` : "Iniciar";
+            return (
+              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                <Button size="sm" variant="default" className="h-7 text-xs px-2.5 w-full whitespace-nowrap"
+                  disabled={startingSaving || confirmingSlot === slot!.id}
+                  onClick={() => handleIniciarDireto(t)}>
+                  {label}
+                </Button>
+              </div>
+            );
+          }
+          // in_progress, sessão ainda não confirmada: "Concluir [etapa]"
+          if (t.status === "in_progress" && slotScheduled) {
+            const label = isMulti
+              ? (isLast ? "Concluir etapa final" : `Concluir ${etapaLabel}`)
+              : "✓ Concluí";
+            return (
+              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                <Button size="sm" variant="default" className="h-7 text-xs px-2.5 w-full whitespace-nowrap"
+                  disabled={confirmingSlot === slot!.id}
+                  onClick={() => confirmSlot(slot!, "done")}>
+                  {label}
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 w-7 px-0 text-[hsl(var(--muted-foreground))]/40 hover:text-red-500 shrink-0"
+                  disabled={confirmingSlot === slot!.id}
+                  title="Registrar como não executada"
+                  onClick={() => confirmSlot(slot!, "missed")}>
+                  ✗
+                </Button>
+              </div>
+            );
+          }
+          // in_progress, etapa final confirmada hoje → libera envio
+          if (t.status === "in_progress" && slotDone && isLast) {
+            return (
+              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                <Button size="sm" variant="outline" className="h-7 text-xs px-2.5 w-full whitespace-nowrap"
+                  onClick={() => setUploadTarget(t)}>
+                  Enviar para aprovação
+                </Button>
+              </div>
+            );
+          }
+          // in_progress, etapa intermediária confirmada hoje
+          if (t.status === "in_progress" && slotDone) {
+            return (
+              <div className="flex items-center px-1" onClick={e => e.stopPropagation()}>
+                <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1">
+                  <span>✓</span> {etapaLabel ?? "Sessão"} concluída
+                </span>
+              </div>
+            );
+          }
+        }
+
+        // ── Tarefa ESCALA agendada (sem slot hoje) ─────────────────────────
+        if (isEscala && !hasSlotToday && t.status === "pending") {
+          return (
+            <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+              <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full" disabled>Agendada</Button>
+            </div>
+          );
+        }
+
+        // ── Tarefa não-ESCALA ou fallback ─────────────────────────────────
         const startAllowed = !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR;
         return (
           <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
@@ -462,13 +542,19 @@ export default function EditorTaskList() {
                 ? <Button size="sm" variant="default" className="h-7 text-xs px-3 w-full" onClick={() => handleIniciarDireto(t)}>Iniciar</Button>
                 : <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full" disabled>Agendada</Button>
             )}
-            {trans && t.status !== "pending" && (
+            {t.status === "in_progress" && (
               <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full"
-                onClick={() => trans.next === "review" ? setUploadTarget(t) : updateStatus(t, trans.next)}>
-                {trans.shortLabel}
+                onClick={() => setUploadTarget(t)}>
+                Enviar
               </Button>
             )}
-            {!trans && t.status !== "pending" && (
+            {t.status === "reopened" && (
+              <Button size="sm" variant="outline" className="h-7 text-xs px-3 w-full"
+                onClick={() => updateStatus(t, "in_progress")}>
+                Retomar
+              </Button>
+            )}
+            {!["pending","in_progress","reopened"].includes(t.status) && (
               <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30 pl-1">—</span>
             )}
           </div>
@@ -498,7 +584,7 @@ export default function EditorTaskList() {
       },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ].filter(col => viewTab !== "scheduled" || !["status", "prioridade", "acao"].includes(col.id)), [viewTab, setUploadTarget, setReturnTarget, openTask]);
+  ].filter(col => viewTab !== "scheduled" || !["status", "prioridade", "acao"].includes(col.id)), [viewTab, setUploadTarget, setReturnTarget, openTask, todaySlots, confirmingSlot, startingSaving]);
 
   const table = useReactTable({
     data: tabFiltered,
@@ -522,68 +608,6 @@ export default function EditorTaskList() {
   return (
     <div className="space-y-4">
 
-      {/* ── MONITOR: sessões de hoje ─────────────────────────────────────── */}
-      {isEditor && todaySlots.length > 0 && (
-        <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[hsl(var(--border))]/30 bg-[hsl(var(--muted))]/20">
-            <Clock className="h-3.5 w-3.5 text-[hsl(var(--primary))]/60 shrink-0" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-[hsl(var(--foreground))]/50">Sessões de hoje</span>
-          </div>
-          {todaySlots.map(slot => {
-            const fmtT      = (t: string) => { const [h,m] = t.split(":").map(Number); return m===0?`${h}h`:`${h}h${String(m).padStart(2,"0")}`; };
-            const isDone    = slot.execStatus === "done" || slot.execStatus === "partial";
-            const isMissed  = slot.execStatus === "missed";
-            const isPending = slot.execStatus === "scheduled";
-            const isMulti   = slot.totalSlots > 1;
-            const isLast    = slot.slotIndex === slot.totalSlots;
-            const etapaLabel = isMulti
-              ? (isLast ? "Etapa final" : `Etapa ${slot.slotIndex}/${slot.totalSlots}`)
-              : null;
-            const btnLabel = isMulti
-              ? (isLast ? "Concluir etapa final" : "Concluir etapa")
-              : "✓ Concluí";
-            return (
-              <div key={slot.id} className="flex items-center gap-3 px-4 py-3 border-b border-[hsl(var(--border))]/20 last:border-0">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] font-mono font-semibold text-[hsl(var(--primary))]/60 shrink-0">{slot.taskCode}</span>
-                    <span className="text-sm font-semibold truncate text-[hsl(var(--foreground))]/85">{slot.taskTitle}</span>
-                    {etapaLabel && (
-                      <span className="shrink-0 text-[10px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]/70 border border-[hsl(var(--primary))]/20">
-                        {etapaLabel}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    {slot.startTime && slot.endTime && (
-                      <span className="text-xs tabular-nums text-[hsl(var(--muted-foreground))]/55">
-                        {fmtT(slot.startTime)} → {fmtT(slot.endTime)}
-                        {slot.allocatedHours ? ` · ${slot.allocatedHours}h` : ""}
-                      </span>
-                    )}
-                    {isDone   && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 border border-emerald-200/60">✓ Concluída</span>}
-                    {isMissed && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-50 dark:bg-red-950/30 text-red-500 border border-red-200/60">✗ Não executada</span>}
-                  </div>
-                </div>
-                {isPending && (
-                  <div className="shrink-0 flex items-center gap-1.5">
-                    <Button size="sm" variant="outline" className="h-7 text-xs px-2.5 gap-1 whitespace-nowrap"
-                      disabled={confirmingSlot === slot.id}
-                      onClick={() => confirmSlot(slot, "done")}>
-                      {btnLabel}
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-[hsl(var(--muted-foreground))]/60 hover:text-red-500"
-                      disabled={confirmingSlot === slot.id}
-                      onClick={() => confirmSlot(slot, "missed")}>
-                      ✗
-                    </Button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       {/* Toolbar */}
       <div className="flex items-center gap-2.5 flex-wrap rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm px-4 py-3">
