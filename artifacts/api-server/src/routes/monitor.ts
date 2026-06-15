@@ -272,32 +272,42 @@ router.get("/monitor/my-today", requireAuth, async (req: any, res: any): Promise
   const editorId = req.session.userId as number;
   const today    = toLocalStr(new Date());
 
-  const slots = await db
-    .select({
-      id:             taskAllocationsTable.id,
-      taskId:         tasksTable.id,
-      taskCode:       sql<string>`LPAD(${tasksTable.taskNumber}::text, 3, '0') || '.' || RIGHT(${tasksTable.taskYear}::text, 2)`,
-      taskTitle:      tasksTable.title,
-      client:         tasksTable.client,
-      status:         tasksTable.status,
-      startTime:      taskAllocationsTable.startTime,
-      endTime:        taskAllocationsTable.endTime,
-      allocatedHours: taskAllocationsTable.allocatedHours,
-      execStatus:     taskAllocationsTable.execStatus,
-      actualHours:    taskAllocationsTable.actualHours,
-      execNote:       taskAllocationsTable.execNote,
-    })
-    .from(taskAllocationsTable)
-    .innerJoin(tasksTable, eq(taskAllocationsTable.taskId, tasksTable.id))
-    .where(and(
-      eq(taskAllocationsTable.editorId, editorId),
-      eq(taskAllocationsTable.workDate, today),
-      inArray(tasksTable.status, [...ACTIVE_STATUSES]),
-      ne(tasksTable.taskType, "multi_task"),
-    ))
-    .orderBy(taskAllocationsTable.startTime);
+  // Window functions para slotIndex e totalSlots sobre TODAS as alocações do editor
+  const result = await db.execute(sql`
+    WITH ranked AS (
+      SELECT
+        id,
+        ROW_NUMBER() OVER (PARTITION BY task_id ORDER BY work_date) AS slot_index,
+        COUNT(*)     OVER (PARTITION BY task_id)                    AS total_slots
+      FROM te_task_allocations
+      WHERE editor_id = ${editorId}
+    )
+    SELECT
+      ta.id,
+      ta.task_id                                                          AS "taskId",
+      LPAD(t.task_number::text, 3, '0') || '.' || RIGHT(t.task_year::text, 2) AS "taskCode",
+      t.title                                                             AS "taskTitle",
+      t.client,
+      t.status,
+      ta.start_time    AS "startTime",
+      ta.end_time      AS "endTime",
+      ta.allocated_hours AS "allocatedHours",
+      ta.exec_status   AS "execStatus",
+      ta.actual_hours  AS "actualHours",
+      ta.exec_note     AS "execNote",
+      r.slot_index::int  AS "slotIndex",
+      r.total_slots::int AS "totalSlots"
+    FROM te_task_allocations ta
+    INNER JOIN te_tasks t ON t.id = ta.task_id
+    INNER JOIN ranked r   ON r.id = ta.id
+    WHERE ta.editor_id = ${editorId}
+      AND ta.work_date  = ${today}
+      AND t.status IN ('pending','in_progress','review','reopened')
+      AND t.task_type  != 'multi_task'
+    ORDER BY ta.start_time
+  `);
 
-  res.json(slots);
+  res.json(result.rows);
 });
 
 // ── POST /api/monitor/slots/:id/confirm — editor confirma sessão ──────────────

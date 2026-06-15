@@ -6,7 +6,7 @@
 import { Router } from "express";
 import { db, tasksTable, usersTable, taskAllocationsTable, taskCoordinatorsTable, appSettingsTable } from "@workspace/db";
 import { eq, ne, and, inArray, or, isNotNull, gte, lte, sql } from "drizzle-orm";
-import { requireCoordinator } from "../lib/auth.js";
+import { requireAuth, requireCoordinator } from "../lib/auth.js";
 import { broadcastTaskChange } from "../lib/broadcast.js";
 import { notify } from "../lib/notify.js";
 
@@ -853,9 +853,13 @@ router.get("/escala/allocations-on", requireCoordinator, async (req, res): Promi
 
 // ── GET /api/escala/editor/:id/schedule ─────────────────────────────────────
 // Retorna alocações de um editor agrupadas por data, para os próximos N dias.
-router.get("/escala/editor/:id/schedule", requireCoordinator, async (req, res): Promise<void> => {
+router.get("/escala/editor/:id/schedule", requireAuth, async (req: any, res: any): Promise<void> => {
   const editorId = parseInt(req.params.id as string, 10);
   if (isNaN(editorId)) { res.status(400).json({ error: "ID inválido" }); return; }
+  // Editor só pode ver a própria agenda; coordenador/admin vê qualquer uma
+  if (req.session.userRole === "editor" && req.session.userId !== editorId) {
+    res.status(403).json({ error: "Acesso negado" }); return;
+  }
 
   const now  = new Date();
   const from = typeof req.query.from === "string" ? req.query.from : toLocalDateStr(now);
@@ -903,6 +907,24 @@ router.get("/escala/editor/:id/schedule", requireCoordinator, async (req, res): 
     : [];
   const coordMap = new Map(coords.map(c => [c.id, c]));
 
+  // Posição global de cada slot (slotIndex/totalSlots) sobre TODAS as alocações do editor
+  const taskIds = [...new Set(rows.map(r => r.taskId))];
+  const allSlots = taskIds.length > 0
+    ? await db.select({ taskId: taskAllocationsTable.taskId, workDate: taskAllocationsTable.workDate })
+        .from(taskAllocationsTable)
+        .where(and(
+          eq(taskAllocationsTable.editorId, editorId),
+          inArray(taskAllocationsTable.taskId, taskIds),
+        ))
+        .orderBy(taskAllocationsTable.workDate)
+    : [];
+  // taskId → ordered list of workDates (todas as sessões da tarefa)
+  const taskDateMap = new Map<number, string[]>();
+  for (const s of allSlots) {
+    if (!taskDateMap.has(s.taskId)) taskDateMap.set(s.taskId, []);
+    taskDateMap.get(s.taskId)!.push(s.workDate);
+  }
+
   type SlotOut = {
     taskId: number; taskCode: string; taskTitle: string;
     client: string | null; startTime: string | null; endTime: string | null;
@@ -910,11 +932,15 @@ router.get("/escala/editor/:id/schedule", requireCoordinator, async (req, res): 
     description: string | null; priority: string | null;
     startDate: string | null; dueDate: string | null;
     coordinator: { id: number; name: string; avatarUrl: string | null; profileColor: string | null } | null;
+    slotIndex: number; totalSlots: number;
   };
   const byDate = new Map<string, { date: string; slots: SlotOut[] }>();
   for (const r of rows) {
     if (!byDate.has(r.workDate)) byDate.set(r.workDate, { date: r.workDate, slots: [] });
-    const coord = r.coordId ? (coordMap.get(r.coordId) ?? null) : null;
+    const coord      = r.coordId ? (coordMap.get(r.coordId) ?? null) : null;
+    const taskDates  = taskDateMap.get(r.taskId) ?? [r.workDate];
+    const slotIndex  = taskDates.indexOf(r.workDate) + 1;
+    const totalSlots = taskDates.length;
     byDate.get(r.workDate)!.slots.push({
       taskId:      r.taskId,
       taskCode:    String(r.taskNumber).padStart(3, "0") + "." + String(r.taskYear).slice(-2),
@@ -929,6 +955,8 @@ router.get("/escala/editor/:id/schedule", requireCoordinator, async (req, res): 
       startDate:   r.startDate ? toDateStr(r.startDate instanceof Date ? r.startDate : new Date(r.startDate as any)) : null,
       dueDate:     r.dueDate   ? toDateStr(r.dueDate   instanceof Date ? r.dueDate   : new Date(r.dueDate   as any)) : null,
       coordinator: coord ? { id: coord.id, name: coord.name, avatarUrl: coord.avatarUrl, profileColor: coord.profileColor ?? null } : null,
+      slotIndex,
+      totalSlots,
     });
   }
 

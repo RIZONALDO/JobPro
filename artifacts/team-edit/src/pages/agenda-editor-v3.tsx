@@ -31,6 +31,8 @@ interface ScheduleSlot {
   startDate:   string | null;
   dueDate:     string | null;
   coordinator: { id: number; name: string; avatarUrl: string | null; profileColor?: string | null } | null;
+  slotIndex?:  number;
+  totalSlots?: number;
 }
 interface ScheduleDay { date: string; slots: ScheduleSlot[]; }
 interface EditorInfo   { id: number; name: string; login: string; avatarUrl: string | null; role: string; profileColor?: string | null; }
@@ -283,6 +285,12 @@ function SlotItem({
                 {slot.taskTitle}
               </span>
             </div>
+            {slot.totalSlots && slot.totalSlots > 1 && (
+              <span className="text-[8px] font-black uppercase tracking-wide px-1 py-px rounded shrink-0 self-start"
+                style={{ background: coordColor ? `${coordColor}22` : "hsl(var(--primary)/0.12)", color: coordColor ?? "hsl(var(--primary)/0.7)" }}>
+                {slot.slotIndex === slot.totalSlots ? "Etapa final" : `Etapa ${slot.slotIndex}/${slot.totalSlots}`}
+              </span>
+            )}
             {slot.coordinator && (
               <div className="flex items-center gap-1 overflow-hidden">
                 <CoordAvatar name={slot.coordinator.name} avatarUrl={slot.coordinator.avatarUrl} />

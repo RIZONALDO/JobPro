@@ -159,6 +159,7 @@ export default function EditorTaskList() {
     client: string | null; status: string;
     startTime: string | null; endTime: string | null; allocatedHours: number | null;
     execStatus: string; actualHours: number | null; execNote: string | null;
+    slotIndex: number; totalSlots: number;
   }
   const [todaySlots, setTodaySlots]   = useState<TodaySlot[]>([]);
   const [confirmingSlot, setConfirmingSlot] = useState<number | null>(null);
@@ -521,16 +522,29 @@ export default function EditorTaskList() {
             <span className="text-[10px] font-black uppercase tracking-widest text-[hsl(var(--foreground))]/50">Sessões de hoje</span>
           </div>
           {todaySlots.map(slot => {
-            const fmtT = (t: string) => { const [h,m] = t.split(":").map(Number); return m===0?`${h}h`:`${h}h${String(m).padStart(2,"0")}`; };
-            const isDone   = slot.execStatus === "done" || slot.execStatus === "partial";
-            const isMissed = slot.execStatus === "missed";
+            const fmtT      = (t: string) => { const [h,m] = t.split(":").map(Number); return m===0?`${h}h`:`${h}h${String(m).padStart(2,"0")}`; };
+            const isDone    = slot.execStatus === "done" || slot.execStatus === "partial";
+            const isMissed  = slot.execStatus === "missed";
             const isPending = slot.execStatus === "scheduled";
+            const isMulti   = slot.totalSlots > 1;
+            const isLast    = slot.slotIndex === slot.totalSlots;
+            const etapaLabel = isMulti
+              ? (isLast ? "Etapa final" : `Etapa ${slot.slotIndex}/${slot.totalSlots}`)
+              : null;
+            const btnLabel = isMulti
+              ? (isLast ? "Concluir etapa final" : "Concluir etapa")
+              : "✓ Concluí";
             return (
               <div key={slot.id} className="flex items-center gap-3 px-4 py-3 border-b border-[hsl(var(--border))]/20 last:border-0">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-[10px] font-mono font-semibold text-[hsl(var(--primary))]/60">{slot.taskCode}</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-mono font-semibold text-[hsl(var(--primary))]/60 shrink-0">{slot.taskCode}</span>
                     <span className="text-sm font-semibold truncate text-[hsl(var(--foreground))]/85">{slot.taskTitle}</span>
+                    {etapaLabel && (
+                      <span className="shrink-0 text-[10px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]/70 border border-[hsl(var(--primary))]/20">
+                        {etapaLabel}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     {slot.startTime && slot.endTime && (
@@ -545,10 +559,10 @@ export default function EditorTaskList() {
                 </div>
                 {isPending && (
                   <div className="shrink-0 flex items-center gap-1.5">
-                    <Button size="sm" variant="outline" className="h-7 text-xs px-2.5 gap-1"
+                    <Button size="sm" variant="outline" className="h-7 text-xs px-2.5 gap-1 whitespace-nowrap"
                       disabled={confirmingSlot === slot.id}
                       onClick={() => confirmSlot(slot, "done")}>
-                      ✓ Concluí
+                      {btnLabel}
                     </Button>
                     <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-[hsl(var(--muted-foreground))]/60 hover:text-red-500"
                       disabled={confirmingSlot === slot.id}
