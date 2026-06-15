@@ -222,6 +222,15 @@ router.patch("/tasks/:id/files/approve", requireCoordinator, async (req, res): P
   const userId = req.session.userId!;
   const now    = new Date();
 
+  // Remove aprovação de versões anteriores do mesmo ativo antes de aprovar a atual
+  const [target] = await db.select({ fileName: taskFilesTable.fileName })
+    .from(taskFilesTable).where(inArray(taskFilesTable.id, fileIds)).limit(1);
+  if (target?.fileName) {
+    await db.update(taskFilesTable)
+      .set({ approvedAt: null, approvedById: null })
+      .where(and(eq(taskFilesTable.taskId, taskId), eq(taskFilesTable.fileName, target.fileName)));
+  }
+
   await db.update(taskFilesTable)
     .set({ approvedAt: now, approvedById: userId })
     .where(and(eq(taskFilesTable.taskId, taskId), inArray(taskFilesTable.id, fileIds)));

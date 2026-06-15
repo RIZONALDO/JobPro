@@ -913,11 +913,12 @@ export default function ReviewFilePage() {
   const handleApprove = async () => {
     setApproving(true);
     try {
-      const ids = allFiles.map(f => f.id);
-      if (ids.length) await apiPatch(`/api/tasks/${tId}/files/approve`, { fileIds: ids });
+      // Aprova apenas a versão atual — versões anteriores não recebem approvedAt
+      await apiPatch(`/api/tasks/${tId}/files/approve`, { fileIds: [fId] });
       await apiPut(`/api/tasks/${tId}`, { status: "completed" });
       toast.success("Tarefa aprovada!");
       setTask(prev => prev ? { ...prev, status: "completed" } : prev);
+      setFile(prev => prev ? { ...prev, approvedAt: new Date().toISOString() } : prev);
       setConfirmApprove(false);
     } catch { toast.error("Erro ao aprovar"); }
     finally { setApproving(false); }
