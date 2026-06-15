@@ -703,7 +703,11 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
   // Alocações (todas as datas) para calcular slotIndex/totalSlots por tarefa ESCALA
   const overviewTodayStr = new Date().toISOString().slice(0, 10);
   const overviewAllAllocs = taskIds.length
-    ? await db.select({ taskId: taskAllocationsTable.taskId, workDate: taskAllocationsTable.workDate })
+    ? await db.select({
+        taskId:     taskAllocationsTable.taskId,
+        workDate:   taskAllocationsTable.workDate,
+        execStatus: taskAllocationsTable.execStatus,
+      })
         .from(taskAllocationsTable)
         .where(and(
           inArray(taskAllocationsTable.taskId, taskIds),
@@ -711,18 +715,24 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
         ))
         .orderBy(taskAllocationsTable.workDate)
     : [];
-  const overviewSlotDates = new Map<number, string[]>();
+  const overviewSlotDates    = new Map<number, string[]>();
+  const overviewConfirmedMap = new Map<number, number>();
   for (const a of overviewAllAllocs) {
     if (!overviewSlotDates.has(a.taskId)) overviewSlotDates.set(a.taskId, []);
     overviewSlotDates.get(a.taskId)!.push(a.workDate);
+    if (a.execStatus === "done" || a.execStatus === "partial")
+      overviewConfirmedMap.set(a.taskId, (overviewConfirmedMap.get(a.taskId) ?? 0) + 1);
   }
   const getOverviewSlot = (taskId: number) => {
-    const dates  = overviewSlotDates.get(taskId) ?? [];
-    const idx    = dates.indexOf(overviewTodayStr);
+    const dates    = overviewSlotDates.get(taskId) ?? [];
+    const idx      = dates.indexOf(overviewTodayStr);
+    const future   = dates.filter(d => d > overviewTodayStr);
     return {
       hasAllocToday:  idx >= 0,
       todaySlotIndex: idx >= 0 ? idx + 1 : null,
       totalSlots:     dates.length > 1 ? dates.length : null,
+      confirmedSlots: overviewConfirmedMap.get(taskId) ?? 0,
+      nextSlotDate:   future.length > 0 ? future[0] : null,
     };
   };
 
@@ -1822,7 +1832,11 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
   // Alocações (todas as datas) para calcular slotIndex/totalSlots por tarefa ESCALA
   const myTodayStr = new Date().toISOString().slice(0, 10);
   const myAllAllocs = taskIds.length
-    ? await db.select({ taskId: taskAllocationsTable.taskId, workDate: taskAllocationsTable.workDate })
+    ? await db.select({
+        taskId:     taskAllocationsTable.taskId,
+        workDate:   taskAllocationsTable.workDate,
+        execStatus: taskAllocationsTable.execStatus,
+      })
         .from(taskAllocationsTable)
         .where(and(
           inArray(taskAllocationsTable.taskId, taskIds),
@@ -1830,18 +1844,24 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
         ))
         .orderBy(taskAllocationsTable.workDate)
     : [];
-  const mySlotDates = new Map<number, string[]>();
+  const mySlotDates    = new Map<number, string[]>();
+  const myConfirmedMap = new Map<number, number>();
   for (const a of myAllAllocs) {
     if (!mySlotDates.has(a.taskId)) mySlotDates.set(a.taskId, []);
     mySlotDates.get(a.taskId)!.push(a.workDate);
+    if (a.execStatus === "done" || a.execStatus === "partial")
+      myConfirmedMap.set(a.taskId, (myConfirmedMap.get(a.taskId) ?? 0) + 1);
   }
   const getMySlot = (taskId: number) => {
-    const dates  = mySlotDates.get(taskId) ?? [];
-    const idx    = dates.indexOf(myTodayStr);
+    const dates   = mySlotDates.get(taskId) ?? [];
+    const idx     = dates.indexOf(myTodayStr);
+    const future  = dates.filter(d => d > myTodayStr);
     return {
       hasAllocToday:  idx >= 0,
       todaySlotIndex: idx >= 0 ? idx + 1 : null,
       totalSlots:     dates.length > 1 ? dates.length : null,
+      confirmedSlots: myConfirmedMap.get(taskId) ?? 0,
+      nextSlotDate:   future.length > 0 ? future[0] : null,
     };
   };
 

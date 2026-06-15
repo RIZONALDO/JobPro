@@ -56,12 +56,35 @@ interface Task {
   hasAllocToday?: boolean;
   todaySlotIndex?: number | null;
   totalSlots?: number | null;
+  confirmedSlots?: number;
+  nextSlotDate?: string | null;
   fileCount?: number;
   fileKind?: "video" | "audio" | "mixed" | "other" | null;
   unreadCommentCount?: number;
   // multi-task
   taskType?: string;
   parentTask?: { id: number; title: string; taskCode?: string } | null;
+}
+
+// ── SessionDots — progresso visual de sessões ESCALA ─────────────────────────
+function SessionDots({ confirmed, total }: { confirmed: number; total: number }) {
+  const MAX_DOTS = 6;
+  if (total > MAX_DOTS) {
+    return (
+      <span className="text-[10px] font-semibold tabular-nums text-[hsl(var(--muted-foreground))]/50">
+        {confirmed}/{total} ✓
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-[3px]">
+      {Array.from({ length: total }).map((_, i) => (
+        <span key={i} className={`h-[6px] w-[6px] rounded-full transition-colors ${
+          i < confirmed ? "bg-emerald-500" : "bg-[hsl(var(--muted-foreground))]/20"
+        }`} />
+      ))}
+    </span>
+  );
 }
 
 // ── Helpers de agendamento ────────────────────────────────────────────────────
@@ -73,9 +96,9 @@ const ACTIVE_STATUSES = new Set(["pending", "in_progress", "review"]);
 const SCHEDULED_STATUSES = new Set(["pending", "in_progress", "paused"]);
 function isTaskScheduled(t: Task): boolean {
   if (!SCHEDULED_STATUSES.has(t.status)) return false;
-  // v2 ESCALA (tem effortHours): tarefa pendente é agendada se não tem alocação hoje
-  if (t.effortHours != null && t.status === "pending") return !t.hasAllocToday;
-  // in_progress / paused: usa startDate
+  // ESCALA: presença em "Tarefas do dia" depende de ter slot hoje, não da startDate
+  if (t.effortHours != null) return !t.hasAllocToday;
+  // Tarefa manual: usa startDate
   const ref = t.startDate ?? (t.status === "pending" ? t.dueDate : null);
   if (!ref) return false;
   return ref.split("T")[0] > TAB_TODAY_STR;
@@ -340,6 +363,17 @@ export default function EditorTaskList() {
             </div>
             {t.taskType === "subtask" && t.parentTask && <ParentTaskBreadcrumb parentTask={t.parentTask} className="mt-0.5" />}
             {t.taskType === "multi_task" && <MultiTaskBadge taskType="multi_task" className="mt-0.5" />}
+            {/* Dots de progresso + próxima sessão */}
+            {t.totalSlots && t.totalSlots > 1 && (
+              <div className="flex items-center gap-2 mt-0.5">
+                <SessionDots confirmed={t.confirmedSlots ?? 0} total={t.totalSlots} />
+                {!t.hasAllocToday && t.nextSlotDate && (
+                  <span className="text-[10px] text-[hsl(var(--muted-foreground))]/45">
+                    próxima {new Date(t.nextSlotDate + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" })}
+                  </span>
+                )}
+              </div>
+            )}
             {t.client && <span className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5 block">{t.client}</span>}
           </div>
         );
