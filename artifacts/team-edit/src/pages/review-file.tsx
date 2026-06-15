@@ -433,7 +433,9 @@ export default function ReviewFilePage() {
 
   const [body, setBody]             = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [uploading, setUploading]   = useState(false);
+  const [uploading, setUploading]       = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadFileName, setUploadFileName] = useState("");
   const [approving, setApproving]   = useState(false);
   const [confirmApprove, setConfirmApprove] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -873,20 +875,39 @@ export default function ReviewFilePage() {
     } catch { toast.error("Erro ao enviar resposta"); throw new Error("fail"); }
   };
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return;
+    // Força o mesmo fileName do ativo atual → garante nova versão do mesmo ativo
+    const renamed = new File([f], file?.fileName ?? f.name, { type: f.type || file?.mimeType || undefined });
+    const form = new FormData(); form.append("file", renamed);
     setUploading(true);
-    try {
-      // Força o mesmo fileName do ativo atual → garante nova versão do mesmo ativo
-      const renamed = new File([f], file?.fileName ?? f.name, { type: f.type || file?.mimeType || undefined });
-      const form = new FormData(); form.append("file", renamed);
-      const res = await fetch(`/api/tasks/${tId}/files`, { method: "POST", body: form, credentials: "include" });
-      if (!res.ok) throw new Error();
-      const newFile = await res.json();
-      toast.success("Nova versão enviada!");
-      navigate(`/review/${tId}/${newFile.id}`);
-    } catch { toast.error("Erro ao enviar"); }
-    finally { setUploading(false); e.target.value = ""; }
+    setUploadProgress(0);
+    setUploadFileName(f.name);
+    const xhr = new XMLHttpRequest();
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = ev => {
+      if (ev.lengthComputable) setUploadProgress(Math.round((ev.loaded / ev.total) * 95));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        setUploadProgress(100);
+        setTimeout(() => {
+          setUploading(false); setUploadProgress(null); setUploadFileName("");
+          toast.success("Nova versão enviada!");
+          navigate(`/review/${tId}/${(JSON.parse(xhr.responseText) as TaskFile).id}`);
+        }, 400);
+      } else {
+        setUploading(false); setUploadProgress(null); setUploadFileName("");
+        toast.error("Erro ao enviar");
+      }
+    };
+    xhr.onerror = () => {
+      setUploading(false); setUploadProgress(null); setUploadFileName("");
+      toast.error("Erro ao enviar");
+    };
+    xhr.open("POST", `/api/tasks/${tId}/files`);
+    xhr.send(form);
+    e.target.value = "";
   };
 
   const handleApprove = async () => {
@@ -1444,6 +1465,46 @@ export default function ReviewFilePage() {
         </div>
       </div>
     </div>
+    {/* ── Modal de progresso de upload ── */}
+    {uploading && uploadProgress !== null && (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center"
+        style={{ background: "rgba(0,0,0,0.72)", backdropFilter: "blur(6px)" }}>
+        <div className="flex flex-col items-center gap-5 rounded-2xl border border-white/10 px-8 py-7 shadow-2xl"
+          style={{ background: "hsl(var(--card))", minWidth: 260 }}>
+          {/* Anel circular */}
+          {(() => {
+            const r = 32, circ = 2 * Math.PI * r;
+            const dash = circ - (uploadProgress / 100) * circ;
+            const done = uploadProgress === 100;
+            return (
+              <div className="relative flex items-center justify-center" style={{ width: 80, height: 80 }}>
+                <svg width="80" height="80" viewBox="0 0 80 80" className="-rotate-90">
+                  <circle cx="40" cy="40" r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="5" />
+                  <circle cx="40" cy="40" r={r} fill="none"
+                    stroke={done ? "#22c55e" : "hsl(var(--primary))"} strokeWidth="5"
+                    strokeDasharray={circ} strokeDashoffset={dash}
+                    strokeLinecap="round"
+                    style={{ transition: "stroke-dashoffset 0.25s ease, stroke 0.3s" }} />
+                </svg>
+                <span className="absolute text-sm font-black tabular-nums"
+                  style={{ color: done ? "#22c55e" : "hsl(var(--foreground))" }}>
+                  {done ? "✓" : `${uploadProgress}%`}
+                </span>
+              </div>
+            );
+          })()}
+          <div className="text-center space-y-1">
+            <p className="text-sm font-semibold text-[hsl(var(--foreground))]/85">
+              {uploadProgress === 100 ? "Processando…" : "Enviando nova versão"}
+            </p>
+            <p className="text-[11px] text-[hsl(var(--muted-foreground))]/50 truncate max-w-[200px]">
+              {uploadFileName}
+            </p>
+          </div>
+        </div>
+      </div>
+    )}
+
     {inviteOpen && task && (
       <InviteReviewerModal taskId={tId} taskTitle={task.title} onClose={() => setInviteOpen(false)} />
     )}
