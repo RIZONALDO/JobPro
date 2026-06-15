@@ -18,6 +18,7 @@ import reviewCommentsRouter from "./review-comments.js";
 import escalaRouter from "./escala.js";
 import monitorRouter from "./monitor.js";
 import replanoRouter from "./replano.js";
+import fluxoRouter from "./fluxo.js";
 import contestationsRouter from "./contestations.js";
 
 const router = Router();
@@ -40,6 +41,7 @@ router.use(reviewCommentsRouter);
 router.use(escalaRouter);
 router.use(monitorRouter);
 router.use(replanoRouter);
+router.use(fluxoRouter);
 router.use(contestationsRouter);
 
 export default router;

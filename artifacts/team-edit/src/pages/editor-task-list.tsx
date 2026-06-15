@@ -239,21 +239,23 @@ export default function EditorTaskList() {
 
   useEffect(() => { loadScheduleSlots(); }, [loadScheduleSlots]);
 
-  const updateStatus = async (task: Task, status: string) => {
-    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status } : t));
+  const transition = async (task: Task, to: string, comment?: string) => {
+    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: to } : t));
     try {
-      await apiPut(`/api/tasks/${task.id}`, { status });
+      await apiPost(`/api/fluxo/task/${task.id}/transition`, { to, ...(comment ? { comment } : {}) });
       load();
-    } catch {
+    } catch (err: unknown) {
       setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: task.status } : t));
-      toast.error("Erro ao atualizar status");
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar status");
     }
   };
+
+  const updateStatus = (task: Task, status: string) => transition(task, status);
 
   const handleIniciarDireto = async (task: Task) => {
     setStartingSaving(true);
     try {
-      await apiPut(`/api/tasks/${task.id}`, { status: "in_progress" });
+      await apiPost(`/api/fluxo/task/${task.id}/transition`, { to: "in_progress" });
       load();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao iniciar tarefa");
@@ -264,7 +266,7 @@ export default function EditorTaskList() {
     if (!returnTarget) return;
     setReturning(true);
     try {
-      await apiPost(`/api/tasks/${returnTarget.id}/return`, { returnComment: returnComment.trim() });
+      await apiPost(`/api/fluxo/task/${returnTarget.id}/transition`, { to: "pending", comment: returnComment.trim() || undefined });
       setReturnTarget(null);
       setReturnComment("");
       load();
