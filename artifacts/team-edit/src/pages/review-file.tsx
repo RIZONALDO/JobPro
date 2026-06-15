@@ -918,6 +918,12 @@ export default function ReviewFilePage() {
       await apiPut(`/api/tasks/${tId}`, { status: "completed" });
       toast.success("Tarefa aprovada!");
       setTask(prev => prev ? { ...prev, status: "completed" } : prev);
+      // Atualiza allFiles: só a versão atual recebe approvedAt, demais perdem
+      setAllFiles(prev => prev.map(f =>
+        f.id === fId
+          ? { ...f, approvedAt: new Date().toISOString() }
+          : { ...f, approvedAt: null }
+      ));
       setFile(prev => prev ? { ...prev, approvedAt: new Date().toISOString() } : prev);
       setConfirmApprove(false);
     } catch { toast.error("Erro ao aprovar"); }
