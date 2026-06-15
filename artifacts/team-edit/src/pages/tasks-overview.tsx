@@ -479,6 +479,7 @@ export default function TasksOverview() {
     taskId: number; taskCode: string; taskTitle: string; client: string | null;
     color: string | null; status: string; priority: string | null; revisionCount: number;
     editor: { id: number; name: string; avatarUrl?: string | null } | null;
+    slotIndex?: number; totalSlots?: number | null;
   }
   const [coordSlots, setCoordSlots] = useState<CoordScheduleSlot[]>([]);
   const [coordSlotsLoading, setCoordSlotsLoading] = useState(false);
@@ -1957,9 +1958,14 @@ export default function TasksOverview() {
                       {/* Content */}
                       <div className="flex-1 min-w-0 flex items-center gap-3 px-4 py-3">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-baseline gap-2 min-w-0">
+                          <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
                             {s.taskCode && <span className="shrink-0 text-xs font-mono font-semibold text-[hsl(var(--primary))]/70">{s.taskCode}</span>}
                             <p className="text-sm font-semibold truncate text-[hsl(var(--foreground))]/90">{s.taskTitle}</p>
+                            {s.totalSlots && s.totalSlots > 1 && (
+                              <span className="shrink-0 text-[10px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]/70 border border-[hsl(var(--primary))]/20 whitespace-nowrap">
+                                {s.slotIndex === s.totalSlots ? "Etapa final" : `Etapa ${s.slotIndex}/${s.totalSlots}`}
+                              </span>
+                            )}
                             {s.client && <span className="shrink-0 text-xs font-medium text-[hsl(var(--muted-foreground))]/40 truncate max-w-[120px]">{s.client}</span>}
                             {s.revisionCount > 0 && (
                               <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600/70 border border-amber-200/60 dark:border-amber-800/30">

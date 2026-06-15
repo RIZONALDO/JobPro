@@ -1107,21 +1107,42 @@ router.get("/coordinator-schedule", requireCoordinator, async (req: any, res: an
     : [];
   const editorMap = new Map(editors.map(e => [e.id, e]));
 
-  const slots = rows.map(r => ({
-    workDate:      r.workDate,
-    startTime:     r.startTime,
-    endTime:       r.endTime,
-    hours:         r.hours,
-    taskId:        r.taskId,
-    taskCode:      String(r.taskNumber).padStart(3, "0") + "." + String(r.taskYear).slice(-2),
-    taskTitle:     r.taskTitle,
-    client:        r.client,
-    color:         null,
-    status:        r.status,
-    priority:      r.priority,
-    revisionCount: r.revisionCount ?? 0,
-    editor:        r.editorId ? (editorMap.get(r.editorId) ?? null) : null,
-  }));
+  // Slot positions: todas as alocações para essas tarefas
+  const coordSchedTaskIds = [...new Set(rows.map(r => r.taskId))];
+  const coordSchedAllSlots = coordSchedTaskIds.length > 0
+    ? await db.select({ taskId: taskAllocationsTable.taskId, workDate: taskAllocationsTable.workDate })
+        .from(taskAllocationsTable)
+        .where(inArray(taskAllocationsTable.taskId, coordSchedTaskIds))
+        .orderBy(taskAllocationsTable.workDate)
+    : [];
+  const coordSchedDateMap = new Map<number, string[]>();
+  for (const s of coordSchedAllSlots) {
+    if (!coordSchedDateMap.has(s.taskId)) coordSchedDateMap.set(s.taskId, []);
+    coordSchedDateMap.get(s.taskId)!.push(s.workDate);
+  }
+
+  const slots = rows.map(r => {
+    const dates      = coordSchedDateMap.get(r.taskId) ?? [r.workDate];
+    const slotIndex  = dates.indexOf(r.workDate) + 1;
+    const totalSlots = dates.length > 1 ? dates.length : null;
+    return {
+      workDate:      r.workDate,
+      startTime:     r.startTime,
+      endTime:       r.endTime,
+      hours:         r.hours,
+      taskId:        r.taskId,
+      taskCode:      String(r.taskNumber).padStart(3, "0") + "." + String(r.taskYear).slice(-2),
+      taskTitle:     r.taskTitle,
+      client:        r.client,
+      color:         null,
+      status:        r.status,
+      priority:      r.priority,
+      revisionCount: r.revisionCount ?? 0,
+      editor:        r.editorId ? (editorMap.get(r.editorId) ?? null) : null,
+      slotIndex,
+      totalSlots,
+    };
+  });
 
   res.json(slots);
 });
