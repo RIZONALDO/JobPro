@@ -236,22 +236,22 @@ function SlotItem({
         <div className="absolute left-0 top-0 bottom-0 w-3 flex items-center justify-center
                         opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
           style={{ zIndex: 4 }}>
-          <div className="w-px h-5 rounded-full" style={{ background: "hsl(var(--primary))" }} />
+          <div className="w-px h-5 rounded-full" style={{ background: coordColor ?? "hsl(var(--primary))" }} />
         </div>
         <div className="absolute right-0 top-0 bottom-0 w-3 flex items-center justify-center
                         opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
           style={{ zIndex: 4 }}>
-          <div className="w-px h-5 rounded-full" style={{ background: "hsl(var(--primary))" }} />
+          <div className="w-px h-5 rounded-full" style={{ background: coordColor ?? "hsl(var(--primary))" }} />
         </div>
         {onRemoveDay && (
           <button
             onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); onRemoveDay(slot, date); }}
-            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity rounded p-0.5 hover:bg-red-500/20"
+            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity rounded p-0.5"
             style={{ zIndex: 20 }}
             title="Remover este dia"
           >
-            <Trash2 className="h-3 w-3" style={{ color: "#ef4444" }} />
+            <Trash2 className="h-3 w-3" style={{ color: coordColor ?? "#ef4444" }} />
           </button>
         )}
       </>}
@@ -259,15 +259,15 @@ function SlotItem({
       {width > 8 && (
         isResizing ? (
           <div className="flex items-center justify-center gap-1 select-none pointer-events-none">
-            <span className="text-[10px] font-black" style={{ color: "hsl(var(--primary))" }}>
+            <span className="text-[10px] font-black" style={{ color: coordColor ?? "hsl(var(--primary))" }}>
               {minToTime(displayStart)}
             </span>
-            <span className="text-[10px]" style={{ color: "hsl(var(--primary)/0.5)" }}>–</span>
-            <span className="text-[10px] font-black" style={{ color: "hsl(var(--primary))" }}>
+            <span className="text-[10px]" style={{ color: coordColor ? `${coordColor}88` : "hsl(var(--primary)/0.5)" }}>–</span>
+            <span className="text-[10px] font-black" style={{ color: coordColor ?? "hsl(var(--primary))" }}>
               {minToTime(displayEnd)}
             </span>
             {width > 14 && (
-              <span className="text-[9px] ml-1" style={{ color: "hsl(var(--primary)/0.7)" }}>
+              <span className="text-[9px] ml-1" style={{ color: coordColor ? `${coordColor}b3` : "hsl(var(--primary)/0.7)" }}>
                 · {fmtH(effortFromRange(displayStart, displayEnd, dow))}
               </span>
             )}
@@ -275,7 +275,7 @@ function SlotItem({
         ) : (
           <>
             <div className="flex items-center gap-1.5 overflow-hidden">
-              <span className="text-[9px] font-black font-mono shrink-0" style={{ color: "hsl(var(--primary)/0.7)" }}>
+              <span className="text-[9px] font-black font-mono shrink-0" style={{ color: coordColor ? `${coordColor}cc` : "hsl(var(--primary)/0.7)" }}>
                 {slot.taskCode}
               </span>
               <span
