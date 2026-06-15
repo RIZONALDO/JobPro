@@ -177,29 +177,76 @@ function fmtHours(h: number): string {
   return `${hrs}h${mins}min`;
 }
 
-// ── Horas comprometidas de um editor num dia (somente alocações explícitas) ───
-async function escalaHoursUsed(
-  editorId:      number,
-  day:           Date,
-  excludeTaskId?: number,
-): Promise<number> {
-  const dayStr = toDateStr(day);
-  const excl   = excludeTaskId ? [ne(tasksTable.id, excludeTaskId)] : [];
+// ── Helpers de janela de tempo ────────────────────────────────────────────────
 
+function toMinutes(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + (m ?? 0);
+}
+
+function minutesToTime(m: number): string {
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+/** Janelas de trabalho brutas para o dia (sem subtrair ocupações). */
+function dayBaseWindows(dow: number): { s: number; e: number }[] {
+  return dow === 6
+    ? [{ s: 480, e: 780 }]                          // Sáb: 8h-13h
+    : [{ s: 480, e: 720 }, { s: 840, e: 1080 }];   // Seg-Sex: 8h-12h, 14h-18h
+}
+
+/** Subtrai intervalos ocupados das janelas livres. */
+function subtractOccupied(
+  windows:  { s: number; e: number }[],
+  occupied: { s: number; e: number }[],
+): { s: number; e: number }[] {
+  let free = [...windows];
+  for (const occ of occupied) {
+    free = free.flatMap(w => {
+      if (occ.e <= w.s || occ.s >= w.e) return [w];
+      const parts: { s: number; e: number }[] = [];
+      if (occ.s > w.s) parts.push({ s: w.s, e: occ.s });
+      if (occ.e < w.e) parts.push({ s: occ.e, e: w.e });
+      return parts;
+    });
+  }
+  return free.filter(w => w.e - w.s >= 15); // descarta janelas < 15 min
+}
+
+/** Retorna os intervalos ocupados reais de um editor num dia. */
+async function getOccupiedRanges(
+  editorId:      number,
+  dayStr:        string,
+  excludeTaskId?: number,
+): Promise<{ s: number; e: number }[]> {
+  const excl = excludeTaskId ? [ne(tasksTable.id, excludeTaskId)] : [];
   const rows = await db
-    .select({ h: taskAllocationsTable.allocatedHours })
+    .select({ st: taskAllocationsTable.startTime, et: taskAllocationsTable.endTime })
     .from(taskAllocationsTable)
     .innerJoin(tasksTable, eq(taskAllocationsTable.taskId, tasksTable.id))
     .where(and(
       eq(taskAllocationsTable.editorId, editorId),
       eq(taskAllocationsTable.workDate, dayStr),
-      isNotNull(taskAllocationsTable.allocatedHours),
+      isNotNull(taskAllocationsTable.startTime),
+      isNotNull(taskAllocationsTable.endTime),
       inArray(tasksTable.status, ACTIVE_STATUSES),
       ne(tasksTable.taskType, "multi_task"),
       ...excl,
     ));
+  return rows
+    .filter(r => r.st && r.et)
+    .map(r => ({ s: toMinutes(r.st!), e: toMinutes(r.et!) }))
+    .sort((a, b) => a.s - b.s);
+}
 
-  return roundH(rows.reduce((s, r) => s + (r.h ?? 0), 0));
+// escalaHoursUsed mantido para compatibilidade com chamadas externas
+async function escalaHoursUsed(
+  editorId:      number,
+  day:           Date,
+  excludeTaskId?: number,
+): Promise<number> {
+  const ranges = await getOccupiedRanges(editorId, toDateStr(day), excludeTaskId);
+  return roundH(ranges.reduce((s, r) => s + (r.e - r.s) / 60, 0));
 }
 
 // ── findHourSlots — núcleo do ESCALA ─────────────────────────────────────────
@@ -258,33 +305,32 @@ async function findHourSlots(
 
   while (current <= deadline && remaining > 0.01) {
     if (isPastWorkday(current, now)) {
-      current.setDate(current.getDate() + 1);
-      current.setHours(8, 0, 0, 0);
-      continue;
+      current.setDate(current.getDate() + 1); current.setHours(8, 0, 0, 0); continue;
     }
     const dow = current.getDay();
     const cap = dailyCapacity(current, holidays);
     if (cap > 0) {
-      const dbUsed      = await escalaHoursUsed(editorId, current, excludeTaskId);
-      // Offset do horário de início no 1º dia
-      const isStartDay  = toLocalDateStr(current) === startDateStr;
-      const startOffset = isStartDay ? clockToEffortHours(startDate.getHours() + startDate.getMinutes() / 60, dow) : 0;
-      // No dia do deadline, limita as horas disponíveis pelo horário de entrega
-      const isDeadlineDay   = toLocalDateStr(current) === toLocalDateStr(deadline);
-      const deadlineOffset  = isDeadlineDay ? clockToEffortHours(deadline.getHours() + deadline.getMinutes() / 60, dow) : cap;
-      const effectiveCap    = Math.min(cap, deadlineOffset);
-      const used            = Math.max(dbUsed, startOffset);
-      const available       = roundH(effectiveCap - used);
-      if (available > 0.01) {
-        const allocate  = roundH(Math.min(available, remaining));
-        const startTime = hoursToClockTime(used, dow);
-        const endTime   = hoursToClockTime(roundH(used + allocate), dow);
-        slots.push({ date: toDateStr(current), hours: allocate, startTime, endTime });
+      const dayStr     = toLocalDateStr(current);
+      const isStartDay = dayStr === startDateStr;
+      const isDlDay    = dayStr === toLocalDateStr(deadline);
+      const minStart   = isStartDay ? startDate.getHours() * 60 + startDate.getMinutes() : 480;
+      const maxEnd     = isDlDay ? deadline.getHours() * 60 + deadline.getMinutes() : dow === 6 ? 780 : 1080;
+
+      const occupied = await getOccupiedRanges(editorId, toDateStr(current), excludeTaskId);
+      const base     = dayBaseWindows(dow)
+        .map(w => ({ s: Math.max(w.s, minStart), e: Math.min(w.e, maxEnd) }))
+        .filter(w => w.s < w.e);
+      const freeWins = subtractOccupied(base, occupied);
+
+      for (const w of freeWins) {
+        if (remaining <= 0.01) break;
+        const allocate = roundH(Math.min((w.e - w.s) / 60, remaining));
+        if (allocate < 0.01) continue;
+        slots.push({ date: toDateStr(current), hours: allocate, startTime: minutesToTime(w.s), endTime: minutesToTime(w.s + Math.round(allocate * 60)) });
         remaining = roundH(remaining - allocate);
       }
     }
-    current.setDate(current.getDate() + 1);
-    current.setHours(8, 0, 0, 0);
+    current.setDate(current.getDate() + 1); current.setHours(8, 0, 0, 0);
   }
 
   const last = slots[slots.length - 1];
@@ -558,33 +604,47 @@ async function findHourSlotsWithExtra(
 
   while (current <= deadline && remaining > 0.01) {
     if (isPastWorkday(current, now)) {
-      current.setDate(current.getDate() + 1);
-      current.setHours(8, 0, 0, 0);
-      continue;
+      current.setDate(current.getDate() + 1); current.setHours(8, 0, 0, 0); continue;
     }
     const dow = current.getDay();
     const cap = dailyCapacity(current, holidays);
     if (cap > 0) {
-      const dateStr        = toDateStr(current);
-      const dbUsed         = await escalaHoursUsed(editorId, current, excludeTaskId);
-      const extra          = additionalOccupied?.[dateStr] ?? 0;
-      const isStartDay     = toLocalDateStr(current) === startDateStr;
-      const startOffset    = isStartDay ? clockToEffortHours(startDate.getHours() + startDate.getMinutes() / 60, dow) : 0;
-      const isDeadlineDay  = toLocalDateStr(current) === toLocalDateStr(deadline);
-      const deadlineOffset = isDeadlineDay ? clockToEffortHours(deadline.getHours() + deadline.getMinutes() / 60, dow) : cap;
-      const effectiveCap   = Math.min(cap, deadlineOffset);
-      const used           = Math.max(dbUsed + extra, startOffset);
-      const available      = roundH(effectiveCap - used);
-      if (available > 0.01) {
-        const allocate  = roundH(Math.min(available, remaining));
-        const startTime = hoursToClockTime(used, dow);
-        const endTime   = hoursToClockTime(roundH(used + allocate), dow);
-        slots.push({ date: dateStr, hours: allocate, startTime, endTime });
+      const dateStr    = toDateStr(current);
+      const dayStr     = toLocalDateStr(current);
+      const isStartDay = dayStr === startDateStr;
+      const isDlDay    = dayStr === toLocalDateStr(deadline);
+      const extra      = additionalOccupied?.[dateStr] ?? 0;
+      const minStart   = isStartDay ? startDate.getHours() * 60 + startDate.getMinutes() : 480;
+      const maxEnd     = isDlDay ? deadline.getHours() * 60 + deadline.getMinutes() : dow === 6 ? 780 : 1080;
+
+      const occupied = await getOccupiedRanges(editorId, dateStr, excludeTaskId);
+      const base     = dayBaseWindows(dow)
+        .map(w => ({ s: Math.max(w.s, minStart), e: Math.min(w.e, maxEnd) }))
+        .filter(w => w.s < w.e);
+      let freeWins   = subtractOccupied(base, occupied);
+
+      // Horas extras da cascata: consome do início das janelas livres
+      let extraMin = Math.round(extra * 60);
+      if (extraMin > 0) {
+        freeWins = freeWins.map(w => {
+          if (extraMin <= 0) return w;
+          const dur = w.e - w.s;
+          if (extraMin >= dur) { extraMin -= dur; return null; }
+          const nw = { s: w.s + extraMin, e: w.e };
+          extraMin = 0;
+          return nw;
+        }).filter((w): w is { s: number; e: number } => w !== null && w.e - w.s >= 15);
+      }
+
+      for (const w of freeWins) {
+        if (remaining <= 0.01) break;
+        const allocate = roundH(Math.min((w.e - w.s) / 60, remaining));
+        if (allocate < 0.01) continue;
+        slots.push({ date: dateStr, hours: allocate, startTime: minutesToTime(w.s), endTime: minutesToTime(w.s + Math.round(allocate * 60)) });
         remaining = roundH(remaining - allocate);
       }
     }
-    current.setDate(current.getDate() + 1);
-    current.setHours(8, 0, 0, 0);
+    current.setDate(current.getDate() + 1); current.setHours(8, 0, 0, 0);
   }
 
   const last = slots[slots.length - 1];
