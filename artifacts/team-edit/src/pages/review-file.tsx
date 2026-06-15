@@ -606,7 +606,7 @@ export default function ReviewFilePage() {
       : null;
     setBreadcrumb([
       ...(task.taskCode ? [{ label: task.taskCode, mono: true, muted: true }] : []),
-      { label: task.title, href: `/review/${tId}`, muted: true },
+      { label: task.title, muted: true },
       { label: file.originalName ?? file.fileName },
     ], versionSuffix);
     return () => clearBreadcrumb();
