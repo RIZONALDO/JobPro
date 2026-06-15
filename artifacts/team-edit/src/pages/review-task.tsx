@@ -157,7 +157,7 @@ export default function ReviewTaskPage() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const backPath = isEditor ? "/fila" : "/tasks";
+  const backPath = "/tasks";
 
   const redirectToLatest = (files: TaskFile[]) => {
     if (files.length === 0) { setNoFiles(true); return; }

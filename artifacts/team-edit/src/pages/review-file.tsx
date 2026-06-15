@@ -940,7 +940,7 @@ export default function ReviewFilePage() {
       {!compareMode && <header className="shrink-0 flex items-center gap-3 px-4 border-b border-[hsl(var(--border))] bg-[hsl(var(--card))]"
         style={{ height: 56 }}>
 
-        <button onClick={() => navigate(isEditor ? "/fila" : "/tasks")}
+        <button onClick={() => navigate("/tasks")}
           className="h-8 w-8 flex items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] transition-colors shrink-0">
           <ArrowLeft className="h-4 w-4" />
         </button>
