@@ -1008,21 +1008,45 @@ router.get("/my-schedule", async (req: any, res: any): Promise<void> => {
     : [];
   const coordMap = new Map(coords.map(c => [c.id, c]));
 
-  const slots = rows.map(r => ({
-    workDate:      r.workDate,
-    startTime:     r.startTime,
-    endTime:       r.endTime,
-    hours:         r.hours,
-    taskId:        r.taskId,
-    taskCode:      String(r.taskNumber).padStart(3, "0") + "." + String(r.taskYear).slice(-2),
-    taskTitle:     r.taskTitle,
-    client:        r.client,
-    color:         null,
-    status:        r.status,
-    priority:      r.priority,
-    revisionCount: r.revisionCount ?? 0,
-    coordinator:   r.createdById ? (coordMap.get(r.createdById) ?? null) : null,
-  }));
+  // Slot position: todas as alocações do editor para essas tarefas
+  const mySchedTaskIds = [...new Set(rows.map(r => r.taskId))];
+  const mySchedAllSlots = mySchedTaskIds.length > 0
+    ? await db.select({ taskId: taskAllocationsTable.taskId, workDate: taskAllocationsTable.workDate })
+        .from(taskAllocationsTable)
+        .where(and(
+          eq(taskAllocationsTable.editorId, editorId),
+          inArray(taskAllocationsTable.taskId, mySchedTaskIds),
+        ))
+        .orderBy(taskAllocationsTable.workDate)
+    : [];
+  const mySchedDateMap = new Map<number, string[]>();
+  for (const s of mySchedAllSlots) {
+    if (!mySchedDateMap.has(s.taskId)) mySchedDateMap.set(s.taskId, []);
+    mySchedDateMap.get(s.taskId)!.push(s.workDate);
+  }
+
+  const slots = rows.map(r => {
+    const dates      = mySchedDateMap.get(r.taskId) ?? [r.workDate];
+    const slotIndex  = dates.indexOf(r.workDate) + 1;
+    const totalSlots = dates.length > 1 ? dates.length : null;
+    return {
+      workDate:      r.workDate,
+      startTime:     r.startTime,
+      endTime:       r.endTime,
+      hours:         r.hours,
+      taskId:        r.taskId,
+      taskCode:      String(r.taskNumber).padStart(3, "0") + "." + String(r.taskYear).slice(-2),
+      taskTitle:     r.taskTitle,
+      client:        r.client,
+      color:         null,
+      status:        r.status,
+      priority:      r.priority,
+      revisionCount: r.revisionCount ?? 0,
+      coordinator:   r.createdById ? (coordMap.get(r.createdById) ?? null) : null,
+      slotIndex,
+      totalSlots,
+    };
+  });
 
   res.json(slots);
 });
