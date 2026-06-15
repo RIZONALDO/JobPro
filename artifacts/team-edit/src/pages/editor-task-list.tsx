@@ -689,7 +689,9 @@ export default function EditorTaskList() {
                 status:    t.status,
                 priority:  t.priority,
                 revisionCount: t.revisionCount ?? 0,
-                coordinator: t.createdBy ?? null,
+                coordinator:   t.createdBy ?? null,
+                slotIndex:     null,
+                totalSlots:    t.totalSlots ?? null,
               }));
 
               if (scheduleLoading) return (
