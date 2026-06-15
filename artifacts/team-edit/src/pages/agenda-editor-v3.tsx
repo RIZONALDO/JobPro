@@ -327,6 +327,8 @@ interface DayBarProps {
 
 function DayBar({ slots, dow, isHoliday, date, isDraggable, editorColor, onDragSelect, onSlotResize,
                   onSlotClick, onRemoveDay, onBarRef, blockDropPreview, lastPointerDown, onCrossDayResizeStart }: DayBarProps) {
+  const { user }                    = useAuth();
+  const myColor                     = (user as any)?.profileColor as string | null ?? null;
   const barRef                      = useRef<HTMLDivElement>(null);
   const [drag, setDrag]             = useState<{ anchor: number; cur: number } | null>(null);
   const [hoverMin, setHoverMin]     = useState<number | null>(null);
@@ -468,14 +470,16 @@ function DayBar({ slots, dow, isHoliday, date, isDraggable, editorColor, onDragS
     return (
       <div className="absolute top-0 bottom-0 pointer-events-none select-none"
         style={{ left: `${left}%`, width: `${width}%`,
-                 background: "hsl(var(--primary)/0.18)", border: "1.5px solid hsl(var(--primary)/0.55)", zIndex: 10 }}>
+                 background: myColor ? `${myColor}2e` : "hsl(var(--primary)/0.18)",
+                 border:     `1.5px solid ${myColor ? `${myColor}88` : "hsl(var(--primary)/0.55)"}`,
+                 zIndex: 10 }}>
         {width > 5 && (
           <div className="absolute inset-0 flex items-center justify-center gap-0.5 px-1 overflow-hidden">
-            <span className="text-[9px] font-black shrink-0" style={{ color: "hsl(var(--primary))" }}>{minToTime(s)}</span>
+            <span className="text-[9px] font-black shrink-0" style={{ color: myColor ?? "hsl(var(--primary))" }}>{minToTime(s)}</span>
             {width > 14 && <>
-              <span className="text-[9px] shrink-0" style={{ color: "hsl(var(--primary)/0.4)" }}>–</span>
-              <span className="text-[9px] font-black shrink-0" style={{ color: "hsl(var(--primary))" }}>{minToTime(e)}</span>
-              {effort > 0 && <span className="text-[9px] shrink-0 ml-1" style={{ color: "hsl(var(--primary)/0.65)" }}>· {fmtH(effort)}</span>}
+              <span className="text-[9px] shrink-0" style={{ color: myColor ? `${myColor}66` : "hsl(var(--primary)/0.4)" }}>–</span>
+              <span className="text-[9px] font-black shrink-0" style={{ color: myColor ?? "hsl(var(--primary))" }}>{minToTime(e)}</span>
+              {effort > 0 && <span className="text-[9px] shrink-0 ml-1" style={{ color: myColor ? `${myColor}a6` : "hsl(var(--primary)/0.65)" }}>· {fmtH(effort)}</span>}
             </>}
           </div>
         )}
@@ -568,8 +572,8 @@ function DayBar({ slots, dow, isHoliday, date, isDraggable, editorColor, onDragS
             style={{
               left:       `calc(${pct(blockDropPreview.startMin - DAY_START, total)}% + 4px)`,
               width:      `calc(${pct(blockDropPreview.endMin - blockDropPreview.startMin, total)}% - 8px)`,
-              background: blockDropPreview.fits ? "hsl(var(--primary)/0.22)" : "#ef444420",
-              border:     `1.5px dashed ${blockDropPreview.fits ? "hsl(var(--primary)/0.7)" : "#ef4444"}`,
+              background: blockDropPreview.fits ? (myColor ? `${myColor}38` : "hsl(var(--primary)/0.22)") : "#ef444420",
+              border:     `1.5px dashed ${blockDropPreview.fits ? (myColor ? `${myColor}b3` : "hsl(var(--primary)/0.7)") : "#ef4444"}`,
               zIndex:     8,
             }}
           />
@@ -587,7 +591,7 @@ function DayBar({ slots, dow, isHoliday, date, isDraggable, editorColor, onDragS
           return (
             <div className="absolute top-0 bottom-0 pointer-events-none"
               style={{ left: `${pct(hoverMin - DAY_START, total)}%`, width: `${pct(SNAP_MIN, total)}%`,
-                       background: "hsl(var(--primary)/0.12)", zIndex: 1 }} />
+                       background: myColor ? `${myColor}20` : "hsl(var(--primary)/0.12)", zIndex: 1 }} />
           );
         })()}
 
