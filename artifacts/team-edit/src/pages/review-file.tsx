@@ -11,7 +11,7 @@ import {
   ArrowLeft, Send, CheckCircle, CheckCircle2,
   MessageSquare, Loader2, RotateCcw, Upload, Download, Film,
   Pencil, Trash2, MoreHorizontal, Search, X, ChevronDown, ChevronRight, GitCompareArrows,
-  Pen, ArrowUpRight, Square,
+  Pen, ArrowUpRight, Square, UserPlus, Link2, Check,
 } from "lucide-react";
 
 const ANN_COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#ffffff"];
@@ -311,6 +311,107 @@ const CommentCard = forwardRef<HTMLDivElement, {
 });
 
 
+// ── InviteReviewerModal ───────────────────────────────────────────────────────
+
+interface Coordinator { id: number; name: string; role: string; avatarUrl: string | null; }
+
+function InviteReviewerModal({ taskId, taskTitle, onClose }: { taskId: number; taskTitle: string; onClose: () => void }) {
+  const [coords, setCoords]     = useState<Coordinator[]>([]);
+  const [search, setSearch]     = useState("");
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [message, setMessage]   = useState("");
+  const [sending, setSending]   = useState(false);
+
+  useEffect(() => { apiFetch<Coordinator[]>("/api/coordinators").then(setCoords).catch(() => {}); }, []);
+
+  const filtered = coords.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+  const toggle   = (id: number) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const handleSend = async () => {
+    if (!selected.size) return;
+    setSending(true);
+    try {
+      await apiFetch(`/api/tasks/${taskId}/invite-reviewer`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userIds: [...selected], message: message.trim() || undefined }),
+      });
+      toast.success(`Convite enviado para ${selected.size} pessoa${selected.size > 1 ? "s" : ""}!`);
+      onClose();
+    } catch { toast.error("Erro ao enviar convite"); }
+    finally { setSending(false); }
+  };
+
+  const ROLE_LABEL: Record<string, string> = { admin: "Admin", supervisor: "Superv.", coordinator: "Coord." };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-sm rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden"
+        style={{ background: "hsl(var(--card))", maxHeight: "80vh" }}>
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-[hsl(var(--border))]">
+          <UserPlus className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold">Convidar para revisão</p>
+            <p className="text-[11px] text-[hsl(var(--muted-foreground))]/50 truncate">{taskTitle}</p>
+          </div>
+          <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-[hsl(var(--muted))]/60 transition-colors">
+            <X className="h-4 w-4 text-[hsl(var(--muted-foreground))]/60" />
+          </button>
+        </div>
+        <div className="px-4 pt-3 pb-2">
+          <div className="flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 px-3 h-8">
+            <Search className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]/50 shrink-0" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar coordenador…"
+              className="flex-1 bg-transparent text-xs outline-none placeholder:text-[hsl(var(--muted-foreground))]/40" />
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-2 pb-2">
+          {filtered.length === 0
+            ? <p className="text-center text-xs text-[hsl(var(--muted-foreground))]/50 py-6">Nenhum coordenador encontrado</p>
+            : filtered.map(c => {
+              const on = selected.has(c.id);
+              return (
+                <button key={c.id} onClick={() => toggle(c.id)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[hsl(var(--muted))]/50 transition-colors text-left">
+                  <AvatarDisplay name={c.name} avatarUrl={c.avatarUrl} size={28} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-[hsl(var(--foreground))]/85 truncate">{c.name}</p>
+                    <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50">{ROLE_LABEL[c.role] ?? c.role}</p>
+                  </div>
+                  <div className={`h-4 w-4 rounded border flex items-center justify-center transition-colors ${on ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]" : "border-[hsl(var(--border))]"}`}>
+                    {on && <Check className="h-2.5 w-2.5 text-white" />}
+                  </div>
+                </button>
+              );
+            })}
+        </div>
+        <div className="px-4 pb-3 border-t border-[hsl(var(--border))] pt-3">
+          <textarea value={message} onChange={e => setMessage(e.target.value)}
+            placeholder="Mensagem opcional…" rows={2}
+            className="w-full text-xs rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 px-3 py-2 outline-none resize-none placeholder:text-[hsl(var(--muted-foreground))]/40" />
+        </div>
+        <div className="flex items-center justify-between px-4 pb-4 gap-3">
+          <span className="text-[11px] text-[hsl(var(--muted-foreground))]/50">
+            {selected.size > 0 ? `${selected.size} selecionado${selected.size > 1 ? "s" : ""}` : "Nenhum selecionado"}
+          </span>
+          <div className="flex gap-2">
+            <button onClick={onClose}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/60 transition-colors">
+              Cancelar
+            </button>
+            <button onClick={handleSend} disabled={!selected.size || sending}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-40 transition-colors"
+              style={{ background: "hsl(var(--primary))" }}>
+              <Send className="h-3 w-3" />{sending ? "Enviando…" : "Enviar convite"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── ReviewFilePage ────────────────────────────────────────────────────────────
 
 export default function ReviewFilePage() {
@@ -335,6 +436,7 @@ export default function ReviewFilePage() {
   const [uploading, setUploading]   = useState(false);
   const [approving, setApproving]   = useState(false);
   const [confirmApprove, setConfirmApprove] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [commentSearch, setCommentSearch]   = useState("");
   const [versionMenuOpen, setVersionMenuOpen]       = useState(false);
   const [versionSubmenuOpen, setVersionSubmenuOpen] = useState(false);
@@ -838,21 +940,20 @@ export default function ReviewFilePage() {
       {!compareMode && <header className="shrink-0 flex items-center gap-3 px-4 border-b border-[hsl(var(--border))] bg-[hsl(var(--card))]"
         style={{ height: 56 }}>
 
-        <button onClick={() => navigate(`/review/${tId}`)}
+        <button onClick={() => navigate(isEditor ? "/fila" : "/tasks")}
           className="h-8 w-8 flex items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] transition-colors shrink-0">
           <ArrowLeft className="h-4 w-4" />
         </button>
 
-        {/* Breadcrumb — espelha o BreadcrumbBar do Shell */}
+        {/* Breadcrumb */}
         <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
           {task.taskCode && (
             <span className="text-[11px] font-mono text-[hsl(var(--muted-foreground))]/50 shrink-0">{task.taskCode}</span>
           )}
           <ChevronRight className="h-3.5 w-3.5 text-[hsl(var(--border))] shrink-0" />
-          <button onClick={() => navigate(`/review/${tId}`)}
-            className="text-[11px] text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--foreground))]/80 transition-colors truncate max-w-[160px]">
+          <span className="text-[11px] text-[hsl(var(--muted-foreground))]/60 truncate max-w-[160px]">
             {task.title}
-          </button>
+          </span>
           <ChevronRight className="h-3.5 w-3.5 text-[hsl(var(--border))] shrink-0" />
           <span className="text-sm font-semibold text-[hsl(var(--foreground))]/85 truncate">{file.originalName ?? file.fileName}</span>
           {/* Version picker */}
@@ -895,6 +996,9 @@ export default function ReviewFilePage() {
                             {i === versionFiles.length - 1 && (
                               <span className="text-[9px] text-[hsl(var(--muted-foreground))]/40">atual</span>
                             )}
+                            {vf.approvedAt && (
+                              <span className="text-[9px] font-semibold text-emerald-500 px-1 py-px rounded bg-emerald-500/10 border border-emerald-500/20">✓ aprovada</span>
+                            )}
                           </div>
                           <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 truncate leading-tight">
                             {vf.originalName ?? vf.fileName}
@@ -913,6 +1017,16 @@ export default function ReviewFilePage() {
         {/* Ações direita */}
 
         <div className="flex items-center gap-1.5 shrink-0">
+          {isTaskOwner && (
+            <button onClick={() => setInviteOpen(true)}
+              className="hidden sm:flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]/70 hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/60 transition-colors">
+              <UserPlus className="h-3 w-3" />Convidar
+            </button>
+          )}
+          <button onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success("Link copiado!"); }}
+            className="hidden sm:flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]/70 hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/60 transition-colors">
+            <Link2 className="h-3 w-3" />Compartilhar
+          </button>
           {versionFiles.length > 1 && (
             <button
               onClick={() => {
@@ -1330,6 +1444,9 @@ export default function ReviewFilePage() {
         </div>
       </div>
     </div>
+    {inviteOpen && task && (
+      <InviteReviewerModal taskId={tId} taskTitle={task.title} onClose={() => setInviteOpen(false)} />
+    )}
     </>
   );
 }
