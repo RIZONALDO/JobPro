@@ -214,7 +214,7 @@ export function TaskDetailsModal({ open, onOpenChange, taskId }: Props) {
                     <div className="space-y-1.5">
                       <p className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Editor</p>
                       <div className="flex items-center gap-2 flex-wrap">
-                        {[task.assignedTo, ...task.editors].filter(Boolean).map((p, i) => (
+                        {[task.assignedTo, ...task.editors.filter(e => e.id !== task.assignedTo?.id)].filter(Boolean).map((p, i) => (
                           <div key={p!.id} className="flex items-center gap-1.5">
                             <ChatAvatarButton userId={p!.id} name={p!.name} avatarUrl={p!.avatarUrl}
                               size={26} taskId={task.id} taskCode={task.taskCode} taskTitle={task.title} />
