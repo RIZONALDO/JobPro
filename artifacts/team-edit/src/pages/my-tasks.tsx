@@ -34,6 +34,8 @@ interface Task {
   complexity: string;
   effortHours?: number | null;
   hasAllocToday?: boolean;
+  todaySlotIndex?: number | null;
+  totalSlots?: number | null;
   folderUrl: string | null;
   revisionCount: number;
   revisions: Revision[];

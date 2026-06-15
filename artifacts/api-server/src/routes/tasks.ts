@@ -700,17 +700,31 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     : [];
   const overviewReviewCommentMap = new Map(overviewUnreadComments.map(r => [r.taskId, Number(r.count)]));
 
-  // Quais tarefas têm alocação HOJE (ESCALA v2)
+  // Alocações (todas as datas) para calcular slotIndex/totalSlots por tarefa ESCALA
   const overviewTodayStr = new Date().toISOString().slice(0, 10);
-  const overviewTodayAllocIds: Set<number> = taskIds.length
-    ? new Set((await db.select({ taskId: taskAllocationsTable.taskId })
+  const overviewAllAllocs = taskIds.length
+    ? await db.select({ taskId: taskAllocationsTable.taskId, workDate: taskAllocationsTable.workDate })
         .from(taskAllocationsTable)
         .where(and(
           inArray(taskAllocationsTable.taskId, taskIds),
-          eq(taskAllocationsTable.workDate, overviewTodayStr),
           sql`${taskAllocationsTable.allocatedHours} > 0`,
-        ))).map(a => a.taskId))
-    : new Set();
+        ))
+        .orderBy(taskAllocationsTable.workDate)
+    : [];
+  const overviewSlotDates = new Map<number, string[]>();
+  for (const a of overviewAllAllocs) {
+    if (!overviewSlotDates.has(a.taskId)) overviewSlotDates.set(a.taskId, []);
+    overviewSlotDates.get(a.taskId)!.push(a.workDate);
+  }
+  const getOverviewSlot = (taskId: number) => {
+    const dates  = overviewSlotDates.get(taskId) ?? [];
+    const idx    = dates.indexOf(overviewTodayStr);
+    return {
+      hasAllocToday:  idx >= 0,
+      todaySlotIndex: idx >= 0 ? idx + 1 : null,
+      totalSlots:     dates.length > 1 ? dates.length : null,
+    };
+  };
 
   res.json(rows.map(r => ({
     id: r.id,
@@ -743,7 +757,7 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     unreadCommentCount:  overviewReviewCommentMap.get(r.id) ?? 0,
     effortHours:         r.effortHours ?? null,
     editorComplexitySet: r.editorComplexitySet,
-    hasAllocToday:       overviewTodayAllocIds.has(r.id),
+    ...getOverviewSlot(r.id),
   })));
 });
 
@@ -1805,17 +1819,31 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
     : [];
   const reviewCommentCountMap = new Map(unreadCommentRows.map(r => [r.taskId, Number(r.count)]));
 
-  // Quais tarefas têm alocação HOJE (ESCALA v2)
+  // Alocações (todas as datas) para calcular slotIndex/totalSlots por tarefa ESCALA
   const myTodayStr = new Date().toISOString().slice(0, 10);
-  const myTodayAllocIds: Set<number> = taskIds.length
-    ? new Set((await db.select({ taskId: taskAllocationsTable.taskId })
+  const myAllAllocs = taskIds.length
+    ? await db.select({ taskId: taskAllocationsTable.taskId, workDate: taskAllocationsTable.workDate })
         .from(taskAllocationsTable)
         .where(and(
           inArray(taskAllocationsTable.taskId, taskIds),
-          eq(taskAllocationsTable.workDate, myTodayStr),
           sql`${taskAllocationsTable.allocatedHours} > 0`,
-        ))).map(a => a.taskId))
-    : new Set();
+        ))
+        .orderBy(taskAllocationsTable.workDate)
+    : [];
+  const mySlotDates = new Map<number, string[]>();
+  for (const a of myAllAllocs) {
+    if (!mySlotDates.has(a.taskId)) mySlotDates.set(a.taskId, []);
+    mySlotDates.get(a.taskId)!.push(a.workDate);
+  }
+  const getMySlot = (taskId: number) => {
+    const dates  = mySlotDates.get(taskId) ?? [];
+    const idx    = dates.indexOf(myTodayStr);
+    return {
+      hasAllocToday:  idx >= 0,
+      todaySlotIndex: idx >= 0 ? idx + 1 : null,
+      totalSlots:     dates.length > 1 ? dates.length : null,
+    };
+  };
 
   // Buscar criadores e assignees em lote
   const myPersonIds = [...new Set([
@@ -1866,7 +1894,7 @@ router.get("/my-tasks", requireAuth, async (req, res): Promise<void> => {
       fileCount:          myFileCountMap.get(t.id) ?? 0,
       fileKind:           myFileCountMap.get(t.id) ? (myFileKindMap.get(t.id) ?? null) : null,
       unreadCommentCount: reviewCommentCountMap.get(t.id) ?? 0,
-      hasAllocToday:      myTodayAllocIds.has(t.id),
+      ...getMySlot(t.id),
     };
   }));
 

@@ -54,6 +54,8 @@ interface Task {
   reviewedAt?: string | null;
   effortHours?: number | null;
   hasAllocToday?: boolean;
+  todaySlotIndex?: number | null;
+  totalSlots?: number | null;
   fileCount?: number;
   fileKind?: "video" | "audio" | "mixed" | "other" | null;
   unreadCommentCount?: number;
@@ -320,9 +322,14 @@ export default function EditorTaskList() {
         const t = row.original;
         return (
           <div className="min-w-0">
-            <div className="flex items-baseline gap-2 min-w-0">
+            <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
               {t.taskCode && <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">{t.taskCode}</span>}
               <span className="text-sm font-semibold truncate leading-snug">{t.title}</span>
+              {t.totalSlots && t.totalSlots > 1 && (
+                <span className="shrink-0 text-[10px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]/70 border border-[hsl(var(--primary))]/20 whitespace-nowrap">
+                  {t.todaySlotIndex ? (t.todaySlotIndex === t.totalSlots ? "Etapa final" : `Etapa ${t.todaySlotIndex}/${t.totalSlots}`) : `${t.totalSlots} sessões`}
+                </span>
+              )}
               {t.revisionCount > 0 && (
                 <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap">
                   {t.revisionCount} {t.revisionCount === 1 ? "alt." : "alts."}
