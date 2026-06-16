@@ -667,7 +667,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                   {/* Entrega */}
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
+                      <Clock className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
                       <Label className="text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
                         Entrega
                         {(!isMultiTask || editMode) && <span className="text-destructive ml-0.5">*</span>}
