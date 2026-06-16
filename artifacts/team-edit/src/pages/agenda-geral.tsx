@@ -5,7 +5,7 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Lock, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Lock, Plus } from "lucide-react";
 import { TaskFormModal } from "@/components/task-form-modal";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -198,6 +198,21 @@ export default function AgendaGeral() {
     [rows, weekDays]
   );
 
+  const [expandedEditors, setExpandedEditors] = useState<Set<number>>(new Set());
+  const toggleEditor = (id: number) =>
+    setExpandedEditors(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const STATUS_LABEL: Record<string, string> = {
+    pending: "Na fila", in_progress: "Em edição", captacao: "Falta captação",
+    in_revision: "Em alteração", review: "Em aprovação", completed: "Aprovada",
+    paused: "Pausada", cancelled: "Cancelada",
+  };
+  const STATUS_COLOR: Record<string, string> = {
+    pending: "text-slate-400", in_progress: "text-blue-400", captacao: "text-violet-400",
+    in_revision: "text-orange-400", review: "text-amber-400", completed: "text-emerald-400",
+    paused: "text-violet-400", cancelled: "text-red-400",
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -285,21 +300,32 @@ export default function AgendaGeral() {
           )}
 
           {/* Editor rows */}
-          {!loading && editorData.map(({ editor, tasks, scores, reviewCounts }) => (
-            <div
-              key={editor.id}
-              className="grid"
-              style={{
-                gridTemplateColumns: "200px repeat(7, 1fr)",
-                borderTop: "1px solid hsl(var(--border) / 0.4)",
-              }}
-            >
+          {!loading && editorData.map(({ editor, tasks, scores, reviewCounts }) => {
+            const isExpanded = expandedEditors.has(editor.id);
+            const activeTasks = tasks.filter(t => !["completed","cancelled"].includes(t.status));
+            return (
+            <div key={editor.id} style={{ borderTop: "1px solid hsl(var(--border) / 0.4)" }}>
+              <div
+                className="grid"
+                style={{ gridTemplateColumns: "200px repeat(7, 1fr)" }}
+              >
               {/* Editor sidebar */}
-              <div className="flex items-center gap-3 px-4 py-[5px]">
-                <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={30} className="shrink-0" />
+              <div className="flex items-center gap-2 px-3 py-[5px]">
+                <button
+                  onClick={() => toggleEditor(editor.id)}
+                  className="shrink-0 flex items-center justify-center w-5 h-5 rounded hover:bg-[hsl(var(--muted))]/40 transition-colors"
+                >
+                  <ChevronDown className={`h-3 w-3 text-[hsl(var(--muted-foreground))]/50 transition-transform duration-200 ${isExpanded ? "" : "-rotate-90"}`} />
+                </button>
+                <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={28} className="shrink-0" />
                 <span className="text-[12px] font-semibold truncate leading-snug">
                   {editor.name.split(" ")[0]}
                 </span>
+                {activeTasks.length > 0 && (
+                  <span className="ml-auto shrink-0 text-[10px] font-bold text-[hsl(var(--muted-foreground))]/40">
+                    {activeTasks.length}
+                  </span>
+                )}
               </div>
 
               {/* Day heat slots */}
@@ -350,8 +376,45 @@ export default function AgendaGeral() {
                   </div>
                 );
               })}
+              </div>{/* fim grid */}
+
+              {/* Lista colapsável de tarefas */}
+              {isExpanded && (
+                <div style={{ borderTop: "1px solid hsl(var(--border) / 0.3)", background: "hsl(var(--muted) / 0.06)" }}>
+                  {activeTasks.length === 0 ? (
+                    <p className="px-6 py-3 text-[12px] text-[hsl(var(--muted-foreground))]/40 italic">Nenhuma tarefa ativa</p>
+                  ) : (
+                    <div className="divide-y divide-[hsl(var(--border))]/20">
+                      {activeTasks.map(t => (
+                        <div key={t.id} className="flex items-center gap-3 px-6 py-2.5">
+                          <span className="font-mono text-[11px] font-bold shrink-0" style={{ color: t.color || "hsl(var(--muted-foreground))" }}>
+                            {t.taskCode}
+                          </span>
+                          <span className="text-[12px] truncate flex-1 min-w-0 text-[hsl(var(--foreground))]/80">
+                            {t.title}
+                          </span>
+                          {t.client && (
+                            <span className="text-[11px] text-[hsl(var(--muted-foreground))]/50 shrink-0 hidden sm:block">
+                              {t.client}
+                            </span>
+                          )}
+                          <span className={`text-[11px] font-medium shrink-0 ${STATUS_COLOR[t.status] ?? "text-[hsl(var(--muted-foreground))]"}`}>
+                            {STATUS_LABEL[t.status] ?? t.status}
+                          </span>
+                          {t.dueDate && (
+                            <span className="text-[11px] tabular-nums text-[hsl(var(--muted-foreground))]/40 shrink-0">
+                              {t.dueDate.split("T")[0].split("-").reverse().slice(0,2).join("/")}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
 
           {/* Empty */}
           {!loading && editorData.length === 0 && (
