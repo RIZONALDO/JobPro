@@ -326,7 +326,7 @@ export default function AgendaGeral() {
                         background: isDragSelected ? "rgba(255,255,255,0.09)" : cfg.bg,
                         border: isDragSelected ? "1.5px solid rgba(255,255,255,0.28)" : `1px solid ${cfg.border}`,
                         boxShadow: isDragSelected ? "0 0 12px rgba(255,255,255,0.06)" : cfg.shadow,
-                        cursor: sc >= 12 ? "not-allowed" : isDraggingRow ? "col-resize" : "pointer",
+                        cursor: isDraggingRow ? "col-resize" : "default",
                         transform: isDragSelected ? "scaleY(1.04)" : undefined,
                       }}
                     >
