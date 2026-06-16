@@ -48,12 +48,18 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
       weekendStart: dutySchedulesTable.weekendStart,
       slotType: dutySchedulesTable.slotType,
       notes: dutySchedulesTable.notes,
-      editorId: usersTable.id,
-      editorName: usersTable.name,
+      editorId:        usersTable.id,
+      editorName:      usersTable.name,
       editorAvatarUrl: usersTable.avatarUrl,
+      editorVacStart:  usersTable.vacationStart,
+      editorVacEnd:    usersTable.vacationEnd,
+      substituteId:        substituteUser.id,
+      substituteName:      substituteUser.name,
+      substituteAvatarUrl: substituteUser.avatarUrl,
     })
     .from(dutySchedulesTable)
     .leftJoin(usersTable, eq(dutySchedulesTable.editorId, usersTable.id))
+    .leftJoin(substituteUser, eq(dutySchedulesTable.substituteId, substituteUser.id))
     .where(and(gte(dutySchedulesTable.weekendStart, lastSatStr), lte(dutySchedulesTable.weekendStart, untilStr)));
 
   const sunOf = (satStr: string) => {
@@ -65,7 +71,11 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
   const editorsByDate = (dateStr: string) =>
     rows
       .filter(r => r.weekendStart === dateStr && r.editorId)
-      .map(r => ({ id: r.editorId!, name: r.editorName!, avatarUrl: r.editorAvatarUrl ?? null, slotType: r.slotType }));
+      .map(r => ({
+        id: r.editorId!, name: r.editorName!, avatarUrl: r.editorAvatarUrl ?? null, slotType: r.slotType,
+        vacationStart: r.editorVacStart ?? null, vacationEnd: r.editorVacEnd ?? null,
+        substituteId: r.substituteId ?? null, substituteName: r.substituteName ?? null, substituteAvatarUrl: r.substituteAvatarUrl ?? null,
+      }));
 
   const group = (satStr: string) => ({
     weekendStart: satStr,

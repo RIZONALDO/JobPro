@@ -18,7 +18,11 @@ interface ScheduleEditor {
 }
 interface WeekendSlot { weekendStart: string; editors: ScheduleEditor[]; notes: string | null; }
 
-interface UpcomingEditor { id: number; name: string; avatarUrl: string | null; }
+interface UpcomingEditor {
+  id: number; name: string; avatarUrl: string | null;
+  vacationStart?: string | null; vacationEnd?: string | null;
+  substituteId?: number | null; substituteName?: string | null; substituteAvatarUrl?: string | null;
+}
 interface UpcomingWeekend { weekendStart: string; satEditors: UpcomingEditor[]; sunEditors: UpcomingEditor[]; }
 interface HolidayEntry { dutyDate: string; notes: string | null; editors: UpcomingEditor[]; }
 interface UpcomingData {
@@ -59,6 +63,14 @@ function isCurrentWeekend(satIso: string): boolean {
 
 function isToday(iso: string): boolean {
   return new Date().toISOString().split("T")[0] === iso;
+}
+
+// Retorna o editor efetivo para exibição: substituto se em férias, null se indefinido
+function resolveEditor(ed: UpcomingEditor, slotDate: string): { name: string; avatarUrl: string | null; id: number; isSubstitute: boolean } | null {
+  const onVac = !!(ed.vacationStart && ed.vacationEnd && slotDate >= ed.vacationStart && slotDate <= ed.vacationEnd);
+  if (!onVac) return { name: ed.name, avatarUrl: ed.avatarUrl, id: ed.id, isSubstitute: false };
+  if (ed.substituteId && ed.substituteName) return { name: ed.substituteName, avatarUrl: ed.substituteAvatarUrl ?? null, id: ed.substituteId, isSubstitute: true };
+  return null; // on vacation, no substitute → "Editor a definir"
 }
 
 // ── Weekend Card — side-by-side layout (non-admin view) ───────────────────────
@@ -141,31 +153,43 @@ function WeekendCard({ variant, weekend, currentUserId }: {
         ) : sameEditors ? (
           /* Same editor(s) both days — combined view */
           <div className={`flex w-full justify-center ${c ? "flex-row gap-4" : "flex-col gap-2"}`}>
-            {satEditors.map(ed => (
+            {satEditors.map(ed => {
+              const resolved = resolveEditor(ed, weekend.weekendStart);
+              return (
               <div key={ed.id} className="flex flex-col items-center gap-1.5">
-                <div className={c ? "ring-2 ring-[hsl(var(--primary))]/30 ring-offset-2 ring-offset-[hsl(var(--card))] rounded-full" : ""}>
-                  <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={c ? 64 : 36} />
-                </div>
-                <div>
-                  <p className={`font-semibold leading-tight ${c ? "text-sm" : "text-[11px]"}`}>
-                    {ed.name.split(" ")[0]}
+                {resolved ? (
+                  <>
+                    <div className={c ? "ring-2 ring-[hsl(var(--primary))]/30 ring-offset-2 ring-offset-[hsl(var(--card))] rounded-full" : ""}>
+                      <AvatarDisplay name={resolved.name} avatarUrl={resolved.avatarUrl} size={c ? 64 : 36} />
+                    </div>
+                    <div>
+                      <p className={`font-semibold leading-tight ${c ? "text-sm" : "text-[11px]"}`}>
+                        {resolved.name.split(" ")[0]}
+                      </p>
+                      {resolved.isSubstitute && (
+                        <p className={`text-blue-500 font-bold ${c ? "text-[10px]" : "text-[9px]"}`}>cobrindo</p>
+                      )}
+                      {resolved.id === currentUserId && (
+                        <p className={`font-bold text-[hsl(var(--primary))] ${c ? "text-[10px]" : "text-[9px]"}`}>você</p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className={`text-[hsl(var(--muted-foreground))] italic ${c ? "text-xs" : "text-[10px]"}`}>
+                    Editor a definir
                   </p>
-                  {ed.id === currentUserId && (
-                    <p className={`font-bold text-[hsl(var(--primary))] ${c ? "text-[10px]" : "text-[9px]"}`}>
-                      você
-                    </p>
-                  )}
-                </div>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           /* Different editors per day — per-day rows */
           <div className="flex flex-col gap-2 w-full">
             {([
-              { label: "Sáb", editors: satEditors },
-              { label: "Dom", editors: sunEditors },
-            ] as const).map(({ label, editors: dayEditors }) => (
+              { label: "Sáb", editors: satEditors, date: weekend.weekendStart },
+              { label: "Dom", editors: sunEditors, date: (() => { const d = new Date(weekend.weekendStart + "T12:00:00"); d.setDate(d.getDate()+1); return d.toISOString().split("T")[0]; })() },
+            ] as const).map(({ label, editors: dayEditors, date }) => (
               <div key={label} className="flex items-center gap-1.5">
                 <span className={`shrink-0 font-bold text-[hsl(var(--muted-foreground))] w-6 text-left ${c ? "text-[9px]" : "text-[8px]"}`}>
                   {label}
@@ -174,21 +198,29 @@ function WeekendCard({ variant, weekend, currentUserId }: {
                   <span className={`text-[hsl(var(--muted-foreground))] ${c ? "text-[10px]" : "text-[9px]"}`}>
                     A definir
                   </span>
-                ) : dayEditors.map(ed => (
-                  <div key={ed.id} className="flex items-center gap-1">
-                    <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={c ? 26 : 20} />
-                    <div>
-                      <p className={`font-semibold leading-none ${c ? "text-[11px]" : "text-[10px]"}`}>
-                        {ed.name.split(" ")[0]}
-                      </p>
-                      {ed.id === currentUserId && (
-                        <p className={`font-bold text-[hsl(var(--primary))] ${c ? "text-[10px]" : "text-[9px]"}`}>
-                          você
+                ) : dayEditors.map(ed => {
+                  const resolved = resolveEditor(ed, date);
+                  return resolved ? (
+                    <div key={ed.id} className="flex items-center gap-1">
+                      <AvatarDisplay name={resolved.name} avatarUrl={resolved.avatarUrl} size={c ? 26 : 20} />
+                      <div>
+                        <p className={`font-semibold leading-none ${c ? "text-[11px]" : "text-[10px]"}`}>
+                          {resolved.name.split(" ")[0]}
                         </p>
-                      )}
+                        {resolved.isSubstitute && (
+                          <p className={`text-blue-500 font-bold ${c ? "text-[10px]" : "text-[9px]"}`}>cobrindo</p>
+                        )}
+                        {resolved.id === currentUserId && (
+                          <p className={`font-bold text-[hsl(var(--primary))] ${c ? "text-[10px]" : "text-[9px]"}`}>você</p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ) : (
+                    <span key={ed.id} className={`text-[hsl(var(--muted-foreground))] italic ${c ? "text-[10px]" : "text-[9px]"}`}>
+                      Editor a definir
+                    </span>
+                  );
+                })}
               </div>
             ))}
           </div>
