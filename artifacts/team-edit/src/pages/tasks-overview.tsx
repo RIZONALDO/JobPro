@@ -15,9 +15,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import {
   ClipboardList, MoreVertical,
   Pencil, Trash2, Plus, ChevronRight, ChevronLeft,
-  Search, X, FileVideo, Clapperboard, AudioLines, RefreshCw, UserPlus,
+  Search, X, RefreshCw, UserPlus,
 } from "lucide-react";
-import { TaskFilesViewModal } from "@/components/TaskFilesViewModal";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { TaskFormModal } from "@/components/task-form-modal";
 import { ReassignEditorModal } from "@/components/reassign-editor-modal";
@@ -118,8 +117,7 @@ export default function TasksOverview() {
   const [tanSorting, setTanSorting] = useState<SortingState>([]);
 
   // Dialogs
-  const [filesViewTarget, setFilesViewTarget] = useState<OverviewTask | null>(null);
-  const [formOpen,    setFormOpen]    = useState(false);
+const [formOpen,    setFormOpen]    = useState(false);
   const [editTaskId,  setEditTaskId]  = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
   const [deleting,    setDeleting]    = useState(false);
@@ -300,19 +298,6 @@ export default function TasksOverview() {
                   <div className={`h-full rounded-full transition-all ${subPct === 100 ? "bg-green-500" : subPct >= 66 ? "bg-blue-500" : subPct >= 33 ? "bg-indigo-400" : "bg-slate-400"}`} style={{ width: `${subPct}%` }} />
                 </div>
               </div>
-            )}
-            {(t.fileCount ?? 0) > 0 && (
-              <button
-                title={`Ver mídia · ${t.fileCount} arquivo${t.fileCount !== 1 ? "s" : ""}`}
-                onClick={e => { e.stopPropagation(); setFilesViewTarget(t); }}
-                className={`inline-flex items-center gap-1 mt-1 w-fit px-1.5 py-[3px] rounded-[4px] text-[10px] font-medium transition-colors
-                  ${t.fileKind === "audio"
-                    ? "bg-sky-500/8 text-sky-600 dark:text-sky-400 hover:bg-sky-500/15"
-                    : "bg-violet-500/8 text-violet-600 dark:text-violet-400 hover:bg-violet-500/15"}`}
-              >
-                {t.fileKind === "audio" ? <AudioLines className="h-3 w-3" /> : t.fileKind === "mixed" ? <><Clapperboard className="h-3 w-3" /><AudioLines className="h-3 w-3 opacity-70" /></> : <Clapperboard className="h-3 w-3" />}
-                <span>{t.fileCount} {t.fileKind === "audio" ? "áudio" : t.fileKind === "mixed" ? "arquivos" : t.fileCount === 1 ? "vídeo" : "vídeos"}</span>
-              </button>
             )}
           </div>
         );
@@ -826,16 +811,6 @@ export default function TasksOverview() {
           onOpenChange={v => { if (!v) { setFormOpen(false); setEditTaskId(null); } }}
           editTaskId={editTaskId}
           onSaved={() => { setFormOpen(false); setEditTaskId(null); load(true); }}
-        />
-      )}
-
-      {filesViewTarget && (
-        <TaskFilesViewModal
-          taskId={filesViewTarget.id}
-          taskTitle={filesViewTarget.title}
-          taskCode={filesViewTarget.taskCode}
-          open={!!filesViewTarget}
-          onClose={() => setFilesViewTarget(null)}
         />
       )}
 
