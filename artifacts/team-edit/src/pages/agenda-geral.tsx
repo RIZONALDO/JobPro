@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { apiFetch } from "@/lib/api";
 import { usePageTitle } from "@/lib/use-page-title";
 import { useRealtime } from "@/hooks/use-realtime";
@@ -6,7 +6,8 @@ import { useTaskModal } from "@/contexts/TaskModalContext";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ChevronLeft, ChevronRight, Lock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Lock, Plus } from "lucide-react";
+import { TaskFormModal } from "@/components/task-form-modal";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,10 @@ interface EditorRow {
 const WEEK_DAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const MON_PT    = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const COMPLEXITY_WEIGHT: Record<string, number> = { low: 3, medium: 6, high: 12 };
+
+function toISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
 
 function parseLocal(s: string): Date {
   const [y, m, d] = s.split("T")[0].split("-").map(Number);
@@ -133,9 +138,53 @@ export default function AgendaGeral() {
   useEffect(() => { load(); }, [load]);
   useRealtime({ onTasksChanged: load });
 
+  // ── Drag-to-create ─────────────────────────────────────────────────────────
+  type DragState = { editorId: number; start: number; end: number };
+  const dragRef    = useRef<DragState | null>(null);
+  const weekDaysRef = useRef<Date[]>([]);
+  const [drag,      setDrag]      = useState<DragState | null>(null);
+  const [formOpen,  setFormOpen]  = useState(false);
+  const [formPreset, setFormPreset] = useState<{ editorId: number; startDate: string; dueDate: string } | null>(null);
+
+  // Global mouseup — finaliza o drag onde quer que o mouse solte
+  useEffect(() => {
+    const endDrag = () => {
+      const d = dragRef.current;
+      if (!d) return;
+      dragRef.current = null;
+      setDrag(null);
+      const s = Math.min(d.start, d.end);
+      const e = Math.max(d.start, d.end);
+      if (s !== e) {
+        const days = weekDaysRef.current;
+        setFormPreset({ editorId: d.editorId, startDate: toISO(days[s]), dueDate: toISO(days[e]) });
+        setFormOpen(true);
+      }
+    };
+    window.addEventListener("mouseup", endDrag);
+    return () => window.removeEventListener("mouseup", endDrag);
+  }, []);
+
+  const startDrag = useCallback((editorId: number, dayIdx: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    const d: DragState = { editorId, start: dayIdx, end: dayIdx };
+    dragRef.current = d;
+    setDrag(d);
+  }, []);
+
+  const moveDrag = useCallback((editorId: number, dayIdx: number) => {
+    if (!dragRef.current || dragRef.current.editorId !== editorId) return;
+    const d: DragState = { ...dragRef.current, end: dayIdx };
+    dragRef.current = d;
+    setDrag(d);
+  }, []);
+
+  // ──────────────────────────────────────────────────────────────────────────
+
   const today     = useMemo(() => d0(new Date()), []);
   const weekStart = useMemo(() => addDays(toMonday(today), weekOffset * 7), [today, weekOffset]);
   const weekDays  = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
+  useEffect(() => { weekDaysRef.current = weekDays; }, [weekDays]);
 
   const monthLabel = useMemo(() => {
     const months = new Set(weekDays.map(d => d.getMonth()));
@@ -156,6 +205,7 @@ export default function AgendaGeral() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
+    <>
     <div className="flex flex-col h-full min-h-0">
 
       {/* Header */}
@@ -261,27 +311,39 @@ export default function AgendaGeral() {
                 const cfg     = slotConfig(sc, reviewCounts[di]);
                 const isWkend = weekDays[di].getDay() === 0 || weekDays[di].getDay() === 6;
                 const tasksOnDay = dayTasks(tasks, weekDays[di]);
+                const isDragSelected = drag !== null && drag.editorId === editor.id &&
+                  di >= Math.min(drag.start, drag.end) && di <= Math.max(drag.start, drag.end);
+                const isDraggingRow = drag !== null && drag.editorId === editor.id;
                 return (
                   <div
                     key={di}
                     className="p-[4px]"
                     style={isWkend ? { background: "hsl(var(--muted) / 0.07)" } : {}}
+                    onMouseDown={e => startDrag(editor.id, di, e)}
+                    onMouseEnter={() => moveDrag(editor.id, di)}
                   >
                     <Popover>
                       <PopoverTrigger asChild>
                         <div
-                          className="relative w-full cursor-pointer select-none transition-all duration-200 hover:scale-[1.03] hover:brightness-110"
+                          className={`relative w-full select-none transition-all duration-200 ${!drag ? "hover:scale-[1.03] hover:brightness-110" : ""}`}
                           style={{
                             height: 72,
                             borderRadius: 7,
-                            background: cfg.bg,
-                            border: `1px solid ${cfg.border}`,
-                            boxShadow: cfg.shadow,
+                            background: isDragSelected ? "hsl(var(--primary) / 0.22)" : cfg.bg,
+                            border: isDragSelected ? "2px solid hsl(var(--primary) / 0.55)" : `1px solid ${cfg.border}`,
+                            boxShadow: isDragSelected ? "0 0 20px hsl(var(--primary) / 0.18)" : cfg.shadow,
+                            cursor: isDraggingRow ? "col-resize" : "pointer",
+                            transform: isDragSelected ? "scaleY(1.04)" : undefined,
                           }}
                         >
-                          {sc >= 12 && (
+                          {sc >= 12 && !isDragSelected && (
                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                               <Lock style={{ width: 18, height: 18, color: "#ef4444", opacity: 0.30 }} strokeWidth={2.5} />
+                            </div>
+                          )}
+                          {isDragSelected && (
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <Plus style={{ width: 16, height: 16, color: "hsl(var(--primary))", opacity: 0.7 }} />
                             </div>
                           )}
                         </div>
@@ -374,5 +436,18 @@ export default function AgendaGeral() {
         </div>
       </div>
     </div>
+
+    {formOpen && formPreset && (
+      <TaskFormModal
+        open={formOpen}
+        onOpenChange={v => { if (!v) { setFormOpen(false); setFormPreset(null); } }}
+        editTaskId={null}
+        initialStartDate={formPreset.startDate}
+        initialDueDate={formPreset.dueDate}
+        initialEditorId={formPreset.editorId}
+        onSaved={() => { setFormOpen(false); setFormPreset(null); load(); }}
+      />
+    )}
+    </>
   );
 }

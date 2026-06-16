@@ -31,7 +31,9 @@ interface Props {
   onOpenChange: (v: boolean) => void;
   onSaved: () => void;
   editTaskId?: number | null;
+  initialStartDate?: string;
   initialDueDate?: string;
+  initialEditorId?: number;
   hidePublish?: boolean;
 }
 
@@ -57,7 +59,7 @@ function scoreLabel(score: number): string {
   return "No limite";
 }
 
-export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initialDueDate, hidePublish }: Props) {
+export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initialStartDate, initialDueDate, initialEditorId, hidePublish }: Props) {
   const editMode = !!editTaskId;
   const { user } = useAuth();
   // Coordenadores e supervisores não veem complexidade — só admin pode definir manualmente
@@ -162,8 +164,8 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
         .catch(() => { toast.error("Erro ao carregar tarefa"); onOpenChange(false); })
         .finally(() => setLoadingEdit(false));
     } else {
-      setForm({ ...EMPTY_FORM, dueDateTime: initialDueDate ?? "" });
-      setSelectedEditorIds([]);
+      setForm({ ...EMPTY_FORM, startDateTime: initialStartDate ?? "", dueDateTime: initialDueDate ?? "" });
+      setSelectedEditorIds(initialEditorId ? [initialEditorId] : []);
       setAddEditorValue("none");
       setIsMultiTask(false);
       setTaskType("task");
