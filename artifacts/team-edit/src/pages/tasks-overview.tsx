@@ -241,9 +241,9 @@ const [formOpen,    setFormOpen]    = useState(false);
   const tasksByDate = useMemo(() => {
     const map = new Map<string, OverviewTask[]>();
     [...filtered]
-      .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""))
+      .sort((a, b) => ((a.startDate ?? a.createdAt) ?? "").localeCompare((b.startDate ?? b.createdAt) ?? ""))
       .forEach(t => {
-        const key = t.createdAt?.split("T")[0] ?? "__";
+        const key = (t.startDate ?? t.createdAt)?.split("T")[0] ?? "__";
         if (!map.has(key)) map.set(key, []);
         map.get(key)!.push(t);
       });
@@ -252,7 +252,8 @@ const [formOpen,    setFormOpen]    = useState(false);
 
   // Mantém sortedFiltered para o TanStack (dados completos)
   const sortedFiltered = useMemo(() =>
-    [...filtered].sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? "")),
+    [...filtered].sort((a, b) =>
+      ((a.startDate ?? a.createdAt) ?? "").localeCompare((b.startDate ?? b.createdAt) ?? "")),
   [filtered]);
 
   const dateMeta = (dateKey: string | null | undefined) => {
@@ -802,7 +803,7 @@ const [formOpen,    setFormOpen]    = useState(false);
           open={formOpen}
           onOpenChange={v => { if (!v) { setFormOpen(false); setEditTaskId(null); setCreateForDate(null); } }}
           editTaskId={editTaskId}
-          initialDueDate={createForDate ?? undefined}
+          initialStartDate={createForDate ?? undefined}
           onSaved={() => { setFormOpen(false); setEditTaskId(null); setCreateForDate(null); load(true); }}
         />
       )}

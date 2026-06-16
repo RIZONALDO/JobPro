@@ -232,11 +232,6 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
               </div>
 
               <div>
-                <label className={labelCls}>Início <span className="normal-case text-[hsl(var(--muted-foreground))]/40 font-normal">(opcional)</span></label>
-                <DatePicker value={form.startDateTime} onChange={v => f({ startDateTime: v })} placeholder="DD/MM/AAAA HH:MM" withTime className="w-full border-zinc-700 bg-zinc-950/40 text-zinc-100 rounded-2xl" />
-              </div>
-
-              <div>
                 <label className={labelCls}>Entrega *</label>
                 <DatePicker value={form.dueDateTime} onChange={v => f({ dueDateTime: v })} placeholder="DD/MM/AAAA HH:MM" minDate={todayIso} withTime className="w-full border-zinc-700 bg-zinc-950/40 text-zinc-100 rounded-2xl" />
               </div>
