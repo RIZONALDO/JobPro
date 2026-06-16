@@ -5,7 +5,6 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ChevronLeft, ChevronRight, Lock, Plus } from "lucide-react";
 import { TaskFormModal } from "@/components/task-form-modal";
 
@@ -122,7 +121,6 @@ function slotConfig(score: number, reviewCount = 0) {
 
 export default function AgendaGeral() {
   usePageTitle("Agenda Geral");
-  const { openTask } = useTaskModal();
 
   const [rows,    setRows]    = useState<EditorRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -325,9 +323,9 @@ export default function AgendaGeral() {
                       style={{
                         height: 72,
                         borderRadius: 7,
-                        background: isDragSelected ? "hsl(var(--primary) / 0.22)" : cfg.bg,
-                        border: isDragSelected ? "2px solid hsl(var(--primary) / 0.55)" : `1px solid ${cfg.border}`,
-                        boxShadow: isDragSelected ? "0 0 20px hsl(var(--primary) / 0.18)" : cfg.shadow,
+                        background: isDragSelected ? "rgba(255,255,255,0.09)" : cfg.bg,
+                        border: isDragSelected ? "1.5px solid rgba(255,255,255,0.28)" : `1px solid ${cfg.border}`,
+                        boxShadow: isDragSelected ? "0 0 12px rgba(255,255,255,0.06)" : cfg.shadow,
                         cursor: sc >= 12 ? "not-allowed" : isDraggingRow ? "col-resize" : "pointer",
                         transform: isDragSelected ? "scaleY(1.04)" : undefined,
                       }}
@@ -344,55 +342,10 @@ export default function AgendaGeral() {
                       )}
                       {isDragSelected && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <Plus style={{ width: 16, height: 16, color: "hsl(var(--primary))", opacity: 0.8 }} strokeWidth={2.5} />
+                          <Plus style={{ width: 16, height: 16, color: "rgba(255,255,255,0.55)" }} strokeWidth={2} />
                         </div>
                       )}
 
-                      {/* Badge de tarefas no canto — abre popover com a lista */}
-                      {tasksOnDay.length > 0 && (
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <button
-                              className="absolute top-1 right-1 h-5 min-w-[20px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center transition-opacity hover:opacity-100"
-                              style={{ background: cfg.border, color: cfg.color, opacity: 0.75 }}
-                              onMouseDown={e => e.stopPropagation()}
-                            >
-                              {tasksOnDay.length}
-                            </button>
-                          </PopoverTrigger>
-                          <PopoverContent className="p-0 w-60" side="bottom" align="center" sideOffset={6}>
-                            <div className="px-3 py-2 border-b border-[hsl(var(--border))]">
-                              <p className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))]">
-                                {editor.name.split(" ")[0]} · {WEEK_DAYS[di]} {weekDays[di].getDate()}
-                              </p>
-                            </div>
-                            <div className="py-1 max-h-60 overflow-y-auto">
-                              {tasksOnDay.map(t => (
-                                <button
-                                  key={t.id}
-                                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[hsl(var(--muted)/0.5)] transition-colors select-none outline-none"
-                                  onClick={() => openTask(t.id)}
-                                >
-                                  <span className="font-mono text-[11px] font-bold shrink-0" style={{ color: t.color || "hsl(var(--primary))" }}>
-                                    {t.taskCode}
-                                  </span>
-                                  <span className="text-[12px] truncate text-[hsl(var(--foreground))] flex-1 min-w-0">
-                                    {t.title}
-                                  </span>
-                                  {t.creator && (
-                                    <>
-                                      <AvatarDisplay name={t.creator.name} avatarUrl={t.creator.avatarUrl} size={14} className="shrink-0" />
-                                      <span className="text-[10px] text-[hsl(var(--muted-foreground))] shrink-0">
-                                        {t.creator.name.split(" ")[0]}
-                                      </span>
-                                    </>
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-                      )}
                     </div>
                   </div>
                 );
