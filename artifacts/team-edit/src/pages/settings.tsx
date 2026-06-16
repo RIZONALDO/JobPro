@@ -25,6 +25,7 @@ export default function SettingsPage() {
   const [logoDrag, setLogoDrag] = useState(false);
   const [faviconDrag, setFaviconDrag] = useState(false);
   const [agendaAccess, setAgendaAccess] = useState("all");
+  const [coordinators, setCoordinators] = useState<{ id: number; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetConfirm, setResetConfirm] = useState("");
@@ -48,6 +49,9 @@ export default function SettingsPage() {
       });
       setAgendaAccess(d["agenda_access"] ?? "all");
     });
+    apiFetch<{ id: number; name: string; role: string }[]>("/api/users").then(u =>
+      setCoordinators(u.filter(x => x.role === "coordinator" || x.role === "supervisor"))
+    );
   }, []);
 
   const readBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
@@ -313,29 +317,48 @@ export default function SettingsPage() {
             <LayoutGrid className="h-4 w-4 text-[hsl(var(--primary))]" />
             Controle de Acesso
           </CardTitle>
-          <CardDescription>Defina quais perfis podem ver cada módulo do sistema.</CardDescription>
+          <CardDescription>Selecione quais coordenadores podem ver a Agenda Geral. Admin e supervisor sempre têm acesso.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between py-3 border rounded-xl px-4">
-            <div>
-              <p className="text-sm font-medium">Agenda Geral</p>
-              <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">
-                {agendaAccess === "all"
-                  ? "Visível para coordenadores e administradores"
-                  : "Visível apenas para administradores e supervisores"}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAgendaAccess(v => v === "all" ? "admin" : "all")}
-              className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors duration-200 focus:outline-none ${
-                agendaAccess === "all" ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted))]"
-              }`}
-            >
-              <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 mt-0.5 ${
-                agendaAccess === "all" ? "translate-x-5" : "translate-x-0.5"
-              }`} />
+        <CardContent className="space-y-3">
+          {/* Atalhos */}
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setAgendaAccess("all")}
+              className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${agendaAccess === "all" ? "bg-[hsl(var(--primary))] text-white border-[hsl(var(--primary))]" : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--primary))]/50"}`}>
+              Todos
             </button>
+            <button type="button" onClick={() => setAgendaAccess("")}
+              className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${agendaAccess === "" ? "bg-[hsl(var(--primary))] text-white border-[hsl(var(--primary))]" : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--primary))]/50"}`}>
+              Nenhum
+            </button>
+          </div>
+
+          {/* Lista de coordenadores */}
+          <div className="border rounded-xl divide-y max-h-60 overflow-y-auto">
+            {coordinators.length === 0 && (
+              <p className="text-xs text-[hsl(var(--muted-foreground))] px-4 py-3">Nenhum coordenador cadastrado.</p>
+            )}
+            {coordinators.map(c => {
+              const selectedIds = agendaAccess === "all"
+                ? coordinators.map(x => String(x.id))
+                : (agendaAccess ? agendaAccess.split(",").map(s => s.trim()) : []);
+              const checked = selectedIds.includes(String(c.id));
+              const toggle = () => {
+                const current = agendaAccess === "all"
+                  ? coordinators.map(x => String(x.id))
+                  : (agendaAccess ? agendaAccess.split(",").map(s => s.trim()).filter(Boolean) : []);
+                const next = checked
+                  ? current.filter(id => id !== String(c.id))
+                  : [...current, String(c.id)];
+                setAgendaAccess(next.length === coordinators.length ? "all" : next.join(","));
+              };
+              return (
+                <label key={c.id} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[hsl(var(--muted))]/30 transition-colors">
+                  <input type="checkbox" checked={checked} onChange={toggle}
+                    className="h-4 w-4 rounded accent-[hsl(var(--primary))]" />
+                  <span className="text-sm">{c.name}</span>
+                </label>
+              );
+            })}
           </div>
         </CardContent>
       </Card>

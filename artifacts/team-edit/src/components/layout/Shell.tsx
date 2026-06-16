@@ -217,8 +217,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const navItems = NAV_ITEMS.filter(item => {
     if (!user) return false;
     if (!item.roles.includes(user.role)) return false;
-    // Agenda Geral: respeita configuração de acesso
-    if (item.href === "/agenda" && settings.agenda_access !== "all" && user.role === "coordinator") return false;
+    // Agenda Geral: respeita configuração de acesso por coordenador
+    if (item.href === "/agenda" && user.role === "coordinator") {
+      const access = settings.agenda_access;
+      if (access === "all") return true;
+      if (!access) return false;
+      const allowed = access.split(",").map(s => s.trim());
+      if (!allowed.includes(String(user.id))) return false;
+    }
     return true;
   });
   const initials = user?.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() ?? "?";
