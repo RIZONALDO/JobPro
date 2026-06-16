@@ -15,7 +15,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import {
   ClipboardList, MoreVertical,
   Pencil, Trash2, Plus, ChevronRight,
-  Search, X, FileVideo, Clapperboard, AudioLines, RefreshCw, UserPlus, CalendarDays,
+  Search, X, FileVideo, Clapperboard, AudioLines, RefreshCw, UserPlus,
 } from "lucide-react";
 import { TaskFilesViewModal } from "@/components/TaskFilesViewModal";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
@@ -72,103 +72,6 @@ function fmtDate(d: string | null) {
   return `${day}/${m}/${y.slice(2)}`;
 }
 
-// ─── Calendar List ────────────────────────────────────────────────────────────
-
-const MONTHS_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-const DAYS_PT   = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
-
-function CalendarList({ tasks, onEdit, onDelete }: { tasks: OverviewTask[]; onEdit: (id: number) => void; onDelete: (id: number, title: string) => void }) {
-  const grouped = useMemo(() => {
-    const byMonth = new Map<string, Map<string, OverviewTask[]>>();
-    [...tasks]
-      .sort((a, b) => (a.startDate ?? a.dueDate ?? "").localeCompare(b.startDate ?? b.dueDate ?? ""))
-      .forEach(t => {
-        const dateStr = (t.startDate ?? t.dueDate ?? "").split("T")[0];
-        if (!dateStr) return;
-        const [y, m] = dateStr.split("-");
-        const monthKey = `${y}-${m}`;
-        if (!byMonth.has(monthKey)) byMonth.set(monthKey, new Map());
-        const byDay = byMonth.get(monthKey)!;
-        if (!byDay.has(dateStr)) byDay.set(dateStr, []);
-        byDay.get(dateStr)!.push(t);
-      });
-    return byMonth;
-  }, [tasks]);
-
-  return (
-    <div className="px-4 py-4 space-y-6">
-      {[...grouped.entries()].map(([monthKey, byDay]) => {
-        const [y, m] = monthKey.split("-");
-        const monthLabel = `${MONTHS_PT[parseInt(m) - 1]} ${y}`;
-        return (
-          <div key={monthKey}>
-            {/* Month header */}
-            <div className="flex items-center gap-3 mb-3">
-              <span className="text-[11px] font-black uppercase tracking-[0.15em] text-[hsl(var(--muted-foreground))]/50">{monthLabel}</span>
-              <div className="flex-1 h-px bg-[hsl(var(--border))]/50" />
-            </div>
-
-            <div className="space-y-1">
-              {[...byDay.entries()].map(([dateStr, dayTasks]) => {
-                const d = new Date(dateStr + "T12:00:00");
-                const dayNum  = String(d.getDate()).padStart(2, "0");
-                const dayName = DAYS_PT[d.getDay()];
-                return (
-                  <div key={dateStr} className="flex gap-4 group border-t border-[hsl(var(--border))]/30 pt-3 first:border-0 first:pt-0">
-                    {/* Day label */}
-                    <div className="w-14 shrink-0 flex flex-col items-center pt-2.5">
-                      <span className="text-2xl font-black leading-none tabular-nums text-[hsl(var(--foreground))]">{dayNum}</span>
-                      <span className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/50 mt-0.5">{dayName}</span>
-                    </div>
-
-                    {/* Tasks */}
-                    <div className="flex-1 min-w-0 space-y-1 py-1">
-                      {dayTasks.map(t => (
-                        <div key={t.id}
-                          className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors group/row"
-                        >
-                          <div className="w-1 h-8 rounded-full shrink-0 bg-[hsl(var(--primary))]/30" />
-                          <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onEdit(t.id)}>
-                            <div className="flex items-center gap-2">
-                              {t.taskCode && <span className="font-mono text-[10px] text-[hsl(var(--muted-foreground))]/50 shrink-0">{t.taskCode}</span>}
-                              <span className="text-sm font-semibold truncate">{t.title}</span>
-                            </div>
-                            {t.client && <p className="text-xs text-[hsl(var(--muted-foreground))]/50 truncate mt-0.5">{t.client}</p>}
-                          </div>
-                          {t.dueDate && (
-                            <span className="text-xs tabular-nums text-[hsl(var(--muted-foreground))]/50 shrink-0">
-                              até {fmtDate(t.dueDate)}
-                            </span>
-                          )}
-                          {t.editors && t.editors.length > 0 && (
-                            <div className="flex items-center shrink-0">
-                              {t.editors.slice(0, 3).map((e, i) => (
-                                <div key={e.id} style={{ marginLeft: i > 0 ? -6 : 0 }}>
-                                  <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={22} />
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          <button
-                            onClick={e => { e.stopPropagation(); onDelete(t.id, t.title); }}
-                            className="opacity-0 group-hover/row:opacity-100 h-7 w-7 flex items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))]/50 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all shrink-0"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function TasksOverview() {
@@ -209,9 +112,6 @@ export default function TasksOverview() {
   const [filterEditor, setFilterEditor] = useState("all");
   const defaultCoord = (!isSuper && user?.role === "coordinator") ? String(user?.id ?? "all") : "all";
   const [filterCoord,  setFilterCoord]  = useState(defaultCoord);
-
-  // Tabs
-  const [viewTab, setViewTab] = useState<"today" | "scheduled" | "all">("today");
 
   // Sort
   const [tanSorting, setTanSorting] = useState<SortingState>([]);
@@ -301,14 +201,6 @@ export default function TasksOverview() {
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [tasks]);
 
-  // ── Tab helpers ───────────────────────────────────────────────────────────
-  const TODAY_STR = (() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  })();
-  const isScheduled = (t: OverviewTask) =>
-    !!(t.startDate && t.startDate.split("T")[0] > TODAY_STR);
-
   // ── Client-side filters ───────────────────────────────────────────────────
   const filtered = useMemo(() => tasks.filter(t => {
     if (t.status === "rascunho") return false;
@@ -325,13 +217,6 @@ export default function TasksOverview() {
   const hasFilter = search || filterEditor !== "all" || filterCoord !== defaultCoord;
   const clearFilters = () => { setSearch(""); setFilterEditor("all"); setFilterCoord(defaultCoord); };
 
-  const tabFiltered = useMemo(() => {
-    if (viewTab === "today")     return filtered.filter(t => !isScheduled(t) && t.status !== "completed");
-    if (viewTab === "scheduled") return filtered.filter(t => isScheduled(t));
-    if (viewTab === "all")       return filtered.filter(t => t.status === "completed");
-    return filtered;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, viewTab]);
 
   // ── TanStack Table ────────────────────────────────────────────────────────
   const columns = reactUseMemo<ColumnDef<OverviewTask, unknown>[]>(() => ([
@@ -407,16 +292,6 @@ export default function TasksOverview() {
       cell: ({ row }) => {
         const t = row.original;
         const canActNow = t.isOwn || isSuper || isEditor;
-
-        // Agendadas — sem status
-        if (viewTab === "scheduled") return null;
-
-        // Concluídas — chip read-only
-        if (viewTab === "all") {
-          return <span className="inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none whitespace-nowrap border bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50">Aprovada</span>;
-        }
-
-        // Tarefas do dia — dropdown com estado atual + opções
         const STATUS_LABEL_MAP: Record<string, string> = {
           pending:     "Na fila",
           in_progress: "Em edição",
@@ -554,15 +429,12 @@ export default function TasksOverview() {
         );
       },
     },
-  ] as ColumnDef<OverviewTask, unknown>[]).filter(col => {
-    if (viewTab === "scheduled" && (col as { id?: string }).id === "status") return false;
-    return true;
-  })
+  ] as ColumnDef<OverviewTask, unknown>[])
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  , [expandedIds, isSuper, isEditor, viewTab]);
+  , [expandedIds, isSuper, isEditor]);
 
   const table = useReactTable({
-    data: tabFiltered,
+    data: filtered,
     columns,
     state: { sorting: tanSorting },
     onSortingChange: setTanSorting,
@@ -618,33 +490,6 @@ export default function TasksOverview() {
       {/* ── Table ──────────────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm overflow-hidden flex flex-col">
 
-        {/* Tab bar */}
-        <div className="flex shrink-0 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20 px-2 gap-2">
-          {([
-            { key: "today"     as const, label: "Tarefas do dia", count: filtered.filter(t => !isScheduled(t) && t.status !== "completed").length, badgeCls: "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]" },
-            { key: "scheduled" as const, label: "Agendadas",      count: filtered.filter(t => isScheduled(t)).length,                             badgeCls: "bg-blue-500/15 text-blue-500", icon: true },
-            { key: "all"       as const, label: "Concluídas",     count: filtered.filter(t => t.status === "completed").length,                   badgeCls: "bg-emerald-500/15 text-emerald-500" },
-          ]).map((tab, i) => (
-            <>
-              {i > 0 && <span key={`sep-${i}`} className="self-center h-4 w-px bg-[hsl(var(--border))] shrink-0" />}
-              <button
-                key={tab.key}
-                onClick={() => setViewTab(tab.key)}
-                className={`relative flex items-center gap-2 px-5 py-3 text-sm font-semibold transition-colors whitespace-nowrap ${
-                  viewTab === tab.key ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-                }`}
-              >
-                {tab.label}
-                {"icon" in tab && tab.icon
-                  ? <CalendarDays className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
-                  : <span className={`tabular-nums text-[10px] px-1.5 py-px rounded-full font-bold transition-colors ${tab.badgeCls}`}>{tab.count}</span>
-                }
-                {viewTab === tab.key && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[hsl(var(--primary))] rounded-full" />}
-              </button>
-            </>
-          ))}
-        </div>
-
         <div className="flex-1 overflow-y-auto overscroll-contain pt-3">
 
           {loading ? (
@@ -674,9 +519,6 @@ export default function TasksOverview() {
               </p>
               {hasFilter && <Button variant="outline" size="sm" onClick={clearFilters}>Limpar filtros</Button>}
             </div>
-          ) : viewTab === "scheduled" ? (
-            /* ── Calendar list (Agendadas) ────────────────────────── */
-            <CalendarList tasks={tabFiltered} onEdit={(id) => { setEditTaskId(id); setFormOpen(true); }} onDelete={(id, title) => setDeleteTarget({ id, title })} />
           ) : (
             <>
               {/* ── Mobile (< md) ─────────────────────────────────── */}
@@ -712,9 +554,6 @@ export default function TasksOverview() {
                           </div>
                           {t.client && <p className="text-xs text-[hsl(var(--muted-foreground))]/60 truncate mt-1">{t.client}</p>}
                           <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            {viewTab === "all" && (
-                              <span className="inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none whitespace-nowrap border bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50">Aprovada</span>
-                            )}
                             <span className="text-xs tabular-nums text-[hsl(var(--muted-foreground))]/60">{fmtDate(t.dueDate)}</span>
                           </div>
                           {t.editors && t.editors.length > 0 && (
