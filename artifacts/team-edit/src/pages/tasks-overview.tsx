@@ -45,7 +45,7 @@ interface OverviewTask {
   editors: Person[];
   coordinator: Person | null;
   isOwn: boolean;
-  createdAt: string;
+  createdAt?: string;
   updatedAt: string;
   fileCount?: number;
   fileKind?: "video" | "audio" | "mixed" | "other" | null;
@@ -225,7 +225,7 @@ export default function TasksOverview() {
 
   // Ordena por data de criação para que grupos fiquem contíguos
   const sortedFiltered = useMemo(() =>
-    [...filtered].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [...filtered].sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? "")),
   [filtered]);
 
   // Mapa rowIndex → rowSpan agrupado por data de criação
