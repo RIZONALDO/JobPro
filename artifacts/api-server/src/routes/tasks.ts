@@ -641,14 +641,8 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     if (!isAssigned) { res.status(403).json({ error: "Sem permissão" }); return; }
     if (status) {
       const s = String(status);
-      const editorTransitions: Record<string, string[]> = {
-        pending:     ["in_progress"],
-        in_progress: ["review"],
-        in_revision: ["review"],
-        reopened:    ["in_progress"],
-      };
-      const allowed = editorTransitions[task.status] ?? [];
-      if (!allowed.includes(s)) { res.status(400).json({ error: "Transição de status não permitida" }); return; }
+      const ALLOWED_STATUSES = ["pending","in_progress","captacao","in_revision","review","completed","paused","cancelled"];
+      if (!ALLOWED_STATUSES.includes(s)) { res.status(400).json({ error: "Status inválido" }); return; }
 
       // Bloqueia iniciar tarefa antes do startDate agendado (compara só a data, sem hora)
       if (s === "in_progress" && task.startDate) {

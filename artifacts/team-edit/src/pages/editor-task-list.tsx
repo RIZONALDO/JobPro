@@ -2,7 +2,8 @@ import { useReactTable, getCoreRowModel, flexRender, type ColumnDef } from "@tan
 import React, { useMemo } from "react";
 import { TaskFilesViewModal } from "@/components/TaskFilesViewModal";
 import { useEffect, useState, useCallback, useRef, Fragment } from "react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiPut } from "@/lib/api";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useTaskModal } from "@/contexts/TaskModalContext";
@@ -225,28 +226,51 @@ export default function EditorTaskList() {
     ...(viewTab !== "scheduled" ? [{
       id: "status",
       header: "Status",
-      size: 140,
+      size: 148,
       meta: { className: "hidden sm:table-cell" },
       cell: ({ row }: { row: { original: Task } }) => {
-        const s = row.original.status;
+        const t = row.original;
+        const s = t.status;
 
-        const CHIPS: Record<string, { label: string; cls: string }> = {
-          pending:     { label: "Na fila",        cls: "bg-slate-500/10 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700/40" },
-          in_progress: { label: "Em edição",      cls: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800/40" },
-          captacao:    { label: "Falta captação", cls: "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]/80 border-[hsl(var(--primary))]/20" },
-          in_revision: { label: "Em alteração",   cls: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800/40" },
-          review:      { label: "Em aprovação",   cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/40" },
-          completed:   { label: "Aprovada",       cls: "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50" },
-          paused:      { label: "Pausada",        cls: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-800/40" },
-          cancelled:   { label: "Cancelada",      cls: "bg-red-500/10 text-red-500 dark:text-red-400 border-red-200 dark:border-red-800/40" },
-        };
+        // Concluídas — chip read-only
+        if (viewTab === "all") {
+          return (
+            <span className="inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none whitespace-nowrap border bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50">
+              Aprovada
+            </span>
+          );
+        }
 
-        const chip = CHIPS[s];
-        if (!chip) return null;
+        // Tarefas do dia — dropdown igual ao coordenador
         return (
-          <span className={`inline-flex items-center px-2 py-[3px] rounded-[4px] text-[11px] font-medium leading-none whitespace-nowrap border ${chip.cls}`}>
-            {chip.label}
-          </span>
+          <div onClick={e => e.stopPropagation()}>
+            <Select
+              value={s}
+              onValueChange={async val => {
+                try {
+                  const body: Record<string, string> = { status: val };
+                  if (val === "paused")    body.revisionComment = "Pausada pelo editor";
+                  if (val === "cancelled") body.revisionComment = "Cancelada pelo editor";
+                  await apiPut(`/api/tasks/${t.id}`, body);
+                  load();
+                } catch { toast.error("Erro ao atualizar"); }
+              }}
+            >
+              <SelectTrigger className="h-7 text-xs w-[136px] border-dashed">
+                <SelectValue placeholder="Na fila" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pending"><span className="text-slate-400/80 dark:text-slate-500/80">Na fila</span></SelectItem>
+                <SelectItem value="in_progress"><span className="text-blue-500/70 dark:text-blue-400/70">Em edição</span></SelectItem>
+                <SelectItem value="captacao"><span className="text-[hsl(var(--primary))]/70">Falta captação</span></SelectItem>
+                <SelectItem value="in_revision"><span className="text-orange-500/70 dark:text-orange-400/70">Em alteração</span></SelectItem>
+                <SelectItem value="review"><span className="text-amber-500/70 dark:text-amber-400/70">Em aprovação</span></SelectItem>
+                <SelectItem value="completed"><span className="text-emerald-600/70 dark:text-emerald-400/70">Aprovada</span></SelectItem>
+                <SelectItem value="paused"><span className="text-violet-500/70 dark:text-violet-400/70">Pausada</span></SelectItem>
+                <SelectItem value="cancelled"><span className="text-red-400/70 dark:text-red-400/70">Cancelada</span></SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         );
       },
     } as ColumnDef<Task, unknown>] : []),
@@ -266,7 +290,7 @@ export default function EditorTaskList() {
         );
       },
     },
-  ], [user, viewTab]);
+  ], [user, viewTab, load]);
 
   const table = useReactTable({
     data: tabFiltered,
