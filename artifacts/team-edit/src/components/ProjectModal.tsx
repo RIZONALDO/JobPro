@@ -325,7 +325,9 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
           Main app-screen modal
           ════════════════════════════════════════════════════════════════════ */}
       <Dialog open onOpenChange={open => !open && onClose()}>
-        <DialogContent className="sm:max-w-[92vw] w-[92vw] h-[88vh] p-0 flex flex-col gap-0 overflow-hidden rounded-2xl border-0 shadow-2xl">
+        <DialogContent className="sm:max-w-[92vw] w-[92vw] h-[88vh] p-0 flex flex-col gap-0 overflow-hidden rounded-2xl border-0 shadow-2xl"
+          onInteractOutside={e => e.preventDefault()}
+          onPointerDownOutside={e => e.preventDefault()}>
 
           {/* Visually hidden title for a11y */}
           <DialogHeader className="sr-only">

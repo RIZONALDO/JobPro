@@ -344,7 +344,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-16px)] sm:max-w-[900px] flex flex-col max-h-[95vh] sm:max-h-[90vh] p-0 gap-0 overflow-hidden rounded-2xl border shadow-2xl [&>button]:hidden">
+      <DialogContent className="w-[calc(100vw-16px)] sm:max-w-[900px] flex flex-col max-h-[95vh] sm:max-h-[90vh] p-0 gap-0 overflow-hidden rounded-2xl border shadow-2xl [&>button]:hidden"
+        onInteractOutside={e => e.preventDefault()}
+        onPointerDownOutside={e => e.preventDefault()}>
 
         {/* ══ HEADER ══════════════════════════════════════════════════════════ */}
         <DialogHeader className="px-6 pt-5 pb-4 border-b shrink-0">

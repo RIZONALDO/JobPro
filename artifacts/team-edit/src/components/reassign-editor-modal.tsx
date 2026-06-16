@@ -90,7 +90,9 @@ export function ReassignEditorModal({ open, onOpenChange, onSaved, taskId, taskT
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md"
+        onInteractOutside={e => e.preventDefault()}
+        onPointerDownOutside={e => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Icon className="h-4 w-4 text-[hsl(var(--primary))]" />
