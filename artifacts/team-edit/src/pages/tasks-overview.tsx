@@ -537,6 +537,29 @@ export default function TasksOverview() {
 
       {/* ── Agenda list ─────────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm overflow-hidden flex flex-col">
+
+        {/* Header das colunas */}
+        <div className="shrink-0 flex items-center border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20">
+          <div className="w-16 shrink-0 border-r border-[hsl(var(--border))]/40 px-2 py-2.5 text-center">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40">Data</span>
+          </div>
+          <div className="w-[148px] shrink-0 px-4 py-2.5">
+            <span className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Status</span>
+          </div>
+          <div className="flex-1 px-4 py-2.5">
+            <span className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Tarefa</span>
+          </div>
+          <div className="hidden sm:block w-28 shrink-0 px-4 py-2.5">
+            <span className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Editor</span>
+          </div>
+          {!isEditor && (
+            <div className="hidden lg:block w-28 shrink-0 px-4 py-2.5">
+              <span className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Atendimento</span>
+            </div>
+          )}
+          {!isEditor && <div className="w-8 shrink-0" />}
+        </div>
+
         <div className="flex-1 overflow-y-auto overscroll-contain">
 
           {loading ? (
@@ -603,7 +626,7 @@ export default function TasksOverview() {
                             onClick={() => { if (canEdit) { setEditTaskId(t.id); setFormOpen(true); } else { openTask(t.id); } }}
                           >
                             {/* Status */}
-                            <div className="shrink-0 w-[136px]" onClick={e => e.stopPropagation()}>
+                            <div className="shrink-0 w-[148px]" onClick={e => e.stopPropagation()}>
                               {canActNow ? (
                                 <Select value={t.status} onValueChange={async val => {
                                   try {
@@ -669,7 +692,7 @@ export default function TasksOverview() {
                             </div>
 
                             {/* Editores */}
-                            <div className="hidden sm:flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                            <div className="hidden sm:flex items-center gap-1 shrink-0 w-28 px-1" onClick={e => e.stopPropagation()}>
                               {t.editors.slice(0,3).map((e,i) => (
                                 <div key={e.id} style={{marginLeft:i===0?0:-8,zIndex:t.editors.length-i}}
                                   onClick={() => setAvailEditor({id:e.id,name:e.name,avatarUrl:e.avatarUrl})}>
@@ -681,7 +704,7 @@ export default function TasksOverview() {
 
                             {/* Atendimento */}
                             {!isEditor && (
-                              <div className="hidden lg:flex items-center gap-1.5 shrink-0 w-24">
+                              <div className="hidden lg:flex items-center gap-1.5 shrink-0 w-28 px-1">
                                 {t.isOwn
                                   ? <span className="text-[11px] text-[hsl(var(--muted-foreground))]/55 font-semibold">Você</span>
                                   : t.coordinator
