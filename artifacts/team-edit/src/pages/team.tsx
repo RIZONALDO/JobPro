@@ -28,20 +28,6 @@ interface AppUser {
   jobTitle?: string | null;
 }
 
-interface EditorWorkload {
-  id: number;
-  name: string;
-  login: string;
-  avatarUrl: string | null;
-  taskCount: number;
-  scheduledCount?: number;
-  score: number;
-  scheduledScore?: number;
-  projectedScore?: number;
-  byComplexity: { low: number; medium: number; high: number };
-  byStatus: { pending: number; in_progress: number; in_revision: number; review: number };
-}
-
 interface EditorTask {
   id: number;
   title: string;
@@ -63,19 +49,6 @@ const STATUS_BAR: Record<string, string> = {
   completed:   "bg-green-500",
 };
 
-// cinza=disponível | verde=ocupado | laranja=muito ocupado | vermelho=no limite
-function scoreColor(score: number): string {
-  if (score === 0)   return "#94a3b8"; // cinza  — Disponível
-  if (score <= 6)    return "#eab308"; // amarelo — Ocupado
-  if (score <= 11)   return "#f97316"; // laranja — Muito ocupado
-  return "#ef4444";                    // vermelho — No limite
-}
-function scoreLabel(score: number): string {
-  if (score === 0)   return "Disponível";
-  if (score <= 6)    return "Ocupado";
-  if (score <= 11)   return "Muito ocupado";
-  return "No limite";
-}
 
 const BATTERY_SEGS = 5;
 
@@ -103,7 +76,6 @@ export default function Team() {
   const { user } = useAuth();
   const { openJob } = useJobModal();
   const [users, setUsers] = useState<AppUser[]>([]);
-  const [workload, setWorkload] = useState<EditorWorkload[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedEditors, setExpandedEditors] = useState<Set<number>>(new Set());
   const [editorTasks, setEditorTasks] = useState<Record<number, EditorTask[]>>({});
@@ -126,11 +98,6 @@ export default function Team() {
       .catch(() => toast.error("Erro ao carregar equipe"))
       .finally(() => setLoading(false));
 
-    if (isCoordinator) {
-      apiFetch<EditorWorkload[]>("/api/workload")
-        .then(data => setWorkload([...data].sort((a, b) => b.score - a.score)))
-        .catch(() => {});
-    }
   };
 
   useEffect(load, []);
@@ -198,8 +165,8 @@ export default function Team() {
     catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Erro ao remover"); }
   };
 
-  const maxScore = Math.max(...workload.map(e => e.score), 1);
-  const others = users.filter(u => u.role !== "editor" && (isAdmin || u.role !== "admin"));
+  const editors = users.filter(u => u.role === "editor");
+  const others  = users.filter(u => u.role !== "editor" && (isAdmin || u.role !== "admin"));
 
   return (
     <div className="space-y-6">
@@ -225,22 +192,20 @@ export default function Team() {
         <div className="text-[hsl(var(--muted-foreground))] text-sm">Carregando...</div>
       ) : (
         <>
-          {/* ── Editores com carga ─────────────────────────────────── */}
+          {/* ── Editores ───────────────────────────────────────────── */}
           {isCoordinator && (
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60">
-                Editores — {workload.length}
+                Editores — {editors.length}
               </p>
 
-              {workload.length === 0 ? (
+              {editors.length === 0 ? (
                 <div className="rounded-xl border border-dashed p-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
                   Nenhum editor cadastrado.
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {workload.map(editor => {
-                    const color = scoreColor(editor.score);
-                    const initials = editor.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
+                  {editors.map(editor => {
                     const expanded = expandedEditors.has(editor.id);
                     const tasks = editorTasks[editor.id];
                     const loadingT = loadingTasks.has(editor.id);
@@ -266,18 +231,6 @@ export default function Team() {
                             <p className="text-sm font-semibold truncate">{editor.name}</p>
                             <p className="text-xs text-[hsl(var(--muted-foreground))] font-mono">@{editor.login}</p>
                             {(() => { const u = users.find(x => x.id === editor.id); return u?.jobTitle ? <p className="text-xs text-[hsl(var(--muted-foreground))]/70 truncate">{u.jobTitle}</p> : null; })()}
-                          </div>
-
-                          {/* Carga: atual + agendada */}
-                          <div className="flex flex-col items-end shrink-0 gap-0.5">
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>
-                              {scoreLabel(editor.score)}
-                            </span>
-                            {(editor.scheduledCount ?? 0) > 0 && (
-                              <span className="text-[8px] text-sky-500 leading-none pr-0.5">
-                                +{editor.scheduledCount} agend.
-                              </span>
-                            )}
                           </div>
 
                           {/* Chevron */}

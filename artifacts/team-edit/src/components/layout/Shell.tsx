@@ -1,8 +1,8 @@
 import { Link, useLocation } from "wouter";
 import {
-  LayoutDashboard, FolderOpen, ListTodo, Users, Settings, LogOut,
-  CalendarDays, Menu, Bell, BellRing, ChevronRight, X, UserCircle,
-  CalendarRange, BarChart3, Zap, AtSign, ClipboardList, LayoutGrid,
+  FolderOpen, ListTodo, Users, Settings, LogOut,
+  Menu, Bell, BellRing, ChevronRight, X, UserCircle,
+  BarChart3, Zap, AtSign, ClipboardList, LayoutGrid,
   CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2, CalendarClock, Shield,
   Palette, Sun, Moon, ALargeSmall, Volume2, VolumeX, Trash2, CheckCheck,
 } from "lucide-react";
@@ -28,7 +28,6 @@ import { BrandName } from "@/components/brand-name";
 import { AnimatePresence, motion } from "framer-motion";
 import { panelVariants, drawerVariants, backdropVariants, pageVariants } from "@/lib/motion";
 import { getSocket } from "@/lib/socket";
-import { ChatWidget } from "@/components/layout/ChatWidget";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
 
 interface AppNotification {
@@ -77,9 +76,7 @@ const NON_ADMIN    = ["supervisor", "coordinator", "editor"];
 const COORD_ACTIVE = ["supervisor", "coordinator"];
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/",         label: "Dashboard",      icon: LayoutDashboard, roles: NON_ADMIN    },
   { href: "/tasks",    label: "Tarefas",         icon: ClipboardList,   roles: NON_ADMIN    },
-  { href: "/feed",     label: "Feed",             icon: Zap,             roles: NON_ADMIN    },
   { href: "/agenda",   label: "Agenda Geral",     icon: LayoutGrid,      roles: COORD_ROLES  },
   { href: "/reports",  label: "Relatórios",       icon: BarChart3,       roles: COORD_ACTIVE },
   { href: "/team",     label: "Membros",          icon: Users,           roles: COORD_ROLES  },
@@ -687,28 +684,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     <span className="text-sm font-semibold">Personalização</span>
                   </div>
 
-                  {/* Appearance */}
-                  <div className="px-4 py-3 border-b">
-                    <p className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-widest mb-2.5">Aparência</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(["light", "dark"] as const).map(t => (
-                        <button
-                          key={t}
-                          onClick={() => t !== theme && toggleTheme()}
-                          className={cn(
-                            "flex items-center justify-center gap-1.5 h-9 rounded-lg border text-xs font-medium transition-all",
-                            theme === t
-                              ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/8 text-[hsl(var(--primary))]"
-                              : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--foreground))]/20 hover:text-[hsl(var(--foreground))]"
-                          )}
-                        >
-                          {t === "light" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-                          {t === "light" ? "Claro" : "Escuro"}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
                   {/* Size */}
                   <div className="px-4 py-3">
                     <p className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-widest mb-2.5">Tamanho</p>
@@ -801,7 +776,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </motion.main>
       </div>
 
-      <ChatWidget />
 
       {/* Poke toast */}
       <AnimatePresence>
