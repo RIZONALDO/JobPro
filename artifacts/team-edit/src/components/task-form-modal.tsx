@@ -7,7 +7,7 @@ import { ClientCombobox } from "@/components/ui/client-combobox";
 import { DatePicker } from "@/components/ui/date-picker";
 import { FolderOpen, ExternalLink, X, Send, UserPlus } from "lucide-react";
 
-interface Editor { id: number; name: string; login: string; role: string; avatarUrl?: string | null; }
+interface Editor { id: number; name: string; login: string; role: string; avatarUrl?: string | null; vacationStart?: string | null; vacationEnd?: string | null; }
 
 interface Props {
   open: boolean;
@@ -42,7 +42,14 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
   useEffect(() => {
     apiFetch<Editor[]>("/api/users")
-      .then(u => setEditors(u.filter(x => x.role === "editor")))
+      .then(u => {
+        const today = new Date().toISOString().split("T")[0];
+        setEditors(u.filter(x => {
+          if (x.role !== "editor") return false;
+          if (x.vacationStart && x.vacationEnd && today >= x.vacationStart && today <= x.vacationEnd) return false;
+          return true;
+        }));
+      })
       .catch(() => {});
   }, []);
 
