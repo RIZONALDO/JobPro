@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   ClipboardList, MoreVertical,
-  Pencil, Trash2, Plus, ChevronRight,
+  Pencil, Trash2, Plus, ChevronRight, ChevronLeft,
   Search, X, FileVideo, Clapperboard, AudioLines, RefreshCw, UserPlus,
 } from "lucide-react";
 import { TaskFilesViewModal } from "@/components/TaskFilesViewModal";
@@ -223,25 +223,38 @@ export default function TasksOverview() {
   const DAY_PT    = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
   const MON_PT    = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
-  // Ordena por data de criação para que grupos fiquem contíguos
+  // Todos os dias do mês atual
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() };
+  });
+
+  const allDays = useMemo(() => {
+    const { year, month } = calMonth;
+    const days: string[] = [];
+    const last = new Date(year, month + 1, 0).getDate();
+    for (let d = 1; d <= last; d++) {
+      days.push(`${year}-${String(month + 1).padStart(2,"0")}-${String(d).padStart(2,"0")}`);
+    }
+    return days;
+  }, [calMonth]);
+
+  // Tarefas agrupadas por data de criação
+  const tasksByDate = useMemo(() => {
+    const map = new Map<string, OverviewTask[]>();
+    [...filtered]
+      .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""))
+      .forEach(t => {
+        const key = t.createdAt?.split("T")[0] ?? "__";
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(t);
+      });
+    return map;
+  }, [filtered]);
+
+  // Mantém sortedFiltered para o TanStack (dados completos)
   const sortedFiltered = useMemo(() =>
     [...filtered].sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? "")),
   [filtered]);
-
-  // Mapa rowIndex → rowSpan agrupado por data de criação
-  const dateRowSpanMap = useMemo(() => {
-    const map = new Map<number, number>();
-    let i = 0;
-    while (i < sortedFiltered.length) {
-      const key = sortedFiltered[i].createdAt?.split("T")[0] ?? "__";
-      let span = 1;
-      while (i + span < sortedFiltered.length &&
-        (sortedFiltered[i + span].createdAt?.split("T")[0] ?? "__") === key) span++;
-      map.set(i, span);
-      i += span;
-    }
-    return map;
-  }, [sortedFiltered]);
 
   const dateMeta = (dateKey: string | null | undefined) => {
     const k = dateKey?.split("T")[0];
@@ -488,6 +501,26 @@ export default function TasksOverview() {
   return (
     <div className="flex flex-col h-full overflow-hidden p-2 sm:p-4 gap-2 sm:gap-4 bg-[hsl(var(--background))]">
 
+      {/* ── Navegador de mês ───────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 shrink-0">
+        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCalMonth(m => {
+          const d = new Date(m.year, m.month - 1); return { year: d.getFullYear(), month: d.getMonth() };
+        })}>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <span className="text-sm font-semibold min-w-[130px] text-center">
+          {["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"][calMonth.month]} {calMonth.year}
+        </span>
+        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCalMonth(m => {
+          const d = new Date(m.year, m.month + 1); return { year: d.getFullYear(), month: d.getMonth() };
+        })}>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+        <Button variant="outline" size="sm" className="h-8 text-xs ml-1" onClick={() => {
+          const d = new Date(); setCalMonth({ year: d.getFullYear(), month: d.getMonth() });
+        }}>Hoje</Button>
+      </div>
+
       {/* ── Filter bar ─────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2.5 flex-wrap rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm px-4 py-3">
         <div className="relative flex-1 min-w-[160px] max-w-[260px]">
@@ -676,16 +709,33 @@ export default function TasksOverview() {
                   ))}
                 </thead>
                 <tbody>
-                  {sortedFiltered.map((t, rowIndex) => {
-                    const row = table.getRowModel().rows.find(r => r.original.id === t.id);
-                    if (!row) return null;
-                    const isHighlighted = highlighted === t.id;
-                    const isExpanded    = expandedIds.has(t.id);
-                    const subList       = subtasksMap.get(t.id) ?? [];
-                    const isLoadingSubs = loadingSubtasks.has(t.id);
-                    const rowSpan       = dateRowSpanMap.get(rowIndex);
-                    const isFirstOfGroup = rowSpan !== undefined;
-                    const dm            = isFirstOfGroup ? dateMeta(t.createdAt) : null;
+                  {allDays.map(dayKey => {
+                    const dayTasks = tasksByDate.get(dayKey) ?? [];
+                    const dm = dateMeta(dayKey + "T12:00:00");
+                    const rowSpan = Math.max(dayTasks.length, 1);
+
+                    if (dayTasks.length === 0) {
+                      return (
+                        <tr key={dayKey} className="border-t border-[hsl(var(--border))]">
+                          <td rowSpan={1} className={`px-2 py-5 align-top text-center w-[96px] border-r border-[hsl(var(--border))]/40 ${dm.isToday ? "bg-[hsl(var(--primary))]/5" : ""}`}>
+                            <span className={`block text-4xl font-black leading-none tabular-nums ${dm.isToday ? "text-[hsl(var(--primary))]" : dm.isPast ? "text-[hsl(var(--muted-foreground))]/25" : "text-[hsl(var(--foreground))]/50"}`}>{dm.dayNum}</span>
+                            <span className={`block text-[9px] font-bold uppercase tracking-widest mt-0.5 ${dm.isToday ? "text-[hsl(var(--primary))]/70" : "text-[hsl(var(--muted-foreground))]/30"}`}>{dm.dayName}</span>
+                            <span className={`block text-[9px] font-semibold mt-0.5 ${dm.isToday ? "text-[hsl(var(--primary))]/60" : "text-[hsl(var(--muted-foreground))]/25"}`}>{dm.mon}</span>
+                            {dm.isToday && <span className="block mt-1 text-[8px] font-black uppercase px-1 py-0.5 rounded-full bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]">hoje</span>}
+                          </td>
+                          <td colSpan={columns.length} className="px-4 py-3 text-xs text-[hsl(var(--muted-foreground))]/25 italic">—</td>
+                        </tr>
+                      );
+                    }
+
+                    return dayTasks.map((t, taskIdx) => {
+                      const row = table.getRowModel().rows.find(r => r.original.id === t.id);
+                      if (!row) return null;
+                      const isHighlighted = highlighted === t.id;
+                      const isExpanded    = expandedIds.has(t.id);
+                      const subList       = subtasksMap.get(t.id) ?? [];
+                      const isLoadingSubs = loadingSubtasks.has(t.id);
+                      const isFirstOfGroup = taskIdx === 0;
                     return (
                       <Fragment key={t.id}>
                         <tr
@@ -694,8 +744,8 @@ export default function TasksOverview() {
                           style={{ backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.08)" : undefined }}
                           onClick={() => { if (canEdit) { setEditTaskId(t.id); setFormOpen(true); } else { openTask(t.id); } }}
                         >
-                          {/* Célula de data — só na primeira linha do grupo */}
-                          {dm && (
+                          {/* Célula de data — só na primeira tarefa do dia */}
+                          {isFirstOfGroup && (
                             <td
                               rowSpan={rowSpan}
                               className={`px-2 py-5 align-top text-center w-[96px] border-r border-[hsl(var(--border))]/40 ${dm.isToday ? "bg-[hsl(var(--primary))]/5" : ""}`}
@@ -759,6 +809,7 @@ export default function TasksOverview() {
                         )}
                       </Fragment>
                     );
+                  });
                   })}
                 </tbody>
               </table>
