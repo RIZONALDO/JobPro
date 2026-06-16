@@ -382,7 +382,7 @@ export default function AgendaGeral() {
                 const isPast     = weekDays[di] < today;
                 const isOccupied = cnt > 0;
                 const onVacation = isOnVacation(editor.vacationStart, editor.vacationEnd, weekDays[di]);
-                const disabled   = isPast || isSunday || isHoliday || isOccupied || onVacation;
+                const disabled   = isPast || isSunday || isHoliday || onVacation;
                 return (
                   <div
                     key={di}
@@ -433,9 +433,15 @@ export default function AgendaGeral() {
                           <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: "rgba(217,119,6,0.7)" }}>Férias</span>
                         </div>
                       )}
-                      {!isOccupied && !onVacation && !isPast && !isSunday && !isHoliday && !isInDrag && (
+                      {!onVacation && !isPast && !isSunday && !isHoliday && !isInDrag && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <Plus style={{ width: 12, height: 12, color: "#94a3b8", opacity: 0.22 }} strokeWidth={1.5} />
+                          <Plus
+                            style={{
+                              width: 12, height: 12, strokeWidth: 1.5,
+                              color: isOccupied ? "#ef4444" : "#94a3b8",
+                              opacity: isOccupied ? 0.35 : 0.22,
+                            }}
+                          />
                         </div>
                       )}
                     </div>
