@@ -4,9 +4,8 @@ export function isTerminal(status: string): boolean {
 }
 
 export const STATUS_LABEL: Record<string, string> = {
-  pending:     "Na fila",
+  pending:     "Pendente",
   in_progress: "Em edição",
-  captacao:    "Falta captação",
   in_revision: "Em alteração",
   review:      "Em aprovação",
   completed:   "Aprovada",
@@ -18,7 +17,6 @@ export const STATUS_LABEL: Record<string, string> = {
 export const STATUS_CHIP: Record<string, string> = {
   pending:     "bg-slate-400 text-white",
   in_progress: "bg-blue-500 text-white",
-  captacao:    "bg-[hsl(var(--primary))] text-white",
   in_revision: "bg-orange-500 text-white",
   review:      "bg-amber-500 text-white",
   completed:   "bg-emerald-500 text-white",
@@ -29,7 +27,6 @@ export const STATUS_CHIP: Record<string, string> = {
 export const STATUS_DOT: Record<string, string> = {
   pending:     "bg-slate-400",
   in_progress: "bg-blue-500",
-  captacao:    "bg-[hsl(var(--primary))]",
   in_revision: "bg-orange-500",
   review:      "bg-amber-500",
   completed:   "bg-emerald-500",
@@ -41,7 +38,6 @@ export const STATUS_DOT: Record<string, string> = {
 export const STATUS_CLASS: Record<string, string> = {
   pending:     "bg-slate-100 text-slate-500 border-transparent",
   in_progress: "bg-blue-100 text-blue-700 border-transparent",
-  captacao:    "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))] border-transparent",
   in_revision: "bg-orange-100 text-orange-700 border-transparent",
   review:      "bg-amber-100 text-amber-700 border-transparent",
   completed:   "bg-emerald-100 text-emerald-700 border-transparent",
