@@ -565,7 +565,7 @@ export default function TasksOverview() {
       {/* ── Table ──────────────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm overflow-hidden flex flex-col">
 
-        <div className="flex-1 overflow-y-auto overscroll-contain pt-3">
+        <div className="flex-1 overflow-y-auto overscroll-contain">
 
           {loading ? (
             <div className="divide-y divide-[hsl(var(--muted))]">
