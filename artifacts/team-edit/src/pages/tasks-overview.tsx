@@ -284,7 +284,6 @@ export default function TasksOverview() {
                 </span>
               )}
             </div>
-            {t.client && <p className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</p>}
             {t.taskType === "multi_task" && t.subtaskProgress && t.subtaskProgress.total > 0 && (
               <div className="flex items-center gap-1.5 mt-1">
                 <span className="text-[10px] tabular-nums text-[hsl(var(--muted-foreground))]/70">{t.subtaskProgress.completed}/{t.subtaskProgress.total}</span>
@@ -309,6 +308,17 @@ export default function TasksOverview() {
           </div>
         );
       },
+    },
+    {
+      id: "cliente",
+      header: "Cliente",
+      size: 130,
+      meta: { className: "hidden sm:table-cell" },
+      cell: ({ row }) => (
+        <span className="text-xs text-[hsl(var(--muted-foreground))]/70 truncate block max-w-[120px]">
+          {row.original.client ?? <span className="text-[hsl(var(--muted-foreground))]/30">—</span>}
+        </span>
+      ),
     },
     {
       id: "entrega",
