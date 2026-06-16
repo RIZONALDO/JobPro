@@ -1,7 +1,10 @@
 import { Router } from "express";
 import { db, dutySchedulesTable, usersTable } from "@workspace/db";
 import { eq, and, gte, lte, inArray, count, isNull } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { requireAuth } from "../lib/auth.js";
+
+const substituteUser = alias(usersTable, "substitute_user");
 
 const router = Router();
 
@@ -120,18 +123,28 @@ router.get("/duty", requireAuth, async (req, res): Promise<void> => {
       weekendStart: dutySchedulesTable.weekendStart,
       slotType: dutySchedulesTable.slotType,
       notes: dutySchedulesTable.notes,
-      editorId: usersTable.id,
-      editorName: usersTable.name,
+      editorId:        usersTable.id,
+      editorName:      usersTable.name,
       editorAvatarUrl: usersTable.avatarUrl,
+      editorVacStart:  usersTable.vacationStart,
+      editorVacEnd:    usersTable.vacationEnd,
+      substituteId:        substituteUser.id,
+      substituteName:      substituteUser.name,
+      substituteAvatarUrl: substituteUser.avatarUrl,
     })
     .from(dutySchedulesTable)
     .leftJoin(usersTable, eq(dutySchedulesTable.editorId, usersTable.id))
+    .leftJoin(substituteUser, eq(dutySchedulesTable.substituteId, substituteUser.id))
     .where(and(gte(dutySchedulesTable.weekendStart, start), lte(dutySchedulesTable.weekendStart, end)))
     .orderBy(dutySchedulesTable.weekendStart);
 
   const byDate = new Map<string, {
     weekendStart: string;
-    editors: { id: number; name: string; avatarUrl: string | null; scheduleId: number; slotType: string }[];
+    editors: {
+      id: number; name: string; avatarUrl: string | null; scheduleId: number; slotType: string;
+      vacationStart: string | null; vacationEnd: string | null;
+      substituteId: number | null; substituteName: string | null; substituteAvatarUrl: string | null;
+    }[];
     notes: string | null;
   }>();
 
@@ -148,6 +161,11 @@ router.get("/duty", requireAuth, async (req, res): Promise<void> => {
         avatarUrl: row.editorAvatarUrl ?? null,
         scheduleId: row.id,
         slotType: row.slotType,
+        vacationStart: row.editorVacStart ?? null,
+        vacationEnd:   row.editorVacEnd   ?? null,
+        substituteId:        row.substituteId        ?? null,
+        substituteName:      row.substituteName      ?? null,
+        substituteAvatarUrl: row.substituteAvatarUrl ?? null,
       });
     }
   }
@@ -298,6 +316,21 @@ router.delete("/duty/:id", requireAuth, async (req, res): Promise<void> => {
   if (!["admin", "supervisor"].includes(req.session.userRole ?? "")) { res.status(403).json({ error: "Sem permissão" }); return; }
   const id = parseInt(req.params.id, 10);
   await db.delete(dutySchedulesTable).where(eq(dutySchedulesTable.id, id));
+  res.json({ ok: true });
+});
+
+// PUT /api/duty/:id/substitute — define ou remove substituto de um slot
+router.put("/duty/:id/substitute", requireAuth, async (req, res): Promise<void> => {
+  const role = req.session.userRole ?? "";
+  if (!["admin", "supervisor", "coordinator"].includes(role)) { res.status(403).json({ error: "Sem permissão" }); return; }
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  const { substituteId } = req.body ?? {};
+  const [updated] = await db.update(dutySchedulesTable)
+    .set({ substituteId: substituteId ? parseInt(String(substituteId), 10) : null })
+    .where(eq(dutySchedulesTable.id, id))
+    .returning({ id: dutySchedulesTable.id });
+  if (!updated) { res.status(404).json({ error: "Slot não encontrado" }); return; }
   res.json({ ok: true });
 });
 

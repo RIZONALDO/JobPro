@@ -5,6 +5,7 @@ export const dutySchedulesTable = pgTable("te_duty_schedules", {
   id: serial("id").primaryKey(),
   weekendStart: date("weekend_start").notNull(),
   editorId: integer("editor_id").references(() => usersTable.id, { onDelete: "cascade" }),
+  substituteId: integer("substitute_id").references(() => usersTable.id, { onDelete: "set null" }),
   slotType: text("slot_type").notNull().default("normal"), // 'normal' | 'extra'
   notes: text("notes"),
   createdById: integer("created_by_id").references(() => usersTable.id),

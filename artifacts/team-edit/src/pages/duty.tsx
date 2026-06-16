@@ -11,7 +11,11 @@ import { AvatarDisplay } from "@/components/ui/avatar-display";
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Editor { id: number; name: string; avatarUrl: string | null; login: string; }
-interface ScheduleEditor { id: number; name: string; avatarUrl: string | null; scheduleId: number; slotType: string; }
+interface ScheduleEditor {
+  id: number; name: string; avatarUrl: string | null; scheduleId: number; slotType: string;
+  vacationStart?: string | null; vacationEnd?: string | null;
+  substituteId?: number | null; substituteName?: string | null; substituteAvatarUrl?: string | null;
+}
 interface WeekendSlot { weekendStart: string; editors: ScheduleEditor[]; notes: string | null; }
 
 interface UpcomingEditor { id: number; name: string; avatarUrl: string | null; }
@@ -213,6 +217,7 @@ export default function DutyPage() {
   const appName = settings.company_name || "EditorPro";
   const isAdmin      = ["admin", "supervisor"].includes(user?.role ?? "");
   const isSupervisor = user?.role === "supervisor";
+  const canManage    = ["admin", "supervisor", "coordinator"].includes(user?.role ?? "");
 
   // ── Admin state ──────────────────────────────────────────────────────────────
   const [year,       setYear]       = useState(new Date().getFullYear());
@@ -242,6 +247,9 @@ export default function DutyPage() {
   const [resetting,            setResetting]            = useState(false);
   const [confirmReset,         setConfirmReset]         = useState(false);
   const [showMenu,             setShowMenu]             = useState(false);
+  const [subModal, setSubModal] = useState<{ scheduleId: number; editorName: string } | null>(null);
+  const [subModalSelected, setSubModalSelected] = useState<number | null>(null);
+  const [subModalSaving, setSubModalSaving] = useState(false);
   const [showTools,            setShowTools]            = useState(false);
   const [supervisorTab,        setSupervisorTab]        = useState<"manage" | "sorteio" | "view" | "email">("manage");
   const [editingNotes,         setEditingNotes]         = useState<{ iso: string; value: string } | null>(null);
@@ -368,6 +376,31 @@ export default function DutyPage() {
     } finally {
       setAddingHoliday(false);
     }
+  };
+
+  const TODAY_STR = new Date().toISOString().split("T")[0];
+  const editorOnVacation = (ed: ScheduleEditor) =>
+    !!(ed.vacationStart && ed.vacationEnd && TODAY_STR >= ed.vacationStart && TODAY_STR <= ed.vacationEnd);
+
+  const saveSubstitute = async (scheduleId: number, substituteId: number | null) => {
+    setSubModalSaving(true);
+    try {
+      await apiPut(`/api/duty/${scheduleId}/substitute`, { substituteId });
+      setSchedule(s => s.map(slot => ({
+        ...slot,
+        editors: slot.editors.map(e => e.scheduleId === scheduleId
+          ? {
+              ...e,
+              substituteId,
+              substituteName: substituteId ? editors.find(x => x.id === substituteId)?.name ?? null : null,
+              substituteAvatarUrl: substituteId ? editors.find(x => x.id === substituteId)?.avatarUrl ?? null : null,
+            }
+          : e),
+      })));
+      toast.success(substituteId ? "Substituto definido" : "Substituto removido");
+      setSubModal(null);
+    } catch { toast.error("Erro ao salvar substituto"); }
+    finally { setSubModalSaving(false); }
   };
 
   const removeEntry = async (scheduleId: number) => {
@@ -1806,25 +1839,70 @@ export default function DutyPage() {
 
                       {/* Assigned editors */}
                       <div className="flex flex-col gap-0.5 flex-1">
-                        {slotEditors.map(ed => (
-                          <div key={ed.scheduleId} className="flex items-center gap-1.5 group">
-                            <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={24} />
-                            <span className="text-[11px] font-semibold leading-none truncate flex-1">
-                              {ed.name.split(" ")[0]}
-                            </span>
-                            <span className={`shrink-0 text-[8px] font-bold leading-none px-1 py-0.5 rounded group-hover:hidden ${
-                              ed.slotType === "normal"
-                                ? "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]"
-                                : "bg-amber-400/15 text-amber-600 dark:text-amber-400"
-                            }`}>
-                              {ed.slotType === "normal" ? "N" : "E"}
-                            </span>
-                            <button
-                              onClick={() => removeEntry(ed.scheduleId)}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 text-[hsl(var(--muted-foreground))] hover:text-destructive">
-                              <X className="h-2.5 w-2.5" />
-                            </button>
+                        {slotEditors.map(ed => {
+                          const onVac = editorOnVacation(ed);
+                          const hasSub = onVac && !!ed.substituteId;
+                          return (
+                          <div key={ed.scheduleId} className={`flex flex-col gap-0.5 rounded-lg px-1 py-0.5 group ${onVac ? "bg-blue-500/8" : ""}`}>
+                            {/* linha principal: substituto (se férias) ou editor original */}
+                            <div className="flex items-center gap-1.5">
+                              <AvatarDisplay
+                                name={hasSub ? ed.substituteName! : ed.name}
+                                avatarUrl={hasSub ? ed.substituteAvatarUrl ?? null : ed.avatarUrl}
+                                size={24}
+                              />
+                              <span className="text-[11px] font-semibold leading-none truncate flex-1">
+                                {hasSub ? ed.substituteName!.split(" ")[0] : ed.name.split(" ")[0]}
+                              </span>
+                              {hasSub && (
+                                <span className="shrink-0 text-[8px] font-bold leading-none px-1 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400">
+                                  cobrindo
+                                </span>
+                              )}
+                              {!hasSub && (
+                                <span className={`shrink-0 text-[8px] font-bold leading-none px-1 py-0.5 rounded group-hover:hidden ${
+                                  ed.slotType === "normal"
+                                    ? "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]"
+                                    : "bg-amber-400/15 text-amber-600 dark:text-amber-400"
+                                }`}>
+                                  {ed.slotType === "normal" ? "N" : "E"}
+                                </span>
+                              )}
+                              {canManage && (
+                                <button
+                                  onClick={() => removeEntry(ed.scheduleId)}
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 text-[hsl(var(--muted-foreground))] hover:text-destructive">
+                                  <X className="h-2.5 w-2.5" />
+                                </button>
+                              )}
+                            </div>
+
+                            {/* linha de férias: editor original faded + botão substituir/remover */}
+                            {onVac && (
+                              <div className="flex items-center gap-1 pl-0.5">
+                                {hasSub && <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={14} className="opacity-40" />}
+                                <span className="text-[9px] text-blue-500/70 font-medium truncate flex-1">
+                                  {hasSub ? `${ed.name.split(" ")[0]} · férias` : `${ed.name.split(" ")[0]} · de férias`}
+                                </span>
+                                {canManage && (
+                                  <button
+                                    onClick={() => { setSubModal({ scheduleId: ed.scheduleId, editorName: ed.name }); setSubModalSelected(ed.substituteId ?? null); }}
+                                    className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400 hover:bg-blue-500/25 transition-colors shrink-0">
+                                    {hasSub ? "Trocar" : "Substituir"}
+                                  </button>
+                                )}
+                                {hasSub && canManage && (
+                                  <button
+                                    onClick={() => saveSubstitute(ed.scheduleId, null)}
+                                    className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors shrink-0">
+                                    Remover
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
+                          );
+                        })
                         ))}
                       </div>
 
@@ -1833,6 +1911,43 @@ export default function DutyPage() {
                 })}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal substituto ──────────────────────────────────────────────── */}
+      {subModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSubModal(null)} />
+          <div className="relative bg-[hsl(var(--card))] rounded-2xl shadow-2xl w-full max-w-xs flex flex-col overflow-hidden">
+            <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
+              <p className="text-xs font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Substituto</p>
+              <p className="text-sm font-semibold mt-0.5">{subModal.editorName} · de férias</p>
+            </div>
+            <div className="px-3 py-3 max-h-60 overflow-y-auto divide-y divide-[hsl(var(--border))]/40">
+              {editors.filter(e => e.id !== (schedule.flatMap(s => s.editors).find(ed => ed.scheduleId === subModal.scheduleId)?.id)).map(e => (
+                <button key={e.id} type="button"
+                  onClick={() => setSubModalSelected(e.id)}
+                  className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg transition-colors text-left ${
+                    subModalSelected === e.id ? "bg-[hsl(var(--primary))]/15" : "hover:bg-[hsl(var(--muted))]/40"
+                  }`}>
+                  <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={28} />
+                  <span className="text-sm font-medium flex-1">{e.name.split(" ").slice(0,2).join(" ")}</span>
+                  {subModalSelected === e.id && <span className="text-[hsl(var(--primary))] text-xs font-bold">✓</span>}
+                </button>
+              ))}
+            </div>
+            <div className="px-5 py-3 border-t border-[hsl(var(--border))] flex gap-2 justify-end">
+              <button onClick={() => setSubModal(null)} className="h-8 px-3 rounded-lg text-sm text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] transition-colors">
+                Cancelar
+              </button>
+              <button
+                disabled={!subModalSelected || subModalSaving}
+                onClick={() => subModalSelected && saveSubstitute(subModal.scheduleId, subModalSelected)}
+                className="h-8 px-4 rounded-lg text-sm font-semibold bg-[hsl(var(--primary))] text-white hover:opacity-90 disabled:opacity-40 transition-opacity">
+                {subModalSaving ? "Salvando…" : "Confirmar"}
+              </button>
+            </div>
           </div>
         </div>
       )}
