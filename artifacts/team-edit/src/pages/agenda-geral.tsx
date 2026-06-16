@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, ChevronDown, Lock, Plus } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { TaskFormModal } from "@/components/task-form-modal";
+import { STATUS_LABEL, STATUS_CHIP } from "@/lib/status";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -203,16 +204,6 @@ export default function AgendaGeral() {
   const toggleEditor = (id: number) =>
     setExpandedEditors(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  const STATUS_LABEL: Record<string, string> = {
-    pending: "Na fila", in_progress: "Em edição", captacao: "Falta captação",
-    in_revision: "Em alteração", review: "Em aprovação", completed: "Aprovada",
-    paused: "Pausada", cancelled: "Cancelada",
-  };
-  const STATUS_COLOR: Record<string, string> = {
-    pending: "text-slate-400", in_progress: "text-blue-400", captacao: "text-violet-400",
-    in_revision: "text-orange-400", review: "text-amber-400", completed: "text-emerald-400",
-    paused: "text-violet-400", cancelled: "text-red-400",
-  };
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -407,7 +398,7 @@ export default function AgendaGeral() {
                                 {t.client}
                               </span>
                             )}
-                            <span className={`text-[11px] font-medium shrink-0 ${STATUS_COLOR[t.status] ?? "text-[hsl(var(--muted-foreground))]"}`}>
+                            <span className={`text-[10px] font-semibold shrink-0 px-1.5 py-0.5 rounded-[4px] ${STATUS_CHIP[t.status] ?? "bg-slate-500/10 text-slate-500"}`}>
                               {STATUS_LABEL[t.status] ?? t.status}
                             </span>
                             {t.dueDate && (
