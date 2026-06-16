@@ -676,8 +676,9 @@ export default function TasksOverview() {
                   ))}
                 </thead>
                 <tbody className="divide-y divide-[hsl(var(--muted))]">
-                  {table.getRowModel().rows.map((row, rowIndex) => {
-                    const t = row.original;
+                  {sortedFiltered.map((t, rowIndex) => {
+                    const row = table.getRowModel().rows.find(r => r.original.id === t.id);
+                    if (!row) return null;
                     const isHighlighted = highlighted === t.id;
                     const isExpanded    = expandedIds.has(t.id);
                     const subList       = subtasksMap.get(t.id) ?? [];
