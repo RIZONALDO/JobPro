@@ -16,14 +16,14 @@ export const STATUS_LABEL: Record<string, string> = {
 
 // Chips retangulares — rounded-[4px], fundo alpha, sem animação
 export const STATUS_CHIP: Record<string, string> = {
-  pending:     "bg-slate-500/15 text-slate-400",
-  in_progress: "bg-blue-500/15 text-blue-400",
-  captacao:    "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]",
-  in_revision: "bg-orange-500/15 text-orange-400",
-  review:      "bg-amber-500/15 text-amber-400",
-  completed:   "bg-emerald-500/15 text-emerald-400",
-  paused:      "bg-violet-500/15 text-violet-400",
-  cancelled:   "bg-red-500/15 text-red-400",
+  pending:     "bg-slate-400 text-white",
+  in_progress: "bg-blue-500 text-white",
+  captacao:    "bg-[hsl(var(--primary))] text-white",
+  in_revision: "bg-orange-500 text-white",
+  review:      "bg-amber-500 text-white",
+  completed:   "bg-emerald-500 text-white",
+  paused:      "bg-violet-500 text-white",
+  cancelled:   "bg-red-400 text-white",
 };
 
 export const STATUS_DOT: Record<string, string> = {
