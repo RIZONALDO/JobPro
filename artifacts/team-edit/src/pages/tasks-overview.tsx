@@ -23,7 +23,7 @@ import {
   SlidersHorizontal, Search, CalendarClock, ChevronRight,
   CheckCircle2, RotateCcw, AlertTriangle, Clock,
 } from "lucide-react";
-import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CLASS, STATUS_CHIP, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { AvatarDisplay, StackedAvatars } from "@/components/ui/avatar-display";
 import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
@@ -990,9 +990,9 @@ export default function TasksOverview() {
 
                       {/* Row 3: status + priority + due date / período */}
                       <div className="flex items-center gap-2 mt-2.5 flex-wrap">
-                        <Badge className={`text-xs px-2 py-0.5 font-medium shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
-                          {STATUS_LABEL[t.status] ?? t.status}
-                        </Badge>
+                        <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${STATUS_CHIP[t.status] ?? ""}`}>
+                  {STATUS_LABEL[t.status] ?? t.status}
+                </span>
                         {isUnassigned && <span className="text-[11px] text-slate-400 shrink-0">sem editor</span>}
                         <PriorityBadge priority={t.priority} />
                         {viewTab === "scheduled" ? (
@@ -1130,9 +1130,9 @@ export default function TasksOverview() {
                   {/* Status */}
                   <div className="hidden md:flex w-36 shrink-0 flex-col gap-1 justify-center">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <Badge className={`text-[11px] px-2 py-0.5 font-medium ${STATUS_CLASS[t.status] ?? ""}`}>
-                        {STATUS_LABEL[t.status] ?? t.status}
-                      </Badge>
+                      <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${STATUS_CHIP[t.status] ?? ""}`}>
+                  {STATUS_LABEL[t.status] ?? t.status}
+                </span>
                       <MultiTaskBadge taskType={t.taskType ?? "task"} />
                     </div>
                     {t.taskType === "multi_task" && t.subtaskProgress && t.subtaskProgress.total > 0 && (
@@ -1314,9 +1314,9 @@ export default function TasksOverview() {
                           )}
                         </div>
                         {/* Subtask status */}
-                        <Badge className={`text-[11px] px-2 py-0.5 shrink-0 hidden md:inline-flex ${STATUS_CLASS[sub.status] ?? ""}`}>
-                          {STATUS_LABEL[sub.status] ?? sub.status}
-                        </Badge>
+                        <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap hidden md:inline-flex ${STATUS_CHIP[sub.status] ?? ""}`}>
+                  {STATUS_LABEL[sub.status] ?? sub.status}
+                </span>
                         {/* Subtask editor avatar */}
                         <div className="hidden md:flex items-center shrink-0">
                           {(sub.assignedTo ?? sub.editors?.[0]) && (() => {

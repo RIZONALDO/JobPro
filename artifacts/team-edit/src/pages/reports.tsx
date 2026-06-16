@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Search, FileText, X, Download } from "lucide-react";
 import { usePageTitle } from "@/lib/use-page-title";
-import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CLASS, STATUS_CHIP } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { fmtDate } from "@/lib/utils";
@@ -395,7 +395,9 @@ export default function Reports() {
                     <td className="px-4 py-2 text-xs text-[hsl(var(--muted-foreground))] max-w-[120px]"><span className="truncate block">{t.assignee?.name ?? "—"}</span></td>
                     <td className="px-4 py-2 text-xs text-[hsl(var(--muted-foreground))] max-w-[120px]"><span className="truncate block">{t.coordinator?.name ?? "—"}</span></td>
                     <td className="px-4 py-2">
-                      <Badge className={`text-[10px] px-1.5 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>{STATUS_LABEL[t.status] ?? t.status}</Badge>
+                      <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap px-1.5 ${STATUS_CHIP[t.status] ?? ""}`}>
+                  {STATUS_LABEL[t.status] ?? t.status}
+                </span>
                     </td>
                     <td className="px-4 py-2"><PriorityBadge priority={t.priority} showLabel /></td>
                     <td className="px-4 py-2 text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">{COMPLEXITY_LABEL[t.complexity] ?? t.complexity}</td>

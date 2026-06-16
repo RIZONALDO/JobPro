@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { Plus, Briefcase, Pencil, Trash2, MoreVertical, MessageSquare, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Undo2, FolderOpen, ExternalLink, PauseCircle, XCircle } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { CoordinatorAvatar, EditorAvatars } from "@/components/ui/avatar-group";
-import { STATUS_LABEL, STATUS_CLASS } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CLASS, STATUS_CHIP } from "@/lib/status";
 import { JOB_STATUS_CLASS, JOB_STATUS_LABEL, JOB_STATUS_OPTIONS } from "@/lib/job-status";
 import { PROJ_STATUS_CLASS, PROJ_STATUS_LABEL } from "@/lib/project-status";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
@@ -361,9 +361,9 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                       </span>
                     )}
                     {project?.status && (
-                      <Badge className={`text-xs px-1.5 shrink-0 ${PROJ_STATUS_CLASS[project.status] ?? ""}`}>
-                        {PROJ_STATUS_LABEL[project.status] ?? project.status}
-                      </Badge>
+                      <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap px-1.5 ${PROJ_STATUS_CLASS[project.status] ?? ""}`}>
+                  {PROJ_STATUS_LABEL[project.status] ?? project.status}
+                </span>
                     )}
                   </div>
                 )}
@@ -502,9 +502,9 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Badge className={`text-xs px-1 py-0 ${JOB_STATUS_CLASS[j.status] ?? ""}`}>
-                              {JOB_STATUS_LABEL[j.status] ?? j.status}
-                            </Badge>
+                            <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${JOB_STATUS_CLASS[j.status] ?? ""}`}>
+                  {JOB_STATUS_LABEL[j.status] ?? j.status}
+                </span>
                             {j.taskCount > 0 && (
                               <div className="flex items-center gap-1.5 flex-1 min-w-0">
                                 <div className="flex-1 h-1 rounded-full bg-[hsl(var(--muted))]">
@@ -587,9 +587,9 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                       {jobDetail.projectNumber}.{jobDetail.jobNumber}
                     </span>
                     <span className="font-semibold truncate flex-1">{jobDetail.name}</span>
-                    <Badge className={`text-xs px-1.5 shrink-0 ${JOB_STATUS_CLASS[jobDetail.status] ?? ""}`}>
-                      {JOB_STATUS_LABEL[jobDetail.status] ?? jobDetail.status}
-                    </Badge>
+                    <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap px-1.5 ${JOB_STATUS_CLASS[jobDetail.status] ?? ""}`}>
+                  {JOB_STATUS_LABEL[jobDetail.status] ?? jobDetail.status}
+                </span>
                     {isCoord && (
                       <Button size="sm" onClick={openNewTask} className="shrink-0 h-8">
                         <Plus className="h-4 w-4 mr-1.5" />Nova tarefa
@@ -637,9 +637,9 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
                           </div>
                           {/* Status */}
                           <div className="w-48 shrink-0 flex items-center gap-1.5">
-                            <Badge className={`text-xs px-1.5 ${STATUS_CLASS[t.status] ?? ""}`}>
-                              {STATUS_LABEL[t.status] ?? t.status}
-                            </Badge>
+                            <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap px-1.5 ${STATUS_CHIP[t.status] ?? ""}`}>
+                  {STATUS_LABEL[t.status] ?? t.status}
+                </span>
                             {t.revisionCount > 0 && (
                               <span className="text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap leading-none">
                                 {t.revisionCount} {t.revisionCount === 1 ? "alteração" : "alterações"}

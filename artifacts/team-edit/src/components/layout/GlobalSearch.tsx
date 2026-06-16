@@ -5,6 +5,7 @@ import { useLocation } from "wouter";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { STATUS_LABEL, STATUS_CHIP } from "@/lib/status";
 
 interface SearchTask {
   id: number;
@@ -37,23 +38,6 @@ interface SearchResults {
   projects: SearchProject[];
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  pending: "Pendente",
-  in_progress: "Em andamento",
-  review: "Revisão",
-  approved: "Aprovado",
-  paused: "Pausado",
-  cancelled: "Cancelado",
-};
-
-const STATUS_COLOR: Record<string, string> = {
-  pending: "text-amber-500",
-  in_progress: "text-blue-500",
-  review: "text-violet-500",
-  approved: "text-green-500",
-  paused: "text-orange-400",
-  cancelled: "text-red-400",
-};
 
 const ROLE_LABEL: Record<string, string> = {
   admin: "Admin",
@@ -255,7 +239,7 @@ export function GlobalSearch() {
                               {[t.client, t.assignedName].filter(Boolean).join(" · ")}
                             </p>
                           </div>
-                          <span className={cn("text-xs font-medium shrink-0", STATUS_COLOR[t.status] ?? "text-[hsl(var(--muted-foreground))]")}>
+                          <span className={cn("inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap shrink-0", STATUS_CHIP[t.status] ?? "bg-slate-400 text-white")}>
                             {STATUS_LABEL[t.status] ?? t.status}
                           </span>
                           {t.assignedAvatar && (

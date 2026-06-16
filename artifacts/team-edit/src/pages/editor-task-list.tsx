@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
-import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CLASS, STATUS_CHIP, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
 import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
@@ -427,9 +427,9 @@ export default function EditorTaskList() {
 
                   {/* status + priority + período / prazo */}
                   <div className="flex items-center gap-2 mt-2.5 flex-wrap">
-                    <Badge className={`text-xs px-2 py-0.5 font-medium shrink-0 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
-                      {STATUS_LABEL[t.status] ?? t.status}
-                    </Badge>
+                    <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${STATUS_CHIP[t.status] ?? ""}`}>
+                  {STATUS_LABEL[t.status] ?? t.status}
+                </span>
                     <PriorityBadge priority={t.priority} />
                     {viewTab === "scheduled" ? (
                       (t.startDate || t.dueDate) && (() => {
@@ -541,9 +541,9 @@ export default function EditorTaskList() {
 
               {/* Status */}
               <div className="hidden md:flex w-36 shrink-0 items-center gap-1.5 flex-wrap px-2">
-                <Badge className={`${STATUS_CLASS[t.status] ?? ""} text-[11px] px-2 py-0.5 font-medium whitespace-nowrap shrink-0`}>
+                <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${STATUS_CHIP[t.status] ?? ""}`}>
                   {STATUS_LABEL[t.status] ?? t.status}
-                </Badge>
+                </span>
                 <MultiTaskBadge taskType={t.taskType ?? "task"} />
               </div>
 
