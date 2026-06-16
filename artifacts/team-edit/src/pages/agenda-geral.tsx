@@ -155,11 +155,9 @@ export default function AgendaGeral() {
       setDrag(null);
       const s = Math.min(d.start, d.end);
       const e = Math.max(d.start, d.end);
-      if (s !== e) {
-        const days = weekDaysRef.current;
-        setFormPreset({ editorId: d.editorId, startDate: toISO(days[s]), dueDate: toISO(days[e]) });
-        setFormOpen(true);
-      }
+      const days = weekDaysRef.current;
+      setFormPreset({ editorId: d.editorId, startDate: toISO(days[s]), dueDate: toISO(days[e]) });
+      setFormOpen(true);
     };
     window.addEventListener("mouseup", endDrag);
     return () => window.removeEventListener("mouseup", endDrag);
@@ -319,91 +317,83 @@ export default function AgendaGeral() {
                     key={di}
                     className="p-[4px]"
                     style={isWkend ? { background: "hsl(var(--muted) / 0.07)" } : {}}
-                    onMouseDown={e => startDrag(editor.id, di, e)}
+                    onMouseDown={e => { if (sc < 12) startDrag(editor.id, di, e); }}
                     onMouseEnter={() => moveDrag(editor.id, di)}
                   >
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <div
-                          className={`relative w-full select-none transition-all duration-200 ${!drag ? "hover:scale-[1.03] hover:brightness-110" : ""}`}
-                          style={{
-                            height: 72,
-                            borderRadius: 7,
-                            background: isDragSelected ? "hsl(var(--primary) / 0.22)" : cfg.bg,
-                            border: isDragSelected ? "2px solid hsl(var(--primary) / 0.55)" : `1px solid ${cfg.border}`,
-                            boxShadow: isDragSelected ? "0 0 20px hsl(var(--primary) / 0.18)" : cfg.shadow,
-                            cursor: isDraggingRow ? "col-resize" : "pointer",
-                            transform: isDragSelected ? "scaleY(1.04)" : undefined,
-                          }}
-                        >
-                          {sc >= 12 && !isDragSelected && (
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                              <Lock style={{ width: 18, height: 18, color: "#ef4444", opacity: 0.30 }} strokeWidth={2.5} />
-                            </div>
-                          )}
-                          {sc < 12 && !isDragSelected && (
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                              <Plus style={{ width: 15, height: 15, color: cfg.color, opacity: 0.30 }} strokeWidth={2} />
-                            </div>
-                          )}
-                          {isDragSelected && (
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                              <Plus style={{ width: 16, height: 16, color: "hsl(var(--primary))", opacity: 0.8 }} strokeWidth={2.5} />
-                            </div>
-                          )}
+                    <div
+                      className={`relative w-full select-none transition-all duration-200 ${sc < 12 && !drag ? "hover:scale-[1.03] hover:brightness-110" : ""}`}
+                      style={{
+                        height: 72,
+                        borderRadius: 7,
+                        background: isDragSelected ? "hsl(var(--primary) / 0.22)" : cfg.bg,
+                        border: isDragSelected ? "2px solid hsl(var(--primary) / 0.55)" : `1px solid ${cfg.border}`,
+                        boxShadow: isDragSelected ? "0 0 20px hsl(var(--primary) / 0.18)" : cfg.shadow,
+                        cursor: sc >= 12 ? "not-allowed" : isDraggingRow ? "col-resize" : "pointer",
+                        transform: isDragSelected ? "scaleY(1.04)" : undefined,
+                      }}
+                    >
+                      {sc >= 12 && !isDragSelected && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <Lock style={{ width: 18, height: 18, color: "#ef4444", opacity: 0.30 }} strokeWidth={2.5} />
                         </div>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        className="p-0 w-60"
-                        side="bottom"
-                        align="center"
-                        sideOffset={6}
-                      >
-                        {/* Header */}
-                        <div className="px-3 py-2 border-b border-[hsl(var(--border))]">
-                          <p className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))]">
-                            {editor.name.split(" ")[0]} · {WEEK_DAYS[di]} {weekDays[di].getDate()}
-                          </p>
+                      )}
+                      {sc < 12 && !isDragSelected && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <Plus style={{ width: 15, height: 15, color: cfg.color, opacity: 0.30 }} strokeWidth={2} />
                         </div>
-                        {/* Task list */}
-                        <div className="py-1 max-h-60 overflow-y-auto">
-                          {tasksOnDay.length === 0 ? (
-                            <p className="px-3 py-2 text-[12px] text-[hsl(var(--muted-foreground))]">
-                              Nenhuma tarefa
-                            </p>
-                          ) : tasksOnDay.map(t => (
+                      )}
+                      {isDragSelected && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <Plus style={{ width: 16, height: 16, color: "hsl(var(--primary))", opacity: 0.8 }} strokeWidth={2.5} />
+                        </div>
+                      )}
+
+                      {/* Badge de tarefas no canto — abre popover com a lista */}
+                      {tasksOnDay.length > 0 && (
+                        <Popover>
+                          <PopoverTrigger asChild>
                             <button
-                              key={t.id}
-                              className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[hsl(var(--muted)/0.5)] transition-colors select-none outline-none"
-                              onClick={() => openTask(t.id)}
+                              className="absolute top-1 right-1 h-5 min-w-[20px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center transition-opacity hover:opacity-100"
+                              style={{ background: cfg.border, color: cfg.color, opacity: 0.75 }}
+                              onMouseDown={e => e.stopPropagation()}
                             >
-                              <span
-                                className="font-mono text-[11px] font-bold shrink-0"
-                                style={{ color: t.color || "hsl(var(--primary))" }}
-                              >
-                                {t.taskCode}
-                              </span>
-                              <span className="text-[12px] truncate text-[hsl(var(--foreground))] flex-1 min-w-0">
-                                {t.title}
-                              </span>
-                              {t.creator && (
-                                <>
-                                  <AvatarDisplay
-                                    name={t.creator.name}
-                                    avatarUrl={t.creator.avatarUrl}
-                                    size={14}
-                                    className="shrink-0"
-                                  />
-                                  <span className="text-[10px] text-[hsl(var(--muted-foreground))] shrink-0">
-                                    {t.creator.name.split(" ")[0]}
-                                  </span>
-                                </>
-                              )}
+                              {tasksOnDay.length}
                             </button>
-                          ))}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
+                          </PopoverTrigger>
+                          <PopoverContent className="p-0 w-60" side="bottom" align="center" sideOffset={6}>
+                            <div className="px-3 py-2 border-b border-[hsl(var(--border))]">
+                              <p className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))]">
+                                {editor.name.split(" ")[0]} · {WEEK_DAYS[di]} {weekDays[di].getDate()}
+                              </p>
+                            </div>
+                            <div className="py-1 max-h-60 overflow-y-auto">
+                              {tasksOnDay.map(t => (
+                                <button
+                                  key={t.id}
+                                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[hsl(var(--muted)/0.5)] transition-colors select-none outline-none"
+                                  onClick={() => openTask(t.id)}
+                                >
+                                  <span className="font-mono text-[11px] font-bold shrink-0" style={{ color: t.color || "hsl(var(--primary))" }}>
+                                    {t.taskCode}
+                                  </span>
+                                  <span className="text-[12px] truncate text-[hsl(var(--foreground))] flex-1 min-w-0">
+                                    {t.title}
+                                  </span>
+                                  {t.creator && (
+                                    <>
+                                      <AvatarDisplay name={t.creator.name} avatarUrl={t.creator.avatarUrl} size={14} className="shrink-0" />
+                                      <span className="text-[10px] text-[hsl(var(--muted-foreground))] shrink-0">
+                                        {t.creator.name.split(" ")[0]}
+                                      </span>
+                                    </>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    </div>
                   </div>
                 );
               })}
