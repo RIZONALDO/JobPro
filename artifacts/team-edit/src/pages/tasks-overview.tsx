@@ -236,7 +236,7 @@ export default function TasksOverview() {
       const key = sortedFiltered[i].createdAt?.split("T")[0] ?? "__";
       let span = 1;
       while (i + span < sortedFiltered.length &&
-        (sortedFiltered[i + span].updatedAt?.split("T")[0] ?? "__") === key) span++;
+        (sortedFiltered[i + span].createdAt?.split("T")[0] ?? "__") === key) span++;
       map.set(i, span);
       i += span;
     }
