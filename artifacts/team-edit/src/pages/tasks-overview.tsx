@@ -285,7 +285,7 @@ export default function TasksOverview() {
                 </button>
               )}
               {t.taskCode && <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">{t.taskCode}</span>}
-              <span className="text-sm font-semibold truncate leading-snug">{t.title}</span>
+              <span className="text-sm font-normal text-[hsl(var(--foreground))]/70 truncate leading-snug">{t.title}</span>
               <MultiTaskBadge taskType={t.taskType ?? "task"} />
               {t.revisionCount > 0 && (
                 <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap">
@@ -620,7 +620,7 @@ export default function TasksOverview() {
                               </button>
                             )}
                             {t.taskCode && <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">{t.taskCode}</span>}
-                            <span className="text-sm font-semibold truncate flex-1 min-w-0 leading-snug">{t.title}</span>
+                            <span className="text-sm font-normal text-[hsl(var(--foreground))]/70 truncate flex-1 min-w-0 leading-snug">{t.title}</span>
                             {t.revisionCount > 0 && (
                               <span className="shrink-0 text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap leading-none">
                                 {t.revisionCount} {t.revisionCount === 1 ? "alt." : "alts."}
@@ -693,7 +693,7 @@ export default function TasksOverview() {
                   {table.getHeaderGroups().map(hg => (
                     <tr key={hg.id}>
                       {/* Coluna de data */}
-                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide whitespace-nowrap w-[96px]">
+                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide whitespace-nowrap w-[120px]">
                         Data
                       </th>
                       {hg.headers.map(h => (
@@ -717,10 +717,10 @@ export default function TasksOverview() {
                     if (dayTasks.length === 0) {
                       return (
                         <tr key={dayKey} className="border-t border-[hsl(var(--border))]">
-                          <td rowSpan={1} className={`px-2 py-5 align-top text-center w-[96px] border-r border-[hsl(var(--border))]/40 ${dm.isToday ? "bg-[hsl(var(--primary))]/5" : ""}`}>
-                            <span className={`block text-4xl font-black leading-none tabular-nums ${dm.isToday ? "text-[hsl(var(--primary))]" : dm.isPast ? "text-[hsl(var(--muted-foreground))]/25" : "text-[hsl(var(--foreground))]/50"}`}>{dm.dayNum}</span>
-                            <span className={`block text-[9px] font-bold uppercase tracking-widest mt-0.5 ${dm.isToday ? "text-[hsl(var(--primary))]/70" : "text-[hsl(var(--muted-foreground))]/30"}`}>{dm.dayName}</span>
-                            <span className={`block text-[9px] font-semibold mt-0.5 ${dm.isToday ? "text-[hsl(var(--primary))]/60" : "text-[hsl(var(--muted-foreground))]/25"}`}>{dm.mon}</span>
+                          <td rowSpan={1} className={`px-2 py-5 align-top text-center w-[120px] border-r border-[hsl(var(--border))]/40 ${dm.isToday ? "bg-[hsl(var(--primary))]/5" : ""}`}>
+                            <span className={`block text-4xl font-black leading-none tabular-nums ${dm.isToday ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--foreground))]/50"}`}>{dm.dayNum}</span>
+                            <span className={`block text-[9px] font-bold uppercase tracking-widest mt-0.5 ${dm.isToday ? "text-[hsl(var(--primary))]/70" : "text-[hsl(var(--muted-foreground))]/40"}`}>{dm.dayName}</span>
+                            <span className={`block text-[9px] font-semibold mt-0.5 ${dm.isToday ? "text-[hsl(var(--primary))]/60" : "text-[hsl(var(--muted-foreground))]/35"}`}>{dm.mon}</span>
                             {dm.isToday && <span className="block mt-1 text-[8px] font-black uppercase px-1 py-0.5 rounded-full bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]">hoje</span>}
                           </td>
                           <td colSpan={columns.length} className="px-4 py-3 text-xs text-[hsl(var(--muted-foreground))]/25 italic">—</td>
@@ -748,15 +748,15 @@ export default function TasksOverview() {
                           {isFirstOfGroup && (
                             <td
                               rowSpan={rowSpan}
-                              className={`px-2 py-5 align-top text-center w-[96px] border-r border-[hsl(var(--border))]/40 ${dm.isToday ? "bg-[hsl(var(--primary))]/5" : ""}`}
+                              className={`px-2 py-5 align-top text-center w-[120px] border-r border-[hsl(var(--border))]/40 ${dm.isToday ? "bg-[hsl(var(--primary))]/5" : ""}`}
                             >
-                              <span className={`block text-4xl font-black leading-none tabular-nums ${dm.isToday ? "text-[hsl(var(--primary))]" : dm.isPast ? "text-[hsl(var(--muted-foreground))]/35" : "text-[hsl(var(--foreground))]"}`}>
+                              <span className={`block text-4xl font-black leading-none tabular-nums ${dm.isToday ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--foreground))]/70"}`}>
                                 {dm.dayNum}
                               </span>
-                              <span className={`block text-[9px] font-bold uppercase tracking-widest mt-0.5 ${dm.isToday ? "text-[hsl(var(--primary))]/70" : dm.isPast ? "text-[hsl(var(--muted-foreground))]/30" : "text-[hsl(var(--muted-foreground))]/50"}`}>
+                              <span className={`block text-[9px] font-bold uppercase tracking-widest mt-0.5 ${dm.isToday ? "text-[hsl(var(--primary))]/70" : "text-[hsl(var(--muted-foreground))]/50"}`}>
                                 {dm.dayName}
                               </span>
-                              <span className={`block text-[9px] font-semibold mt-0.5 ${dm.isToday ? "text-[hsl(var(--primary))]/60" : dm.isPast ? "text-[hsl(var(--muted-foreground))]/25" : "text-[hsl(var(--muted-foreground))]/40"}`}>
+                              <span className={`block text-[9px] font-semibold mt-0.5 ${dm.isToday ? "text-[hsl(var(--primary))]/60" : "text-[hsl(var(--muted-foreground))]/40"}`}>
                                 {dm.mon}
                               </span>
                               {dm.isToday && <span className="block mt-1 text-[8px] font-black uppercase px-1 py-0.5 rounded-full bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]">hoje</span>}
@@ -779,7 +779,7 @@ export default function TasksOverview() {
                             <tr key={s.id} className="hover:bg-[hsl(var(--muted))]/10 cursor-pointer bg-[hsl(var(--muted))]/5 border-l-2 border-[hsl(var(--primary))]/20"
                               onClick={() => openTask(s.id)}>
                               {/* célula vazia — coluna data já coberta pelo rowSpan acima */}
-                              <td className="w-[96px] border-r border-[hsl(var(--border))]/40" />
+                              <td className="w-[120px] border-r border-[hsl(var(--border))]/40" />
                               <td className="pl-10 pr-4 py-2.5 align-top">
                                 <div className="flex items-center gap-2">
                                   {s.taskCode && <span className="font-mono text-xs text-[hsl(var(--primary))]/70">{s.taskCode}</span>}
