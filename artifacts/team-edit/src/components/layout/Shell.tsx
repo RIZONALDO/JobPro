@@ -214,7 +214,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
   };
 
 
-  const navItems = NAV_ITEMS.filter(item => user && item.roles.includes(user.role));
+  const navItems = NAV_ITEMS.filter(item => {
+    if (!user) return false;
+    if (!item.roles.includes(user.role)) return false;
+    // Agenda Geral: respeita configuração de acesso
+    if (item.href === "/agenda" && settings.agenda_access !== "all" && user.role === "coordinator") return false;
+    return true;
+  });
   const initials = user?.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() ?? "?";
 
   // Auto-open group when a child route is active

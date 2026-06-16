@@ -9,6 +9,7 @@ interface AppSettings {
   sound_notif: string;
   sound_chat: string;
   sound_poke: string;
+  agenda_access: string; // "all" = admin+coord | "admin" = só admin/supervisor
 }
 
 interface SettingsContextValue {
@@ -26,6 +27,7 @@ const DEFAULTS: AppSettings = {
   sound_notif: "ping",
   sound_chat: "ping",
   sound_poke: "boop",
+  agenda_access: "all",
 };
 
 const SettingsContext = createContext<SettingsContextValue>({
@@ -91,9 +93,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         logo_url: data["logo_url"] || "",
         favicon_url: data["favicon_url"] || "",
         primary_color: data["primary_color"] || DEFAULTS.primary_color,
-        sound_notif: data["sound_notif"] || DEFAULTS.sound_notif,
-        sound_chat:  data["sound_chat"]  || DEFAULTS.sound_chat,
-        sound_poke:  data["sound_poke"]  || DEFAULTS.sound_poke,
+        sound_notif:   data["sound_notif"]   || DEFAULTS.sound_notif,
+        sound_chat:    data["sound_chat"]    || DEFAULTS.sound_chat,
+        sound_poke:    data["sound_poke"]    || DEFAULTS.sound_poke,
+        agenda_access: data["agenda_access"] || DEFAULTS.agenda_access,
       };
       applySettings(next);
     } catch { /* ignore */ } finally {

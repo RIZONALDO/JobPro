@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ImagePlus, X, TriangleAlert, Settings as SettingsIcon, FlaskConical, CheckCircle2, Volume2, Play } from "lucide-react";
+import { ImagePlus, X, TriangleAlert, Settings as SettingsIcon, FlaskConical, CheckCircle2, Volume2, Play, LayoutGrid } from "lucide-react";
 import { SOUND_OPTIONS, playSound, type SoundPreset } from "@/lib/sounds";
 import { usePageTitle } from "@/lib/use-page-title";
 import {
@@ -24,6 +24,7 @@ export default function SettingsPage() {
   const [sounds, setSounds] = useState({ sound_notif: "ping", sound_chat: "ping", sound_poke: "boop" });
   const [logoDrag, setLogoDrag] = useState(false);
   const [faviconDrag, setFaviconDrag] = useState(false);
+  const [agendaAccess, setAgendaAccess] = useState("all");
   const [saving, setSaving] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetConfirm, setResetConfirm] = useState("");
@@ -45,6 +46,7 @@ export default function SettingsPage() {
         sound_chat:  d["sound_chat"]  ?? "ping",
         sound_poke:  d["sound_poke"]  ?? "boop",
       });
+      setAgendaAccess(d["agenda_access"] ?? "all");
     });
   }, []);
 
@@ -97,7 +99,7 @@ export default function SettingsPage() {
     const prevFavicon = (await apiFetch<Record<string, string>>("/api/settings"))["favicon_url"] ?? "";
     const faviconChanged = form.favicon_url !== prevFavicon;
     try {
-      await apiPut("/api/settings", { ...form, ...sounds });
+      await apiPut("/api/settings", { ...form, ...sounds, agenda_access: agendaAccess });
       await refreshSettings();
       if (faviconChanged) {
         toast.success("Configurações salvas — recarregando para aplicar o favicon…");
@@ -301,6 +303,40 @@ export default function SettingsPage() {
               </div>
             </div>
           ))}
+        </CardContent>
+      </Card>
+
+      {/* Acesso — Agenda Geral */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <LayoutGrid className="h-4 w-4 text-[hsl(var(--primary))]" />
+            Controle de Acesso
+          </CardTitle>
+          <CardDescription>Defina quais perfis podem ver cada módulo do sistema.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between py-3 border rounded-xl px-4">
+            <div>
+              <p className="text-sm font-medium">Agenda Geral</p>
+              <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">
+                {agendaAccess === "all"
+                  ? "Visível para coordenadores e administradores"
+                  : "Visível apenas para administradores e supervisores"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAgendaAccess(v => v === "all" ? "admin" : "all")}
+              className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors duration-200 focus:outline-none ${
+                agendaAccess === "all" ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--muted))]"
+              }`}
+            >
+              <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 mt-0.5 ${
+                agendaAccess === "all" ? "translate-x-5" : "translate-x-0.5"
+              }`} />
+            </button>
+          </div>
         </CardContent>
       </Card>
 
