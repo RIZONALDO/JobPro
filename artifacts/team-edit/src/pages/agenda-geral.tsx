@@ -6,6 +6,7 @@ import { useTaskModal } from "@/contexts/TaskModalContext";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, ChevronDown, Lock, Plus } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { TaskFormModal } from "@/components/task-form-modal";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -379,39 +380,48 @@ export default function AgendaGeral() {
               </div>{/* fim grid */}
 
               {/* Lista colapsável de tarefas */}
-              {isExpanded && (
-                <div style={{ borderTop: "1px solid hsl(var(--border) / 0.3)", background: "hsl(var(--muted) / 0.06)" }}>
-                  {activeTasks.length === 0 ? (
-                    <p className="px-6 py-3 text-[12px] text-[hsl(var(--muted-foreground))]/40 italic">Nenhuma tarefa ativa</p>
-                  ) : (
-                    <div className="divide-y divide-[hsl(var(--border))]/20">
-                      {activeTasks.map(t => (
-                        <div key={t.id} className="flex items-center gap-3 px-6 py-2.5">
-                          <span className="font-mono text-[11px] font-bold shrink-0" style={{ color: t.color || "hsl(var(--muted-foreground))" }}>
-                            {t.taskCode}
-                          </span>
-                          <span className="text-[12px] truncate flex-1 min-w-0 text-[hsl(var(--foreground))]/80">
-                            {t.title}
-                          </span>
-                          {t.client && (
-                            <span className="text-[11px] text-[hsl(var(--muted-foreground))]/50 shrink-0 hidden sm:block">
-                              {t.client}
+              <AnimatePresence initial={false}>
+                {isExpanded && (
+                  <motion.div
+                    key="task-list"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                    style={{ overflow: "hidden", borderTop: "1px solid hsl(var(--border) / 0.3)", background: "hsl(var(--muted) / 0.06)" }}
+                  >
+                    {activeTasks.length === 0 ? (
+                      <p className="px-6 py-3 text-[12px] text-[hsl(var(--muted-foreground))]/40 italic">Nenhuma tarefa ativa</p>
+                    ) : (
+                      <div className="divide-y divide-[hsl(var(--border))]/20">
+                        {activeTasks.map(t => (
+                          <div key={t.id} className="flex items-center gap-3 px-6 py-2.5">
+                            <span className="font-mono text-[11px] font-bold shrink-0" style={{ color: t.color || "hsl(var(--muted-foreground))" }}>
+                              {t.taskCode}
                             </span>
-                          )}
-                          <span className={`text-[11px] font-medium shrink-0 ${STATUS_COLOR[t.status] ?? "text-[hsl(var(--muted-foreground))]"}`}>
-                            {STATUS_LABEL[t.status] ?? t.status}
-                          </span>
-                          {t.dueDate && (
-                            <span className="text-[11px] tabular-nums text-[hsl(var(--muted-foreground))]/40 shrink-0">
-                              {t.dueDate.split("T")[0].split("-").reverse().slice(0,2).join("/")}
+                            <span className="text-[12px] truncate flex-1 min-w-0 text-[hsl(var(--foreground))]/80">
+                              {t.title}
                             </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+                            {t.client && (
+                              <span className="text-[11px] text-[hsl(var(--muted-foreground))]/50 shrink-0 hidden sm:block">
+                                {t.client}
+                              </span>
+                            )}
+                            <span className={`text-[11px] font-medium shrink-0 ${STATUS_COLOR[t.status] ?? "text-[hsl(var(--muted-foreground))]"}`}>
+                              {STATUS_LABEL[t.status] ?? t.status}
+                            </span>
+                            {t.dueDate && (
+                              <span className="text-[11px] tabular-nums text-[hsl(var(--muted-foreground))]/40 shrink-0">
+                                {t.dueDate.split("T")[0].split("-").reverse().slice(0,2).join("/")}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
             );
           })}
