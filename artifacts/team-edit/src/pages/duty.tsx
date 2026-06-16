@@ -410,9 +410,17 @@ export default function DutyPage() {
     }
   };
 
-  const TODAY_STR = new Date().toISOString().split("T")[0];
-  const editorOnVacation = (ed: ScheduleEditor) =>
-    !!(ed.vacationStart && ed.vacationEnd && TODAY_STR >= ed.vacationStart && TODAY_STR <= ed.vacationEnd);
+  const getSunStr = (satStr: string) => {
+    const d = new Date(satStr + "T12:00:00"); d.setDate(d.getDate() + 1);
+    return d.toISOString().split("T")[0];
+  };
+  // Verifica se o slot (sábado iso) sobrepõe o período de férias do editor
+  const editorOnVacation = (ed: ScheduleEditor, slotIso: string) => {
+    if (!ed.vacationStart || !ed.vacationEnd) return false;
+    const sunStr = getSunStr(slotIso);
+    // sobreposição: slot começa antes do fim das férias E termina depois do início
+    return slotIso <= ed.vacationEnd && sunStr >= ed.vacationStart;
+  };
 
   const saveSubstitute = async (scheduleId: number, substituteId: number | null) => {
     setSubModalSaving(true);
@@ -1872,7 +1880,7 @@ export default function DutyPage() {
                       {/* Assigned editors */}
                       <div className="flex flex-col gap-0.5 flex-1">
                         {slotEditors.map(ed => {
-                          const onVac = editorOnVacation(ed);
+                          const onVac = editorOnVacation(ed, iso);
                           const hasSub = onVac && !!ed.substituteId;
                           return (
                           <div key={ed.scheduleId} className={`flex flex-col gap-0.5 rounded-lg px-1 py-0.5 group ${onVac ? "bg-blue-500/8" : ""}`}>
