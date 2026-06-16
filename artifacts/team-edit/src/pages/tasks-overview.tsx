@@ -119,6 +119,7 @@ export default function TasksOverview() {
   // Dialogs
 const [formOpen,    setFormOpen]    = useState(false);
   const [editTaskId,  setEditTaskId]  = useState<number | null>(null);
+  const [createForDate, setCreateForDate] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
   const [deleting,    setDeleting]    = useState(false);
   const [reassignTarget, setReassignTarget] = useState<{ taskId: number; taskTitle: string; assignedTo: Person | null; mode: "reassign" | "add" } | null>(null);
@@ -693,11 +694,15 @@ const [formOpen,    setFormOpen]    = useState(false);
                     if (dayTasks.length === 0) {
                       return (
                         <tr key={dayKey} className="border-t border-[hsl(var(--border))]">
-                          <td rowSpan={1} className={`px-2 py-5 align-top text-center w-[120px] border-r border-[hsl(var(--border))]/40 ${dm.isToday ? "bg-[hsl(var(--primary))]/5" : ""}`}>
+                          <td rowSpan={1}
+                            className={`px-2 py-5 align-top text-center w-[120px] border-r border-[hsl(var(--border))]/40 transition-colors ${dm.isToday ? "bg-[hsl(var(--primary))]/5" : ""} ${canCreate ? "cursor-pointer hover:bg-[hsl(var(--primary))]/8 group/date" : ""}`}
+                            onClick={canCreate ? e => { e.stopPropagation(); setCreateForDate(dayKey); setEditTaskId(null); setFormOpen(true); } : undefined}
+                          >
                             <span className={`block text-4xl font-black leading-none tabular-nums ${dm.isToday ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--foreground))]/50"}`}>{dm.dayNum}</span>
                             <span className={`block text-[9px] font-bold uppercase tracking-widest mt-0.5 ${dm.isToday ? "text-[hsl(var(--primary))]/70" : "text-[hsl(var(--muted-foreground))]/40"}`}>{dm.dayName}</span>
                             <span className={`block text-[9px] font-semibold mt-0.5 ${dm.isToday ? "text-[hsl(var(--primary))]/60" : "text-[hsl(var(--muted-foreground))]/35"}`}>{dm.mon}</span>
                             {dm.isToday && <span className="block mt-1 text-[8px] font-black uppercase px-1 py-0.5 rounded-full bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]">hoje</span>}
+                            {canCreate && <Plus className="h-3 w-3 mx-auto mt-2 opacity-0 group-hover/date:opacity-40 transition-opacity text-[hsl(var(--primary))]" />}
                           </td>
                           <td colSpan={columns.length} className="px-4 py-3 text-xs text-[hsl(var(--muted-foreground))]/25 italic">—</td>
                         </tr>
@@ -724,7 +729,8 @@ const [formOpen,    setFormOpen]    = useState(false);
                           {isFirstOfGroup && (
                             <td
                               rowSpan={rowSpan}
-                              className={`px-2 py-5 align-top text-center w-[120px] border-r border-[hsl(var(--border))]/40 ${dm.isToday ? "bg-[hsl(var(--primary))]/5" : ""}`}
+                              className={`px-2 py-5 align-top text-center w-[120px] border-r border-[hsl(var(--border))]/40 transition-colors ${dm.isToday ? "bg-[hsl(var(--primary))]/5" : ""} ${canCreate ? "cursor-pointer hover:bg-[hsl(var(--primary))]/8 group/date" : ""}`}
+                              onClick={canCreate ? e => { e.stopPropagation(); setCreateForDate(dayKey); setEditTaskId(null); setFormOpen(true); } : undefined}
                             >
                               <span className={`block text-4xl font-black leading-none tabular-nums ${dm.isToday ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--foreground))]/70"}`}>
                                 {dm.dayNum}
@@ -736,6 +742,7 @@ const [formOpen,    setFormOpen]    = useState(false);
                                 {dm.mon}
                               </span>
                               {dm.isToday && <span className="block mt-1 text-[8px] font-black uppercase px-1 py-0.5 rounded-full bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]">hoje</span>}
+                              {canCreate && <Plus className="h-3 w-3 mx-auto mt-2 opacity-0 group-hover/date:opacity-40 transition-opacity text-[hsl(var(--primary))]" />}
                             </td>
                           )}
                           {row.getVisibleCells().map(cell => (
@@ -793,9 +800,10 @@ const [formOpen,    setFormOpen]    = useState(false);
       {formOpen && (
         <TaskFormModal
           open={formOpen}
-          onOpenChange={v => { if (!v) { setFormOpen(false); setEditTaskId(null); } }}
+          onOpenChange={v => { if (!v) { setFormOpen(false); setEditTaskId(null); setCreateForDate(null); } }}
           editTaskId={editTaskId}
-          onSaved={() => { setFormOpen(false); setEditTaskId(null); load(true); }}
+          initialDueDate={createForDate ?? undefined}
+          onSaved={() => { setFormOpen(false); setEditTaskId(null); setCreateForDate(null); load(true); }}
         />
       )}
 
