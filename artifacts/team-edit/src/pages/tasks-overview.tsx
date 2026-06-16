@@ -654,7 +654,7 @@ export default function TasksOverview() {
                   {table.getHeaderGroups().map(hg => (
                     <tr key={hg.id}>
                       {/* Coluna de data */}
-                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide whitespace-nowrap w-[72px]">
+                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide whitespace-nowrap w-[96px]">
                         Data
                       </th>
                       {hg.headers.map(h => (
@@ -690,9 +690,9 @@ export default function TasksOverview() {
                           {dm && (
                             <td
                               rowSpan={rowSpan}
-                              className={`px-2 py-3 align-top text-center w-[72px] border-r border-[hsl(var(--border))]/40 ${dm.isToday ? "bg-[hsl(var(--primary))]/5" : ""}`}
+                              className={`px-2 py-5 align-top text-center w-[96px] border-r border-[hsl(var(--border))]/40 ${dm.isToday ? "bg-[hsl(var(--primary))]/5" : ""}`}
                             >
-                              <span className={`block text-2xl font-black leading-none tabular-nums ${dm.isToday ? "text-[hsl(var(--primary))]" : dm.isPast ? "text-[hsl(var(--muted-foreground))]/35" : "text-[hsl(var(--foreground))]"}`}>
+                              <span className={`block text-4xl font-black leading-none tabular-nums ${dm.isToday ? "text-[hsl(var(--primary))]" : dm.isPast ? "text-[hsl(var(--muted-foreground))]/35" : "text-[hsl(var(--foreground))]"}`}>
                                 {dm.dayNum}
                               </span>
                               <span className={`block text-[9px] font-bold uppercase tracking-widest mt-0.5 ${dm.isToday ? "text-[hsl(var(--primary))]/70" : dm.isPast ? "text-[hsl(var(--muted-foreground))]/30" : "text-[hsl(var(--muted-foreground))]/50"}`}>
@@ -721,7 +721,7 @@ export default function TasksOverview() {
                             <tr key={s.id} className="hover:bg-[hsl(var(--muted))]/10 cursor-pointer bg-[hsl(var(--muted))]/5 border-l-2 border-[hsl(var(--primary))]/20"
                               onClick={() => openTask(s.id)}>
                               {/* célula vazia — coluna data já coberta pelo rowSpan acima */}
-                              <td className="w-[72px] border-r border-[hsl(var(--border))]/40" />
+                              <td className="w-[96px] border-r border-[hsl(var(--border))]/40" />
                               <td className="pl-10 pr-4 py-2.5 align-middle">
                                 <div className="flex items-center gap-2">
                                   {s.taskCode && <span className="font-mono text-xs text-[hsl(var(--primary))]/70">{s.taskCode}</span>}
