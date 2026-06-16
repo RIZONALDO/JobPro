@@ -257,21 +257,14 @@ router.get("/tasks/overview", requireAuth, async (req, res): Promise<void> => {
   const { status, assignedToId, createdById } = req.query;
   const userId = req.session.userId!;
   const role   = req.session.userRole!;
-  const isEditor = role === "editor";
-
-  let ownerCondition: any;
-  if (isEditor) {
-    // Editor vê só tarefas atribuídas a si
-    ownerCondition = eq(tasksTable.assignedToId, userId);
-  } else {
-    const coordUsers = await db
-      .select({ id: usersTable.id })
-      .from(usersTable)
-      .where(inArray(usersTable.role, ["coordinator", "supervisor", "admin"]));
-    const coordIds = coordUsers.map(u => u.id);
-    if (coordIds.length === 0) { res.json([]); return; }
-    ownerCondition = inArray(tasksTable.createdById, coordIds);
-  }
+  // Todos os roles veem todas as tarefas criadas por coordenadores/supervisores/admin
+  const coordUsers = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(inArray(usersTable.role, ["coordinator", "supervisor", "admin"]));
+  const coordIds = coordUsers.map(u => u.id);
+  if (coordIds.length === 0) { res.json([]); return; }
+  const ownerCondition = inArray(tasksTable.createdById, coordIds);
 
   const conditions: any[] = [
     ownerCondition,

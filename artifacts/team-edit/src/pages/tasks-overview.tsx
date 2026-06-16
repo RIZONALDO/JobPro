@@ -111,7 +111,7 @@ export default function TasksOverview() {
   // Filters
   const [search,       setSearch]       = useState("");
   const [filterEditor, setFilterEditor] = useState("all");
-  const defaultCoord = (!isSuper && user?.role === "coordinator") ? String(user?.id ?? "all") : "all";
+  const defaultCoord = "all";
   const [filterCoord,  setFilterCoord]  = useState(defaultCoord);
 
   // Sort
@@ -346,7 +346,8 @@ export default function TasksOverview() {
       size: 148,
       cell: ({ row }) => {
         const t = row.original;
-        const canActNow = t.isOwn || isSuper || isEditor;
+        const isEditorOfTask = isEditor && (t.assignee?.id === user?.id || t.editors.some(e => e.id === user?.id));
+        const canActNow = t.isOwn || isSuper || isEditorOfTask;
         const STATUS_LABEL_MAP: Record<string, string> = {
           pending:     "Na fila",
           in_progress: "Em edição",
