@@ -218,7 +218,55 @@ export default function TasksOverview() {
   const clearFilters = () => { setSearch(""); setFilterEditor("all"); setFilterCoord(defaultCoord); };
 
 
-  // ── TanStack Table ────────────────────────────────────────────────────────
+  // ── Agrupamento por data ─────────────────────────────────────────────────
+  const TODAY = new Date().toISOString().split("T")[0];
+  const DAY_PT = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const MON_PT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+
+  const groupedByDate = useMemo(() => {
+    const map = new Map<string, OverviewTask[]>();
+    [...filtered]
+      .sort((a, b) => {
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return a.dueDate.localeCompare(b.dueDate);
+      })
+      .forEach(t => {
+        const key = t.dueDate?.split("T")[0] ?? "__nodate__";
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(t);
+      });
+    return [...map.entries()].map(([key, tasks]) => {
+      if (key === "__nodate__") return { key, dayNum: "–", dayName: "Sem prazo", mon: "", isToday: false, isPast: false, tasks };
+      const d = new Date(key + "T12:00:00");
+      return {
+        key,
+        dayNum:  String(d.getDate()),
+        dayName: DAY_PT[d.getDay()],
+        mon:     MON_PT[d.getMonth()],
+        isToday: key === TODAY,
+        isPast:  key < TODAY,
+        tasks,
+      };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered]);
+
+  // ── Status helpers ────────────────────────────────────────────────────────
+  const STATUS_LABEL_MAP: Record<string, string> = {
+    pending:"Na fila", in_progress:"Em edição", captacao:"Falta captação",
+    in_revision:"Em alteração", review:"Em aprovação", completed:"Aprovada",
+    paused:"Pausada", cancelled:"Cancelada",
+  };
+  const STATUS_COLOR_MAP: Record<string, string> = {
+    pending:"text-slate-400/80", in_progress:"text-blue-500/70",
+    captacao:"text-[hsl(var(--primary))]/70", in_revision:"text-orange-500/70",
+    review:"text-amber-500/70", completed:"text-emerald-600/70",
+    paused:"text-violet-500/70", cancelled:"text-red-400/70",
+  };
+
+  // ── DEPRECATED TanStack columns (kept only to fix reference errors) ───────
   const columns = reactUseMemo<ColumnDef<OverviewTask, unknown>[]>(() => ([
     {
       id: "tarefa",
@@ -487,28 +535,23 @@ export default function TasksOverview() {
         </span>
       </div>
 
-      {/* ── Table ──────────────────────────────────────────────────────── */}
+      {/* ── Agenda list ─────────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm overflow-hidden flex flex-col">
-
-        <div className="flex-1 overflow-y-auto overscroll-contain pt-3">
+        <div className="flex-1 overflow-y-auto overscroll-contain">
 
           {loading ? (
-            <div className="divide-y divide-[hsl(var(--muted))]">
-              {[1,2,3,4,5].map(i => (
-                <div key={i} className="flex items-center px-4 py-3 gap-3">
-                  <div className="flex-1 space-y-1.5">
-                    <div className="h-4 w-48 rounded bg-[hsl(var(--muted))]/60 animate-pulse" />
-                    <div className="h-3 w-24 rounded bg-[hsl(var(--muted))]/40 animate-pulse" />
-                  </div>
-                  <div className="hidden md:flex items-center gap-3">
-                    <div className="h-6 w-16 rounded bg-[hsl(var(--muted))]/40 animate-pulse hidden lg:block" />
-                    <div className="h-6 w-16 rounded bg-[hsl(var(--muted))]/40 animate-pulse hidden lg:block" />
-                    <div className="h-6 w-20 rounded bg-[hsl(var(--muted))]/40 animate-pulse" />
-                  </div>
-                  <div className="h-7 w-7 rounded bg-[hsl(var(--muted))]/40 animate-pulse shrink-0" />
+            <div className="divide-y">{[1,2,3,4,5].map(i => (
+              <div key={i} className="flex gap-0 animate-pulse">
+                <div className="w-16 shrink-0 border-r border-[hsl(var(--border))]/40 py-4 flex flex-col items-center gap-1">
+                  <div className="h-7 w-8 rounded bg-[hsl(var(--muted))]/50" />
+                  <div className="h-3 w-6 rounded bg-[hsl(var(--muted))]/30" />
                 </div>
-              ))}
-            </div>
+                <div className="flex-1 px-4 py-3 space-y-1.5">
+                  <div className="h-4 w-48 rounded bg-[hsl(var(--muted))]/50" />
+                  <div className="h-3 w-24 rounded bg-[hsl(var(--muted))]/30" />
+                </div>
+              </div>
+            ))}</div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <div className="h-14 w-14 rounded-2xl bg-[hsl(var(--muted))]/40 flex items-center justify-center">
@@ -520,179 +563,177 @@ export default function TasksOverview() {
               {hasFilter && <Button variant="outline" size="sm" onClick={clearFilters}>Limpar filtros</Button>}
             </div>
           ) : (
-            <>
-              {/* ── Mobile (< md) ─────────────────────────────────── */}
-              <div className="md:hidden divide-y divide-[hsl(var(--muted))]">
-                {filtered.map(t => {
-                  const isHighlighted = highlighted === t.id;
-                  const isExpanded    = expandedIds.has(t.id);
-                  const subList       = subtasksMap.get(t.id) ?? [];
-                  const isLoadingSubs = loadingSubtasks.has(t.id);
-                  return (
-                    <Fragment key={t.id}>
-                      <div
-                        ref={isHighlighted ? highlightRef : null}
-                        className={`flex items-start px-4 py-4 gap-3 hover:bg-[hsl(var(--muted))]/20 transition-colors ${canEdit ? "cursor-pointer" : "cursor-default"}`}
-                        style={{ backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.08)" : undefined }}
-                        onClick={() => { if (canEdit) { setEditTaskId(t.id); setFormOpen(true); } else { openTask(t.id); } }}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-baseline gap-2 min-w-0">
-                            {t.taskType === "multi_task" && (
-                              <button className="shrink-0 p-0.5 rounded hover:bg-[hsl(var(--muted))] transition-colors"
-                                onClick={e => { e.stopPropagation(); toggleExpand(t.id); }}>
-                                <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`} />
-                              </button>
-                            )}
-                            {t.taskCode && <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">{t.taskCode}</span>}
-                            <span className="text-sm font-semibold truncate flex-1 min-w-0 leading-snug">{t.title}</span>
-                            {t.revisionCount > 0 && (
-                              <span className="shrink-0 text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap leading-none">
-                                {t.revisionCount} {t.revisionCount === 1 ? "alt." : "alts."}
-                              </span>
-                            )}
-                          </div>
-                          {t.client && <p className="text-xs text-[hsl(var(--muted-foreground))]/60 truncate mt-1">{t.client}</p>}
-                          <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            <span className="text-xs tabular-nums text-[hsl(var(--muted-foreground))]/60">{fmtDate(t.dueDate)}</span>
-                          </div>
-                          {t.editors && t.editors.length > 0 && (
-                            <div className="flex items-center gap-2 mt-2">
-                              <StackedAvatars people={t.editors} size={24} max={3} />
-                              <span className="text-xs text-[hsl(var(--muted-foreground))]/70 truncate">
-                                {t.editors.map(e => e.name.split(" ")[0]).join(", ")}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-end gap-2 shrink-0" onClick={e => e.stopPropagation()}>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => { setEditTaskId(t.id); setFormOpen(true); }}>
-                                <Pencil className="h-3.5 w-3.5" />Editar
-                              </DropdownMenuItem>
-                              {(t.isOwn || isSuper) && (
-                                <>
-                                  <DropdownMenuItem onClick={() => setReassignTarget({ taskId: t.id, taskTitle: t.title, assignedTo: t.assignee, mode: "reassign" })}>
-                                    <RefreshCw className="h-3.5 w-3.5" />Reatribuir
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={() => setDeleteTarget({ id: t.id, title: t.title })}>
-                                    <Trash2 className="h-3.5 w-3.5" />Excluir
-                                  </DropdownMenuItem>
-                                </>
+            <div className="divide-y divide-[hsl(var(--border))]/50">
+              {groupedByDate.map(g => (
+                <div key={g.key} className="flex gap-0">
+
+                  {/* ── Bloco de data (esquerda) */}
+                  <div className={`w-16 shrink-0 border-r border-[hsl(var(--border))]/40 flex flex-col items-center justify-start pt-4 pb-3 px-1 sticky top-0 self-start ${
+                    g.isToday ? "bg-[hsl(var(--primary))]/5" : ""
+                  }`}>
+                    <span className={`text-2xl font-black leading-none tabular-nums ${
+                      g.isToday ? "text-[hsl(var(--primary))]" : g.isPast ? "text-[hsl(var(--muted-foreground))]/35" : "text-[hsl(var(--foreground))]"
+                    }`}>{g.dayNum}</span>
+                    <span className={`text-[9px] font-bold uppercase tracking-widest mt-0.5 ${
+                      g.isToday ? "text-[hsl(var(--primary))]/70" : g.isPast ? "text-[hsl(var(--muted-foreground))]/30" : "text-[hsl(var(--muted-foreground))]/50"
+                    }`}>{g.dayName}</span>
+                    {g.mon && <span className={`text-[9px] font-semibold mt-0.5 ${
+                      g.isToday ? "text-[hsl(var(--primary))]/60" : g.isPast ? "text-[hsl(var(--muted-foreground))]/25" : "text-[hsl(var(--muted-foreground))]/40"
+                    }`}>{g.mon}</span>}
+                    {g.isToday && <span className="mt-1.5 text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]">hoje</span>}
+                  </div>
+
+                  {/* ── Tarefas do dia (direita) */}
+                  <div className="flex-1 min-w-0 divide-y divide-[hsl(var(--border))]/30">
+                    {g.tasks.map(t => {
+                      const isHighlighted = highlighted === t.id;
+                      const isExpanded    = expandedIds.has(t.id);
+                      const subList       = subtasksMap.get(t.id) ?? [];
+                      const isLoadingSubs = loadingSubtasks.has(t.id);
+                      const canActNow     = t.isOwn || isSuper || isEditor;
+                      const subPct        = t.subtaskProgress
+                        ? (t.subtaskProgress.percentage ?? (t.subtaskProgress.total > 0 ? Math.round((t.subtaskProgress.completed / t.subtaskProgress.total) * 100) : 0))
+                        : 0;
+                      return (
+                        <Fragment key={t.id}>
+                          <div
+                            ref={isHighlighted ? highlightRef : null}
+                            className={`flex items-center gap-3 px-4 py-3 transition-colors ${canEdit ? "cursor-pointer" : "cursor-default"} hover:bg-[hsl(var(--muted))]/15`}
+                            style={{ backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.06)" : undefined }}
+                            onClick={() => { if (canEdit) { setEditTaskId(t.id); setFormOpen(true); } else { openTask(t.id); } }}
+                          >
+                            {/* Status */}
+                            <div className="shrink-0 w-[136px]" onClick={e => e.stopPropagation()}>
+                              {canActNow ? (
+                                <Select value={t.status} onValueChange={async val => {
+                                  try {
+                                    const body: Record<string, string> = { status: val };
+                                    if (val === "paused")    body.revisionComment = "Pausada pelo coordenador";
+                                    if (val === "cancelled") body.revisionComment = "Cancelada pelo coordenador";
+                                    await apiPut(`/api/tasks/${t.id}`, body);
+                                    load(true);
+                                  } catch { toast.error("Erro ao atualizar"); }
+                                }}>
+                                  <SelectTrigger className="h-7 text-xs w-full border-dashed"><SelectValue placeholder="Na fila" /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="pending"><span className="text-slate-400/80">Na fila</span></SelectItem>
+                                    <SelectItem value="in_progress"><span className="text-blue-500/70">Em edição</span></SelectItem>
+                                    <SelectItem value="captacao"><span className="text-[hsl(var(--primary))]/70">Falta captação</span></SelectItem>
+                                    <SelectItem value="in_revision"><span className="text-orange-500/70">Em alteração</span></SelectItem>
+                                    <SelectItem value="review"><span className="text-amber-500/70">Em aprovação</span></SelectItem>
+                                    <SelectItem value="completed"><span className="text-emerald-600/70">Aprovada</span></SelectItem>
+                                    <SelectItem value="paused"><span className="text-violet-500/70">Pausada</span></SelectItem>
+                                    <SelectItem value="cancelled"><span className="text-red-400/70">Cancelada</span></SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <span className={`text-xs font-medium ${STATUS_COLOR_MAP[t.status] ?? "text-[hsl(var(--muted-foreground))]/60"}`}>
+                                  {STATUS_LABEL_MAP[t.status] ?? t.status}
+                                </span>
                               )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </div>
-
-                      {/* Subtask rows (mobile) */}
-                      {isExpanded && (
-                        <div className="pl-6 border-l-2 border-[hsl(var(--primary))]/20 ml-4">
-                          {isLoadingSubs ? (
-                            <div className="py-3 px-4 text-xs text-[hsl(var(--muted-foreground))]">Carregando…</div>
-                          ) : subList.map(s => (
-                            <div key={s.id} className="flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--muted))]/20 cursor-pointer border-b border-[hsl(var(--muted))]"
-                              onClick={() => openTask(s.id)}>
-                              <div className="flex-1 min-w-0">
-                                {s.taskCode && <span className="font-mono text-xs text-[hsl(var(--primary))]/70 mr-1.5">{s.taskCode}</span>}
-                                <span className="text-sm font-medium">{s.title}</span>
-                              </div>
-                              <span className="text-xs tabular-nums text-[hsl(var(--muted-foreground))]/60 shrink-0">{fmtDate(s.dueDate)}</span>
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </div>
 
-              {/* ── Desktop (md+) ─────────────────────────────────── */}
-              <table className="hidden md:table w-full border-collapse text-sm">
-                <thead className="sticky top-0 z-10 bg-[hsl(var(--card))] border-b border-[hsl(var(--border))]">
-                  {table.getHeaderGroups().map(hg => (
-                    <tr key={hg.id}>
-                      {hg.headers.map(h => (
-                        <th
-                          key={h.id}
-                          className={`px-4 py-2.5 text-left text-[11px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide whitespace-nowrap ${(h.column.columnDef.meta as { className?: string } | undefined)?.className ?? ""}`}
-                          style={{ width: h.column.getSize() !== 150 ? h.column.getSize() : undefined }}
-                        >
-                          {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
-                        </th>
-                      ))}
-                    </tr>
-                  ))}
-                </thead>
-                <tbody className="divide-y divide-[hsl(var(--muted))]">
-                  {table.getRowModel().rows.map(row => {
-                    const t = row.original;
-                    const isHighlighted = highlighted === t.id;
-                    const isExpanded    = expandedIds.has(t.id);
-                    const subList       = subtasksMap.get(t.id) ?? [];
-                    const isLoadingSubs = loadingSubtasks.has(t.id);
-                    return (
-                      <Fragment key={t.id}>
-                        <tr
-                          ref={isHighlighted ? (el => { if (el) highlightRef.current = el as unknown as HTMLDivElement; }) : undefined}
-                          className="hover:bg-[hsl(var(--muted))]/20 transition-colors cursor-pointer group"
-                          style={{ backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.08)" : undefined }}
-                          onClick={() => { setEditTaskId(t.id); setFormOpen(true); }}
-                        >
-                          {row.getVisibleCells().map(cell => (
-                            <td
-                              key={cell.id}
-                              className={`px-4 py-3 align-middle ${(cell.column.columnDef.meta as { className?: string } | undefined)?.className ?? ""}`}
-                            >
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                            </td>
-                          ))}
-                        </tr>
-                        {/* Subtask rows (desktop) */}
-                        {isExpanded && (
-                          isLoadingSubs ? (
-                            <tr><td colSpan={columns.length} className="px-8 py-3 text-xs text-[hsl(var(--muted-foreground))]">Carregando…</td></tr>
-                          ) : subList.map(s => (
-                            <tr key={s.id} className="hover:bg-[hsl(var(--muted))]/10 cursor-pointer bg-[hsl(var(--muted))]/5 border-l-2 border-[hsl(var(--primary))]/20"
-                              onClick={() => openTask(s.id)}>
-                              <td className="pl-10 pr-4 py-2.5 align-middle">
-                                <div className="flex items-center gap-2">
-                                  {s.taskCode && <span className="font-mono text-xs text-[hsl(var(--primary))]/70">{s.taskCode}</span>}
-                                  <span className="text-sm font-medium">{s.title}</span>
-                                  {s.revisionCount > 0 && (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 border border-amber-200 dark:border-amber-800/40">
-                                      {s.revisionCount} alt.
-                                    </span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-4 py-2.5 align-middle hidden lg:table-cell">
-                                <span className="text-xs tabular-nums text-[hsl(var(--muted-foreground))]/60">{fmtDate(s.dueDate)}</span>
-                              </td>
-                              <td className="px-4 py-2.5 align-middle">
-                                {s.assignedTo && (
-                                  <div className="flex items-center gap-1.5">
-                                    <AvatarDisplay name={s.assignedTo.name} avatarUrl={s.assignedTo.avatarUrl} size={22} />
-                                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70">{s.assignedTo.name.split(" ")[0]}</span>
-                                  </div>
+                            {/* Tarefa */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 min-w-0">
+                                {t.taskType === "multi_task" && (
+                                  <button className="shrink-0 p-0.5 rounded hover:bg-[hsl(var(--muted))]"
+                                    onClick={e => { e.stopPropagation(); toggleExpand(t.id); }}>
+                                    <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                                  </button>
                                 )}
-                              </td>
-                              <td className="px-4 py-2.5 align-middle hidden xl:table-cell" />
-                              <td className="px-4 py-2.5 align-middle" />
-                            </tr>
-                          ))
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </>
+                                {t.taskCode && <span className="shrink-0 font-mono text-xs font-semibold text-[hsl(var(--primary))]/70">{t.taskCode}</span>}
+                                <span className="text-sm font-semibold truncate">{t.title}</span>
+                                {t.revisionCount > 0 && (
+                                  <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap">
+                                    {t.revisionCount} alt.
+                                  </span>
+                                )}
+                              </div>
+                              {t.client && <p className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</p>}
+                              {t.taskType === "multi_task" && t.subtaskProgress && t.subtaskProgress.total > 0 && (
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  <span className="text-[10px] tabular-nums text-[hsl(var(--muted-foreground))]/70">{t.subtaskProgress.completed}/{t.subtaskProgress.total}</span>
+                                  <div className="h-1 w-12 rounded-full bg-muted overflow-hidden">
+                                    <div className={`h-full rounded-full ${subPct===100?"bg-green-500":subPct>=66?"bg-blue-500":subPct>=33?"bg-indigo-400":"bg-slate-400"}`} style={{width:`${subPct}%`}} />
+                                  </div>
+                                </div>
+                              )}
+                              {(t.fileCount ?? 0) > 0 && (
+                                <button title={`${t.fileCount} arquivo(s)`} onClick={e => { e.stopPropagation(); setFilesViewTarget(t); }}
+                                  className={`inline-flex items-center gap-1 mt-1 w-fit px-1.5 py-[3px] rounded-[4px] text-[10px] font-medium ${t.fileKind==="audio"?"bg-sky-500/8 text-sky-600 dark:text-sky-400":"bg-violet-500/8 text-violet-600 dark:text-violet-400"}`}>
+                                  {t.fileKind==="audio" ? <AudioLines className="h-3 w-3" /> : <Clapperboard className="h-3 w-3" />}
+                                  <span>{t.fileCount} {t.fileKind==="audio"?"áudio":t.fileCount===1?"vídeo":"vídeos"}</span>
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Editores */}
+                            <div className="hidden sm:flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                              {t.editors.slice(0,3).map((e,i) => (
+                                <div key={e.id} style={{marginLeft:i===0?0:-8,zIndex:t.editors.length-i}}
+                                  onClick={() => setAvailEditor({id:e.id,name:e.name,avatarUrl:e.avatarUrl})}>
+                                  <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={24} className="cursor-pointer" />
+                                </div>
+                              ))}
+                              {t.editors.length === 1 && <span className="text-[11px] font-medium truncate ml-1 max-w-[80px]">{t.editors[0].name.split(" ")[0]}</span>}
+                            </div>
+
+                            {/* Atendimento */}
+                            {!isEditor && (
+                              <div className="hidden lg:flex items-center gap-1.5 shrink-0 w-24">
+                                {t.isOwn
+                                  ? <span className="text-[11px] text-[hsl(var(--muted-foreground))]/55 font-semibold">Você</span>
+                                  : t.coordinator
+                                    ? <><AvatarDisplay name={t.coordinator.name} avatarUrl={t.coordinator.avatarUrl} size={24} />
+                                       <span className="text-[11px] text-[hsl(var(--muted-foreground))]/70 truncate">{t.coordinator.name.split(" ")[0]}</span></>
+                                    : null}
+                              </div>
+                            )}
+
+                            {/* Ações */}
+                            {!isEditor && (
+                              <div onClick={e => e.stopPropagation()} className="shrink-0">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7"><MoreVertical className="h-4 w-4" /></Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-48">
+                                    <DropdownMenuItem onClick={() => { setEditTaskId(t.id); setFormOpen(true); }}><Pencil className="h-3.5 w-3.5" />Editar tarefa</DropdownMenuItem>
+                                    {(t.isOwn || isSuper) && (
+                                      <>
+                                        <DropdownMenuItem onClick={() => setReassignTarget({taskId:t.id,taskTitle:t.title,assignedTo:t.assignee,mode:"reassign"})}><RefreshCw className="h-3.5 w-3.5" />Reatribuir editor</DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => setReassignTarget({taskId:t.id,taskTitle:t.title,assignedTo:t.assignee,mode:"add"})}><UserPlus className="h-3.5 w-3.5" />Adicionar editor</DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem onClick={() => setDeleteTarget({id:t.id,title:t.title})} className="text-red-600 focus:text-red-600"><Trash2 className="h-3.5 w-3.5" />Excluir tarefa</DropdownMenuItem>
+                                      </>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Subtarefas */}
+                          {isExpanded && (
+                            isLoadingSubs
+                              ? <div className="pl-20 pr-4 py-3 text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/5">Carregando…</div>
+                              : subList.map(s => (
+                                <div key={s.id} className="flex items-center gap-3 pl-20 pr-4 py-2.5 bg-[hsl(var(--muted))]/5 border-l-2 border-[hsl(var(--primary))]/20 cursor-pointer hover:bg-[hsl(var(--muted))]/15"
+                                  onClick={() => openTask(s.id)}>
+                                  {s.taskCode && <span className="font-mono text-xs text-[hsl(var(--primary))]/70 shrink-0">{s.taskCode}</span>}
+                                  <span className="text-sm font-medium truncate flex-1">{s.title}</span>
+                                  {s.assignedTo && <AvatarDisplay name={s.assignedTo.name} avatarUrl={s.assignedTo.avatarUrl} size={20} />}
+                                </div>
+                              ))
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>
