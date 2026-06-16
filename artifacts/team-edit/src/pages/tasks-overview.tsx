@@ -285,11 +285,6 @@ const [formOpen,    setFormOpen]    = useState(false);
               {t.taskCode && <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">{t.taskCode}</span>}
               <span className="text-sm font-normal text-[hsl(var(--foreground))]/70 truncate leading-snug">{t.title}</span>
               <MultiTaskBadge taskType={t.taskType ?? "task"} />
-              {t.revisionCount > 0 && (
-                <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap">
-                  {t.revisionCount} {t.revisionCount === 1 ? "alt." : "alts."}
-                </span>
-              )}
             </div>
             {t.taskType === "multi_task" && t.subtaskProgress && t.subtaskProgress.total > 0 && (
               <div className="flex items-center gap-1.5 mt-1">
@@ -607,11 +602,6 @@ const [formOpen,    setFormOpen]    = useState(false);
                             )}
                             {t.taskCode && <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">{t.taskCode}</span>}
                             <span className="text-sm font-normal text-[hsl(var(--foreground))]/70 truncate flex-1 min-w-0 leading-snug">{t.title}</span>
-                            {t.revisionCount > 0 && (
-                              <span className="shrink-0 text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap leading-none">
-                                {t.revisionCount} {t.revisionCount === 1 ? "alt." : "alts."}
-                              </span>
-                            )}
                           </div>
                           {t.client && <p className="text-xs text-[hsl(var(--muted-foreground))]/60 truncate mt-1">{t.client}</p>}
                           <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -770,11 +760,6 @@ const [formOpen,    setFormOpen]    = useState(false);
                                 <div className="flex items-center gap-2">
                                   {s.taskCode && <span className="font-mono text-xs text-[hsl(var(--primary))]/70">{s.taskCode}</span>}
                                   <span className="text-sm font-medium">{s.title}</span>
-                                  {s.revisionCount > 0 && (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 border border-amber-200 dark:border-amber-800/40">
-                                      {s.revisionCount} alt.
-                                    </span>
-                                  )}
                                 </div>
                               </td>
                               <td className="px-4 py-2.5 align-top hidden lg:table-cell">
