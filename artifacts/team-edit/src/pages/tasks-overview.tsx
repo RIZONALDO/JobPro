@@ -176,8 +176,10 @@ export default function TasksOverview() {
   const { user } = useAuth();
   const { openTask } = useTaskModal();
 
-  const isSuper  = user?.role === "admin" || user?.role === "supervisor";
+  const isEditor  = user?.role === "editor";
+  const isSuper   = user?.role === "admin" || user?.role === "supervisor";
   const canCreate = isSuper || user?.role === "coordinator";
+  const canEdit   = !isEditor; // editores só trocam status
 
   const [tasks,   setTasks]   = useState<OverviewTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -404,7 +406,7 @@ export default function TasksOverview() {
       size: 148,
       cell: ({ row }) => {
         const t = row.original;
-        const canActNow = t.isOwn || isSuper;
+        const canActNow = t.isOwn || isSuper || isEditor;
 
         // Agendadas — sem status
         if (viewTab === "scheduled") return null;
@@ -520,6 +522,7 @@ export default function TasksOverview() {
       size: 48,
       cell: ({ row }) => {
         const t = row.original;
+        if (isEditor) return null;
         const canActNow = t.isOwn || isSuper;
         return (
           <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
@@ -556,7 +559,7 @@ export default function TasksOverview() {
     return true;
   })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  , [expandedIds, isSuper, viewTab]);
+  , [expandedIds, isSuper, isEditor, viewTab]);
 
   const table = useReactTable({
     data: tabFiltered,
@@ -687,9 +690,9 @@ export default function TasksOverview() {
                     <Fragment key={t.id}>
                       <div
                         ref={isHighlighted ? highlightRef : null}
-                        className="flex items-start px-4 py-4 gap-3 hover:bg-[hsl(var(--muted))]/20 transition-colors cursor-pointer"
+                        className={`flex items-start px-4 py-4 gap-3 hover:bg-[hsl(var(--muted))]/20 transition-colors ${canEdit ? "cursor-pointer" : "cursor-default"}`}
                         style={{ backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.08)" : undefined }}
-                        onClick={() => { setEditTaskId(t.id); setFormOpen(true); }}
+                        onClick={() => { if (canEdit) { setEditTaskId(t.id); setFormOpen(true); } else { openTask(t.id); } }}
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex items-baseline gap-2 min-w-0">

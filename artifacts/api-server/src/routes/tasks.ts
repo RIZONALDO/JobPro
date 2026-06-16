@@ -253,21 +253,28 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
 });
 
 // ── Overview (coordinator: all tasks created by coordinators) ────────────────
-router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void> => {
+router.get("/tasks/overview", requireAuth, async (req, res): Promise<void> => {
   const { status, assignedToId, createdById } = req.query;
   const userId = req.session.userId!;
+  const role   = req.session.userRole!;
+  const isEditor = role === "editor";
 
-  const coordUsers = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(inArray(usersTable.role, ["coordinator", "supervisor", "admin"]));
-  const coordIds = coordUsers.map(u => u.id);
-  if (coordIds.length === 0) { res.json([]); return; }
-  const ownerCondition = inArray(tasksTable.createdById, coordIds);
+  let ownerCondition: any;
+  if (isEditor) {
+    // Editor vê só tarefas atribuídas a si
+    ownerCondition = eq(tasksTable.assignedToId, userId);
+  } else {
+    const coordUsers = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(inArray(usersTable.role, ["coordinator", "supervisor", "admin"]));
+    const coordIds = coordUsers.map(u => u.id);
+    if (coordIds.length === 0) { res.json([]); return; }
+    ownerCondition = inArray(tasksTable.createdById, coordIds);
+  }
 
   const conditions: any[] = [
     ownerCondition,
-    // Only show root tasks (multi_tasks and regular tasks), not subtasks
     isNull(tasksTable.parentTaskId),
   ];
 
