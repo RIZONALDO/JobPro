@@ -4,21 +4,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SettingsProvider, useSettings } from "@/contexts/SettingsContext";
 import { TaskModalProvider } from "@/contexts/TaskModalContext";
-import { ChatProvider } from "@/contexts/ChatContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { Shell } from "@/components/layout/Shell";
 import { Toaster as SonnerToaster } from "sonner";
 import LoginPage from "@/pages/login";
 import ChangePasswordPage from "@/pages/change-password";
-import Dashboard from "@/pages/dashboard";
-
-import CalendarPage from "@/pages/calendar";
 import Team from "@/pages/team";
 import SettingsPage from "@/pages/settings";
 import Profile from "@/pages/profile";
-import TimelinePage from "@/pages/timeline";
 import Reports from "@/pages/reports";
-import FeedPage from "@/pages/feed";
 import TasksOverview from "@/pages/tasks-overview";
 import TasksHub      from "@/pages/tasks-hub";
 import DutyPage      from "@/pages/duty";
@@ -73,20 +67,16 @@ function Router() {
 
   return (
     <ThemeProvider>
-    <ChatProvider>
     <TaskModalProvider>
     <Shell>
       <Switch>
-        <Route path="/">{user.role === "admin" ? <Redirect to="/team" /> : <Dashboard />}</Route>
-        
+        <Route path="/"><Redirect to={user.role === "admin" ? "/team" : "/tasks"} /></Route>
+
         <Route path="/my-tasks"><Redirect to="/tasks?tab=lista" /></Route>
-        <Route path="/calendar" component={CalendarPage} />
         <Route path="/team" component={Team} />
         <Route path="/settings" component={SettingsPage} />
         <Route path="/profile" component={Profile} />
-        <Route path="/timeline" component={TimelinePage} />
         <Route path="/reports" component={Reports} />
-        <Route path="/feed" component={FeedPage} />
         <Route path="/tasks" component={TasksHub} />
         <Route path="/duty" component={DutyPage} />
         <Route path="/agenda" component={AgendaGeral} />
@@ -99,7 +89,6 @@ function Router() {
       </Switch>
     </Shell>
     </TaskModalProvider>
-    </ChatProvider>
     </ThemeProvider>
   );
 }

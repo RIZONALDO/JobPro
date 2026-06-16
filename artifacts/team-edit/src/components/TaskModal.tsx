@@ -4,14 +4,13 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { Button } from "@/components/ui/button";
-import { STATUS_LABEL, STATUS_CHIP } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CHIP, STATUS_DOT } from "@/lib/status";
 import { fmtDate } from "@/lib/utils";
 import {
   Clock, FolderOpen, RotateCcw, Calendar, AlertTriangle,
-  Layers, Copy, ChevronRight, Hash, Tag, Zap,
+  Copy, ChevronRight, Tag, Zap,
   Film, Music, Download, Link2, Trash2, FileVideo,
 } from "lucide-react";
-import { PriorityBadge } from "@/components/ui/priority-badge";
 import { SubtaskProgressBar } from "@/components/ui/subtask-progress-bar";
 import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
 import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
@@ -43,16 +42,6 @@ interface TaskDetail {
   subtaskProgress?: SubtaskProgress;
   parentTask?: { id: number; title: string; taskCode?: string } | null;
 }
-
-const COMPLEXITY_LABEL: Record<string, string> = { low: "Simples", medium: "Moderada", high: "Complexa" };
-const COMPLEXITY_CLS:   Record<string, string> = {
-  low: "text-slate-400", medium: "text-blue-500", high: "text-purple-500",
-};
-const STATUS_DOT: Record<string, string> = {
-  pending: "bg-slate-400", in_progress: "bg-blue-500", review: "bg-violet-500",
-  in_revision: "bg-amber-500", completed: "bg-emerald-500",
-  cancelled: "bg-red-500", paused: "bg-purple-400",
-};
 
 function isOverdue(dueDate: string | null, status: string) {
   if (!dueDate || ["completed","cancelled","paused"].includes(status)) return false;
@@ -117,7 +106,11 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
 
   return (
     <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-lg w-[calc(100vw-16px)] p-0 gap-0 overflow-hidden max-h-[92vh] flex flex-col rounded-2xl border border-[hsl(var(--border))] shadow-2xl bg-[hsl(var(--card))]">
+      <DialogContent
+        className="max-w-lg w-[calc(100vw-16px)] p-0 gap-0 overflow-hidden max-h-[92vh] flex flex-col rounded-2xl border border-[hsl(var(--border))] shadow-2xl bg-[hsl(var(--card))]"
+        onInteractOutside={e => e.preventDefault()}
+        onPointerDownOutside={e => e.preventDefault()}
+      >
 
         {loading || !task ? (
           <>
@@ -176,84 +169,65 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
             {/* ── CORPO SCROLLÁVEL ── */}
             <div className="flex-1 min-h-0 overflow-y-auto">
 
-              {/* PROPRIEDADES — grid 2×2 */}
-              <div className="grid grid-cols-2 divide-x divide-y divide-[hsl(var(--border))] border-b border-[hsl(var(--border))]">
-
-                <div className="px-5 py-3.5">
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5 flex items-center gap-1"><Clock className="h-3 w-3 shrink-0 text-current" />Entrega</p>
+              {/* ENTREGA */}
+              <div className="px-5 py-4 border-b border-[hsl(var(--border))] flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5 flex items-center gap-1">
+                    <Clock className="h-3 w-3 shrink-0" />Entrega
+                  </p>
                   {task.dueDate ? (
-                    <div className={`flex items-center gap-1.5 ${overdue ? "text-red-500" : "text-[hsl(var(--foreground))]"}`}>
+                    <div className={`flex items-center gap-2 ${overdue ? "text-red-500" : "text-[hsl(var(--foreground))]"}`}>
                       {overdue
-                        ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                        : <Calendar className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]/60" />}
-                      <span className="text-sm font-semibold">{fmtDate(task.dueDate)}</span>
+                        ? <AlertTriangle className="h-4 w-4 shrink-0" />
+                        : <Calendar className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]/50" />}
+                      <span className="text-base font-bold">{fmtDate(task.dueDate)}</span>
+                      {overdue && <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded-md">Atrasada</span>}
                     </div>
                   ) : (
-                    <span className="text-sm text-[hsl(var(--muted-foreground))]/30">—</span>
+                    <span className="text-sm text-[hsl(var(--muted-foreground))]/30">Sem prazo definido</span>
                   )}
-                  {overdue && <p className="text-[10px] font-bold text-red-500 mt-0.5">Atrasada</p>}
                 </div>
-
-                <div className="px-5 py-3.5">
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Prioridade</p>
-                  <PriorityBadge priority={task.priority} showLabel className="text-sm" />
-                </div>
-
-                <div className="px-5 py-3.5">
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Complexidade</p>
-                  <div className={`flex items-center gap-1.5 ${COMPLEXITY_CLS[task.complexity] ?? ""}`}>
-                    <Layers className="h-3.5 w-3.5 shrink-0" />
-                    <span className="text-sm font-semibold">{COMPLEXITY_LABEL[task.complexity] ?? task.complexity}</span>
+                {task.taskType === "multi_task" && task.subtaskProgress && (
+                  <div className="min-w-[140px]">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Progresso</p>
+                    <SubtaskProgressBar
+                      total={task.subtaskProgress.total}
+                      completed={task.subtaskProgress.completed}
+                      percentage={task.subtaskProgress.percentage}
+                    />
                   </div>
-                </div>
-
-                <div className="px-5 py-3.5">
-                  {task.taskType === "multi_task" && task.subtaskProgress ? (
-                    <>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Progresso</p>
-                      <SubtaskProgressBar
-                        total={task.subtaskProgress.total}
-                        completed={task.subtaskProgress.completed}
-                        percentage={task.subtaskProgress.percentage}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Atualizado</p>
-                      <span className="text-sm font-medium text-[hsl(var(--muted-foreground))]">{fmtDate(task.updatedAt)}</span>
-                    </>
-                  )}
-                </div>
+                )}
               </div>
 
               {/* EQUIPE */}
-              <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
-                <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-3">Equipe</p>
-                {(task.createdBy || task.editors?.length > 0) ? (
-                  <div className="flex flex-wrap gap-2">
+              {(task.createdBy || task.editors?.length > 0) && (
+                <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-3">Equipe</p>
+                  <div className="flex flex-wrap gap-3">
                     {task.createdBy && (
-                      <div className="flex items-center gap-2 bg-[hsl(var(--muted))]/40 border border-[hsl(var(--border))] rounded-xl px-3 py-2">
-                        <AvatarDisplay name={task.createdBy.name} avatarUrl={task.createdBy.avatarUrl ?? null} size={26} />
+                      <div className="flex items-center gap-2.5">
+                        <AvatarDisplay name={task.createdBy.name} avatarUrl={task.createdBy.avatarUrl ?? null} size={32} />
                         <div>
-                          <p className="text-[9px] text-[hsl(var(--muted-foreground))]/50 leading-none mb-0.5">Coordenador</p>
-                          <p className="text-xs font-semibold leading-none">{task.createdBy.name.split(" ").slice(0,2).join(" ")}</p>
+                          <p className="text-[9px] text-[hsl(var(--muted-foreground))]/45 leading-none mb-0.5 uppercase tracking-wide">Atendimento</p>
+                          <p className="text-sm font-semibold leading-none">{task.createdBy.name.split(" ")[0]}</p>
                         </div>
                       </div>
                     )}
+                    {task.createdBy && task.editors?.length > 0 && (
+                      <div className="w-px self-stretch bg-[hsl(var(--border))] mx-1" />
+                    )}
                     {task.editors?.map(e => (
-                      <div key={e.id} className="flex items-center gap-2 bg-[hsl(var(--muted))]/40 border border-[hsl(var(--border))] rounded-xl px-3 py-2">
-                        <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl ?? null} size={26} />
+                      <div key={e.id} className="flex items-center gap-2.5">
+                        <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl ?? null} size={32} />
                         <div>
-                          <p className="text-[9px] text-[hsl(var(--muted-foreground))]/50 leading-none mb-0.5">Editor</p>
-                          <p className="text-xs font-semibold leading-none">{e.name.split(" ").slice(0,2).join(" ")}</p>
+                          <p className="text-[9px] text-[hsl(var(--muted-foreground))]/45 leading-none mb-0.5 uppercase tracking-wide">Editor</p>
+                          <p className="text-sm font-semibold leading-none">{e.name.split(" ")[0]}</p>
                         </div>
                       </div>
                     ))}
                   </div>
-                ) : (
-                  <p className="text-sm text-[hsl(var(--muted-foreground))]/30 italic">Sem equipe atribuída.</p>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* DESCRIÇÃO */}
               <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
@@ -279,10 +253,7 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
                         onClick={() => onOpenTask?.(sub.id)}
                         className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/50 hover:border-[hsl(var(--primary))]/30 transition-all group"
                       >
-                        <div
-                          className="h-2 w-2 rounded-full shrink-0"
-                          style={{ backgroundColor: sub.status === "completed" ? "#22c55e" : sub.status === "in_progress" ? "#3b82f6" : sub.status === "cancelled" ? "#ef4444" : "#a1a1aa" }}
-                        />
+                        <div className={`h-2 w-2 rounded-full shrink-0 ${STATUS_DOT[sub.status] ?? "bg-slate-400"}`} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{sub.title}</p>
                           <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50 mt-0.5">
