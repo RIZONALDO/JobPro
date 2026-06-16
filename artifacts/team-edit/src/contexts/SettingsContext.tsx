@@ -96,7 +96,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         sound_notif:   data["sound_notif"]   || DEFAULTS.sound_notif,
         sound_chat:    data["sound_chat"]    || DEFAULTS.sound_chat,
         sound_poke:    data["sound_poke"]    || DEFAULTS.sound_poke,
-        agenda_access: data["agenda_access"] || DEFAULTS.agenda_access,
+        agenda_access: data["agenda_access"] !== undefined ? data["agenda_access"] : DEFAULTS.agenda_access,
       };
       applySettings(next);
     } catch { /* ignore */ } finally {
