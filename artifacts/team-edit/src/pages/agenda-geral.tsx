@@ -29,7 +29,7 @@ interface AgendaTask {
 }
 
 interface EditorRow {
-  editor: { id: number; name: string; avatarUrl: string | null };
+  editor: { id: number; name: string; avatarUrl: string | null; vacationStart: string | null; vacationEnd: string | null };
   tasks: AgendaTask[];
 }
 
@@ -48,6 +48,13 @@ function toMonday(d: Date): Date { const w = d.getDay(); return addDays(d0(d), w
 
 function dayCount(tasks: AgendaTask[], day: Date): number {
   return dayTasks(tasks, day).length;
+}
+
+function isOnVacation(vacStart: string | null, vacEnd: string | null, day: Date): boolean {
+  if (!vacStart || !vacEnd) return false;
+  const s = d0(parseLocal(vacStart));
+  const e = d0(parseLocal(vacEnd));
+  return day >= s && day <= e;
 }
 
 const ACTIVE_STATUSES = new Set(["pending", "in_progress", "captacao", "in_revision", "review"]);
@@ -374,7 +381,8 @@ export default function AgendaGeral() {
                 const isInDrag   = dragRange?.editorId === editor.id && di >= dragRange.min && di <= dragRange.max;
                 const isPast     = weekDays[di] < today;
                 const isOccupied = cnt > 0;
-                const disabled   = isPast || isSunday || isHoliday || isOccupied;
+                const onVacation = isOnVacation(editor.vacationStart, editor.vacationEnd, weekDays[di]);
+                const disabled   = isPast || isSunday || isHoliday || isOccupied || onVacation;
                 return (
                   <div
                     key={di}
@@ -387,15 +395,19 @@ export default function AgendaGeral() {
                         borderRadius: 7,
                         background: isInDrag
                           ? "rgba(96,165,250,0.25)"
-                          : (isSunday || isHoliday)
-                            ? "rgba(100,116,139,0.07)"
-                            : cfg.bg,
+                          : onVacation
+                            ? "rgba(251,191,36,0.15)"
+                            : (isSunday || isHoliday)
+                              ? "rgba(100,116,139,0.07)"
+                              : cfg.bg,
                         border: isInDrag
                           ? "2px solid rgba(96,165,250,0.7)"
-                          : (isSunday || isHoliday)
-                            ? "1px solid rgba(100,116,139,0.14)"
-                            : `1px solid ${cfg.border}`,
-                        boxShadow: (isSunday || isHoliday) ? "none" : isInDrag ? "0 0 0 2px rgba(96,165,250,0.15)" : cfg.shadow,
+                          : onVacation
+                            ? "1px solid rgba(251,191,36,0.4)"
+                            : (isSunday || isHoliday)
+                              ? "1px solid rgba(100,116,139,0.14)"
+                              : `1px solid ${cfg.border}`,
+                        boxShadow: onVacation ? "none" : (isSunday || isHoliday) ? "none" : isInDrag ? "0 0 0 2px rgba(96,165,250,0.15)" : cfg.shadow,
                         cursor: dragRef.current ? "crosshair" : disabled ? "default" : "pointer",
                         opacity: isPast ? 0.38 : 1,
                       }}
@@ -416,7 +428,12 @@ export default function AgendaGeral() {
                           <span className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/35">Fer.</span>
                         </div>
                       )}
-                      {!isOccupied && !isPast && !isSunday && !isHoliday && !isInDrag && (
+                      {onVacation && !isInDrag && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: "rgba(217,119,6,0.7)" }}>Férias</span>
+                        </div>
+                      )}
+                      {!isOccupied && !onVacation && !isPast && !isSunday && !isHoliday && !isInDrag && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <Plus style={{ width: 12, height: 12, color: "#94a3b8", opacity: 0.22 }} strokeWidth={1.5} />
                         </div>
@@ -476,6 +493,7 @@ export default function AgendaGeral() {
             {[
               { color: "#94a3b8", label: "Disponível" },
               { color: "#ef4444", label: "Ocupado" },
+              { color: "#f59e0b", label: "Férias" },
             ].map(({ color, label }) => (
               <div key={label} className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />

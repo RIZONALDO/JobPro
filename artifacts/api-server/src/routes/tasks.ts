@@ -1493,7 +1493,7 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
 // GET /api/agenda
 router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
   const editors = await db
-    .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+    .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, vacationStart: usersTable.vacationStart, vacationEnd: usersTable.vacationEnd })
     .from(usersTable).where(eq(usersTable.role, "editor"));
 
   // Tarefas ativas — exclui paused (consistente com /api/workload)
@@ -1553,7 +1553,11 @@ router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
       t.assignedToId === editor.id || extraIds.has(t.id)
     );
     return {
-      editor,
+      editor: {
+        id: editor.id, name: editor.name, avatarUrl: editor.avatarUrl,
+        vacationStart: editor.vacationStart ?? null,
+        vacationEnd:   editor.vacationEnd   ?? null,
+      },
       tasks: editorTasks.map(t => ({
         id:         t.id,
         taskCode:   fmtCode(t.taskNumber ?? 0, t.taskYear ?? 0),

@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Camera, User, Mail, Phone, Lock, Eye, EyeOff, Save } from "lucide-react";
+import { Camera, User, Mail, Phone, Lock, Eye, EyeOff, Save, Palmtree } from "lucide-react";
 import { usePageTitle } from "@/lib/use-page-title";
-
+import { apiPut as apiPutVacation } from "@/lib/api";
 import { ROLE_LABEL } from "@/lib/roles";
 
 export default function Profile() {
@@ -28,6 +28,10 @@ export default function Profile() {
   const [showNew,  setShowNew]  = useState(false);
   const [showConf, setShowConf] = useState(false);
 
+  const [vacStart, setVacStart] = useState((user as any)?.vacationStart ?? "");
+  const [vacEnd,   setVacEnd]   = useState((user as any)?.vacationEnd   ?? "");
+  const [savingVac, setSavingVac] = useState(false);
+
   const [saving,         setSaving]         = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
@@ -37,6 +41,8 @@ export default function Profile() {
       setEmail(user.email ?? "");
       setPhone(user.phone ?? "");
       setAvatar(user.avatarUrl ?? "");
+      setVacStart((user as any).vacationStart ?? "");
+      setVacEnd((user as any).vacationEnd ?? "");
     }
   }, [user]);
 
@@ -74,6 +80,24 @@ export default function Profile() {
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao salvar");
     } finally { setSaving(false); }
+  };
+
+  const saveVacation = async () => {
+    setSavingVac(true);
+    try {
+      await apiPutVacation(`/api/users/${user!.id}/vacation`, {
+        vacationStart: vacStart || null,
+        vacationEnd:   vacEnd   || null,
+      });
+      toast.success("Férias atualizadas");
+    } catch { toast.error("Erro ao salvar férias"); }
+    finally { setSavingVac(false); }
+  };
+
+  const clearVacation = async () => {
+    setVacStart(""); setVacEnd("");
+    await apiPutVacation(`/api/users/${user!.id}/vacation`, { vacationStart: null, vacationEnd: null });
+    toast.success("Férias removidas");
   };
 
   const initials = name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() || "?";
@@ -233,6 +257,40 @@ export default function Profile() {
           {newPwd && confPwd && newPwd !== confPwd && (
             <p className="text-xs text-[hsl(var(--destructive))]">As senhas não coincidem.</p>
           )}
+        </div>
+      </div>
+
+      {/* Férias */}
+      <div className="rounded-xl border bg-[hsl(var(--card))] card-float overflow-hidden">
+        <div className="px-6 py-4 border-b bg-[hsl(var(--muted))]/30 flex items-center gap-2">
+          <Palmtree className="h-4 w-4 text-amber-500" />
+          <span className="font-semibold text-sm">Período de férias</span>
+          {vacStart && vacEnd && (
+            <button onClick={clearVacation} className="ml-auto text-xs text-[hsl(var(--muted-foreground))] hover:text-red-500 transition-colors">
+              Remover
+            </button>
+          )}
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            Durante este período você aparecerá como <span className="font-semibold text-amber-600 dark:text-amber-400">Férias</span> na agenda geral e não receberá novas tarefas.
+          </p>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Início das férias</Label>
+              <Input type="date" value={vacStart} onChange={e => setVacStart(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Fim das férias</Label>
+              <Input type="date" value={vacEnd} onChange={e => setVacEnd(e.target.value)} min={vacStart} />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={saveVacation} disabled={savingVac || !vacStart || !vacEnd} variant="outline" className="gap-2 text-amber-600 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30">
+              <Palmtree className="h-4 w-4" />
+              {savingVac ? "Salvando..." : "Salvar férias"}
+            </Button>
+          </div>
         </div>
       </div>
 

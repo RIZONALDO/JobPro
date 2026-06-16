@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, boolean, date } from "drizzle-orm/pg-core";
 
 export const usersTable = pgTable("te_users", {
   id: serial("id").primaryKey(),
@@ -15,6 +15,8 @@ export const usersTable = pgTable("te_users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   theme: text("theme").notNull().default("dark"),
+  vacationStart: date("vacation_start"),
+  vacationEnd:   date("vacation_end"),
 });
 
 export type User = typeof usersTable.$inferSelect;

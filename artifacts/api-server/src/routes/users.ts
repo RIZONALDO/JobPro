@@ -20,6 +20,8 @@ router.get("/users", requireAuth, async (req, res): Promise<void> => {
     avatarUrl: usersTable.avatarUrl,
     jobTitle: usersTable.jobTitle,
     createdAt: usersTable.createdAt,
+    vacationStart: usersTable.vacationStart,
+    vacationEnd:   usersTable.vacationEnd,
   }).from(usersTable).orderBy(usersTable.name);
 
   // Non-admin roles don't see admin users
@@ -114,6 +116,26 @@ router.put("/users/:id", requireSupervisor, async (req, res): Promise<void> => {
   const [user] = await db.update(usersTable).set(update).where(eq(usersTable.id, id)).returning();
   if (!user) { res.status(404).json({ error: "Usuário não encontrado" }); return; }
   res.json({ id: user.id, name: user.name, login: user.login, role: user.role, jobTitle: user.jobTitle, status: user.status });
+});
+
+router.put("/users/:id/vacation", requireAuth, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const callerId   = req.session.userId!;
+  const callerRole = req.session.userRole!;
+  const isSelf     = callerId === id;
+  const isManager  = ["admin", "supervisor", "coordinator"].includes(callerRole);
+  if (!isSelf && !isManager) { res.status(403).json({ error: "Sem permissão" }); return; }
+
+  const { vacationStart, vacationEnd } = req.body ?? {};
+  const [user] = await db.update(usersTable).set({
+    vacationStart: vacationStart || null,
+    vacationEnd:   vacationEnd   || null,
+  }).where(eq(usersTable.id, id)).returning();
+
+  if (!user) { res.status(404).json({ error: "Usuário não encontrado" }); return; }
+  res.json({ vacationStart: user.vacationStart, vacationEnd: user.vacationEnd });
 });
 
 router.delete("/users/:id", requireSupervisor, async (req, res): Promise<void> => {
