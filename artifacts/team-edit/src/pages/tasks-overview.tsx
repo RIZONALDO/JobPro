@@ -689,7 +689,7 @@ export default function TasksOverview() {
 
               {/* ── Desktop (md+) ─────────────────────────────────── */}
               <table className="hidden md:table w-full border-collapse text-sm">
-                <thead className="sticky top-0 z-10 bg-[hsl(var(--card))] border-b border-[hsl(var(--border))]">
+                <thead className="sticky top-0 z-10 bg-[hsl(var(--card))]" style={{ boxShadow: "0 1px 0 hsl(var(--border))" }}>
                   {table.getHeaderGroups().map(hg => (
                     <tr key={hg.id}>
                       {/* Coluna de data */}
