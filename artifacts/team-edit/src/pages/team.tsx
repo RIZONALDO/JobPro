@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Users, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, ChevronDown, ChevronRight, Palmtree } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { STATUS_LABEL, STATUS_CHIP } from "@/lib/status";
 import { usePageTitle } from "@/lib/use-page-title";
@@ -26,6 +26,8 @@ interface AppUser {
   status: string;
   avatarUrl?: string | null;
   jobTitle?: string | null;
+  vacationStart?: string | null;
+  vacationEnd?: string | null;
 }
 
 interface EditorTask {
@@ -83,7 +85,7 @@ export default function Team() {
 
   const [showDialog, setShowDialog] = useState(false);
   const [editing, setEditing] = useState<AppUser | null>(null);
-  const [form, setForm] = useState({ name: "", login: "", password: "", role: "editor", status: "active", jobTitle: "" });
+  const [form, setForm] = useState({ name: "", login: "", password: "", role: "editor", status: "active", jobTitle: "", vacationStart: "", vacationEnd: "" });
   const [saving, setSaving] = useState(false);
 
   const isAdmin      = user?.role === "admin";
@@ -126,12 +128,12 @@ export default function Team() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ name: "", login: "", password: "", role: "editor", status: "active", jobTitle: "" });
+    setForm({ name: "", login: "", password: "", role: "editor", status: "active", jobTitle: "", vacationStart: "", vacationEnd: "" });
     setShowDialog(true);
   };
   const openEdit = (u: AppUser) => {
     setEditing(u);
-    setForm({ name: u.name, login: u.login, password: "", role: u.role, status: u.status, jobTitle: u.jobTitle ?? "" });
+    setForm({ name: u.name, login: u.login, password: "", role: u.role, status: u.status, jobTitle: u.jobTitle ?? "", vacationStart: u.vacationStart ?? "", vacationEnd: u.vacationEnd ?? "" });
     setShowDialog(true);
   };
 
@@ -146,6 +148,10 @@ export default function Team() {
           name: form.name, login: form.login, role: form.role, status: form.status,
           jobTitle: form.jobTitle || null,
           ...(form.password ? { password: form.password } : {}),
+        });
+        await apiPut(`/api/users/${editing.id}/vacation`, {
+          vacationStart: form.vacationStart || null,
+          vacationEnd:   form.vacationEnd   || null,
         });
         toast.success("Usuário atualizado");
       } else {
@@ -391,6 +397,33 @@ export default function Team() {
                 </div>
               </div>
             </div>
+
+            {/* Férias — só ao editar */}
+            {editing && (
+              <div className="border-t pt-4 space-y-2">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Palmtree className="h-3.5 w-3.5 text-amber-500" />
+                  <span className="text-xs font-semibold text-[hsl(var(--muted-foreground))]">Período de férias</span>
+                  {form.vacationStart && (
+                    <button onClick={() => setForm(f => ({ ...f, vacationStart: "", vacationEnd: "" }))}
+                      className="ml-auto text-xs text-[hsl(var(--muted-foreground))] hover:text-red-500 transition-colors">
+                      Remover
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Início</Label>
+                    <Input type="date" value={form.vacationStart} onChange={e => setForm(f => ({ ...f, vacationStart: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Fim</Label>
+                    <Input type="date" value={form.vacationEnd} min={form.vacationStart} onChange={e => setForm(f => ({ ...f, vacationEnd: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+            )}
+
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowDialog(false)}>Cancelar</Button>
               <Button onClick={save} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
