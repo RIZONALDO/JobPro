@@ -396,14 +396,14 @@ export default function AgendaGeral() {
                         background: isInDrag
                           ? "rgba(96,165,250,0.25)"
                           : onVacation
-                            ? "rgba(251,191,36,0.15)"
+                            ? "rgba(59,130,246,0.13)"
                             : (isSunday || isHoliday)
                               ? "rgba(100,116,139,0.07)"
                               : cfg.bg,
                         border: isInDrag
                           ? "2px solid rgba(96,165,250,0.7)"
                           : onVacation
-                            ? "1px solid rgba(251,191,36,0.4)"
+                            ? "1px solid rgba(59,130,246,0.35)"
                             : (isSunday || isHoliday)
                               ? "1px solid rgba(100,116,139,0.14)"
                               : `1px solid ${cfg.border}`,
@@ -430,7 +430,7 @@ export default function AgendaGeral() {
                       )}
                       {onVacation && !isInDrag && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: "rgba(217,119,6,0.7)" }}>Férias</span>
+                          <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: "rgba(59,130,246,0.7)" }}>Férias</span>
                         </div>
                       )}
                       {!onVacation && !isPast && !isSunday && !isHoliday && !isInDrag && (
@@ -499,7 +499,7 @@ export default function AgendaGeral() {
             {[
               { color: "#94a3b8", label: "Disponível" },
               { color: "#ef4444", label: "Ocupado" },
-              { color: "#f59e0b", label: "Férias" },
+              { color: "#3b82f6", label: "Férias" },
             ].map(({ color, label }) => (
               <div key={label} className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
