@@ -42,7 +42,7 @@ function fmtDate(d: string | null) {
 const MONTHS_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const DAYS_PT   = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
 
-function EditorCalendarList({ tasks }: { tasks: Task[] }) {
+function EditorCalendarList({ tasks, onOpen }: { tasks: Task[]; onOpen: (id: number) => void }) {
   const grouped = useMemo(() => {
     const byMonth = new Map<string, Map<string, Task[]>>();
     [...tasks]
@@ -85,7 +85,7 @@ function EditorCalendarList({ tasks }: { tasks: Task[] }) {
                     </div>
                     <div className="flex-1 min-w-0 space-y-1 py-1">
                       {dayTasks.map(t => (
-                        <div key={t.id} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors cursor-default">
+                        <div key={t.id} onClick={() => onOpen(t.id)} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-[hsl(var(--muted))]/30 transition-colors cursor-pointer">
                           <div className="w-1 h-8 rounded-full shrink-0 bg-[hsl(var(--primary))]/30" />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
@@ -346,7 +346,7 @@ export default function EditorTaskList() {
           </p>
         </div>
       ) : viewTab === "scheduled" ? (
-        <EditorCalendarList tasks={tabFiltered} />
+        <EditorCalendarList tasks={tabFiltered} onOpen={openTask} />
       ) : (
         <>
           {/* Mobile */}
