@@ -631,8 +631,14 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       </Label>
                     </div>
                     {readOnlyDates ? (
-                      <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--border))]/50 bg-[hsl(var(--muted))]/30 px-3 py-2.5 text-sm text-[hsl(var(--foreground))]/80">
-                        {fmtDateLabel(form.startDateTime)}
+                      <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--border))]/50 bg-[hsl(var(--muted))]/30 px-3 py-2.5 text-sm">
+                        <span className="text-[hsl(var(--foreground))]/80 flex-1">{fmtDateLabel(form.startDateTime)}</span>
+                        <input
+                          type="time"
+                          value={form.startDateTime.split("T")[1] ?? "08:30"}
+                          onChange={e => f({ startDateTime: form.startDateTime.split("T")[0] + "T" + e.target.value })}
+                          className="bg-transparent text-[hsl(var(--foreground))]/80 text-sm outline-none border-l border-[hsl(var(--border))]/40 pl-2"
+                        />
                       </div>
                     ) : (
                       <>
@@ -669,8 +675,14 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       </Label>
                     </div>
                     {readOnlyDates ? (
-                      <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--border))]/50 bg-[hsl(var(--muted))]/30 px-3 py-2.5 text-sm text-[hsl(var(--foreground))]/80">
-                        {fmtDateLabel(form.dueDateTime)}
+                      <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--border))]/50 bg-[hsl(var(--muted))]/30 px-3 py-2.5 text-sm">
+                        <span className="text-[hsl(var(--foreground))]/80 flex-1">{fmtDateLabel(form.dueDateTime)}</span>
+                        <input
+                          type="time"
+                          value={form.dueDateTime.split("T")[1] ?? "17:30"}
+                          onChange={e => f({ dueDateTime: form.dueDateTime.split("T")[0] + "T" + e.target.value })}
+                          className="bg-transparent text-[hsl(var(--foreground))]/80 text-sm outline-none border-l border-[hsl(var(--border))]/40 pl-2"
+                        />
                       </div>
                     ) : (
                       <DatePicker
