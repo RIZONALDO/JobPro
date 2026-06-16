@@ -1,12 +1,8 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { useLocation } from "wouter";
 import { TaskModal } from "@/components/TaskModal";
-import { useAuth } from "@/contexts/AuthContext";
-
-type Tab = "entrega" | "envio";
 
 interface TaskModalContextValue {
-  openTask: (taskId: number, tab?: Tab) => void;
+  openTask: (taskId: number) => void;
 }
 
 const TaskModalContext = createContext<TaskModalContextValue>({ openTask: () => {} });
@@ -16,17 +12,20 @@ export function useTaskModal() {
 }
 
 export function TaskModalProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<{ id: number; tab: Tab } | null>(null);
-  const { user } = useAuth();
-  const [, navigate] = useLocation();
+  const [taskId, setTaskId] = useState<number | null>(null);
 
-  const openTask = (taskId: number, _tab?: Tab) => {
-    navigate(`/review/${taskId}`);
-  };
+  const openTask = (id: number) => setTaskId(id);
 
   return (
     <TaskModalContext.Provider value={{ openTask }}>
       {children}
+      {taskId !== null && (
+        <TaskModal
+          taskId={taskId}
+          onClose={() => setTaskId(null)}
+          onOpenTask={id => setTaskId(id)}
+        />
+      )}
     </TaskModalContext.Provider>
   );
 }
