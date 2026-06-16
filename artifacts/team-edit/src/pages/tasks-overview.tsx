@@ -717,7 +717,7 @@ export default function TasksOverview() {
                           {row.getVisibleCells().map(cell => (
                             <td
                               key={cell.id}
-                              className={`px-4 py-3 align-middle ${(cell.column.columnDef.meta as { className?: string } | undefined)?.className ?? ""}`}
+                              className={`px-4 py-3 align-top ${(cell.column.columnDef.meta as { className?: string } | undefined)?.className ?? ""}`}
                             >
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </td>
@@ -732,7 +732,7 @@ export default function TasksOverview() {
                               onClick={() => openTask(s.id)}>
                               {/* célula vazia — coluna data já coberta pelo rowSpan acima */}
                               <td className="w-[96px] border-r border-[hsl(var(--border))]/40" />
-                              <td className="pl-10 pr-4 py-2.5 align-middle">
+                              <td className="pl-10 pr-4 py-2.5 align-top">
                                 <div className="flex items-center gap-2">
                                   {s.taskCode && <span className="font-mono text-xs text-[hsl(var(--primary))]/70">{s.taskCode}</span>}
                                   <span className="text-sm font-medium">{s.title}</span>
@@ -743,10 +743,10 @@ export default function TasksOverview() {
                                   )}
                                 </div>
                               </td>
-                              <td className="px-4 py-2.5 align-middle hidden lg:table-cell">
+                              <td className="px-4 py-2.5 align-top hidden lg:table-cell">
                                 <span className="text-xs tabular-nums text-[hsl(var(--muted-foreground))]/60">{fmtDate(s.dueDate)}</span>
                               </td>
-                              <td className="px-4 py-2.5 align-middle">
+                              <td className="px-4 py-2.5 align-top">
                                 {s.assignedTo && (
                                   <div className="flex items-center gap-1.5">
                                     <AvatarDisplay name={s.assignedTo.name} avatarUrl={s.assignedTo.avatarUrl} size={22} />
@@ -754,8 +754,8 @@ export default function TasksOverview() {
                                   </div>
                                 )}
                               </td>
-                              <td className="px-4 py-2.5 align-middle hidden xl:table-cell" />
-                              <td className="px-4 py-2.5 align-middle" />
+                              <td className="px-4 py-2.5 align-top hidden xl:table-cell" />
+                              <td className="px-4 py-2.5 align-top" />
                             </tr>
                           ))
                         )}
