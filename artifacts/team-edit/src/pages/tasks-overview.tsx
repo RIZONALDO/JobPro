@@ -312,10 +312,10 @@ export default function TasksOverview() {
     {
       id: "cliente",
       header: "Cliente",
-      size: 130,
+      size: 180,
       meta: { className: "hidden sm:table-cell" },
       cell: ({ row }) => (
-        <span className="text-xs text-[hsl(var(--muted-foreground))]/70 truncate block max-w-[120px]">
+        <span className="text-xs text-[hsl(var(--muted-foreground))]/70 whitespace-nowrap">
           {row.original.client ?? <span className="text-[hsl(var(--muted-foreground))]/30">—</span>}
         </span>
       ),
