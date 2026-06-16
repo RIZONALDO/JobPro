@@ -60,6 +60,8 @@
     "react-icons": "^5.6.0",
     "socket.io-client": "^4.8.3",
     "sonner": "^2.0.7",
-    "@tanstack/react-table": "catalog:"
+    "@vidstack/react": "^1.12.14",
+    "@tanstack/react-table": "catalog:",
+    "hls.js": "^1.5.15"
   }
 }

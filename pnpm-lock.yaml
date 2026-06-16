@@ -177,6 +177,9 @@ importers:
       '@types/dagre':
         specifier: ^0.7.54
         version: 0.7.54
+      '@vidstack/react':
+        specifier: ^1.12.14
+        version: 1.15.3(@types/react@19.2.14)(react@19.1.0)
       '@visx/gradient':
         specifier: ^3.12.0
         version: 3.12.0(react@19.1.0)
@@ -213,6 +216,9 @@ importers:
       framer-motion:
         specifier: ^12.38.0
         version: 12.38.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      hls.js:
+        specifier: ^1.5.15
+        version: 1.6.16
       react-apexcharts:
         specifier: ^2.1.0
         version: 2.1.0(apexcharts@5.10.6)(react@19.1.0)
@@ -1804,6 +1810,13 @@ packages:
   '@types/ws@8.18.1':
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
+  '@vidstack/react@1.15.3':
+    resolution: {integrity: sha512-T0ol3Pm9mmIP5VQkY4nTDOb5Yj5lJZCMtprXIB2AIUy5R8FU3cKWy0xE0L6Be94e4CTmro1+QIWqFPnm8QzT4Q==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@types/react': ^18.0.0 || ^19.0.0
+      react: ^18.0.0 || ^19.0.0
+
   '@visx/curve@3.12.0':
     resolution: {integrity: sha512-Ng1mefXIzoIoAivw7dJ+ZZYYUbfuwXgZCgQynShr6ZIVw7P4q4HeQfJP3W24ON+1uCSrzoycHSXRelhR9SBPcw==}
 
@@ -2402,6 +2415,9 @@ packages:
   help-me@5.0.0:
     resolution: {integrity: sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==}
 
+  hls.js@1.6.16:
+    resolution: {integrity: sha512-VSIRpLfRwlAAdGL4wiTucx2ScRipo0ed1FBatWkyt832jC4CReKstga6yIhYVwGu9LOBjuX9wzmRMeQdBJtzEA==}
+
   http-errors@2.0.1:
     resolution: {integrity: sha512-4FbRdAX+bSdmo4AUFuS0WNiPz8NgFt+r8ThgNWmlrjQjt1Q7ZR9+zTlce2859x4KSXrwIsaeTqDoKQmtP8pLmQ==}
     engines: {node: '>= 0.8'}
@@ -2557,6 +2573,10 @@ packages:
   math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
     engines: {node: '>= 0.4'}
+
+  media-captions@1.0.4:
+    resolution: {integrity: sha512-cyDNmuZvvO4H27rcBq2Eudxo9IZRDCOX/I7VEyqbxsEiD2Ei7UYUhG/Sc5fvMZjmathgz3fEK7iAKqvpY+Ux1w==}
+    engines: {node: '>=16'}
 
   media-typer@0.3.0:
     resolution: {integrity: sha512-dq+qelQ9akHpcOl/gUVRTxVIOkAJ1wR3QAvb4RsVjS8oVoFjDGTc679wJYmUmknUF5HwMLOgb5O+a3KxfWapPQ==}
@@ -4379,6 +4399,13 @@ snapshots:
     dependencies:
       '@types/node': 25.6.0
 
+  '@vidstack/react@1.15.3(@types/react@19.2.14)(react@19.1.0)':
+    dependencies:
+      '@floating-ui/dom': 1.7.6
+      '@types/react': 19.2.14
+      media-captions: 1.0.4
+      react: 19.1.0
+
   '@visx/curve@3.12.0':
     dependencies:
       '@types/d3-shape': 1.3.12
@@ -5032,6 +5059,8 @@ snapshots:
 
   help-me@5.0.0: {}
 
+  hls.js@1.6.16: {}
+
   http-errors@2.0.1:
     dependencies:
       depd: 2.0.0
@@ -5152,6 +5181,8 @@ snapshots:
   math-expression-evaluator@1.4.0: {}
 
   math-intrinsics@1.1.0: {}
+
+  media-captions@1.0.4: {}
 
   media-typer@0.3.0: {}
 

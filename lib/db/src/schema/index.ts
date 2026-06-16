@@ -18,3 +18,8 @@ export * from "./duty_schedules";
 export * from "./email_logs";
 export * from "./push_subscriptions";
 export * from "./task_files";
+export * from "./task_review";
+export * from "./review_comments";
+export * from "./task_coordinators";
+export * from "./task_allocations";
+export * from "./contestations";

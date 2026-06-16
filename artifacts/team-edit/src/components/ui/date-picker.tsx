@@ -1,43 +1,32 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Calendar, ChevronLeft, ChevronRight, X, Clock, ArrowLeft, ChevronUp, ChevronDown } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 import { Button } from "./button";
 import { motion, AnimatePresence } from "framer-motion";
+import { parseDate, localTzOffset } from "@/lib/date";
 
 interface Props {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   withTime?: boolean;
-  minDate?: string;        // YYYY-MM-DD
+  /** "HH:MM" a aplicar quando o usuário escolhe uma data sem hora prévia. */
+  defaultTime?: (dateStr: string) => string;
+  minDate?: string;   // YYYY-MM-DD local
   className?: string;
 }
 
 const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const WEEK   = ["D","S","T","Q","Q","S","S"];
 
+// ── Utilitários ────────────────────────────────────────────────────────────────
+
+/** "YYYY-MM-DD" a partir de um Date local */
 function toStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
-function parseToLocal(v: string): Date | null {
-  if (!v) return null;
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? null : d;
-}
-function formatDisplay(v: string, withTime?: boolean) {
-  if (!v) return "";
-  const d = parseToLocal(v);
-  if (!d) return "";
-  const dd = String(d.getDate()).padStart(2,"0");
-  const mm = String(d.getMonth()+1).padStart(2,"0");
-  const yyyy = d.getFullYear();
-  if (withTime) {
-    const hh  = String(d.getHours()).padStart(2,"0");
-    const min = String(d.getMinutes()).padStart(2,"0");
-    return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
-  }
-  return `${dd}/${mm}/${yyyy}`;
-}
+
+/** Dias do mês no calendário (null = célula vazia) */
 function calDays(year: number, month: number): (Date | null)[] {
   const first = new Date(year, month, 1).getDay();
   const total = new Date(year, month + 1, 0).getDate();
@@ -45,21 +34,73 @@ function calDays(year: number, month: number): (Date | null)[] {
   for (let i = 1; i <= total; i++) out.push(new Date(year, month, i));
   return out;
 }
-function parseParts(value: string) {
+
+/**
+ * Desmonta `value` em { date: "YYYY-MM-DD", time: "HH:MM" }.
+ *
+ * Casos tratados:
+ *  - ""                          → { date: "", time: "08:00" }
+ *  - "YYYY-MM-DD" (sem hora)     → { date, time: defaultTimeFn(date) ?? "18:00" }
+ *  - "YYYY-MM-DDTHH:MM..." (ISO) → { date local, time local }
+ */
+function parseParts(value: string, defaultTimeFn?: (d: string) => string): { date: string; time: string } {
   if (!value) return { date: "", time: "08:00" };
-  const d = parseToLocal(value);
-  if (!d) return { date: "", time: "08:00" };
+
+  // Sem componente de hora — aplica defaultTime para não mostrar 12:00 (noon do parseDate)
+  if (!value.includes("T")) {
+    const parts = value.split("-").map(Number);
+    if (parts.length < 3 || parts.some(isNaN)) return { date: "", time: "08:00" };
+    const [y, m, d] = parts;
+    const ds = `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    return { date: ds, time: defaultTimeFn ? defaultTimeFn(ds) : "18:00" };
+  }
+
+  // ISO completo — extrai hora local via Date
+  const dt = parseDate(value);
+  if (isNaN(dt.getTime())) return { date: "", time: "08:00" };
   return {
-    date: toStr(d),
-    time: `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`,
+    date: toStr(dt),
+    time: `${String(dt.getHours()).padStart(2,"0")}:${String(dt.getMinutes()).padStart(2,"0")}`,
   };
 }
-function localTzOffset() {
-  const off = new Date().getTimezoneOffset();
-  const sign = off <= 0 ? "+" : "-";
-  const abs = Math.abs(off);
-  return `${sign}${String(Math.floor(abs/60)).padStart(2,"0")}:${String(abs%60).padStart(2,"0")}`;
+
+/**
+ * Texto do trigger do DatePicker.
+ *
+ * Para value sem "T" (legado, sem hora definida):
+ *  - sem withTime: "DD/MM/AAAA"
+ *  - com withTime: "DD/MM/AAAA" também — sem hora porque não foi definida ainda
+ *
+ * Para ISO com hora:
+ *  - usa hora local do Date
+ */
+function formatDisplay(v: string, withTime?: boolean, defaultTimeFn?: (d: string) => string): string {
+  if (!v) return "";
+
+  if (!v.includes("T")) {
+    // Sem hora explícita
+    const parts = v.split("-").map(Number);
+    if (parts.length < 3) return "";
+    const [y, m, d] = parts;
+    const base = `${String(d).padStart(2,"0")}/${String(m).padStart(2,"0")}/${y}`;
+    if (!withTime) return base;
+    // Com withTime: mostra hora do defaultTime se disponível, senão só data
+    const t = defaultTimeFn ? defaultTimeFn(v) : null;
+    return t ? `${base} ${t}` : base;
+  }
+
+  const dt = parseDate(v);
+  if (isNaN(dt.getTime())) return "";
+  const dd   = String(dt.getDate()).padStart(2,"0");
+  const mm   = String(dt.getMonth()+1).padStart(2,"0");
+  const yyyy = dt.getFullYear();
+  if (!withTime) return `${dd}/${mm}/${yyyy}`;
+  const hh  = String(dt.getHours()).padStart(2,"0");
+  const min = String(dt.getMinutes()).padStart(2,"0");
+  return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
 }
+
+// ── TimeDrum ──────────────────────────────────────────────────────────────────
 
 function TimeDrum({ value, label, onUp, onDown }: {
   value: string; label: string; onUp: () => void; onDown: () => void;
@@ -90,19 +131,22 @@ function TimeDrum({ value, label, onUp, onDown }: {
   );
 }
 
-export function DatePicker({ value, onChange, placeholder, withTime, minDate, className }: Props) {
+// ── DatePicker ────────────────────────────────────────────────────────────────
+
+export function DatePicker({ value, onChange, placeholder, withTime, defaultTime, minDate, className }: Props) {
   const today    = useMemo(() => new Date(), []);
   const todayStr = useMemo(() => toStr(today), [today]);
 
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"date" | "time">("date");
 
-  const initParts = () => parseParts(value);
-  const [viewY,   setViewY]   = useState(() => { const p = initParts(); return p.date ? parseInt(p.date.slice(0,4)) : today.getFullYear(); });
-  const [viewM,   setViewM]   = useState(() => { const p = initParts(); return p.date ? parseInt(p.date.slice(5,7))-1 : today.getMonth(); });
-  const [selDate, setSelDate] = useState(() => initParts().date);
-  const [selH,    setSelH]    = useState(() => parseInt(initParts().time.slice(0,2)));
-  const [selMin,  setSelMin]  = useState(() => parseInt(initParts().time.slice(3,5)));
+  // Estado interno do picker — inicializado uma vez, sincronizado em handleOpen
+  const initP = parseParts(value, defaultTime);
+  const [viewY,   setViewY]   = useState(() => initP.date ? parseInt(initP.date.slice(0,4))   : today.getFullYear());
+  const [viewM,   setViewM]   = useState(() => initP.date ? parseInt(initP.date.slice(5,7))-1 : today.getMonth());
+  const [selDate, setSelDate] = useState(() => initP.date);
+  const [selH,    setSelH]    = useState(() => parseInt(initP.time.slice(0,2)));
+  const [selMin,  setSelMin]  = useState(() => parseInt(initP.time.slice(3,5)));
 
   const days = useMemo(() => calDays(viewY, viewM), [viewY, viewM]);
 
@@ -113,8 +157,8 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
 
   function handleOpen(v: boolean) {
     if (v) {
-      // Ao abrir, sincroniza o estado interno com o valor atual
-      const { date, time } = parseParts(value);
+      // Sincroniza SEMPRE ao abrir — garante hora correta mesmo após carga async
+      const { date, time } = parseParts(value, defaultTime);
       setSelDate(date);
       setSelH(parseInt(time.slice(0,2)));
       setSelMin(parseInt(time.slice(3,5)));
@@ -139,6 +183,12 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
     const s = toStr(d);
     setSelDate(s);
     if (withTime) {
+      // Sempre aplica defaultTime ao trocar de data, para não "herdar" hora de outra data
+      if (defaultTime) {
+        const t = defaultTime(s);
+        setSelH(parseInt(t.slice(0, 2)));
+        setSelMin(parseInt(t.slice(3, 5)));
+      }
       setStep("time");
     } else {
       onChange(s);
@@ -148,8 +198,9 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
 
   function confirm() {
     if (!selDate) return;
-    const hh = String(selH).padStart(2,"0");
-    const mm = String(selMin).padStart(2,"0");
+    const hh = String(selH).padStart(2,"00");
+    const mm = String(selMin).padStart(2,"00");
+    // Emite ISO com offset local — alinhado com localISOString de @/lib/date
     onChange(`${selDate}T${hh}:${mm}:00${localTzOffset()}`);
     setOpen(false);
     setStep("date");
@@ -160,7 +211,7 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
     onChange("");
   }
 
-  const displayed = formatDisplay(value, withTime);
+  const displayed = formatDisplay(value, withTime, defaultTime);
 
   return (
     <Popover open={open} onOpenChange={handleOpen}>
@@ -202,7 +253,7 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
         >
           <AnimatePresence mode="wait" initial={false}>
 
-            {/* Calendário */}
+            {/* ── Calendário ───────────────────────────────────────────── */}
             {step === "date" && (
               <motion.div key="date"
                 initial={{ x: -16, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -16, opacity: 0 }}
@@ -251,7 +302,7 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
               </motion.div>
             )}
 
-            {/* Horário */}
+            {/* ── Horário ───────────────────────────────────────────────── */}
             {step === "time" && (
               <motion.div key="time"
                 initial={{ x: 16, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 16, opacity: 0 }}

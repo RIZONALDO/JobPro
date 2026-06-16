@@ -10,15 +10,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { MessageSquare, Calendar, AlertCircle, Undo2, MoreVertical, Info, PauseCircle, XCircle, Clock, Play } from "lucide-react";
+import { MessageSquare, Calendar, AlertCircle, Undo2, MoreVertical, Info, PauseCircle, XCircle, Clock, Play, Clapperboard, AudioLines } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { StackedAvatars } from "@/components/ui/avatar-display";
+import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
 import { usePageTitle } from "@/lib/use-page-title";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
 import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
-import { ComplexityConfirmDialog, COMPLEXITY_MESSAGES } from "@/components/ui/complexity-confirm-dialog";
+import { EffortHoursDialog } from "@/components/ui/effort-hours-dialog";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
@@ -32,11 +33,15 @@ interface Task {
   status: string;
   priority: string;
   complexity: string;
-  editorComplexitySet?: boolean;
+  effortHours?: number | null;
+  editorEstimateHours?: number | null;
+  editorAcceptedAt?: string | null;
+  hasAllocToday?: boolean;
   folderUrl: string | null;
   revisionCount: number;
   revisions: Revision[];
   createdBy: { id: number; name: string; avatarUrl?: string | null } | null;
+  coCoordinators?: { id: number; name: string; avatarUrl?: string | null }[];
   assignedToId: number | null;
   assignedTo?: { id: number; name: string; avatarUrl?: string | null } | null;
   editors: Person[];
@@ -44,6 +49,9 @@ interface Task {
   client?: string | null;
   color?: string;
   reviewedAt?: string | null;
+  fileCount?: number;
+  fileKind?: "video" | "audio" | "mixed" | "other" | null;
+  unreadCommentCount?: number;
   // multi-task
   taskType?: string;
   parentTask?: { id: number; title: string; taskCode?: string } | null;
@@ -53,7 +61,6 @@ interface Task {
 const KANBAN_COLS = [
   { key: "pending",     label: "Pendente",     color: "#94a3b8" },
   { key: "in_progress", label: "Em edição",    color: "#3b82f6" },
-  { key: "in_revision", label: "Em alteração", color: "#f97316" },
   { key: "review",      label: "Para aprovar", color: "#f59e0b" },
 ];
 
@@ -72,6 +79,9 @@ const TODAY_STR = getLocalToday();
 const SCHEDULED_STATUSES = new Set(["pending", "in_progress", "paused"]);
 function isScheduled(task: Task): boolean {
   if (!SCHEDULED_STATUSES.has(task.status)) return false;
+  // v2 ESCALA (tem effortHours): tarefa pendente é agendada se não tem alocação hoje
+  if (task.effortHours != null && task.status === "pending") return !task.hasAllocToday;
+  // in_progress / paused: usa startDate
   const ref = task.startDate ?? (task.status === "pending" ? task.dueDate : null);
   if (!ref) return false;
   return ref.split("T")[0] > TODAY_STR;
@@ -88,9 +98,9 @@ export default function MyTasks() {
   const [revisionSubmitting, setRevisionSubmitting] = useState(false);
   const [returnTarget, setReturnTarget] = useState<Task | null>(null);
   const [returning, setReturning] = useState(false);
-  const [complexityTarget, setComplexityTarget] = useState<Task | null>(null);
-  const [startingSaving,   setStartingSaving]   = useState(false);
-  const [definingSaving,   setDefiningSaving]   = useState(false);
+  const [effortTarget,   setEffortTarget]   = useState<Task | null>(null);
+  const [startingSaving, setStartingSaving] = useState(false);
+  const [effortSaving,     setEffortSaving]     = useState(false);
   const load = useCallback(() => {
     apiFetch<Task[]>("/api/my-tasks")
       .then(setTasks)
@@ -102,26 +112,23 @@ export default function MyTasks() {
 
   useRealtime({ onTasksChanged: load });
 
-  // Define complexidade sem iniciar (tarefa permanece pending)
-  const saveComplexity = async (complexity: string, comment: string) => {
-    if (!complexityTarget) return;
-    setDefiningSaving(true);
+  const saveEffortHours = async (adjustedHours: number, comment: string) => {
+    if (!effortTarget) return;
+    setEffortSaving(true);
     try {
-      await apiPut(`/api/tasks/${complexityTarget.id}`, { complexity, startComment: comment });
-      setComplexityTarget(null);
+      await apiPut(`/api/tasks/${effortTarget.id}`, { editorEstimateHours: adjustedHours, startComment: comment });
+      setEffortTarget(null);
       load();
-      toast.success("Complexidade definida");
+      toast.success("Horas validadas");
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao salvar complexidade");
-    } finally { setDefiningSaving(false); }
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar estimativa");
+    } finally { setEffortSaving(false); }
   };
 
-  // Inicia diretamente (complexidade já foi definida)
   const handleIniciarDireto = async (task: Task) => {
     setStartingSaving(true);
     try {
-      const startComment = COMPLEXITY_MESSAGES[task.complexity] ?? COMPLEXITY_MESSAGES.medium;
-      await apiPut(`/api/tasks/${task.id}`, { status: "in_progress", startComment });
+      await apiPut(`/api/tasks/${task.id}`, { status: "in_progress" });
       load();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao iniciar tarefa");
@@ -240,7 +247,7 @@ export default function MyTasks() {
                   <DropdownMenuItem onClick={() => openTask(t.id)}>
                     <Info className="h-3.5 w-3.5 mr-2" />Ver informações
                   </DropdownMenuItem>
-                  {["pending","in_progress","in_revision"].includes(t.status) && (
+                  {["pending","in_progress"].includes(t.status) && (
                     <DropdownMenuItem onClick={() => setReturnTarget(t)}>
                       <Undo2 className="h-3.5 w-3.5 mr-2" />Devolver
                     </DropdownMenuItem>
@@ -319,6 +326,20 @@ export default function MyTasks() {
               {t.revisionCount} {t.revisionCount === 1 ? "alt." : "alts."}
             </span>
           )}
+          {(t.unreadCommentCount ?? 0) > 0 && (
+            <button
+              onClick={e => { e.stopPropagation(); openTask(t.id, "entrega"); }}
+              style={{
+                display: "flex", alignItems: "center", gap: 3, flexShrink: 0,
+                fontSize: 9, fontWeight: 600, padding: "2px 6px", borderRadius: 99, lineHeight: 1, whiteSpace: "nowrap",
+                background: "rgba(239,68,68,0.12)", color: "#ef4444",
+                border: "1px solid rgba(239,68,68,0.25)", cursor: "pointer",
+              }}
+            >
+              <MessageSquare style={{ width: 9, height: 9, fill: "currentColor", stroke: "none" }} />
+              <span>ajustes</span>
+            </button>
+          )}
           <div style={{ flex: 1 }} />
           {/* Início (startDate) */}
           {isScheduled(t) && t.startDate && (() => {
@@ -353,23 +374,31 @@ export default function MyTasks() {
             ) : null;
           })()}
           {t.createdBy && (
-            <StackedAvatars people={[t.createdBy]} size={30} max={1} />
+            <div className="flex items-center" style={{ gap: 0 }} onClick={e => e.stopPropagation()}>
+              {[t.createdBy, ...(t.coCoordinators ?? [])].slice(0, 3).map((c, i) => (
+                <div key={c.id} style={{ marginLeft: i === 0 ? 0 : -10, zIndex: 3 - i }}>
+                  <ChatAvatarButton userId={c.id} name={c.name} avatarUrl={c.avatarUrl} size={30}
+                    taskId={t.id} taskCode={t.taskCode} taskTitle={t.title} />
+                </div>
+              ))}
+            </div>
           )}
-          {/* Botões pending: Definir complexidade → Iniciar */}
-          {isEditor && t.status === "pending" && !t.editorComplexitySet && (
+          {/* Botões pending: Validar horas → Definir complexidade → Iniciar */}
+          {isEditor && t.status === "pending" && t.effortHours != null && !t.editorAcceptedAt && (
             <button
-              onClick={e => { e.stopPropagation(); setComplexityTarget(t); }}
+              onClick={e => { e.stopPropagation(); setEffortTarget(t); }}
               style={{
                 display: "flex", alignItems: "center", gap: 3,
                 fontSize: 9, fontWeight: 600, padding: "2px 7px", borderRadius: 99,
-                background: "hsl(var(--muted))", color: "hsl(var(--foreground))",
-                border: "1px solid hsl(var(--border))", cursor: "pointer", flexShrink: 0,
+                background: "#fef3c7", color: "#92400e",
+                border: "1px solid #fcd34d", cursor: "pointer", flexShrink: 0,
               }}
             >
-              Definir
+              <Clock style={{ width: 7, height: 7 }} />
+              Horas
             </button>
           )}
-          {isEditor && t.status === "pending" && t.editorComplexitySet && (() => {
+          {isEditor && t.status === "pending" && !(t.effortHours != null && !t.editorAcceptedAt) && (() => {
             const startAllowed = !t.startDate || t.startDate.split("T")[0] <= TODAY_STR;
             return startAllowed ? (
               <button
@@ -410,7 +439,7 @@ export default function MyTasks() {
           {
             key: "today" as const,
             label: "Pauta do dia",
-            count: tasks.filter(t => !isScheduled(t) && ["pending","in_progress","in_revision","review"].includes(t.status)).length,
+            count: tasks.filter(t => !isScheduled(t) && ["pending","in_progress","review"].includes(t.status)).length,
           },
           {
             key: "scheduled" as const,
@@ -552,7 +581,16 @@ export default function MyTasks() {
                     </div>
 
                     {/* Avatar do coordenador */}
-                    {t.createdBy && <StackedAvatars people={[t.createdBy]} size={28} max={1} />}
+                    {t.createdBy && (
+                      <div className="flex items-center" style={{ gap: 0 }} onClick={e => e.stopPropagation()}>
+                        {[t.createdBy, ...(t.coCoordinators ?? [])].slice(0, 3).map((c, i) => (
+                          <div key={c.id} style={{ marginLeft: i === 0 ? 0 : -9, zIndex: 3 - i }}>
+                            <ChatAvatarButton userId={c.id} name={c.name} avatarUrl={c.avatarUrl} size={28}
+                              taskId={t.id} taskCode={t.taskCode} taskTitle={t.title} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -615,13 +653,13 @@ export default function MyTasks() {
         </DialogContent>
       </Dialog>
 
-      {complexityTarget && (
-        <ComplexityConfirmDialog
-          open={!!complexityTarget}
-          task={complexityTarget}
-          onSave={saveComplexity}
-          onCancel={() => setComplexityTarget(null)}
-          saving={definingSaving}
+      {effortTarget && (
+        <EffortHoursDialog
+          open={!!effortTarget}
+          task={{ ...effortTarget, effortHours: effortTarget.effortHours! }}
+          onSave={saveEffortHours}
+          onCancel={() => setEffortTarget(null)}
+          saving={effortSaving}
         />
       )}
     </div>
