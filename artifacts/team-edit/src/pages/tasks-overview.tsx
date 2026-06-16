@@ -675,7 +675,7 @@ export default function TasksOverview() {
                     </tr>
                   ))}
                 </thead>
-                <tbody className="divide-y divide-[hsl(var(--muted))]">
+                <tbody>
                   {sortedFiltered.map((t, rowIndex) => {
                     const row = table.getRowModel().rows.find(r => r.original.id === t.id);
                     if (!row) return null;
@@ -684,12 +684,13 @@ export default function TasksOverview() {
                     const subList       = subtasksMap.get(t.id) ?? [];
                     const isLoadingSubs = loadingSubtasks.has(t.id);
                     const rowSpan       = dateRowSpanMap.get(rowIndex);
-                    const dm            = rowSpan !== undefined ? dateMeta(t.createdAt) : null;
+                    const isFirstOfGroup = rowSpan !== undefined;
+                    const dm            = isFirstOfGroup ? dateMeta(t.createdAt) : null;
                     return (
                       <Fragment key={t.id}>
                         <tr
                           ref={isHighlighted ? (el => { if (el) highlightRef.current = el as unknown as HTMLDivElement; }) : undefined}
-                          className="hover:bg-[hsl(var(--muted))]/20 transition-colors cursor-pointer group"
+                          className={`hover:bg-[hsl(var(--muted))]/20 transition-colors cursor-pointer group ${isFirstOfGroup ? "border-t-2 border-[hsl(var(--border))]" : "border-t border-[hsl(var(--border))]/30"}`}
                           style={{ backgroundColor: isHighlighted ? "hsl(var(--primary) / 0.08)" : undefined }}
                           onClick={() => { if (canEdit) { setEditTaskId(t.id); setFormOpen(true); } else { openTask(t.id); } }}
                         >
