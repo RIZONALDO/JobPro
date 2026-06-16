@@ -1902,8 +1902,7 @@ export default function DutyPage() {
                             )}
                           </div>
                           );
-                        })
-                        ))}
+                        })}
                       </div>
 
                     </div>
