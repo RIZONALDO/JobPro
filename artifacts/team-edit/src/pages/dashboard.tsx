@@ -15,7 +15,7 @@ import { StatusBars } from "@/components/charts/StatusBars";
 import { WaffleChart } from "@/components/charts/WaffleChart";
 import { useSize } from "@/hooks/use-size";
 import { Link, useLocation } from "wouter";
-import { STATUS_LABEL, STATUS_CLASS, isTerminal } from "@/lib/status";
+import { STATUS_LABEL, STATUS_CLASS, STATUS_CHIP, isTerminal } from "@/lib/status";
 import { usePageTitle } from "@/lib/use-page-title";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 
@@ -2154,9 +2154,9 @@ export default function Dashboard() {
                       )}
                       <PriorityBadge priority={t.priority} />
                     </div>
-                    <Badge className={`text-[10px] px-1.5 py-0.5 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
-                      {STATUS_LABEL[t.status] ?? t.status}
-                    </Badge>
+                    <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${STATUS_CHIP[t.status] ?? ""}`}>
+                    {STATUS_LABEL[t.status] ?? t.status}
+                    </span>
                   </div>
                 </div>
               ))}
@@ -2186,9 +2186,9 @@ export default function Dashboard() {
                     {e.changedByName && <span className="text-[hsl(var(--muted-foreground))]/40"> · {e.changedByName.split(" ")[0]}</span>}
                   </span>
                   {e.taskStatus !== e.toStatus && (
-                    <Badge className={`text-[10px] px-1.5 py-0 shrink-0 ${STATUS_CLASS[e.taskStatus] ?? ""}`}>
-                      {STATUS_LABEL[e.taskStatus] ?? e.taskStatus}
-                    </Badge>
+                    <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${STATUS_CHIP[e.taskStatus] ?? ""}`}>
+                    {STATUS_LABEL[e.taskStatus] ?? e.taskStatus}
+                    </span>
                   )}
                 </div>
               ))}
@@ -2335,9 +2335,9 @@ export default function Dashboard() {
                       <AvatarDisplay name={t.createdBy.name} avatarUrl={t.createdBy.avatarUrl} size={30} />
                     )}
                     <PriorityBadge priority={t.priority} />
-                    <Badge className={`text-[10px] px-1.5 py-0.5 whitespace-nowrap ${STATUS_CLASS[t.status] ?? ""}`}>
-                      {STATUS_LABEL[t.status] ?? t.status}
-                    </Badge>
+                    <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${STATUS_CHIP[t.status] ?? ""}`}>
+                    {STATUS_LABEL[t.status] ?? t.status}
+                    </span>
                   </div>
                 </div>
               ))}
@@ -2367,9 +2367,9 @@ export default function Dashboard() {
                     {e.changedByName && <span className="text-[hsl(var(--muted-foreground))]/40"> · {e.changedByName.split(" ")[0]}</span>}
                   </span>
                   {e.taskStatus !== e.toStatus && (
-                    <Badge className={`text-[10px] px-1.5 py-0 shrink-0 ${STATUS_CLASS[e.taskStatus] ?? ""}`}>
-                      {STATUS_LABEL[e.taskStatus] ?? e.taskStatus}
-                    </Badge>
+                    <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${STATUS_CHIP[e.taskStatus] ?? ""}`}>
+                    {STATUS_LABEL[e.taskStatus] ?? e.taskStatus}
+                    </span>
                   )}
                 </div>
               ))}
