@@ -341,9 +341,14 @@ export default function AgendaGeral() {
                               <Lock style={{ width: 18, height: 18, color: "#ef4444", opacity: 0.30 }} strokeWidth={2.5} />
                             </div>
                           )}
+                          {sc < 12 && !isDragSelected && (
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <Plus style={{ width: 15, height: 15, color: cfg.color, opacity: 0.30 }} strokeWidth={2} />
+                            </div>
+                          )}
                           {isDragSelected && (
                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                              <Plus style={{ width: 16, height: 16, color: "hsl(var(--primary))", opacity: 0.7 }} />
+                              <Plus style={{ width: 16, height: 16, color: "hsl(var(--primary))", opacity: 0.8 }} strokeWidth={2.5} />
                             </div>
                           )}
                         </div>
@@ -445,6 +450,7 @@ export default function AgendaGeral() {
         initialStartDate={formPreset.startDate}
         initialDueDate={formPreset.dueDate}
         initialEditorId={formPreset.editorId}
+        readOnlyDates
         onSaved={() => { setFormOpen(false); setFormPreset(null); load(); }}
       />
     )}

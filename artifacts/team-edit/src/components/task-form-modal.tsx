@@ -34,6 +34,7 @@ interface Props {
   initialStartDate?: string;
   initialDueDate?: string;
   initialEditorId?: number;
+  readOnlyDates?: boolean;
   hidePublish?: boolean;
 }
 
@@ -59,7 +60,16 @@ function scoreLabel(score: number): string {
   return "No limite";
 }
 
-export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initialStartDate, initialDueDate, initialEditorId, hidePublish }: Props) {
+function fmtDateLabel(iso: string): string {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("T")[0].split("-").map(Number);
+  const dt = new Date(y, m - 1, d, 12);
+  const DAYS = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  return `${DAYS[dt.getDay()]}, ${d} ${MONTHS[m - 1]} ${y}`;
+}
+
+export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initialStartDate, initialDueDate, initialEditorId, readOnlyDates, hidePublish }: Props) {
   const editMode = !!editTaskId;
   const { user } = useAuth();
   // Coordenadores e supervisores não veem complexidade — só admin pode definir manualmente
@@ -612,7 +622,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
 
                 {/* Datas — Início e Entrega */}
                 <div className="space-y-3">
-                  {/* Início — opcional */}
+                  {/* Início */}
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-1.5">
                       <Calendar className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
@@ -620,28 +630,35 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                         Início <span className="text-destructive">*</span>
                       </Label>
                     </div>
-                    <DatePicker
-                      value={form.startDateTime}
-                      onChange={v => {
-                        // Se a entrega já foi definida e ficaria antes do novo início, limpa
-                        const newStart = v ? v.split("T")[0] : "";
-                        const curEnd   = form.dueDateTime ? form.dueDateTime.split("T")[0] : "";
-                        if (newStart && curEnd && newStart > curEnd) {
-                          f({ startDateTime: v, dueDateTime: "" });
-                        } else {
-                          f({ startDateTime: v });
-                        }
-                      }}
-                      placeholder="DD/MM/AAAA HH:MM"
-                      minDate={todayIso}
-                      withTime
-                    />
-                    {isFutureStart && (
-                      <p className="text-[10px] text-sky-500 font-medium">Agendamento</p>
+                    {readOnlyDates ? (
+                      <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--border))]/50 bg-[hsl(var(--muted))]/30 px-3 py-2.5 text-sm text-[hsl(var(--foreground))]/80">
+                        {fmtDateLabel(form.startDateTime)}
+                      </div>
+                    ) : (
+                      <>
+                        <DatePicker
+                          value={form.startDateTime}
+                          onChange={v => {
+                            const newStart = v ? v.split("T")[0] : "";
+                            const curEnd   = form.dueDateTime ? form.dueDateTime.split("T")[0] : "";
+                            if (newStart && curEnd && newStart > curEnd) {
+                              f({ startDateTime: v, dueDateTime: "" });
+                            } else {
+                              f({ startDateTime: v });
+                            }
+                          }}
+                          placeholder="DD/MM/AAAA HH:MM"
+                          minDate={todayIso}
+                          withTime
+                        />
+                        {isFutureStart && (
+                          <p className="text-[10px] text-sky-500 font-medium">Agendamento</p>
+                        )}
+                      </>
                     )}
                   </div>
 
-                  {/* Entrega — obrigatória */}
+                  {/* Entrega */}
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-1.5">
                       <Clock className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
@@ -651,14 +668,19 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                         {isMultiTask && !editMode && <span className="ml-1 text-[10px] font-normal normal-case text-[hsl(var(--muted-foreground))]/60">opcional</span>}
                       </Label>
                     </div>
-                    <DatePicker
-                      value={form.dueDateTime}
-                      onChange={v => f({ dueDateTime: v })}
-                      placeholder="DD/MM/AAAA HH:MM"
-                      // Entrega nunca antes do início (ou antes de hoje se não tem início)
-                      minDate={form.startDateTime ? form.startDateTime.split("T")[0] : todayIso}
-                      withTime
-                    />
+                    {readOnlyDates ? (
+                      <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--border))]/50 bg-[hsl(var(--muted))]/30 px-3 py-2.5 text-sm text-[hsl(var(--foreground))]/80">
+                        {fmtDateLabel(form.dueDateTime)}
+                      </div>
+                    ) : (
+                      <DatePicker
+                        value={form.dueDateTime}
+                        onChange={v => f({ dueDateTime: v })}
+                        placeholder="DD/MM/AAAA HH:MM"
+                        minDate={form.startDateTime ? form.startDateTime.split("T")[0] : todayIso}
+                        withTime
+                      />
+                    )}
                   </div>
                 </div>
 
