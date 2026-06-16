@@ -45,6 +45,7 @@ interface OverviewTask {
   editors: Person[];
   coordinator: Person | null;
   isOwn: boolean;
+  createdAt: string;
   updatedAt: string;
   fileCount?: number;
   fileKind?: "video" | "audio" | "mixed" | "other" | null;
@@ -222,25 +223,20 @@ export default function TasksOverview() {
   const DAY_PT    = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
   const MON_PT    = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
-  // Ordena tarefas por data para que grupos fiquem contíguos
+  // Ordena por data de criação para que grupos fiquem contíguos
   const sortedFiltered = useMemo(() =>
-    [...filtered].sort((a, b) => {
-      if (!a.dueDate && !b.dueDate) return 0;
-      if (!a.dueDate) return 1;
-      if (!b.dueDate) return -1;
-      return a.dueDate.localeCompare(b.dueDate);
-    }),
+    [...filtered].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
   [filtered]);
 
-  // Mapa rowIndex → rowSpan (só para a primeira linha de cada grupo)
+  // Mapa rowIndex → rowSpan agrupado por data de criação
   const dateRowSpanMap = useMemo(() => {
     const map = new Map<number, number>();
     let i = 0;
     while (i < sortedFiltered.length) {
-      const key = sortedFiltered[i].dueDate?.split("T")[0] ?? "__";
+      const key = sortedFiltered[i].createdAt?.split("T")[0] ?? "__";
       let span = 1;
       while (i + span < sortedFiltered.length &&
-        (sortedFiltered[i + span].dueDate?.split("T")[0] ?? "__") === key) span++;
+        (sortedFiltered[i + span].updatedAt?.split("T")[0] ?? "__") === key) span++;
       map.set(i, span);
       i += span;
     }
@@ -687,7 +683,7 @@ export default function TasksOverview() {
                     const subList       = subtasksMap.get(t.id) ?? [];
                     const isLoadingSubs = loadingSubtasks.has(t.id);
                     const rowSpan       = dateRowSpanMap.get(rowIndex);
-                    const dm            = rowSpan !== undefined ? dateMeta(t.dueDate) : null;
+                    const dm            = rowSpan !== undefined ? dateMeta(t.createdAt) : null;
                     return (
                       <Fragment key={t.id}>
                         <tr

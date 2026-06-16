@@ -416,6 +416,7 @@ router.get("/tasks/overview", requireAuth, async (req, res): Promise<void> => {
       : editorsMap.get(r.id) ?? [],
     coordinator: r.createdById ? (personMap.get(r.createdById) ?? null) : null,
     isOwn: r.createdById === userId,
+    createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     reviewedAt: overviewReviewedAtMap.get(r.id)?.toISOString() ?? null,
     subtaskProgress: r.taskType === "multi_task" ? (progressMap.get(r.id) ?? { total: 0, completed: 0, inProgress: 0, pending: 0 }) : null,
