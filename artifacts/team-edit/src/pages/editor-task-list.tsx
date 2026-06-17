@@ -53,17 +53,17 @@ interface Task {
 }
 
 // ── Helpers de agendamento ────────────────────────────────────────────────────
-const TAB_TODAY_STR = (() => {
+function getTodayStr(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-})();
+}
 const ACTIVE_STATUSES = new Set(["pending", "in_progress", "in_revision", "review"]);
 const SCHEDULED_STATUSES = new Set(["pending", "in_progress", "paused"]);
 function isTaskScheduled(t: Task): boolean {
   if (!SCHEDULED_STATUSES.has(t.status)) return false;
   const ref = t.startDate ?? (t.status === "pending" ? t.dueDate : null);
   if (!ref) return false;
-  return ref.split("T")[0] > TAB_TODAY_STR;
+  return ref.split("T")[0] > getTodayStr();
 }
 
 
@@ -485,7 +485,7 @@ export default function EditorTaskList() {
                     </Button>
                   )}
                   {t.status === "pending" && t.editorComplexitySet && (() => {
-                    const startAllowed = !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR;
+                    const startAllowed = !t.startDate || t.startDate.split("T")[0] <= getTodayStr();
                     return startAllowed ? (
                       <Button size="sm" variant="default" className="h-8 text-xs px-3 whitespace-nowrap"
                         onClick={e => { e.stopPropagation(); handleIniciarDireto(t); }}>
@@ -604,7 +604,7 @@ export default function EditorTaskList() {
                   </Button>
                 )}
                 {t.status === "pending" && t.editorComplexitySet && (() => {
-                  const startAllowed = !t.startDate || t.startDate.split("T")[0] <= TAB_TODAY_STR;
+                  const startAllowed = !t.startDate || t.startDate.split("T")[0] <= getTodayStr();
                   return startAllowed ? (
                     <Button size="sm" variant="default" className="h-7 text-xs px-3 w-full"
                       onClick={() => handleIniciarDireto(t)}>
