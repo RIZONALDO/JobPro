@@ -994,7 +994,7 @@ export function ChatWidget() {
       </AnimatePresence>
 
       {/* FAB */}
-      <div className="fixed bottom-5 right-5 z-[52]">
+      <div data-chat-fab className="fixed bottom-5 right-5 z-[52]">
         <motion.button
           ref={fabRef}
           onClick={() => chatOpen ? setChatOpen(false) : openChat()}

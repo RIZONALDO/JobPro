@@ -204,3 +204,8 @@ input, textarea, select {
 .collapsible-content[data-state="open"]   { animation: collapsible-down 180ms ease-out; }
 .collapsible-content[data-state="closed"] { animation: collapsible-up   150ms ease-in;  }
 
+
+/* Botão flutuante do chat some enquanto um modal está aberto (não cobre o rodapé do diálogo) */
+body:has([role="dialog"][data-state="open"]) [data-chat-fab] {
+  display: none;
+}
