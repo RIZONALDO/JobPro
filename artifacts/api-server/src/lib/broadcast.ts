@@ -46,14 +46,6 @@ export function broadcastDmRead(senderUserId: number, readerUserId: number) {
   try { getIo().to(`user:${senderUserId}`).emit("dm:read", { byUserId: readerUserId }); } catch {}
 }
 
-export function broadcastSubtaskProgress(parentTaskId: number, progress: { total: number; completed: number; percentage: number }) {
-  try { getIo().emit("multitask:progress", { parentTaskId, progress }); } catch {}
-}
-
-export function broadcastSubtaskChanged(subtaskId: number, parentTaskId: number) {
-  try { getIo().emit("subtask:changed", { subtaskId, parentTaskId }); } catch {}
-}
-
 export function broadcastChatDeleted(messageId: number) {
   try { getIo().emit("chat:deleted", { messageId }); } catch {}
 }

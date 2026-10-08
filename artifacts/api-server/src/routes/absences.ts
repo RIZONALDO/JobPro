@@ -34,7 +34,6 @@ async function conflictsFor(userId: number, startDate: string, endDate: string) 
       ne(tasksTable.status, "completed"),
       ne(tasksTable.status, "cancelled"),
       ne(tasksTable.status, "rascunho"),
-      ne(tasksTable.taskType, "multi_task"),
       // ativa em algum dia do período: começou até o fim e não termina antes do início
       or(isNull(tasksTable.startDate), lte(tasksTable.startDate, endD)),
       or(isNull(tasksTable.dueDate), gte(tasksTable.dueDate, startD)),

@@ -24,8 +24,6 @@ import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
 import { STATUS_LABEL, STATUS_CLASS, STATUS_CHIP, isTerminal } from "@/lib/status";
 import { PriorityBadge } from "@/components/ui/priority-badge";
-import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
-import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
 import { ComplexityConfirmDialog, COMPLEXITY_MESSAGES } from "@/components/ui/complexity-confirm-dialog";
 
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
@@ -48,8 +46,6 @@ interface Task {
   reviewedAt?: string | null;
   editorComplexitySet?: boolean;
   // multi-task
-  taskType?: string;
-  parentTask?: { id: number; title: string; taskCode?: string } | null;
 }
 
 // ── Helpers de agendamento ────────────────────────────────────────────────────
@@ -407,16 +403,6 @@ export default function EditorTaskList() {
                     )}
                   </div>
 
-                  {/* subtarefa breadcrumb */}
-                  {t.taskType === "subtask" && t.parentTask && (
-                    <div className="mt-1">
-                      <ParentTaskBreadcrumb parentTask={t.parentTask} />
-                    </div>
-                  )}
-                  {/* multi-task badge */}
-                  {t.taskType === "multi_task" && (
-                    <div className="mt-1"><MultiTaskBadge taskType="multi_task" /></div>
-                  )}
 
                   {/* client */}
                   {t.client && (
@@ -529,11 +515,6 @@ export default function EditorTaskList() {
                     </span>
                   )}
                 </div>
-                {t.taskType === "subtask" && t.parentTask && (
-                  <div className="mt-0.5">
-                    <ParentTaskBreadcrumb parentTask={t.parentTask} />
-                  </div>
-                )}
                 {t.client && (
                   <span className="text-xs text-[hsl(var(--muted-foreground))]/55 truncate mt-0.5">{t.client}</span>
                 )}
@@ -544,7 +525,6 @@ export default function EditorTaskList() {
                 <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${STATUS_CHIP[t.status] ?? ""}`}>
                   {STATUS_LABEL[t.status] ?? t.status}
                 </span>
-                <MultiTaskBadge taskType={t.taskType ?? "task"} />
               </div>
 
               {/* Priority */}

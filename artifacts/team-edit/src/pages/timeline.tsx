@@ -26,8 +26,6 @@ interface TimelineTask {
   createdAt: string;
   assignee: Person | null;
   coordinator: Person | null;
-  taskType?: string;
-  subtaskProgress?: { total: number; completed: number; percentage: number } | null;
 }
 
 type ZoomMode = "week" | "month" | "year";
@@ -312,7 +310,6 @@ function GanttGrid({ tasks, zoom, onOpen }: {
           const isDone      = t.status === "completed";
           const isCancel    = t.status === "cancelled";
           const isPaused    = t.status === "paused";
-          const isMulti     = t.taskType === "multi_task";
           const overdue     = !isDone && !isCancel && !isPaused
             && t.dueDate && isoToDay(t.dueDate) < today;
           const rowBg       = rowIdx % 2 === 0 ? "transparent" : "hsl(var(--muted)/0.12)";
@@ -346,9 +343,6 @@ function GanttGrid({ tasks, zoom, onOpen }: {
                 }} />
                 <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
-                    {isMulti && (
-                      <Layers style={{ width: 11, height: 11, flexShrink: 0, color: "#6366f1", opacity: 0.8 }} />
-                    )}
                     {t.taskCode && (
                       <span style={{ fontSize: 11, fontFamily: "ui-monospace, monospace", fontWeight: 700, color: "hsl(var(--primary) / 0.70)", flexShrink: 0 }}>
                         {t.taskCode}
@@ -383,16 +377,6 @@ function GanttGrid({ tasks, zoom, onOpen }: {
                         atrasada
                       </span>
                     )}
-                    {isMulti && t.subtaskProgress && t.subtaskProgress.total > 0 && (
-                      <span style={{
-                        fontSize: 9, fontWeight: 700, flexShrink: 0,
-                        color: "#6366f1", background: "#eef2ff",
-                        padding: "1px 5px", borderRadius: 99,
-                        fontVariantNumeric: "tabular-nums",
-                      }}>
-                        {t.subtaskProgress.completed}/{t.subtaskProgress.total}
-                      </span>
-                    )}
                   </div>
                 </div>
                 <Avatar p={t.assignee} />
@@ -421,12 +405,8 @@ function GanttGrid({ tasks, zoom, onOpen }: {
                     height: ROW_H - 20,
                     width: fill ? `max(12px, calc(${barSpan / DAYS * 100}% - 8px))` : Math.max(12, barSpan * PX - 8),
                     borderRadius: 6,
-                    background: isMulti
-                      ? `color-mix(in oklab, ${barColor} 10%, transparent)`
-                      : `color-mix(in oklab, ${barColor} 18%, transparent)`,
-                    border: isMulti
-                      ? `1.5px dashed color-mix(in oklab, ${barColor} 55%, transparent)`
-                      : `1.5px solid color-mix(in oklab, ${barColor} 42%, transparent)`,
+                    background: `color-mix(in oklab, ${barColor} 18%, transparent)`,
+                    border: `1.5px solid color-mix(in oklab, ${barColor} 42%, transparent)`,
                     display: "flex", alignItems: "center",
                     padding: "0 8px", gap: 5, overflow: "hidden",
                   }}>
@@ -439,10 +419,7 @@ function GanttGrid({ tasks, zoom, onOpen }: {
                         fontSize: 12, color: "hsl(var(--foreground)/0.6)",
                         whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                       }}>
-                        {isMulti && t.subtaskProgress && t.subtaskProgress.total > 0
-                          ? `${t.subtaskProgress.completed}/${t.subtaskProgress.total} subtarefas`
-                          : t.title
-                        }
+                        {t.title}
                       </span>
                     )}
                   </div>

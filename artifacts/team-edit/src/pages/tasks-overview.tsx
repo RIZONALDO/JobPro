@@ -30,8 +30,6 @@ import { ChatAvatarButton } from "@/components/ui/chat-avatar-button";
 import { TaskFormModal } from "@/components/task-form-modal";
 import { ReassignEditorModal } from "@/components/reassign-editor-modal";
 import { EditorAvailabilityModal } from "@/components/editor-availability-modal";
-import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
-import { SubtaskProgressBar } from "@/components/ui/subtask-progress-bar";
 import { RefreshCw, UserPlus } from "lucide-react";
 import { fmtClosedCycle, fmtPrazoWeek, fmtDate } from "@/lib/utils";
 import { PrazoCell } from "@/components/prazo-cell";
@@ -74,23 +72,6 @@ interface OverviewTask {
   isOwn: boolean;
   updatedAt: string;
   reviewedAt?: string | null;
-  // multi-task
-  taskType?: string;
-  subtaskProgress?: { total: number; completed: number; percentage: number };
-}
-
-interface SubtaskDetail {
-  id: number;
-  taskCode?: string;
-  title: string;
-  status: string;
-  priority: string;
-  subtaskOrder: number;
-  assignedTo: { id: number; name: string; avatarUrl?: string | null } | null;
-  editors: { id: number; name: string; avatarUrl?: string | null }[];
-  dueDate: string | null;
-  revisionCount: number;
-  folderUrl: string | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -205,14 +186,6 @@ export default function TasksOverview() {
   const [changeDueDateValue, setChangeDueDateValue] = useState("");
   const [sendingDueDate,     setSendingDueDate]     = useState(false);
 
-  // Collapsible subtask expansion
-  const [expandedIds,            setExpandedIds]            = useState<Set<number>>(new Set());
-  const [subtasksMap,            setSubtasksMap]            = useState<Map<number, SubtaskDetail[]>>(new Map());
-  const [loadingSubtasks,        setLoadingSubtasks]        = useState<Set<number>>(new Set());
-  const [revisionSubtask,        setRevisionSubtask]        = useState<{ id: number; title: string; parentId: number } | null>(null);
-  const [revisionSubtaskComment, setRevisionSubtaskComment] = useState("");
-  const [sendingRevisionSubtask, setSendingRevisionSubtask] = useState(false);
-
   // Mobile filter panel toggle
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
@@ -233,7 +206,7 @@ export default function TasksOverview() {
   const [deleting,     setDeleting]     = useState(false);
 
   // Approve confirmation
-  const [approveTarget, setApproveTarget] = useState<{ taskId: number; title: string; parentId?: number } | null>(null);
+  const [approveTarget, setApproveTarget] = useState<{ taskId: number; title: string } | null>(null);
   const [approvingTarget, setApprovingTarget] = useState(false);
 
   const doTaskAction = async (taskId: number, action: "cancel" | "pause" | "resume" | "reactivate") => {
@@ -281,39 +254,8 @@ export default function TasksOverview() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Keep a ref that always reflects the current expandedIds set (to avoid stale closure in the realtime callback)
-  const expandedIdsRef = useRef<Set<number>>(expandedIds);
-  useEffect(() => { expandedIdsRef.current = expandedIds; }, [expandedIds]);
-
   useRealtime({
     onTasksChanged: () => load(true),
-
-    // Fired by subtask:changed — refresh ALL currently expanded panels immediately,
-    // without waiting for the debounced load(true). This is the primary real-time
-    // mechanism for keeping coordinator panels in sync.
-    onSubtaskChanged: () => {
-      expandedIdsRef.current.forEach(parentId => {
-        apiFetch<SubtaskDetail[]>(`/api/tasks/${parentId}/subtasks`)
-          .then(subs => setSubtasksMap(p => new Map(p).set(parentId, subs)))
-          .catch(() => {});
-      });
-    },
-
-    // Fired by multitask:progress — updates the progress chip on the parent row
-    // and refreshes the expanded panel for that specific parent.
-    onMultitaskProgress: (event) => {
-      const { parentTaskId, progress } = event;
-      setTasks(prev => prev.map(t =>
-        t.id === parentTaskId
-          ? { ...t, subtaskProgress: { total: progress.total, completed: progress.completed, percentage: progress.percentage } }
-          : t
-      ));
-      if (expandedIdsRef.current.has(parentTaskId)) {
-        apiFetch<SubtaskDetail[]>(`/api/tasks/${parentTaskId}/subtasks`)
-          .then(subs => setSubtasksMap(p => new Map(p).set(parentTaskId, subs)))
-          .catch(() => {});
-      }
-    },
   });
 
   const editors = useMemo(() => {
@@ -437,11 +379,7 @@ export default function TasksOverview() {
     setApprovingTarget(true);
     try {
       await apiPut(`/api/tasks/${approveTarget.taskId}`, { status: "completed" });
-      toast.success(approveTarget.parentId ? "Subtarefa aprovada" : "Tarefa aprovada");
-      if (approveTarget.parentId) {
-        apiFetch<SubtaskDetail[]>(`/api/tasks/${approveTarget.parentId}/subtasks`)
-          .then(subs => setSubtasksMap(p => new Map(p).set(approveTarget!.parentId!, subs)));
-      }
+      toast.success("Tarefa aprovada");
       setApproveTarget(null);
       load(true);
     } catch (err: unknown) {
@@ -510,40 +448,6 @@ export default function TasksOverview() {
     } finally {
       setSendingDueDate(false);
     }
-  };
-
-  const toggleExpand = (taskId: number) => {
-    setExpandedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(taskId)) {
-        next.delete(taskId);
-      } else {
-        next.add(taskId);
-        if (!subtasksMap.has(taskId)) {
-          setLoadingSubtasks(p => new Set(p).add(taskId));
-          apiFetch<SubtaskDetail[]>(`/api/tasks/${taskId}/subtasks`)
-            .then(subs => setSubtasksMap(p => new Map(p).set(taskId, subs)))
-            .catch(() => toast.error("Erro ao carregar subtarefas"))
-            .finally(() => setLoadingSubtasks(p => { const n = new Set(p); n.delete(taskId); return n; }));
-        }
-      }
-      return next;
-    });
-  };
-
-  const submitRevisionSubtask = async () => {
-    if (!revisionSubtask || !revisionSubtaskComment.trim()) { toast.error("Informe o comentário"); return; }
-    setSendingRevisionSubtask(true);
-    try {
-      await apiPut(`/api/tasks/${revisionSubtask.id}`, { status: "in_progress", revisionComment: revisionSubtaskComment.trim() });
-      toast.success("Alteração solicitada");
-      apiFetch<SubtaskDetail[]>(`/api/tasks/${revisionSubtask.parentId}/subtasks`)
-        .then(subs => setSubtasksMap(p => new Map(p).set(revisionSubtask!.parentId, subs)));
-      setRevisionSubtask(null);
-      load(true);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro");
-    } finally { setSendingRevisionSubtask(false); }
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -904,18 +808,6 @@ export default function TasksOverview() {
                 </DropdownMenuContent>
               );
 
-              const isExpanded    = expandedIds.has(t.id);
-              const subList       = subtasksMap.get(t.id) ?? [];
-              const isLoadingSubs = loadingSubtasks.has(t.id);
-              // Safe percentage — computed from completed/total as fallback if API didn't include it
-              const subPct = t.subtaskProgress
-                ? (t.subtaskProgress.percentage ?? (
-                    t.subtaskProgress.total > 0
-                      ? Math.round((t.subtaskProgress.completed / t.subtaskProgress.total) * 100)
-                      : 0
-                  ))
-                : 0;
-
               return (
                 <Fragment key={t.id}>
                 <div
@@ -938,14 +830,6 @@ export default function TasksOverview() {
 
                       {/* Row 1: code + title + revision chip */}
                       <div className="flex items-baseline gap-2 min-w-0">
-                        {t.taskType === "multi_task" && (
-                          <button
-                            className="shrink-0 p-0.5 rounded hover:bg-[hsl(var(--muted))] transition-colors"
-                            onClick={e => { e.stopPropagation(); toggleExpand(t.id); }}
-                          >
-                            <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`} />
-                          </button>
-                        )}
                         {t.taskCode && (
                           <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">
                             {t.taskCode}
@@ -960,26 +844,6 @@ export default function TasksOverview() {
                           </span>
                         )}
                       </div>
-
-                      {/* Row 1b: multi-task compact progress chip */}
-                      {t.taskType === "multi_task" && t.subtaskProgress && t.subtaskProgress.total > 0 && (
-                        <div className="mt-1 flex items-center gap-1.5">
-                          <MultiTaskBadge taskType="multi_task" />
-                          <span className="text-[11px] tabular-nums text-[hsl(var(--muted-foreground))]/70 font-medium">
-                            {t.subtaskProgress.completed}/{t.subtaskProgress.total}
-                          </span>
-                          <div className="h-1 w-12 rounded-full bg-muted overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all duration-500 ${
-                                subPct === 100 ? "bg-green-500" :
-                                subPct >= 66 ? "bg-blue-500" :
-                                subPct >= 33 ? "bg-indigo-400" : "bg-slate-400"
-                              }`}
-                              style={{ width: `${subPct}%` }}
-                            />
-                          </div>
-                        </div>
-                      )}
 
                       {/* Row 2: client */}
                       {t.client && (
@@ -1101,15 +965,6 @@ export default function TasksOverview() {
                   {/* Tarefa */}
                   <div className="hidden md:flex flex-1 min-w-0 flex-col justify-center py-3 pr-3">
                     <div className="flex items-baseline gap-2 min-w-0">
-                      {t.taskType === "multi_task" && (
-                        <button
-                          className="shrink-0 p-0.5 rounded hover:bg-[hsl(var(--muted))] transition-colors"
-                          onClick={e => { e.stopPropagation(); toggleExpand(t.id); }}
-                          title={isExpanded ? "Recolher subtarefas" : "Expandir subtarefas"}
-                        >
-                          <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`} />
-                        </button>
-                      )}
                       {t.taskCode && (
                         <span className="shrink-0 font-mono text-xs font-semibold tracking-tight text-[hsl(var(--primary))]/70">
                           {t.taskCode}
@@ -1133,25 +988,7 @@ export default function TasksOverview() {
                       <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${STATUS_CHIP[t.status] ?? ""}`}>
                   {STATUS_LABEL[t.status] ?? t.status}
                 </span>
-                      <MultiTaskBadge taskType={t.taskType ?? "task"} />
                     </div>
-                    {t.taskType === "multi_task" && t.subtaskProgress && t.subtaskProgress.total > 0 && (
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] tabular-nums text-[hsl(var(--muted-foreground))]/70 font-medium leading-none">
-                          {t.subtaskProgress.completed}/{t.subtaskProgress.total}
-                        </span>
-                        <div className="h-1 flex-1 max-w-[48px] rounded-full bg-muted overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              subPct === 100 ? "bg-green-500" :
-                              subPct >= 66 ? "bg-blue-500" :
-                              subPct >= 33 ? "bg-indigo-400" : "bg-slate-400"
-                            }`}
-                            style={{ width: `${subPct}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   {/* Prioridade — only on lg+ */}
@@ -1159,9 +996,9 @@ export default function TasksOverview() {
                     <PriorityBadge priority={t.priority} />
                   </div>
 
-                  {/* Editor — empilhado para multi_task, normal para simples */}
+                  {/* Editor */}
                   <div className="hidden md:flex w-32 shrink-0 items-center gap-1.5">
-                    {isUnassigned && t.taskType !== "multi_task" ? (
+                    {isUnassigned ? (
                       <span className="text-xs text-slate-400">sem editor</span>
                     ) : t.editors && t.editors.length > 0 ? (
                       <>
@@ -1193,7 +1030,7 @@ export default function TasksOverview() {
                       </>
                     ) : (
                       <span className="text-[11px] text-[hsl(var(--muted-foreground))]/30">
-                        {t.taskType === "multi_task" ? "sem subtarefas" : "—"}
+                        —
                       </span>
                     )}
                   </div>
@@ -1282,85 +1119,6 @@ export default function TasksOverview() {
 
                 </div>
 
-                {/* ── Subtask expansion rows ─────────────────────────────── */}
-                {t.taskType === "multi_task" && isExpanded && (
-                  <div className="divide-y divide-[hsl(var(--muted))]">
-                    {isLoadingSubs ? (
-                      <div className="flex items-center gap-2 px-10 py-3 text-sm text-[hsl(var(--muted-foreground))]">
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
-                        Carregando subtarefas…
-                      </div>
-                    ) : subList.length === 0 ? (
-                      <div className="px-10 py-2.5 text-xs text-[hsl(var(--muted-foreground))]/60 italic">
-                        Nenhuma subtarefa encontrada.
-                      </div>
-                    ) : subList.map(sub => (
-                      <div
-                        key={sub.id}
-                        className="flex items-center gap-3 pl-10 pr-4 py-2.5 bg-[hsl(var(--muted))]/10 hover:bg-[hsl(var(--muted))]/25 transition-colors cursor-pointer border-l-4"
-                        style={{ borderLeftColor: `${group.color}55` }}
-                        onClick={() => openTask(sub.id)}
-                      >
-                        {/* Subtask info */}
-                        <div className="flex-1 min-w-0 flex items-baseline gap-2">
-                          {sub.taskCode && (
-                            <span className="shrink-0 font-mono text-xs text-[hsl(var(--primary))]/70">{sub.taskCode}</span>
-                          )}
-                          <span className="text-sm truncate">{sub.title}</span>
-                          {sub.revisionCount > 0 && (
-                            <span className="shrink-0 text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 whitespace-nowrap leading-none">
-                              {sub.revisionCount} {sub.revisionCount === 1 ? "alteração" : "alterações"}
-                            </span>
-                          )}
-                        </div>
-                        {/* Subtask status */}
-                        <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap hidden md:inline-flex ${STATUS_CHIP[sub.status] ?? ""}`}>
-                  {STATUS_LABEL[sub.status] ?? sub.status}
-                </span>
-                        {/* Subtask editor avatar */}
-                        <div className="hidden md:flex items-center shrink-0">
-                          {(sub.assignedTo ?? sub.editors?.[0]) && (() => {
-                            const person = sub.assignedTo ?? sub.editors[0];
-                            return (
-                              <ChatAvatarButton
-                                userId={person.id}
-                                name={person.name}
-                                avatarUrl={person.avatarUrl}
-                                size={24}
-                                taskId={sub.id}
-                                taskCode={sub.taskCode}
-                                taskTitle={sub.title}
-                                onOpenAvailability={() => setAvailEditor({ id: person.id, name: person.name, avatarUrl: person.avatarUrl })}
-                              />
-                            );
-                          })()}
-                        </div>
-                        {/* Subtask action buttons */}
-                        {sub.status === "review" && canActNow && (
-                          <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-                            <Button
-                              size="sm"
-                              className="h-6 px-2 gap-1 text-[11px] bg-green-600 hover:bg-green-700 text-white dark:bg-green-700 dark:hover:bg-green-600"
-                              onClick={e => { e.stopPropagation(); setApproveTarget({ taskId: sub.id, title: sub.title, parentId: t.id }); }}
-                            >
-                              <CheckCircle2 className="h-3 w-3" />
-                              Aprovar
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-6 px-2 gap-1 text-[11px] text-amber-600 border-amber-400 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:border-amber-700/60 dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
-                              onClick={e => { e.stopPropagation(); setRevisionSubtask({ id: sub.id, title: sub.title, parentId: t.id }); setRevisionSubtaskComment(""); }}
-                            >
-                              <RotateCcw className="h-3 w-3" />
-                              Revisar
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
                 </Fragment>
               );
                     })}
@@ -1666,19 +1424,17 @@ export default function TasksOverview() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500" />
-              {approveTarget?.parentId ? "Aprovar subtarefa" : "Aprovar tarefa"}
+              Aprovar tarefa
             </DialogTitle>
           </DialogHeader>
           <div className="py-1 space-y-2">
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
               Tem certeza que deseja <strong className="text-[hsl(var(--foreground))]">aprovar</strong>{" "}
-              {approveTarget?.parentId ? "a subtarefa" : "a tarefa"}{" "}
+              a tarefa{" "}
               <em>"{approveTarget?.title}"</em>?
             </p>
             <p className="text-xs text-[hsl(var(--muted-foreground))]/70">
-              {approveTarget?.parentId
-                ? "A subtarefa será marcada como concluída."
-                : "A tarefa será marcada como concluída e o editor será notificado."}
+              A tarefa será marcada como concluída e o editor será notificado.
             </p>
           </div>
           <DialogFooter>
@@ -1707,42 +1463,6 @@ export default function TasksOverview() {
             <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancelar</Button>
             <Button variant="destructive" onClick={deleteTask} disabled={deleting}>
               {deleting ? "Excluindo…" : "Excluir tarefa"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Revision dialog — subtarefa ───────────────────────────────────── */}
-      <Dialog open={!!revisionSubtask} onOpenChange={open => !open && setRevisionSubtask(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Solicitar alteração — subtarefa</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            {revisionSubtask && (
-              <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                <span className="font-medium text-[hsl(var(--foreground))]">{revisionSubtask.title}</span>
-              </p>
-            )}
-            <div className="space-y-1.5">
-              <Label>Comentário do cliente *</Label>
-              <Textarea
-                value={revisionSubtaskComment}
-                onChange={e => setRevisionSubtaskComment(e.target.value)}
-                rows={4}
-                placeholder="Descreva o que o cliente solicitou alterar…"
-                autoFocus
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRevisionSubtask(null)}>Cancelar</Button>
-            <Button
-              onClick={submitRevisionSubtask}
-              disabled={sendingRevisionSubtask || !revisionSubtaskComment.trim()}
-              className="bg-orange-600 hover:bg-orange-700"
-            >
-              {sendingRevisionSubtask ? "Enviando…" : "↩ Solicitar alteração"}
             </Button>
           </DialogFooter>
         </DialogContent>

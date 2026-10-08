@@ -69,7 +69,6 @@ async function pendingFor(id: number) {
     .where(and(
       eq(tasksTable.assignedToId, id),
       notInArray(tasksTable.status, OPEN_TASK_STATUSES_EXCLUDED),
-      ne(tasksTable.taskType, "multi_task"),
     ))
     .orderBy(asc(tasksTable.dueDate));
   const extraTasks = await db

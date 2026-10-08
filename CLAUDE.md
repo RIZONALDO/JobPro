@@ -58,7 +58,7 @@ JobPro-git/
 
 Todas as tabelas têm prefixo `te_`:
 
-- **`te_tasks`** — tarefas, multi-tarefas e subtarefas
+- **`te_tasks`** — tarefas (não há multi-tarefa/subtarefa: o conceito foi removido — migração `drop-multitask.sql`)
 - **`te_users`** — usuários (roles: `admin` | `coordinator` | `editor`)
 - **`te_task_editors`** — relação N:N tarefa ↔ editores adicionais
 - **`te_task_revisions`** — histórico de pedidos de alteração
@@ -84,9 +84,6 @@ assignedToId                      // editor principal (FK te_users)
 createdById                       // coordenador (FK te_users)
 revisionCount                     // quantas alterações foram solicitadas
 folderUrl                         // link para pasta de arquivos
-taskType                          // 'task' | 'multi_task' | 'subtask'
-parentTaskId                      // FK para si mesmo (subtarefas)
-subtaskOrder                      // ordem dentro da multi-tarefa
 ```
 
 ---
@@ -140,12 +137,6 @@ Lógica central em `api-server/src/lib/availability.ts` (espelho no front: `team
 - **Ausência** (`/api/absences`) = pessoa continua ativa; carga/agenda/plantões só sinalizam e o sistema **avisa sem bloquear** (`period-check.absenceMessage`, `warning` no `POST /api/duty`).
 - Na agenda, inativos só aparecem se ainda tiverem tarefa aberta (para serem reatribuídas).
 
-### Multi-tarefas
-- `taskType = 'multi_task'` é o pai
-- `taskType = 'subtask'` são os filhos (cada um tem seu editor e prazo)
-- O status do pai é recalculado automaticamente com base nos filhos
-- Subtarefas aparecem expansíveis na listagem do coordenador
-
 ---
 
 ## Rotas da API
@@ -161,10 +152,9 @@ GET  /api/calendar          — tarefas por período (suporta startDate → dueD
 GET  /api/workload          — carga dos editores (?date=YYYY-MM-DD para projeção)
 GET  /api/workload/calendar — disponibilidade diária de um editor (?editorId=X&month=YYYY-MM)
 GET  /api/dashboard-extras  — dados extras do dashboard
-POST /api/tasks             — criar tarefa (simples ou multi_task)
+POST /api/tasks             — criar tarefa
 PUT  /api/tasks/:id         — editar tarefa (inclui mudança de status)
 DELETE /api/tasks/:id       — excluir
-POST /api/tasks/:id/subtasks — criar subtarefa
 POST /api/tasks/:id/return  — editor devolve tarefa ao coordenador
 GET  /api/sse               — Server-Sent Events para realtime
 ```
@@ -321,7 +311,6 @@ Editar no Cowork → git add + commit → git push → ssh deploy na VPS
 | Tabs "Todas / Tarefas do dia / Agendadas" na lista do coordenador | `tasks-overview.tsx` |
 | Coluna "Início" visível apenas na tab Agendadas | `tasks-overview.tsx`, `editor-task-list.tsx` |
 | Projeção de carga por `startDate` + buffer 5 dias | `GET /api/workload?date=` |
-| Multi-tarefa com subtarefas expansíveis | `task-form-modal.tsx`, `tasks-overview.tsx`, backend `tasks.ts` |
 | Chat DM com paginação e scroll inteligente | `ChatWidget`, `dm.ts` |
 | Sistema de rascunhos de tarefa | `tasks-rascunho.tsx`, lógica de status `rascunho` |
 | Usuários inativos + ausências (férias/afastamento) | `lib/availability.ts`, `routes/absences.ts`, `components/ui/absence-badge.tsx` |

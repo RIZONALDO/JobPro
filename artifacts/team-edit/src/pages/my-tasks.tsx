@@ -16,8 +16,6 @@ import { StackedAvatars } from "@/components/ui/avatar-display";
 import { usePageTitle } from "@/lib/use-page-title";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { PriorityBadge } from "@/components/ui/priority-badge";
-import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
-import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
 import { ComplexityConfirmDialog, COMPLEXITY_MESSAGES } from "@/components/ui/complexity-confirm-dialog";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
@@ -45,8 +43,6 @@ interface Task {
   color?: string;
   reviewedAt?: string | null;
   // multi-task
-  taskType?: string;
-  parentTask?: { id: number; title: string; taskCode?: string } | null;
 }
 
 // Pauta do dia — só status ativos (pausada não conta no peso, concluída/cancelada não exige ação)
@@ -221,12 +217,6 @@ export default function MyTasks() {
             }}>
               {t.title}
             </p>
-            {t.taskType === "subtask" && t.parentTask && (
-              <ParentTaskBreadcrumb parentTask={t.parentTask} className="text-[9px]" />
-            )}
-            {t.taskType === "multi_task" && (
-              <MultiTaskBadge taskType="multi_task" className="text-[9px] px-1 py-px" />
-            )}
           </div>
           <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
             {isEditor ? (

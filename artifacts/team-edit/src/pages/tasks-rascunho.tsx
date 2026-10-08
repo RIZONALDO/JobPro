@@ -32,7 +32,6 @@ interface OverviewTask {
   coordinator: Person | null;
   isOwn: boolean;
   updatedAt: string;
-  taskType?: string;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -69,7 +68,6 @@ export default function TasksRascunho() {
   const filtered = useMemo(() => tasks
     .filter(t => {
       if (t.status !== "rascunho") return false;
-      if (t.taskType === "subtask")  return false;
       if (!isSuper && user?.role === "coordinator" && t.coordinator?.id !== user?.id) return false;
       return true;
     })

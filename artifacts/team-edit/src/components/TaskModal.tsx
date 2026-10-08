@@ -10,21 +10,10 @@ import {
   Layers, Copy, ChevronRight, Hash, Tag, Zap,
 } from "lucide-react";
 import { PriorityBadge } from "@/components/ui/priority-badge";
-import { SubtaskProgressBar } from "@/components/ui/subtask-progress-bar";
-import { MultiTaskBadge } from "@/components/ui/multi-task-badge";
-import { ParentTaskBreadcrumb } from "@/components/ui/parent-task-breadcrumb";
 
 interface Person { id: number; name: string; avatarUrl?: string | null; }
 interface Revision { id: number; revisionNumber: number; comment: string; createdAt: string; }
 
-interface SubtaskSummary {
-  id: number; taskCode?: string; title: string; status: string;
-  assignedTo: Person | null; editors: Person[]; subtaskOrder: number;
-}
-interface SubtaskProgress {
-  total: number; completed: number; inProgress: number;
-  pending: number; cancelled: number; percentage: number;
-}
 interface TaskDetail {
   id: number; taskCode?: string; title: string; description: string | null;
   client: string | null; color: string; status: string; priority: string;
@@ -32,9 +21,6 @@ interface TaskDetail {
   folderUrl: string | null; revisionCount: number;
   createdBy: Person | null; assignedTo: Person | null; editors: Person[];
   revisions: Revision[]; createdAt: string; updatedAt: string;
-  taskType: string; subtasks?: SubtaskSummary[];
-  subtaskProgress?: SubtaskProgress;
-  parentTask?: { id: number; title: string; taskCode?: string } | null;
 }
 
 const COMPLEXITY_LABEL: Record<string, string> = { low: "Simples", medium: "Moderada", high: "Complexa" };
@@ -90,13 +76,6 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
 
             {/* ── HEADER ── */}
             <div className="shrink-0 px-6 pt-6 pb-5 border-b border-[hsl(var(--border))]">
-              {/* breadcrumb subtarefa */}
-              {task.taskType === "subtask" && task.parentTask && (
-                <div className="mb-3">
-                  <ParentTaskBreadcrumb parentTask={task.parentTask} onClickParent={onOpenTask} />
-                </div>
-              )}
-
               {/* número sequencial + título */}
               <h2 className="text-[20px] font-bold leading-snug tracking-tight text-[hsl(var(--foreground))] mb-3 flex items-baseline gap-2 flex-wrap">
                 {task.taskCode && (
@@ -114,7 +93,6 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
                   <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${STATUS_DOT[task.status] ?? "bg-slate-400"}`} />
                   {STATUS_LABEL[task.status] ?? task.status}
                 </span>
-                <MultiTaskBadge taskType={task.taskType} />
                 {task.revisionCount > 0 && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40">
                     <RotateCcw className="h-3 w-3" />{task.revisionCount} alt.
@@ -166,21 +144,8 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
                 </div>
 
                 <div className="px-5 py-3.5">
-                  {task.taskType === "multi_task" && task.subtaskProgress ? (
-                    <>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Progresso</p>
-                      <SubtaskProgressBar
-                        total={task.subtaskProgress.total}
-                        completed={task.subtaskProgress.completed}
-                        percentage={task.subtaskProgress.percentage}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Atualizado</p>
-                      <span className="text-sm font-medium text-[hsl(var(--muted-foreground))]">{fmtDate(task.updatedAt)}</span>
-                    </>
-                  )}
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-1.5">Atualizado</p>
+                  <span className="text-sm font-medium text-[hsl(var(--muted-foreground))]">{fmtDate(task.updatedAt)}</span>
                 </div>
               </div>
 
@@ -222,41 +187,6 @@ export function TaskModal({ taskId, onClose, onOpenTask }: Props) {
                   <p className="text-sm text-[hsl(var(--muted-foreground))]/30 italic">Sem descrição.</p>
                 )}
               </div>
-
-              {/* SUBTAREFAS */}
-              {task.taskType === "multi_task" && task.subtasks && task.subtasks.length > 0 && (
-                <div className="px-5 py-4 border-b border-[hsl(var(--border))]">
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/40 mb-3">
-                    Subtarefas · {task.subtasks.length}
-                  </p>
-                  <div className="space-y-1">
-                    {task.subtasks.map(sub => (
-                      <button
-                        key={sub.id}
-                        type="button"
-                        onClick={() => onOpenTask?.(sub.id)}
-                        className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/50 hover:border-[hsl(var(--primary))]/30 transition-all group"
-                      >
-                        <div
-                          className="h-2 w-2 rounded-full shrink-0"
-                          style={{ backgroundColor: sub.status === "completed" ? "#22c55e" : sub.status === "in_progress" ? "#3b82f6" : sub.status === "cancelled" ? "#ef4444" : "#a1a1aa" }}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate group-hover:text-[hsl(var(--primary))] transition-colors">{sub.title}</p>
-                          <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50 mt-0.5">
-                            {STATUS_LABEL[sub.status] ?? sub.status}
-                            {sub.assignedTo && ` · ${sub.assignedTo.name.split(" ")[0]}`}
-                          </p>
-                        </div>
-                        {sub.assignedTo && (
-                          <AvatarDisplay name={sub.assignedTo.name} avatarUrl={sub.assignedTo.avatarUrl} style={{ width: 22, height: 22, fontSize: 8, flexShrink: 0 }} />
-                        )}
-                        <ChevronRight className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]/25 group-hover:text-[hsl(var(--primary))] shrink-0 transition-colors" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* PASTA */}
               <div className="px-5 py-4 border-b border-[hsl(var(--border))]">

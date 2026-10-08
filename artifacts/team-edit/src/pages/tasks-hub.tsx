@@ -35,13 +35,12 @@ export default function TasksHub() {
   const [draftCount, setDraftCount] = useState(0);
   const loadDraftCount = useCallback(() => {
     if (!showDraft) return;
-    apiFetch<{ id: number; status: string; coordinator?: { id: number } | null; taskType?: string }[]>(
+    apiFetch<{ id: number; status: string; coordinator?: { id: number } | null }[]>(
       "/api/tasks/overview?status=rascunho"
     )
       .then(tasks => {
         const filtered = tasks.filter(t => {
           if (t.status !== "rascunho") return false;
-          if (t.taskType === "subtask") return false;
           if (!isSuper && user?.role === "coordinator" && t.coordinator?.id !== user?.id) return false;
           return true;
         });
