@@ -1,5 +1,5 @@
 import { db, notificationsTable, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { broadcastNotification } from "./broadcast.js";
 import { sendPushToUser } from "./webpush.js";
 
@@ -22,6 +22,10 @@ export async function notify(
   message: string,
   refs?: { taskId?: number; jobId?: number }
 ) {
+  // Usuários inativos saíram da equipe: não recebem notificação nem push.
+  const [target] = await db.select({ status: usersTable.status }).from(usersTable).where(eq(usersTable.id, userId));
+  if (!target || target.status !== "active") return;
+
   const [row] = await db.insert(notificationsTable).values({
     userId,
     type,
@@ -47,6 +51,6 @@ export async function notifyAdmins(
   const admins = await db
     .select({ id: usersTable.id })
     .from(usersTable)
-    .where(eq(usersTable.role, "admin"));
+    .where(and(eq(usersTable.role, "admin"), eq(usersTable.status, "active")));
   await Promise.all(admins.map(a => notify(a.id, type, title, message, refs)));
 }

@@ -11,6 +11,8 @@ import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { FolderOpen, ListTodo, ArrowRight, Activity, Users, Clock, AlertTriangle, CheckCircle2, CalendarClock, Zap, Search, LayoutGrid, MoreHorizontal, Shield } from "lucide-react";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
+import { AbsenceBadge } from "@/components/ui/absence-badge";
+import type { Absence } from "@/lib/availability";
 import { StatusBars } from "@/components/charts/StatusBars";
 import { WaffleChart } from "@/components/charts/WaffleChart";
 import { useSize } from "@/hooks/use-size";
@@ -52,6 +54,7 @@ interface EditorWorkload {
   name: string;
   login: string;
   avatarUrl: string | null;
+  absence?: Absence | null;
   taskCount: number;
   scheduledCount?: number;
   score: number;
@@ -325,6 +328,7 @@ function CapacityCard({ workload, menu }: { workload: EditorWorkload[]; menu?: R
                 <span className="text-[10px] font-semibold truncate shrink-0">
                   {e.name.split(" ")[0]}
                 </span>
+                <AbsenceBadge absence={e.absence} short />
                 {/* Breakdown B · M · A */}
                 <span className="text-[9px] tabular-nums ml-auto shrink-0 text-[hsl(var(--muted-foreground))]/70 leading-none">
                   {low > 0 && <span>B:{low} </span>}
@@ -940,7 +944,7 @@ function WorkloadCard({ workload }: { workload: EditorWorkload[] }) {
               >
                 <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={32} style={{ borderColor: color, borderWidth: 2 }} className="shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold truncate">{firstName}</p>
+                  <p className="text-xs font-semibold truncate flex items-center gap-1.5">{firstName}<AbsenceBadge absence={editor.absence} /></p>
                   <p className="text-[10px] text-[hsl(var(--muted-foreground))]">
                     {editor.taskCount === 0 ? "disponível" : `${editor.taskCount} ativa${editor.taskCount !== 1 ? "s" : ""}`}
                     {(editor.scheduledCount ?? 0) > 0 && (

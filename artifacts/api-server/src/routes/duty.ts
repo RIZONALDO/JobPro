@@ -2,6 +2,13 @@ import { Router } from "express";
 import { db, dutySchedulesTable, usersTable } from "@workspace/db";
 import { eq, and, gte, lte, inArray, count, isNull } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
+import { findInactive, getAbsencesInRange, absenceWarning, type AbsenceInfo } from "../lib/availability.js";
+
+/** Ausência do editor naquela data (para sinalizar na escala). */
+function absenceOn(list: AbsenceInfo[], editorId: number, dateStr: string): string | null {
+  const a = list.find(x => x.userId === editorId && x.startDate <= dateStr && x.endDate >= dateStr);
+  return a ? a.label : null;
+}
 
 const router = Router();
 
@@ -48,10 +55,13 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
       editorId: usersTable.id,
       editorName: usersTable.name,
       editorAvatarUrl: usersTable.avatarUrl,
+      editorStatus: usersTable.status,
     })
     .from(dutySchedulesTable)
     .leftJoin(usersTable, eq(dutySchedulesTable.editorId, usersTable.id))
     .where(and(gte(dutySchedulesTable.weekendStart, lastSatStr), lte(dutySchedulesTable.weekendStart, untilStr)));
+
+  const upAbsences = await getAbsencesInRange(lastSatStr, untilStr);
 
   const sunOf = (satStr: string) => {
     const d = new Date(satStr + "T12:00:00");
@@ -62,7 +72,10 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
   const editorsByDate = (dateStr: string) =>
     rows
       .filter(r => r.weekendStart === dateStr && r.editorId)
-      .map(r => ({ id: r.editorId!, name: r.editorName!, avatarUrl: r.editorAvatarUrl ?? null, slotType: r.slotType }));
+      .map(r => ({
+        id: r.editorId!, name: r.editorName!, avatarUrl: r.editorAvatarUrl ?? null, slotType: r.slotType,
+        inactive: r.editorStatus !== "active", absence: absenceOn(upAbsences, r.editorId!, dateStr),
+      }));
 
   const group = (satStr: string) => ({
     weekendStart: satStr,
@@ -71,7 +84,7 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
   });
 
   // Weekday-only entries (holidays / special days) — exclude all Sat & Sun
-  const holidayByDate = new Map<string, { dutyDate: string; notes: string | null; editors: { id: number; name: string; avatarUrl: string | null }[] }>();
+  const holidayByDate = new Map<string, { dutyDate: string; notes: string | null; editors: { id: number; name: string; avatarUrl: string | null; inactive: boolean; absence: string | null }[] }>();
   for (const row of rows) {
     const dow = new Date(row.weekendStart + "T12:00:00").getDay();
     if (dow !== 6 && dow !== 0 && row.weekendStart >= lastSatStr) {
@@ -81,6 +94,7 @@ router.get("/duty/upcoming", requireAuth, async (_req, res): Promise<void> => {
       if (row.editorId) {
         holidayByDate.get(row.weekendStart)!.editors.push({
           id: row.editorId!, name: row.editorName!, avatarUrl: row.editorAvatarUrl ?? null,
+          inactive: row.editorStatus !== "active", absence: absenceOn(upAbsences, row.editorId!, row.weekendStart),
         });
       }
     }
@@ -123,15 +137,18 @@ router.get("/duty", requireAuth, async (req, res): Promise<void> => {
       editorId: usersTable.id,
       editorName: usersTable.name,
       editorAvatarUrl: usersTable.avatarUrl,
+      editorStatus: usersTable.status,
     })
     .from(dutySchedulesTable)
     .leftJoin(usersTable, eq(dutySchedulesTable.editorId, usersTable.id))
     .where(and(gte(dutySchedulesTable.weekendStart, start), lte(dutySchedulesTable.weekendStart, end)))
     .orderBy(dutySchedulesTable.weekendStart);
 
+  const monthAbsences = await getAbsencesInRange(start, end);
+
   const byDate = new Map<string, {
     weekendStart: string;
-    editors: { id: number; name: string; avatarUrl: string | null; scheduleId: number; slotType: string }[];
+    editors: { id: number; name: string; avatarUrl: string | null; scheduleId: number; slotType: string; inactive: boolean; absence: string | null }[];
     notes: string | null;
   }>();
 
@@ -148,6 +165,8 @@ router.get("/duty", requireAuth, async (req, res): Promise<void> => {
         avatarUrl: row.editorAvatarUrl ?? null,
         scheduleId: row.id,
         slotType: row.slotType,
+        inactive: row.editorStatus !== "active",
+        absence: absenceOn(monthAbsences, row.editorId, row.weekendStart),
       });
     }
   }
@@ -173,6 +192,11 @@ router.post("/duty/sorteio", requireAuth, async (req, res): Promise<void> => {
 
   if (isNaN(idA) || isNaN(idB) || idA <= 0 || idB <= 0 || idA === idB) {
     res.status(400).json({ error: "Informe 2 editores distintos e válidos" }); return;
+  }
+
+  const inactiveSorteio = await findInactive([idA, idB]);
+  if (inactiveSorteio.length > 0) {
+    res.status(400).json({ error: `${inactiveSorteio.map(u => u.name).join(", ")} inativo(s) — escolha editores ativos` }); return;
   }
 
   const saturdays = getAllSaturdaysInYear(parsedYear);
@@ -237,6 +261,11 @@ router.post("/duty", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  const inactiveDuty = await findInactive([parsedId]);
+  if (inactiveDuty.length > 0) {
+    res.status(400).json({ error: `${inactiveDuty[0]!.name} está inativo e não pode ser escalado` }); return;
+  }
+
   const dow    = new Date(dateStr + "T12:00:00").getDay();
   const isWknd = dow === 6 || dow === 0;
 
@@ -259,7 +288,15 @@ router.post("/duty", requireAuth, async (req, res): Promise<void> => {
     createdById: req.session.userId,
   }).onConflictDoNothing().returning();
 
-  res.json(row ?? null);
+  // Aviso (não bloqueante) se o editor estiver de férias/afastado nessa data
+  let warning: string | null = null;
+  const [abs] = await getAbsencesInRange(dateStr, dateStr, [parsedId]);
+  if (abs) {
+    const [ed] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, parsedId));
+    warning = absenceWarning(ed?.name ?? "Editor", abs);
+  }
+
+  res.json(row ? { ...row, warning } : null);
 });
 
 // PATCH /api/duty/event-name — rename or clear the event label on a date (admin/supervisor)

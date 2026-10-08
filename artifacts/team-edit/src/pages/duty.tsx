@@ -11,10 +11,21 @@ import { AvatarDisplay } from "@/components/ui/avatar-display";
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Editor { id: number; name: string; avatarUrl: string | null; login: string; }
-interface ScheduleEditor { id: number; name: string; avatarUrl: string | null; scheduleId: number; slotType: string; }
+interface ScheduleEditor { id: number; name: string; avatarUrl: string | null; scheduleId: number; slotType: string; inactive?: boolean; absence?: string | null; }
 interface WeekendSlot { weekendStart: string; editors: ScheduleEditor[]; notes: string | null; }
 
-interface UpcomingEditor { id: number; name: string; avatarUrl: string | null; }
+interface UpcomingEditor { id: number; name: string; avatarUrl: string | null; inactive?: boolean; absence?: string | null; }
+
+/** Marca na escala: editor inativo (precisa trocar) ou ausente (férias/afastamento) na data. */
+function DutyFlag({ ed }: { ed: { inactive?: boolean; absence?: string | null } }) {
+  if (ed.inactive) {
+    return <span title="Editor inativo — substitua neste plantão" className="ml-1 inline-flex items-center rounded px-1 py-px text-[8px] font-bold uppercase leading-none bg-slate-500/15 text-slate-600 dark:text-slate-300">inativo</span>;
+  }
+  if (ed.absence) {
+    return <span title={`${ed.absence} nesta data`} className="ml-1 inline-flex items-center rounded px-1 py-px text-[8px] font-bold uppercase leading-none bg-amber-500/15 text-amber-700 dark:text-amber-400">{ed.absence}</span>;
+  }
+  return null;
+}
 interface UpcomingWeekend { weekendStart: string; satEditors: UpcomingEditor[]; sunEditors: UpcomingEditor[]; }
 interface HolidayEntry { dutyDate: string; notes: string | null; editors: UpcomingEditor[]; }
 interface UpcomingData {
@@ -144,7 +155,7 @@ function WeekendCard({ variant, weekend, currentUserId }: {
                 </div>
                 <div>
                   <p className={`font-semibold leading-tight ${c ? "text-sm" : "text-[11px]"}`}>
-                    {ed.name.split(" ")[0]}
+                    {ed.name.split(" ")[0]}<DutyFlag ed={ed} />
                   </p>
                   {ed.id === currentUserId && (
                     <p className={`font-bold text-[hsl(var(--primary))] ${c ? "text-[10px]" : "text-[9px]"}`}>
@@ -175,7 +186,7 @@ function WeekendCard({ variant, weekend, currentUserId }: {
                     <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={c ? 26 : 20} />
                     <div>
                       <p className={`font-semibold leading-none ${c ? "text-[11px]" : "text-[10px]"}`}>
-                        {ed.name.split(" ")[0]}
+                        {ed.name.split(" ")[0]}<DutyFlag ed={ed} />
                       </p>
                       {ed.id === currentUserId && (
                         <p className={`font-bold text-[hsl(var(--primary))] ${c ? "text-[10px]" : "text-[9px]"}`}>
@@ -359,12 +370,13 @@ export default function DutyPage() {
     if (!holidayDate || !holidayEditorId) { toast.error("Selecione a data e o editor"); return; }
     setAddingHoliday(true);
     try {
-      await apiPost("/api/duty", { weekendStart: holidayDate, editorId: parseInt(holidayEditorId, 10), notes: holidayName || null });
+      const row = await apiPost<{ warning?: string | null } | null>("/api/duty", { weekendStart: holidayDate, editorId: parseInt(holidayEditorId, 10), notes: holidayName || null });
       toast.success("Feriado adicionado");
+      if (row?.warning) toast.warning(`${row.warning} — escalado mesmo assim`, { duration: 7000 });
       setHolidayDate(""); setHolidayName(""); setHolidayEditorId("");
       loadSchedule(true);
-    } catch {
-      toast.error("Erro ao adicionar feriado");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao adicionar feriado");
     } finally {
       setAddingHoliday(false);
     }
@@ -406,8 +418,9 @@ export default function DutyPage() {
     });
 
     try {
-      const row = await apiPost<{ id: number; slotType: string } | null>("/api/duty", { weekendStart: iso, editorId, slotType, notes });
+      const row = await apiPost<{ id: number; slotType: string; warning?: string | null } | null>("/api/duty", { weekendStart: iso, editorId, slotType, notes });
       if (!row) { loadSchedule(true); return; }
+      if (row.warning) { toast.warning(`${row.warning} — escalado mesmo assim`, { duration: 7000 }); loadSchedule(true); }
       setSchedule(s => s.map(slot => ({
         ...slot,
         editors: slot.editors.map(e => e.scheduleId === TEMP_ID ? { ...e, scheduleId: row.id } : e),
@@ -736,7 +749,7 @@ export default function DutyPage() {
                           ) : hEditors.map(ed => (
                             <div key={ed.id} className="flex items-center gap-1.5">
                               <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={22} />
-                              <span className="text-sm font-medium">{ed.name.split(" ")[0]}</span>
+                              <span className="text-sm font-medium">{ed.name.split(" ")[0]}<DutyFlag ed={ed} /></span>
                             </div>
                           ))}
                         </div>
@@ -1488,7 +1501,7 @@ export default function DutyPage() {
                           ) : hEditors.map(ed => (
                             <div key={ed.id} className="flex items-center gap-1.5">
                               <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={22} />
-                              <span className="text-sm font-medium">{ed.name.split(" ")[0]}</span>
+                              <span className="text-sm font-medium">{ed.name.split(" ")[0]}<DutyFlag ed={ed} /></span>
                             </div>
                           ))}
                         </div>
@@ -1810,7 +1823,7 @@ export default function DutyPage() {
                           <div key={ed.scheduleId} className="flex items-center gap-1.5 group">
                             <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={24} />
                             <span className="text-[11px] font-semibold leading-none truncate flex-1">
-                              {ed.name.split(" ")[0]}
+                              {ed.name.split(" ")[0]}<DutyFlag ed={ed} />
                             </span>
                             <span className={`shrink-0 text-[8px] font-bold leading-none px-1 py-0.5 rounded group-hover:hidden ${
                               ed.slotType === "normal"

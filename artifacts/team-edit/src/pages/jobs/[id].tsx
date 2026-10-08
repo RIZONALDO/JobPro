@@ -126,7 +126,7 @@ export default function JobDetail() {
   useEffect(() => {
     load();
     if (user?.role !== "editor") {
-      apiFetch<Editor[]>("/api/users").then(u => setEditors(u.filter((x: Editor & { role?: string }) => (x as any).role === "editor")));
+      apiFetch<Editor[]>("/api/users?active=1").then(u => setEditors(u.filter((x: Editor & { role?: string }) => (x as any).role === "editor")));
       apiFetch<EditorWorkload[]>("/api/workload").then(setWorkload).catch(() => {});
     }
   }, [params.id, user?.role, load]);

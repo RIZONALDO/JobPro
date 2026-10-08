@@ -18,10 +18,12 @@ import {
   Layers, FileText, Plus, Users, Calendar, Tag, Link2, Send, Save, SquarePen, CalendarDays, Clock,
 } from "lucide-react";
 import { EditorAvailabilityModal } from "@/components/editor-availability-modal";
+import { AbsenceBadge, InactiveBadge } from "@/components/ui/absence-badge";
+import { isActiveUser, type Absence } from "@/lib/availability";
 
-interface Editor { id: number; name: string; login: string; role: string; avatarUrl?: string | null; }
+interface Editor { id: number; name: string; login: string; role: string; status?: string; avatarUrl?: string | null; absence?: Absence | null; }
 interface EditorWorkload {
-  id: number; score: number; taskCount: number;
+  id: number; score: number; taskCount: number; absence?: Absence | null;
   scheduledCount?: number; scheduledScore?: number; projectedScore?: number;
   byComplexity: { low: number; medium: number; high: number };
 }
@@ -88,7 +90,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   const [isMultiTask, setIsMultiTask] = useState(false);
   const [subtasks, setSubtasks]       = useState<SubtaskRow[]>([newSubtaskRow(), newSubtaskRow()]);
   const [availModalEditorId, setAvailModalEditorId] = useState<number | null>(null);
-  const [periodCheck,   setPeriodCheck]   = useState<{ blocked: boolean; conflictDays: string[]; maxScore: number } | null>(null);
+  const [periodCheck,   setPeriodCheck]   = useState<{ blocked: boolean; conflictDays: string[]; maxScore: number; absenceMessage?: string | null } | null>(null);
   const [checkingPeriod, setCheckingPeriod] = useState(false);
   // Valores originais carregados no edit — usados para detectar se algo mudou
   const [origStart,     setOrigStart]     = useState("");
@@ -122,7 +124,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
     const timer = setTimeout(() => {
       const params = new URLSearchParams({ editorId: String(primaryId), startDate, endDate, complexity: form.complexity });
       if (editMode && editTaskId) params.set("excludeTaskId", String(editTaskId));
-      apiFetch<{ blocked: boolean; conflictDays: string[]; maxScore: number }>(
+      apiFetch<{ blocked: boolean; conflictDays: string[]; maxScore: number; absenceMessage?: string | null }>(
         `/api/workload/period-check?${params}`
       ).then(r => { setPeriodCheck(r); setCheckingPeriod(false); })
        .catch(() => { setPeriodCheck(null); setCheckingPeriod(false); });
@@ -341,7 +343,9 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
   };
 
   const f = (patch: Partial<typeof EMPTY_FORM>) => setForm(prev => ({ ...prev, ...patch }));
-  const availableEditors = editors.filter(e => !selectedEditorIds.includes(e.id));
+  // Inativos ficam fora das opções; continuam visíveis se já estavam atribuídos (edição).
+  const availableEditors = editors.filter(e => isActiveUser(e) && !selectedEditorIds.includes(e.id));
+  const subtaskEditorsFor = (row: SubtaskRow) => editors.filter(e => isActiveUser(e) || String(e.id) === row.editorId);
   const updateSubtask = (id: string, patch: Partial<SubtaskRow>) =>
     setSubtasks(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
   const removeSubtask = (id: string) => setSubtasks(prev => prev.filter(s => s.id !== id));
@@ -465,7 +469,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       {subtasks.map((row, i) => (
                         <div key={row.id} className="px-3 py-2.5 bg-[hsl(var(--muted))]/10 hover:bg-[hsl(var(--muted))]/20 transition-colors">
                           <SubtaskFormRow
-                            row={row} index={i} editors={editors} workload={workload}
+                            row={row} index={i} editors={subtaskEditorsFor(row)} workload={workload}
                             onChange={patch => updateSubtask(row.id, patch)}
                             onRemove={() => removeSubtask(row.id)}
                           />
@@ -489,7 +493,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                       {subtasks.map((row, i) => (
                         <div key={row.id} className="px-3 py-2.5 bg-[hsl(var(--muted))]/10">
                           <SubtaskFormRow
-                            row={row} index={i} editors={editors} workload={workload}
+                            row={row} index={i} editors={subtaskEditorsFor(row)} workload={workload}
                             onChange={patch => updateSubtask(row.id, patch)}
                             onRemove={() => removeSubtask(row.id)}
                           />
@@ -522,7 +526,11 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                             <div key={id} className="flex items-center gap-2.5 px-3 py-2 bg-[hsl(var(--muted))]/10 hover:bg-[hsl(var(--muted))]/20 transition-colors">
                               <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={28} className="shrink-0" />
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium truncate">{editor.name}</p>
+                                <p className="text-sm font-medium truncate flex items-center gap-1.5">
+                                  {editor.name}
+                                  {!isActiveUser(editor) && <InactiveBadge />}
+                                  {isActiveUser(editor) && <AbsenceBadge absence={wl?.absence ?? editor.absence} />}
+                                </p>
                                 {idx === 0 && <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60">Principal</p>}
                               </div>
                               <div className="flex flex-col items-end shrink-0 gap-0.5">
@@ -564,6 +572,7 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                               <span className="flex items-center gap-2">
                                 {e.name}
                                 <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>{label}</span>
+                                <AbsenceBadge absence={wl?.absence ?? e.absence} />
                               </span>
                             </SelectItem>
                           );
@@ -604,6 +613,32 @@ export function TaskFormModal({ open, onOpenChange, onSaved, editTaskId, initial
                         </div>
                       </div>
                     )}
+                    {/* Ausência (férias/afastamento) — aviso, não bloqueia */}
+                    {(() => {
+                      if (isMultiTask) return null;
+                      // Com período definido, vale só o resultado do period-check; sem período, a ausência de hoje
+                      const msg = periodCheck
+                        ? (periodCheck.absenceMessage ?? null)
+                        : (() => {
+                          // Sem período definido: usa a ausência de hoje (ou da data de início)
+                          const away = selectedEditorIds
+                            .map(id => ({ ed: editors.find(e => e.id === id), wl: activeWorkload.find(w => w.id === id) }))
+                            .filter(x => x.ed && isActiveUser(x.ed) && (x.wl?.absence ?? x.ed.absence));
+                          return away.length
+                            ? away.map(x => `${x.ed!.name}: ${(x.wl?.absence ?? x.ed!.absence)!.label.toLowerCase()} até ${(x.wl?.absence ?? x.ed!.absence)!.endDate.split("-").reverse().slice(0, 2).join("/")}`).join("; ")
+                            : null;
+                        })();
+                      if (!msg) return null;
+                      return (
+                        <div className="flex items-start gap-2 rounded-xl border px-3 py-2 bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900">
+                          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+                          <div>
+                            <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Editor ausente no período</p>
+                            <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">{msg}. Você ainda pode atribuir.</p>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {!isMultiTask && checkingPeriod && selectedEditorIds.length > 0 && (
                       <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 animate-pulse">Verificando disponibilidade no período...</p>
                     )}

@@ -6,10 +6,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
-import { UserPlus, UserMinus, RefreshCw, X } from "lucide-react";
+import { UserPlus, UserMinus, RefreshCw, X, AlertTriangle } from "lucide-react";
+import { AbsenceBadge } from "@/components/ui/absence-badge";
+import { absenceShort, type Absence } from "@/lib/availability";
 
-interface Editor { id: number; name: string; avatarUrl?: string | null; login?: string; }
-interface EditorWorkload { id: number; score: number; taskCount: number; }
+interface Editor { id: number; name: string; avatarUrl?: string | null; login?: string; absence?: Absence | null; }
+interface EditorWorkload { id: number; score: number; taskCount: number; absence?: Absence | null; }
 
 interface Props {
   open: boolean;
@@ -45,7 +47,7 @@ export function ReassignEditorModal({ open, onOpenChange, onSaved, taskId, taskT
   useEffect(() => {
     if (!open) return;
     setSelectedId("");
-    apiFetch<Editor[]>("/api/users").then(u => setEditors(u.filter(x => (x as any).role === "editor"))).catch(() => {});
+    apiFetch<Editor[]>("/api/users?active=1").then(u => setEditors(u.filter(x => (x as any).role === "editor"))).catch(() => {});
     apiFetch<EditorWorkload[]>("/api/workload").then(setWorkload).catch(() => {});
     apiFetch<Editor[]>(`/api/tasks/${taskId}/editors`).then(setTaskEditors).catch(() => {});
   }, [open, taskId]);
@@ -164,6 +166,7 @@ export function ReassignEditorModal({ open, onOpenChange, onSaved, taskId, taskT
                       <span className="flex items-center gap-2">
                         {e.name}
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>{label}</span>
+                        <AbsenceBadge absence={wl?.absence ?? e.absence} />
                       </span>
                     </SelectItem>
                   );
@@ -175,6 +178,17 @@ export function ReassignEditorModal({ open, onOpenChange, onSaved, taskId, taskT
                 )}
               </SelectContent>
             </Select>
+            {(() => {
+              const sel = editors.find(e => String(e.id) === selectedId);
+              const abs = sel ? (workload.find(w => w.id === sel.id)?.absence ?? sel.absence) : null;
+              if (!sel || !abs) return null;
+              return (
+                <div className="flex items-start gap-2 rounded-lg border px-3 py-2 bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+                  <p className="text-xs text-amber-800 dark:text-amber-300">{sel.name}: {absenceShort(abs).toLowerCase()}. Você ainda pode atribuir.</p>
+                </div>
+              );
+            })()}
           </div>
         </div>
 

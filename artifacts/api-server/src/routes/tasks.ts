@@ -5,6 +5,16 @@ import { requireAuth, requireCoordinator } from "../lib/auth.js";
 import { notify } from "../lib/notify.js";
 import { broadcastTaskChange, broadcastSubtaskProgress, broadcastSubtaskChanged } from "../lib/broadcast.js";
 import { createFeedItem } from "../lib/feed.js";
+import { findInactive, getAbsenceMapOn, getAbsencesInRange, absenceWarning, todayStr as availabilityToday } from "../lib/availability.js";
+
+/** Responde 400 se algum dos ids for de usuário inativo. Retorna true se bloqueou. */
+async function rejectInactive(res: import("express").Response, ids: (number | null | undefined)[]): Promise<boolean> {
+  const inactive = await findInactive(ids.filter((n): n is number => typeof n === "number"));
+  if (inactive.length === 0) return false;
+  const names = inactive.map(u => u.name).join(", ");
+  res.status(400).json({ error: `${names} ${inactive.length > 1 ? "estão inativos" : "está inativo"} e não pode receber tarefas` });
+  return true;
+}
 
 const router = Router();
 
@@ -155,6 +165,15 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
     if (incomingSubtasks.length === 0) {
       res.status(400).json({ error: "Adicione ao menos uma subtarefa antes de publicar a multi-tarefa" }); return;
     }
+  }
+
+  // Usuários inativos não podem receber tarefas
+  {
+    const ids: number[] = [];
+    if (parsedAssignee) ids.push(parsedAssignee);
+    if (Array.isArray(editorIds)) ids.push(...editorIds.map(Number));
+    if (Array.isArray(subtasks)) ids.push(...subtasks.map((st: any) => Number(st?.editorId)));
+    if (await rejectInactive(res, ids)) return;
   }
 
   // ── Bloqueio server-side de capacidade (fecha race condition) ─────────────
@@ -626,6 +645,12 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   const { title, description, startDate, dueDate, priority, complexity, assignedToId, folderUrl, status, revisionComment, startComment, client, color } = req.body ?? {};
   const update: Record<string, unknown> = {};
   let eventComment: string | undefined;
+
+  // Trocar o responsável por um usuário inativo não é permitido (manter o atual, mesmo inativo, é).
+  if (assignedToId) {
+    const nextAssignee = parseInt(String(assignedToId), 10);
+    if (nextAssignee !== task.assignedToId && await rejectInactive(res, [nextAssignee])) return;
+  }
 
   if (role === "editor") {
     const [editorEntry] = await db.select({ taskId: taskEditorsTable.taskId })
@@ -1219,6 +1244,7 @@ router.post("/tasks/:id/subtasks", requireCoordinator, async (req, res): Promise
 
   const { title, description, dueDate, priority, complexity, editorId } = req.body ?? {};
   if (!title) { res.status(400).json({ error: "Título obrigatório" }); return; }
+  if (editorId && await rejectInactive(res, [parseInt(String(editorId), 10)])) return;
 
   const subAssigneeId = editorId ? parseInt(String(editorId), 10) : null;
 
@@ -1689,9 +1715,10 @@ async function editorScore(editorId: number, excludeTaskId?: number, fromDate?: 
 }
 
 router.get("/workload", requireCoordinator, async (req, res): Promise<void> => {
+  // Só editores ativos compõem o time. Inativos ficam fora da carga e dos seletores.
   const editors = await db
     .select({ id: usersTable.id, name: usersTable.name, login: usersTable.login, avatarUrl: usersTable.avatarUrl })
-    .from(usersTable).where(eq(usersTable.role, "editor"));
+    .from(usersTable).where(and(eq(usersTable.role, "editor"), eq(usersTable.status, "active")));
 
   const todayStr = new Date().toISOString().split("T")[0];
 
@@ -1721,6 +1748,9 @@ router.get("/workload", requireCoordinator, async (req, res): Promise<void> => {
     ));
 
   const todayEnd = new Date(todayStr + "T23:59:59Z");
+
+  // Ausência (férias/afastamento) que cobre a data projetada — só sinaliza, não bloqueia.
+  const absenceMap = await getAbsenceMapOn(projDateStr, editors.map(e => e.id));
 
   const result = editors.map(editor => {
     const all = open.filter(t => t.assignedToId === editor.id);
@@ -1755,6 +1785,7 @@ router.get("/workload", requireCoordinator, async (req, res): Promise<void> => {
 
     return {
       id: editor.id, name: editor.name, login: editor.login, avatarUrl: editor.avatarUrl ?? null,
+      absence: absenceMap.get(editor.id) ?? null,
       taskCount: current.length,
       scheduledCount: scheduled.length,
       score,
@@ -1808,7 +1839,8 @@ router.get("/workload/calendar", requireCoordinator, async (req, res): Promise<v
   // Generate per-day data for the month
   const [year, month] = monthStr.split("-").map(Number);
   const daysInMonth = new Date(year, month, 0).getDate();
-  const days: { date: string; score: number; count: number }[] = [];
+  const days: { date: string; score: number; count: number; absence: string | null }[] = [];
+  const monthAbsences = await getAbsencesInRange(`${monthStr}-01`, `${monthStr}-${String(daysInMonth).padStart(2, "0")}`, [editorId]);
 
   for (let d = 1; d <= daysInMonth; d++) {
     const dayStr = `${monthStr}-${String(d).padStart(2, "0")}`;
@@ -1825,7 +1857,8 @@ router.get("/workload/calendar", requireCoordinator, async (req, res): Promise<v
     });
 
     const score = active.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
-    days.push({ date: dayStr, score, count: active.length });
+    const abs = monthAbsences.find(a => a.startDate <= dayStr && a.endDate >= dayStr);
+    days.push({ date: dayStr, score, count: active.length, absence: abs ? abs.label : null });
   }
 
   res.json(days);
@@ -1880,14 +1913,22 @@ router.get("/workload/period-check", requireCoordinator, async (req, res): Promi
     if (projected > 12) conflictDays.push(d.toISOString().slice(0, 10));
   }
 
-  res.json({ blocked: conflictDays.length > 0, conflictDays, maxScore });
+  // Ausências no período: aviso, não bloqueio
+  const absences = await getAbsencesInRange(startDate, endDate, [editorId]);
+  let absenceMessage: string | null = null;
+  if (absences.length > 0) {
+    const [ed] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, editorId));
+    absenceMessage = absences.map(a => absenceWarning(ed?.name ?? "Editor", a)).join("; ");
+  }
+
+  res.json({ blocked: conflictDays.length > 0, conflictDays, maxScore, absences, absenceMessage });
 });
 
 // ── Nível 2: agenda geral de todos os editores ────────────────────────────────
 // GET /api/agenda
 router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
-  const editors = await db
-    .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+  const allEditors = await db
+    .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, status: usersTable.status })
     .from(usersTable).where(eq(usersTable.role, "editor"));
 
   const tasks = await db
@@ -1924,8 +1965,20 @@ router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
     creators.forEach(c => creatorMap.set(c.id, c));
   }
 
+  // Inativos só aparecem se ainda tiverem tarefa aberta (para que nada "suma" sem ser reatribuído).
+  const assignedIds = new Set(tasks.map(t => t.assignedToId));
+  const editors = allEditors.filter(e => e.status === "active" || assignedIds.has(e.id));
+
+  // Ausências de 30 dias atrás até 1 ano à frente
+  const today = availabilityToday();
+  const fromAbs = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const toAbs   = new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10);
+  const absences = await getAbsencesInRange(fromAbs, toAbs, editors.map(e => e.id));
+
   const result = editors.map(editor => ({
-    editor,
+    editor: { ...editor, inactive: editor.status !== "active" },
+    absences: absences.filter(a => a.userId === editor.id),
+    currentAbsence: absences.find(a => a.userId === editor.id && a.startDate <= today && a.endDate >= today) ?? null,
     tasks: tasks
       .filter(t => t.assignedToId === editor.id)
       .map(t => ({
@@ -2393,6 +2446,7 @@ router.post("/tasks/:id/editors", requireCoordinator, async (req, res): Promise<
 
   const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
   if (!task) { res.status(404).json({ error: "Tarefa não encontrada" }); return; }
+  if (await rejectInactive(res, [editorId])) return;
 
   await db.insert(taskEditorsTable).values({
     taskId: id, userId: editorId, assignedById: req.session.userId,
@@ -2443,6 +2497,7 @@ router.post("/tasks/:id/reassign", requireCoordinator, async (req, res): Promise
 
   const [newEditorUser] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, newEditorId));
   if (!newEditorUser) { res.status(404).json({ error: "Editor não encontrado" }); return; }
+  if (await rejectInactive(res, [newEditorId])) return;
 
   const oldEditorId = task.assignedToId;
 

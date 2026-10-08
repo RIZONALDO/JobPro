@@ -166,7 +166,7 @@ export function ProjectModal({ projectId: initialId, projectIds = [], initialJob
   useEffect(() => { if (selectedJobId) loadJob(); }, [selectedJobId, loadJob]);
   useEffect(() => {
     if (!isCoord) return;
-    apiFetch<(Editor & { role?: string })[]>("/api/users")
+    apiFetch<(Editor & { role?: string })[]>("/api/users?active=1")
       .then(u => setEditors(u.filter(x => (x as any).role === "editor")));
     apiFetch<EditorWorkload[]>("/api/workload").then(setWorkload).catch(() => {});
   }, [isCoord]);

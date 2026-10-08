@@ -5,7 +5,9 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, ChevronDown, Lock, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Lock, Plus, Palmtree } from "lucide-react";
+import { AbsenceBadge, InactiveBadge } from "@/components/ui/absence-badge";
+import type { Absence } from "@/lib/availability";
 import { AnimatePresence, motion } from "framer-motion";
 import { TaskFormModal } from "@/components/task-form-modal";
 import { STATUS_LABEL, STATUS_CHIP } from "@/lib/status";
@@ -27,8 +29,17 @@ interface AgendaTask {
 }
 
 interface EditorRow {
-  editor: { id: number; name: string; avatarUrl: string | null };
+  editor: { id: number; name: string; avatarUrl: string | null; inactive?: boolean };
+  absences?: Absence[];
+  currentAbsence?: Absence | null;
   tasks: AgendaTask[];
+}
+
+/** Ausência que cobre o dia (comparação por string YYYY-MM-DD, sem fuso). */
+function absenceOnDay(absences: Absence[] | undefined, day: Date): Absence | null {
+  if (!absences?.length) return null;
+  const iso = toISO(day);
+  return absences.find(a => a.startDate <= iso && a.endDate >= iso) ?? null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -170,8 +181,12 @@ export default function AgendaGeral() {
     setDrag(d);
   }, []);
 
-  const moveDrag = useCallback((editorId: number, dayIdx: number) => {
+  // blockedDays: índices da semana em que o editor está ausente — a seleção não os atravessa
+  const moveDrag = useCallback((editorId: number, dayIdx: number, blockedDays: boolean[]) => {
     if (!dragRef.current || dragRef.current.editorId !== editorId) return;
+    const { start } = dragRef.current;
+    const step = dayIdx >= start ? 1 : -1;
+    for (let i = start + step; i !== dayIdx + step; i += step) if (blockedDays[i]) return;
     const d: DragState = { ...dragRef.current, end: dayIdx };
     dragRef.current = d;
     setDrag(d);
@@ -292,7 +307,7 @@ export default function AgendaGeral() {
           )}
 
           {/* Editor rows */}
-          {!loading && editorData.map(({ editor, tasks, scores, reviewCounts }) => {
+          {!loading && editorData.map(({ editor, tasks, scores, reviewCounts, absences, currentAbsence }) => {
             const isExpanded = expandedEditors.has(editor.id);
             const activeTasks = tasks.filter(t => !["completed","cancelled"].includes(t.status));
             return (
@@ -309,10 +324,15 @@ export default function AgendaGeral() {
                 >
                   <ChevronDown className={`h-3 w-3 text-[hsl(var(--muted-foreground))]/50 transition-transform duration-200 ${isExpanded ? "" : "-rotate-90"}`} />
                 </button>
-                <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={28} className="shrink-0" />
-                <span className="text-[12px] font-semibold truncate leading-snug">
-                  {editor.name.split(" ")[0]}
-                </span>
+                <AvatarDisplay name={editor.name} avatarUrl={editor.avatarUrl} size={28} className={`shrink-0 ${editor.inactive ? "grayscale opacity-60" : ""}`} />
+                <div className="min-w-0 flex flex-col gap-0.5">
+                  <span className={`text-[12px] font-semibold truncate leading-snug ${editor.inactive ? "text-[hsl(var(--muted-foreground))]" : ""}`}>
+                    {editor.name.split(" ")[0]}
+                  </span>
+                  {editor.inactive
+                    ? <InactiveBadge className="self-start" />
+                    : <AbsenceBadge absence={currentAbsence} short className="self-start" />}
+                </div>
                 {activeTasks.length > 0 && (
                   <span className="ml-auto shrink-0 text-[10px] font-bold text-[hsl(var(--muted-foreground))]/40">
                     {activeTasks.length}
@@ -328,16 +348,21 @@ export default function AgendaGeral() {
                 const isDragSelected = drag !== null && drag.editorId === editor.id &&
                   di >= Math.min(drag.start, drag.end) && di <= Math.max(drag.start, drag.end);
                 const isDraggingRow = drag !== null && drag.editorId === editor.id;
+                const absence = absenceOnDay(absences, weekDays[di]);
+                // Inativos e dias de ausência (férias/afastamento) não aceitam tarefa nova pela agenda
+                const canCreate = sc < 12 && !editor.inactive && !absence;
+                const blockedDays = weekDays.map(d => !!absenceOnDay(absences, d));
                 return (
                   <div
                     key={di}
                     className="p-[4px]"
                     style={isWkend ? { background: "hsl(var(--muted) / 0.07)" } : {}}
-                    onMouseDown={e => { if (sc < 12) startDrag(editor.id, di, e); }}
-                    onMouseEnter={() => moveDrag(editor.id, di)}
+                    onMouseDown={e => { if (canCreate) startDrag(editor.id, di, e); }}
+                    title={absence ? `${editor.name}: ${absence.label}` : editor.inactive ? `${editor.name} está inativo — reatribua as tarefas` : undefined}
+                    onMouseEnter={() => moveDrag(editor.id, di, blockedDays)}
                   >
                     <div
-                      className={`relative w-full select-none transition-all duration-200 ${sc < 12 && !drag ? "hover:scale-[1.03] hover:brightness-110" : ""}`}
+                      className={`relative w-full select-none transition-all duration-200 ${canCreate && !drag ? "hover:scale-[1.03] hover:brightness-110" : ""}`}
                       style={{
                         height: 72,
                         borderRadius: 7,
@@ -346,14 +371,28 @@ export default function AgendaGeral() {
                         boxShadow: isDragSelected ? "0 0 12px rgba(255,255,255,0.06)" : cfg.shadow,
                         cursor: isDraggingRow ? "col-resize" : "default",
                         transform: isDragSelected ? "scaleY(1.04)" : undefined,
+                        opacity: editor.inactive ? 0.55 : undefined,
                       }}
                     >
-                      {sc >= 12 && !isDragSelected && (
+                      {absence && !isDragSelected && (
+                        <div
+                          className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 pointer-events-none"
+                          style={{
+                            borderRadius: 7,
+                            background: "repeating-linear-gradient(135deg, rgba(245,158,11,0.16) 0 6px, rgba(245,158,11,0.05) 6px 12px)",
+                            border: "1px dashed rgba(245,158,11,0.55)",
+                          }}
+                        >
+                          <Palmtree style={{ width: 14, height: 14, color: "#f59e0b" }} />
+                          <span className="text-[9px] font-semibold" style={{ color: "#d97706" }}>{absence.label}</span>
+                        </div>
+                      )}
+                      {sc >= 12 && !absence && !isDragSelected && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <Lock style={{ width: 18, height: 18, color: "#ef4444", opacity: 0.30 }} strokeWidth={2.5} />
                         </div>
                       )}
-                      {sc < 12 && !isDragSelected && (
+                      {canCreate && !absence && !isDragSelected && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <Plus style={{ width: 15, height: 15, color: cfg.color, opacity: 0.30 }} strokeWidth={2} />
                         </div>
@@ -435,6 +474,7 @@ export default function AgendaGeral() {
               { color: "#facc15", label: "Ocupado" },
               { color: "#fb923c", label: "Muito ocupado" },
               { color: "#ef4444", label: "No limite" },
+              { color: "#f59e0b", label: "Ausente (férias / afastamento)" },
             ].map(({ color, label }) => (
               <div key={label} className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />

@@ -68,6 +68,7 @@ Todas as tabelas têm prefixo `te_`:
 - **`te_notifications`**, **`te_push_subscriptions`** — notificações
 - **`te_feed_items`**, **`te_feed_comments`**, **`te_feed_reactions`** — feed
 - **`te_duty_schedules`** — escalas de plantão
+- **`te_user_absences`** — ausências temporárias (férias, afastamento, licença, folga) — migração `init-absences.sql`
 
 ### Schema de tarefas (`te_tasks`) — campos importantes
 
@@ -131,6 +132,14 @@ Tarefas podem ter `startDate` no futuro. Isso significa que o editor vai começa
 - No modal de criação, se `startDate` é futuro, a carga exibida é a projetada (não a atual)
 - **Buffer de 5 dias:** ao projetar para data futura, tarefas com `dueDate` que termina ≥ 5 dias antes da data alvo são excluídas do score (assumidas entregues)
 
+### Usuários inativos × ausências
+Lógica central em `api-server/src/lib/availability.ts` (espelho no front: `team-edit/src/lib/availability.ts`).
+- **Inativo** (`te_users.status = 'inactive'`) = saiu da equipe. Fica fora de `/workload`, seletores, menções, notificações e plantões novos; a API recusa (400) atribuir tarefa/plantão a inativo. Histórico continua mostrando o nome. Ao inativar: sessões são encerradas, ausências futuras removidas e, opcionalmente, plantões futuros (`removeFutureDuties`). `GET /api/users/:id/pending` lista o que ficou em aberto.
+- **Nunca excluir** quem tem histórico — `DELETE /api/users/:id` responde 409 (plantões têm `ON DELETE CASCADE`).
+- `GET /api/users` devolve todos (inclusive inativos, para histórico); use `?active=1` em seletores/menções. Cada usuário vem com `absence` (ausência de hoje).
+- **Ausência** (`/api/absences`) = pessoa continua ativa; carga/agenda/plantões só sinalizam e o sistema **avisa sem bloquear** (`period-check.absenceMessage`, `warning` no `POST /api/duty`).
+- Na agenda, inativos só aparecem se ainda tiverem tarefa aberta (para serem reatribuídas).
+
 ### Multi-tarefas
 - `taskType = 'multi_task'` é o pai
 - `taskType = 'subtask'` são os filhos (cada um tem seu editor e prazo)
@@ -175,6 +184,7 @@ GET  /api/sse               — Server-Sent Events para realtime
 | `calendar.tsx` | `/calendar` | todos |
 | `timeline.tsx` | `/timeline` | todos |
 | `team.tsx` | `/team` | coordinator/admin |
+| `team-absences.tsx` | `/team/ausencias` | coordinator/admin |
 | `reports.tsx` | `/reports` | coordinator/admin |
 | `feed.tsx` | `/feed` | todos |
 | `duty.tsx` | `/duty` | todos |
@@ -314,3 +324,5 @@ Editar no Cowork → git add + commit → git push → ssh deploy na VPS
 | Multi-tarefa com subtarefas expansíveis | `task-form-modal.tsx`, `tasks-overview.tsx`, backend `tasks.ts` |
 | Chat DM com paginação e scroll inteligente | `ChatWidget`, `dm.ts` |
 | Sistema de rascunhos de tarefa | `tasks-rascunho.tsx`, lógica de status `rascunho` |
+| Usuários inativos + ausências (férias/afastamento) | `lib/availability.ts`, `routes/absences.ts`, `components/ui/absence-badge.tsx` |
+| Página Membros (só gestão de pessoas: cadastro, perfil de acesso, situação, ausências — sem dados de tarefas) | `pages/team.tsx`, `pages/team-absences.tsx` (`/team/ausencias`), `components/team/*` |

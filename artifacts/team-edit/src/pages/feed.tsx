@@ -518,7 +518,7 @@ export default function FeedPage() {
   useEffect(() => {
     loadFeed();
     apiFetch<OnlineUser[]>("/api/presence").then(setOnlineUsers).catch(() => {});
-    apiFetch<MentionUser[]>("/api/users").then(setAllUsers).catch(() => {});
+    apiFetch<MentionUser[]>("/api/users?active=1").then(setAllUsers).catch(() => {});
     ping();
     pingRef.current = setInterval(ping, 30_000);
     return () => { if (pingRef.current) clearInterval(pingRef.current); };

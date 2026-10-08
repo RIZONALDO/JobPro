@@ -663,7 +663,7 @@ export function ChatWidget() {
       })
       .catch(() => {}).finally(() => setLoadingChat(false));
     apiFetch<OnlineUser[]>("/api/presence").then(setOnlineUsers).catch(() => {});
-    apiFetch<MentionUser[]>("/api/users").then(setAllUsers).catch(() => {});
+    apiFetch<MentionUser[]>("/api/users?active=1").then(setAllUsers).catch(() => {});
     loadConversations();
     ping();
     pingRef.current = setInterval(ping, 30_000);

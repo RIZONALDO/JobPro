@@ -4,9 +4,9 @@ import { toLocalDate } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
-import { ChevronLeft, ChevronRight, LockKeyhole } from "lucide-react";
+import { ChevronLeft, ChevronRight, LockKeyhole, Palmtree } from "lucide-react";
 
-interface DayData { date: string; score: number; count: number; }
+interface DayData { date: string; score: number; count: number; absence?: string | null; }
 
 interface Editor { id: number; name: string; avatarUrl?: string | null; }
 
@@ -144,20 +144,23 @@ export function EditorAvailabilityModal({ open, onOpenChange, editor }: Props) {
                 const count = data?.count ?? 0;
                 const isToday = dateStr === todayStr;
                 const isPast = dateStr < todayStr;
+                const absence = data?.absence ?? null;
                 return (
                   <div
                     key={i}
-                    title={`${day}/${month}: ${scoreLabel(score)}${count > 0 ? ` (${count} tarefa${count !== 1 ? "s" : ""})` : ""}`}
+                    title={`${day}/${month}: ${absence ? `${absence} · ` : ""}${scoreLabel(score)}${count > 0 ? ` (${count} tarefa${count !== 1 ? "s" : ""})` : ""}`}
                     className={`
                       relative flex flex-col items-center justify-center h-16 rounded-xl text-sm font-semibold
                       transition-colors cursor-default select-none
                       ${isPast ? "opacity-35" : ""}
-                      ${score > 0 ? scoreBg(score) : "hover:bg-[hsl(var(--muted))]/40"}
+                      ${absence ? "bg-amber-50 dark:bg-amber-950/30 border border-dashed border-amber-300 dark:border-amber-800" : score > 0 ? scoreBg(score) : "hover:bg-[hsl(var(--muted))]/40"}
                       ${isToday ? "ring-2 ring-[hsl(var(--primary))] ring-offset-2" : ""}
                     `}
                   >
                     <span className={`leading-none ${scoreText(score)}`}>{day}</span>
-                    {count > 0 && (
+                    {absence ? (
+                      <Palmtree className="h-3.5 w-3.5 mt-1 shrink-0 text-amber-500" />
+                    ) : count > 0 && (
                       <LockKeyhole className={`h-3.5 w-3.5 mt-1 shrink-0 ${scoreText(score)}`} />
                     )}
                   </div>
@@ -173,6 +176,7 @@ export function EditorAvailabilityModal({ open, onOpenChange, editor }: Props) {
               { color: "bg-yellow-100 dark:bg-yellow-950/50", label: "Ocupado" },
               { color: "bg-orange-100 dark:bg-orange-950/50", label: "Muito ocupado" },
               { color: "bg-red-100 dark:bg-red-950/50", label: "No limite" },
+              { color: "bg-amber-50 dark:bg-amber-950/30", label: "Ausente" },
             ].map(({ color, label }) => (
               <div key={label} className="flex items-center gap-1.5">
                 <div className={`h-3.5 w-3.5 rounded shrink-0 ${color} border border-[hsl(var(--border))]/40`} />

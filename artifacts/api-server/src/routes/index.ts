@@ -12,6 +12,7 @@ import searchRouter from "./search.js";
 import dutyRouter from "./duty.js";
 import dutyEmailRouter from "./duty-email.js";
 import pushRouter from "./push.js";
+import absencesRouter from "./absences.js";
 
 const router = Router();
 router.use(authRouter);
@@ -27,5 +28,6 @@ router.use(searchRouter);
 router.use(dutyEmailRouter);
 router.use(dutyRouter);
 router.use(pushRouter);
+router.use(absencesRouter);
 
 export default router;

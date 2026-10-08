@@ -14,6 +14,7 @@ import Dashboard from "@/pages/dashboard";
 
 import CalendarPage from "@/pages/calendar";
 import Team from "@/pages/team";
+import TeamAbsences from "@/pages/team-absences";
 import SettingsPage from "@/pages/settings";
 import Profile from "@/pages/profile";
 import TimelinePage from "@/pages/timeline";
@@ -79,6 +80,7 @@ function Router() {
         
         <Route path="/my-tasks"><Redirect to="/tasks?tab=lista" /></Route>
         <Route path="/calendar" component={CalendarPage} />
+        <Route path="/team/ausencias" component={TeamAbsences} />
         <Route path="/team" component={Team} />
         <Route path="/settings" component={SettingsPage} />
         <Route path="/profile" component={Profile} />

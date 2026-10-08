@@ -2,6 +2,8 @@ import { X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
+import { AbsenceBadge } from "@/components/ui/absence-badge";
+import type { Absence } from "@/lib/availability";
 
 export interface SubtaskRow {
   id: string;
@@ -14,9 +16,10 @@ interface Editor {
   id: number;
   name: string;
   avatarUrl?: string | null;
+  absence?: Absence | null;
 }
 
-interface EditorWorkload { id: number; score: number; }
+interface EditorWorkload { id: number; score: number; absence?: Absence | null; }
 
 function scoreColor(score: number): string {
   if (score === 0)  return "#94a3b8";
@@ -87,6 +90,7 @@ export function SubtaskFormRow({ row, index, editors, workload = [], onChange, o
                     <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} style={{ width: 16, height: 16, fontSize: 6, flexShrink: 0 }} />
                     {e.name}
                     <span className="text-[9px] font-semibold px-1 py-0.5 rounded-full" style={{ background: `${color}22`, color }}>{label}</span>
+                    <AbsenceBadge absence={wl?.absence ?? e.absence} />
                   </span>
                 </SelectItem>
               );

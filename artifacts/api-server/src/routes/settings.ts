@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, appSettingsTable, usersTable, tasksTable, taskEditorsTable, taskRevisionsTable, taskEventsTable } from "@workspace/db";
-import { eq, or, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth.js";
 import { pool } from "@workspace/db";
 import { broadcastTaskChange } from "../lib/broadcast.js";
@@ -134,9 +134,9 @@ router.post("/admin/reset", requireAdmin, async (req, res): Promise<void> => {
 router.post("/admin/seed", requireAdmin, async (_req, res): Promise<void> => {
   // Fetch active editors and coordinators
   const editors = await db.select().from(usersTable)
-    .where(eq(usersTable.role, "editor"));
+    .where(and(eq(usersTable.role, "editor"), eq(usersTable.status, "active")));
   const coordinators = await db.select().from(usersTable)
-    .where(or(eq(usersTable.role, "coordinator"), eq(usersTable.role, "admin")));
+    .where(and(or(eq(usersTable.role, "coordinator"), eq(usersTable.role, "admin")), eq(usersTable.status, "active")));
 
   if (editors.length === 0 || coordinators.length === 0) {
     res.status(400).json({ error: "Cadastre ao menos um editor e um coordenador antes de gerar amostras." });
