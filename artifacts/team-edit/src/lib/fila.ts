@@ -68,10 +68,25 @@ export const lmToIso = (lm: number) => new Date((lm + 180) * 60000).toISOString(
 export const toLm = (d: Date | string) => Math.floor(new Date(d).getTime() / 60000) - 180;
 
 /* ── cores por coordenador (estáveis) ── */
-const PALETTE = ["#2dd4bf", "#f5a524", "#f472b6", "#60a5fa", "#a3e635", "#c084fc", "#fb7185", "#34d399", "#fbbf24", "#38bdf8"];
+// Paleta categórica de 14 cores baseada na do IBM Carbon (Data visualization → Categorical): vizinhas bem
+// diferentes entre si e sem vermelho, que na fila lê como alerta. Cada gestor ganha uma cor própria pela ordem
+// de cadastro (até 14 sem repetir); quem ainda não está no quadro cai num hash.
+// Sem roxo também: é a cor do sistema e marca "seus jobs" na agenda.
+const PALETTE = ["#4589ff", "#ff832b", "#08bdba", "#ee538b", "#d2a106", "#0072c3", "#6fdc8c",
+  "#33b1ff", "#ba4e00", "#f1c21b", "#198038", "#d12771", "#007d79", "#9f1853"];
+let coordRank = new Map<number, number>();
+/** Chamado ao carregar o quadro: fixa a ordem dos gestores (por id, então quem entra depois vai para o fim). */
+export function registerCoords(people: Person[]) {
+  coordRank = new Map(people.filter(p => p.role !== "editor").map(p => p.id).sort((a, b) => a - b).map((id, i) => [id, i]));
+}
 export function coordColor(id: number | null | undefined): string {
   if (!id) return "#71717a";
-  return PALETTE[(id * 7) % PALETTE.length];
+  return PALETTE[(coordRank.get(id) ?? id * 7) % PALETTE.length];
+}
+/** Texto legível sobre a cor cheia (preto nas claras, branco nas escuras). */
+export function textOn(hex: string): string {
+  const n = parseInt(hex.slice(1), 16), [r, g, b] = [n >> 16, (n >> 8) & 255, n & 255].map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.32 ? "rgb(0 0 0 / 0.85)" : "#fff";
 }
 
 /* ── chips de prazo ── */
@@ -107,7 +122,7 @@ export function useBoard() {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => {
-    apiFetch<Board>("/api/queue/board").then(b => { setBoard(b); setError(null); }).catch(e => setError(e.message));
+    apiFetch<Board>("/api/queue/board").then(b => { registerCoords(b.people); setBoard(b); setError(null); }).catch(e => setError(e.message));
   }, []);
   useEffect(() => { load(); const t = setInterval(load, 30_000); return () => clearInterval(t); }, [load]);
   useRealtime({ onTasksChanged: load });
