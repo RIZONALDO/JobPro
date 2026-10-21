@@ -23,6 +23,8 @@ import { FollowersPicker } from "@/components/fila/followers";
 
 interface Plan {
   editorId: number; full: boolean; queueMinutes: number; end: number; fits: boolean; lateBy: number;
+  /** prazo se aceitar a data (pronto + 1h de folga); maxEst: até quantos minutos caberiam no prazo */
+  newDue: number; maxEst: number | null;
   prio: { k: number; end: number; fits: boolean; passed: number; impacts: { text: string; bad: boolean }[]; approverId: number | null };
 }
 interface UserLite { id: number; name: string; role: string; avatarUrl?: string | null; status?: string; absence?: { label: string } | null }
@@ -68,6 +70,7 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
   const [earliest, setEarliest] = useState<number | null>(null);
   const [adjusted, setAdjusted] = useState<string | null>(null);
   const [planErr, setPlanErr] = useState<string | null>(null);
+  const [dueError, setDueError] = useState<string | null>(null);
   const [users, setUsers] = useState<UserLite[]>([]);
   const [busy, setBusy] = useState(false);
   const [followers, setFollowers] = useState<number[]>([]);
@@ -109,10 +112,10 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
     if (!open || !(est > 0)) { setPlans(null); setEarliest(null); return; }
     const my = ++seq.current;
     const h = setTimeout(() => {
-      apiPost<{ plans: Plan[]; limit: number; earliest: number }>("/api/queue/plan", {
+      apiPost<{ plans: Plan[]; limit: number; earliest: number; dueError: string | null }>("/api/queue/plan", {
         estMinutes: est, dueDate: dueValid ? new Date(due).toISOString() : null, startDate: lockOn && notBefore ? new Date(notBefore).toISOString() : null,
         title: title || "Job novo", taskId: taskId ?? undefined,
-      }).then(r => { if (my === seq.current) { setPlans(r.plans); setLimit(r.limit); setEarliest(r.earliest); setPlanErr(null); } })
+      }).then(r => { if (my === seq.current) { setPlans(r.plans); setLimit(r.limit); setEarliest(r.earliest); setDueError(r.dueError); setPlanErr(null); } })
         .catch(e => { if (my === seq.current) setPlanErr(e.message); });
     }, 250);
     return () => clearTimeout(h);
@@ -132,7 +135,7 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
     estMinutes: est, dueDate: dueValid ? new Date(due).toISOString() : null,
     startDate: lockOn && notBefore ? new Date(notBefore).toISOString() : null, lockReason: lockOn ? lockReason || null : null,
   });
-  const missing = [!title.trim() && "título", !(est > 0) && "tempo de execução", !dueValid && "prazo do cliente"].filter(Boolean) as string[];
+  const missing = [!title.trim() && "título", !(est > 0) && "tempo de execução", !dueValid && "prazo do cliente", dueValid && dueError && "prazo dentro do expediente"].filter(Boolean) as string[];
 
   async function submit(placement: { editorId?: number | null; mode: "end" | "prio" | "gestor" } | null, draft = false) {
     if (!draft && missing.length) { toast.error(`Falta: ${missing.join(", ")}`); return; }
@@ -169,7 +172,7 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
   // job novo: uma pergunta por vez (os passos já respondidos viram um resumo clicável)
   const wizard = mode === "new" && !taskId;
   const STEPS = ["O job", "Tempo de edição", "Prazo do cliente", "Editor"];
-  const stepOk = [!!title.trim(), est > 0, dueValid, true];
+  const stepOk = [!!title.trim(), est > 0, dueValid && !dueError, true];
   const canNext = stepOk[step];
   const next = () => { if (canNext && step < 3) setStep(step + 1); };
   const titleRef = useRef<HTMLInputElement>(null);
@@ -252,7 +255,8 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
 
               <Step {...stepProps(2)} heading="3 · Quando o cliente precisa receber? *" question="Quando o cliente precisa receber?" hint="As datas que não dão tempo de editar ficam riscadas.">
                 <div className="max-w-sm"><DatePicker value={due} onChange={v => { setDue(v); setAdjusted(null); }} withTime placeholder="DD/MM/AAAA HH:MM" minDateTime={minDueValue || new Date().toISOString()} /></div>
-                {minDue != null && <p className="text-xs text-[hsl(var(--muted-foreground))]">Com {fmtH(est)} de edição, a entrega mais cedo possível é <b className="text-[hsl(var(--foreground))]">{fmt(minDue)}</b> (com um editor disponível agora, contando só o expediente).{adjusted && <span className="text-amber-600 dark:text-amber-400"> O prazo foi ajustado para {adjusted}.</span>}</p>}
+                {minDue != null && <p className="text-xs text-[hsl(var(--muted-foreground))]">Com {fmtH(est)} de edição, a entrega mais cedo possível é <b className="text-[hsl(var(--foreground))]">{fmt(minDue)}</b> (com um editor disponível agora, contando só o expediente e 1h de folga antes do prazo).{adjusted && <span className="text-amber-600 dark:text-amber-400"> O prazo foi ajustado para {adjusted}.</span>}</p>}
+                {dueValid && dueError && <Alert tone="bad">{dueError}</Alert>}
                 <div className="flex flex-wrap gap-1.5">
                   {[["Hoje", 0], ["Amanhã", 1], ["Em 2 dias", 2], ["Em 1 semana", 5]].map(([l, n]) => {
                     const v = localDT(n ? addWorkdays(n as number) : new Date(), "18:30");
@@ -294,10 +298,10 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
                   : planErr ? <Alert tone="bad">{planErr}</Alert>
                   : !plans || !dueValid ? <p className="text-[13px] text-[hsl(var(--muted-foreground))]">Calculando…</p>
                   : <>
-                    {plans.some(p => !p.full && p.fits) && plans.some(p => !p.fits) && <span className="text-[11px] font-bold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Opção 2 · outro editor entrega no prazo</span>}
+                    {plans.some(p => !p.full && p.fits) && plans.some(p => !p.fits) && <span className="text-[11px] font-bold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Outro editor entrega no prazo</span>}
                     <div className="grid gap-2.5 md:grid-cols-2">
                       {sorted.map(p => <PlanCard key={p.editorId} p={p} est={est} limit={limit} user={users.find(u => u.id === p.editorId)} isSup={isSup} busy={busy} name={name}
-                        needsOk={m => needsOk(p, m)}
+                        needsOk={m => needsOk(p, m)} onHours={m => setHours(String(m / 60))}
                         onPick={(m) => {
                           if (needsOk(p, m) && !reason.trim()) { toast.error("Essa troca mexe em prazo: diga o motivo para a supervisão."); reasonRef.current?.focus(); return; }
                           submit({ editorId: p.editorId, mode: m });
@@ -382,9 +386,9 @@ function Step({ wizard, n, step, label, heading, question, hint, summary, onEdit
   );
 }
 
-function PlanCard({ p, est, limit, user, isSup, busy, name, needsOk, onPick }: {
+function PlanCard({ p, est, limit, user, isSup, busy, name, needsOk, onPick, onHours }: {
   p: Plan; est: number; limit: number; user?: UserLite; isSup: boolean; busy: boolean; name: (id: number | null) => string;
-  needsOk: (m: "end" | "prio") => boolean; onPick: (m: "end" | "prio") => void;
+  needsOk: (m: "end" | "prio") => boolean; onPick: (m: "end" | "prio") => void; onHours: (m: number) => void;
 }) {
   const ask = "Pedir à supervisão: ";
   const head = (
@@ -400,16 +404,23 @@ function PlanCard({ p, est, limit, user, isSup, busy, name, needsOk, onPick }: {
   );
   const endLine = <>
     <span className="text-xs text-[hsl(var(--muted-foreground))]">No fim da fila: pronto <b className="text-[hsl(var(--foreground))]">{fmt(p.end)}</b></span>
-    {p.fits ? <Chip tone="ok" className="self-start">entrega no prazo</Chip> : <Chip tone="bad" className="self-start">passa do prazo {fmtH(p.lateBy)}</Chip>}
+    {p.fits ? <Chip tone="ok" className="self-start">entrega no prazo</Chip>
+      : p.lateBy > 0 ? <Chip tone="bad" className="self-start">passa do prazo {fmtH(p.lateBy)}</Chip>
+      : <Chip tone="warn" className="self-start">em cima do prazo: menos de 1h de folga</Chip>}
     {p.full && <Chip tone="warn" className="self-start">agenda cheia: só a supervisão</Chip>}
   </>;
   if (p.fits) return <div className={base}>{head}{endLine}<div><Btn v="pri" size="sm" disabled={busy} onClick={() => onPick("end")}>Colocar na fila de {user?.name.split(" ")[0]}</Btn></div></div>;
   const pr = p.prio;
   return (
     <div className={base}>{head}{endLine}
-      <span className="text-[11px] font-bold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Opção 1 · aceitar a data</span>
-      <div><Btn size="sm" disabled={busy} onClick={() => onPick("end")}>{needsOk("end") ? ask : ""}Colocar no fim: prazo passa para {fmt(p.end)}</Btn></div>
-      <span className="text-[11px] font-bold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Opção 3 · pedir prioridade</span>
+      <span className="text-xs text-[hsl(var(--muted-foreground))]">Com este prazo o job não entra: quebraria a agenda de {user?.name.split(" ")[0] ?? "o editor"}.</span>
+      {p.maxEst != null && <>
+        <span className="text-[11px] font-bold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Diminuir as horas</span>
+        <div><Btn size="sm" disabled={busy} onClick={() => onHours(p.maxEst!)}>Cabe com até {fmtH(p.maxEst)}: usar {fmtH(p.maxEst)}</Btn></div>
+      </>}
+      <span className="text-[11px] font-bold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Mudar o prazo</span>
+      <div><Btn size="sm" disabled={busy} onClick={() => onPick("end")}>{needsOk("end") ? ask : ""}Colocar no fim: prazo passa para {fmt(p.newDue)}</Btn></div>
+      <span className="text-[11px] font-bold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Pedir prioridade</span>
       <span className="text-xs text-[hsl(var(--muted-foreground))]">{pr.fits ? `Entraria em ${pr.k + 1}º e fica pronto ${fmt(pr.end)}.` : `Mesmo em ${pr.k + 1}º fica pronto só ${fmt(pr.end)}: passa do prazo.`}{pr.passed ? ` Passa na frente de ${pr.passed} job${pr.passed > 1 ? "s" : ""} de outro coordenador.` : ""}</span>
       {pr.impacts.length > 0 && <ul className="list-disc pl-5 text-xs text-[hsl(var(--muted-foreground))]">{pr.impacts.map((x, i) => <li key={i} className={x.bad ? "text-rose-500" : ""}>{x.text}</li>)}</ul>}
       <div><Btn size="sm" disabled={busy} onClick={() => onPick("prio")}>{needsOk("prio") ? `${ask}colocar na frente` : pr.approverId ? `Pedir prioridade a ${name(pr.approverId).split(" ")[0]}` : "Colocar na frente (ninguém de outro coordenador atrasa)"}</Btn></div>

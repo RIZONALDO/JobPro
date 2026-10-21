@@ -159,8 +159,13 @@ export function blockRisk(promised: number | null, now: number, fc: ReturnType<t
   };
 }
 
+/** Folga mínima entre o job ficar pronto e o prazo do cliente: prazo "em cima" quebra com qualquer imprevisto. */
+export const FOLGA = 60;
+
 export interface Plan {
   editorId: number; full: boolean; queueMinutes: number; end: number; fits: boolean;
+  /** prazo sugerido se aceitar a data: pronto + 1h de folga */
+  newDue: number;
   prio: { k: number; order: number; end: number; fits: boolean; changes: Change[]; hurt: Change[]; passed: number };
 }
 /** Onde um job (novo ou passado de outro editor) cabe na fila de `ed`. */
@@ -171,19 +176,21 @@ export function planFor(cal: Calendar, ts: QTask[], now: number, nt: QTask, ed: 
   const full = qm + rem(nt) > limit;
   const at = (k: number) => evaluate(cal, base, now, x => { x.push({ ...nt, editorId: ed, hold: false, playing: false, order: orderAt(q, k) }); });
   const evEnd = at(q.length), end = evEnd.after.get(nt.id)!.end;
+  // cabe = fica pronto com pelo menos FOLGA de expediente antes do prazo
+  const ok = (e: number) => nt.promised == null || consume(cal, e, FOLGA, ed).end <= nt.promised;
   const minK = q[0] && q[0].playing ? 1 : 0;
   let k = q.length, ev = evEnd;
-  if (nt.promised != null && end > nt.promised) {
+  if (!ok(end)) {
     // a posição mais para trás em que ainda cabe no prazo
     k = minK;
-    for (let j = q.length - 1; j >= minK; j--) if (at(j).after.get(nt.id)!.end <= nt.promised) { k = j; break; }
+    for (let j = q.length - 1; j >= minK; j--) if (ok(at(j).after.get(nt.id)!.end)) { k = j; break; }
     ev = at(k);
   }
   const pend = ev.after.get(nt.id)!.end;
   return {
-    editorId: ed, full, queueMinutes: qm, end, fits: nt.promised == null || end <= nt.promised,
+    editorId: ed, full, queueMinutes: qm, end, fits: ok(end), newDue: consume(cal, end, FOLGA, ed).end,
     prio: {
-      k, order: orderAt(q, k), end: pend, fits: nt.promised == null || pend <= nt.promised, changes: ev.changes,
+      k, order: orderAt(q, k), end: pend, fits: ok(pend), changes: ev.changes,
       hurt: ev.changes.filter(c => c.newlyLate && c.t.coordId !== me), passed: q.slice(k).filter(x => x.coordId !== me).length,
     },
   };

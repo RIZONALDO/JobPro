@@ -7,7 +7,11 @@ import { broadcastTaskChange } from "../lib/broadcast.js";
 import { createFeedItem } from "../lib/feed.js";
 import { findInactive } from "../lib/availability.js";
 import { placeTask, playTask, sendToApproval, stopTask, newRound } from "./queue.js";
-import { loadState, orderAfterHead, logEvent, QUEUE_STATUSES } from "../lib/queue.js";
+import { loadState, loadCalendar, orderAfterHead, logEvent, QUEUE_STATUSES } from "../lib/queue.js";
+import { DUE_OFF_SHIFT, inShift, toLm } from "../lib/workcal.js";
+
+/** Prazo do cliente só dentro do expediente (fim do turno conta). */
+const dueInShift = async (d: Date) => inShift(await loadCalendar(), toLm(d));
 
 /** Responde 400 se algum dos ids for de usuário inativo. Retorna true se bloqueou. */
 async function rejectInactive(res: import("express").Response, ids: (number | null | undefined)[]): Promise<boolean> {
@@ -40,6 +44,7 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
   const est = Math.round(Number(estMinutes) || 0);
   if (!isDraft) {
     if (!dueDate) { res.status(400).json({ error: "Informe o prazo prometido ao cliente" }); return; }
+    if (!(await dueInShift(new Date(String(dueDate))))) { res.status(400).json({ error: DUE_OFF_SHIFT }); return; }
     if (!(est > 0)) { res.status(400).json({ error: "Informe as horas de trabalho" }); return; }
     if (!placement || (!placement.editorId && placement.mode !== "gestor")) { res.status(400).json({ error: "Escolha onde o job entra" }); return; }
     if (placement.editorId && await rejectInactive(res, [Number(placement.editorId)])) return;
@@ -451,6 +456,8 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         if (isNaN(parsed.getTime())) {
           res.status(400).json({ error: "Data inválida" }); return;
         }
+        const same = task.dueDate && +new Date(task.dueDate as Date) === +parsed;
+        if (!same && task.status !== "rascunho" && !(await dueInShift(parsed))) { res.status(400).json({ error: DUE_OFF_SHIFT }); return; }
         update.dueDate = parsed;
       } else {
         if (task.status !== "rascunho") {

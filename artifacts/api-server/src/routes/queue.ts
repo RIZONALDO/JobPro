@@ -8,10 +8,10 @@ import { notify, notifyFollowers } from "../lib/notify.js";
 import { broadcastTaskChange } from "../lib/broadcast.js";
 import { createFeedItem } from "../lib/feed.js";
 import {
-  type QTask, type State, type TaskRow, type Plan, QUEUE_STATUSES, loadState, schedule, heads, evaluate, queueOf, queueMinutes, rem, orderAt,
+  type QTask, type State, type TaskRow, type Plan, QUEUE_STATUSES, FOLGA, loadState, schedule, heads, evaluate, queueOf, queueMinutes, rem, orderAt,
   orderAfterHead, moveFirstMut, planFor, unblockForecast, blockRisk, getLimit, accrue, userNames, changeText, logEvent, invalidateHolidays, toQ,
 } from "../lib/queue.js";
-import { DAY, WEEK_MINUTES, consume, workBetween, periods, dayOff, dayKey, toLm, fromLm, fmtLm, fmtH } from "../lib/workcal.js";
+import { DAY, WEEK_MINUTES, DUE_OFF_SHIFT, inShift, consume, workBetween, periods, dayOff, dayKey, toLm, fromLm, fmtLm, fmtH } from "../lib/workcal.js";
 
 const router = Router();
 
@@ -645,8 +645,15 @@ router.post("/queue/tasks/:id/client-change", requireCoordinator, async (req, re
 function plansFor(s: State, nt: QTask, editorIds: number[], me: number, limit: number, names: Map<number, { name: string }>) {
   return editorIds.map(ed => {
     const p = planFor(s.cal, s.tasks, s.now, nt, ed, me, limit);
+    // não cabe: até quantas horas caberiam no fim da fila (de meia em meia hora)
+    let maxEst: number | null = null;
+    if (!p.fits && nt.promised != null) {
+      for (let m = Math.ceil(rem(nt) / 30) * 30 - 30; m >= 30; m -= 30) {
+        if (planFor(s.cal, s.tasks, s.now, { ...nt, est: nt.worked + m }, ed, me, limit).fits) { maxEst = nt.worked + m; break; }
+      }
+    }
     return {
-      editorId: ed, full: p.full, queueMinutes: p.queueMinutes, end: p.end, fits: p.fits,
+      editorId: ed, full: p.full, queueMinutes: p.queueMinutes, end: p.end, fits: p.fits, newDue: p.newDue, maxEst,
       lateBy: nt.promised != null && !p.fits ? workBetween(s.cal, nt.promised, p.end) : 0,
       prio: {
         k: p.prio.k, end: p.prio.end, fits: p.prio.fits, passed: p.prio.passed,
@@ -681,10 +688,15 @@ router.post("/queue/plan", requireCoordinator, async (req, res): Promise<void> =
   const all = await activeEditorIds();
   const eds = all.filter(id => id !== existing?.editorId || !taskId);
   // entrega mais cedo fisicamente possível: o melhor editor livre agora, só no expediente
-  const from = Math.max(s.now, nt.notBefore ?? 0), need = Math.max(0, est - nt.worked) || 60;
+  // (com a folga mínima antes do prazo)
+  const from = Math.max(s.now, nt.notBefore ?? 0), need = (Math.max(0, est - nt.worked) || 60) + FOLGA;
   const ends = all.map(ed => consume(s.cal, from, need, ed).end);
-  const earliest = ends.length ? Math.min(...ends) : consume(s.cal, from, need).end;
-  res.json({ now: s.now, limit, earliest, plans: plansFor(s, nt, eds, coordId, limit, names) });
+  let earliest = ends.length ? Math.min(...ends) : consume(s.cal, from, need).end;
+  // arredonda para a meia hora seguinte que caia no expediente (nunca no almoço ou à noite)
+  earliest = Math.ceil(earliest / 30) * 30;
+  for (let g = 0; g < 2000 && !inShift(s.cal, earliest); g++) earliest += 30;
+  const dueError = nt.promised != null && !inShift(s.cal, nt.promised) ? DUE_OFF_SHIFT : null;
+  res.json({ now: s.now, limit, earliest, dueError, plans: plansFor(s, nt, eds, coordId, limit, names) });
 });
 
 /**
@@ -730,7 +742,7 @@ export async function placeTask(
       if (!reason) return { status: 400, body: { error: "Essa troca mexe em prazo e vai para a supervisão aprovar. Diga o motivo.", needsReason: true } };
       const from = names.get(prevEditor)?.name, edName = names.get(editorId)?.name;
       const impacts = mode === "end"
-        ? [`Prazo de ${q(r)} passa de ${fmtLm(toLm(r.dueDate!))} para ${fmtLm(p.end)}`]
+        ? [`Prazo de ${q(r)} passa de ${fmtLm(toLm(r.dueDate!))} para ${fmtLm(p.newDue)}`]
         : p.prio.changes.map(c => changeText(c, names));
       await db.insert(queueRequestsTable).values({
         kind: "reassign", taskId: r.id, editorId, requestedById: me, approverId: null, escalated: true,
@@ -759,10 +771,10 @@ export async function placeTask(
       let msg = `${q(r)} entrou no fim da fila de ${edName}. Pronto ${fmtLm(p.end)}.`;
       if (!p.fits && r.dueDate) {
         upd.dueDateOriginal = r.dueDateOriginal ?? r.dueDate;
-        upd.dueDate = fromLm(p.end);
-        await logEvent({ kind: "reneg", taskId: r.id, actorId: me, coordId: r.createdById, editorId, text: `Prazo empurrado de ${fmtLm(toLm(r.dueDate))} para ${fmtLm(p.end)}` });
-        msg = `${q(r)} entrou no fim da fila de ${edName}. Novo prazo ${fmtLm(p.end)}: avise o cliente.`;
-        await notifyFollowers(r.id, [me], "due_date_changed", "Prazo empurrado", `O prazo de ${q(r)} passou de ${fmtLm(toLm(r.dueDate))} para ${fmtLm(p.end)}.`);
+        upd.dueDate = fromLm(p.newDue);
+        await logEvent({ kind: "reneg", taskId: r.id, actorId: me, coordId: r.createdById, editorId, text: `Prazo empurrado de ${fmtLm(toLm(r.dueDate))} para ${fmtLm(p.newDue)}` });
+        msg = `${q(r)} entrou no fim da fila de ${edName}. Novo prazo ${fmtLm(p.newDue)}: avise o cliente.`;
+        await notifyFollowers(r.id, [me], "due_date_changed", "Prazo empurrado", `O prazo de ${q(r)} passou de ${fmtLm(toLm(r.dueDate))} para ${fmtLm(p.newDue)}.`);
       }
       await db.update(tasksTable).set(upd).where(eq(tasksTable.id, r.id));
       await logEvent({ kind: "assign", taskId: r.id, actorId: me, coordId: r.createdById, editorId, text: `Fim da fila de ${edName}${p.full ? " (agenda já cheia, decisão da supervisão)" : ""}` });

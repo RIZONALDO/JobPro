@@ -54,6 +54,16 @@ export function periods(cal: Calendar, day: number, editorId?: number | null): [
 export const dayCap = (cal: Calendar, day: number, editorId?: number | null): number =>
   periods(cal, day, editorId).reduce((s, [a, b]) => s + b - a, 0);
 
+const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const turnos = (ps: [number, number][]) => ps.map(([a, b]) => `${hm(a)}–${hm(b)}`).join(" e ");
+export const DUE_OFF_SHIFT = `O prazo precisa cair no expediente: seg a sex ${turnos(SHIFTS.weekday)}, sáb ${turnos(SHIFTS.saturday)}. Almoço, noite, domingo e feriado não valem.`;
+
+/** O prazo cai dentro do expediente? O fim do turno conta; almoço, noite, domingo e feriado não. */
+export function inShift(cal: Calendar, t: number): boolean {
+  const d = Math.floor(t / DAY), m = t - d * DAY;
+  return periods(cal, d).some(([a, b]) => m > a && m <= b);
+}
+
 /** Consome `m` minutos de expediente a partir de `t`. Devolve início real, fim e os trechos usados. */
 export function consume(cal: Calendar, t: number, m: number, editorId?: number | null): { start: number; end: number; segs: [number, number][] } {
   const segs: [number, number][] = [];
