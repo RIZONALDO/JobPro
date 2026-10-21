@@ -77,7 +77,9 @@ function Router() {
     <TaskModalProvider>
     <Shell>
       <Switch>
-        <Route path="/">{user.role === "admin" ? <Redirect to="/team" /> : user.role === "editor" ? <Redirect to="/fila" /> : <Dashboard />}</Route>
+        {/* ao entrar, todo mundo cai na Fila (admin, que não tem fila, em Membros) */}
+        <Route path="/">{user.role === "admin" ? <Redirect to="/team" /> : <Redirect to="/fila" />}</Route>
+        <Route path="/dashboard">{["supervisor", "coordinator"].includes(user.role) ? <Dashboard /> : <Redirect to="/fila" />}</Route>
         <Route path="/fila/supervisao">{["admin", "supervisor"].includes(user.role) ? <Supervisao /> : <Redirect to="/fila" />}</Route>
         <Route path="/fila">{user.role === "editor" ? <MinhaFila /> : <Filas />}</Route>
         

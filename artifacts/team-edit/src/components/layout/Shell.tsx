@@ -77,14 +77,14 @@ const COORD_ACTIVE = ["supervisor", "coordinator"];
 
 /** Seções do menu lateral (a ordem dos itens vem de NAV_ITEMS). */
 const SECTIONS: { label: string; hrefs: string[] }[] = [
-  { label: "Trabalho", hrefs: ["/fila", "/", "/tasks", "/feed", "/duty"] },
+  { label: "Trabalho", hrefs: ["/fila", "/dashboard", "/tasks", "/feed", "/duty"] },
   { label: "Gestão", hrefs: ["/fila/supervisao", "/reports", "/team"] },
   { label: "Sistema", hrefs: ["/settings"] },
 ];
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/fila",     label: "Fila",             icon: ListOrdered,     roles: NON_ADMIN    },
-  { href: "/",         label: "Dashboard",      icon: LayoutDashboard, roles: COORD_ACTIVE },
+  { href: "/dashboard", label: "Dashboard",      icon: LayoutDashboard, roles: COORD_ACTIVE },
   { href: "/tasks",    label: "Jobs",            icon: ClipboardList,   roles: COORD_ACTIVE },
   { href: "/feed",     label: "Mural",            icon: Newspaper,       roles: NON_ADMIN    },
   { href: "/fila/supervisao", label: "Supervisão",  icon: Gauge,           roles: ["admin","supervisor"] },
@@ -256,7 +256,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const isActiveHref = (href: string) => href === "/" || href === "/fila" ? location === href
+  const isActiveHref = (href: string) => href === "/fila" ? location === href
     : href === "/tasks" ? location.startsWith("/tasks") || location.startsWith("/jobs") // página do job conta como "Jobs"
     : location.startsWith(href);
   const current = [...navItems].sort((a, b) => b.href.length - a.href.length).find(i => isActiveHref(i.href));
