@@ -1,4 +1,4 @@
-import { db, notificationsTable, usersTable } from "@workspace/db";
+import { db, notificationsTable, usersTable, taskFollowersTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { broadcastNotification } from "./broadcast.js";
 import { sendPushToUser } from "./webpush.js";
@@ -53,4 +53,16 @@ export async function notifyAdmins(
     .from(usersTable)
     .where(and(eq(usersTable.role, "admin"), eq(usersTable.status, "active")));
   await Promise.all(admins.map(a => notify(a.id, type, title, message, refs)));
+}
+
+/** Ids dos gestores que acompanham o job. */
+export async function taskFollowers(taskId: number): Promise<number[]> {
+  const rows = await db.select({ userId: taskFollowersTable.userId }).from(taskFollowersTable).where(eq(taskFollowersTable.taskId, taskId));
+  return rows.map(r => r.userId);
+}
+
+/** Avisa os acompanhantes do job, menos quem fez a ação e quem já foi avisado. */
+export async function notifyFollowers(taskId: number, exclude: (number | null | undefined)[], type: string, title: string, message: string) {
+  const skip = new Set(exclude.filter((x): x is number => x != null));
+  for (const uid of await taskFollowers(taskId)) if (!skip.has(uid)) await notify(uid, type, title, message, { taskId });
 }

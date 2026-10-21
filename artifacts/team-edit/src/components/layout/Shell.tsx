@@ -1,11 +1,8 @@
 import { Link, useLocation } from "wouter";
+import { roleName } from "@/lib/roles";
 import {
-  LayoutDashboard, FolderOpen, ListTodo, Users, Settings, LogOut,
-  CalendarDays, Menu, Bell, BellRing, ChevronRight, X, UserCircle,
-  CalendarRange, BarChart3, Zap, AtSign, ClipboardList, LayoutGrid,
-  CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2, CalendarClock, Shield,
-  Palette, Sun, Moon, ALargeSmall, Volume2, VolumeX, Trash2, CheckCheck,
-} from "lucide-react";
+  LayoutDashboard, FolderOpen, ListTodo, Users, Settings, LogOut, CalendarDays, Menu, Bell, BellRing, ChevronRight, X, UserCircle, CalendarRange, BarChart3, AtSign, ClipboardList, LayoutGrid, Gauge, ListOrdered, CheckCircle2, AlertCircle, UserPlus, Eye, Briefcase, FolderCheck, UserCheck, Undo2, CalendarClock, Shield, Palette, Sun, Moon, ALargeSmall, Volume2, VolumeX, Trash2, CheckCheck, type Icon, Newspaper, PlayCircle,
+} from "@/lib/icons";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { BreadcrumbBar } from "./BreadcrumbBar";
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -30,6 +27,8 @@ import { panelVariants, drawerVariants, backdropVariants, pageVariants } from "@
 import { getSocket } from "@/lib/socket";
 import { ChatWidget } from "@/components/layout/ChatWidget";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
+import { HandoffHost } from "@/components/fila/HandoffDialog";
+import { NowChip, QuickCreate } from "@/components/layout/TopBar";
 
 interface AppNotification {
   id: number;
@@ -46,7 +45,7 @@ interface AppNotification {
 const NOTIF_ICON: Record<string, React.ReactNode> = {
   task_assigned:    <UserPlus    className="h-4 w-4 text-blue-500" />,
   task_reassigned:  <UserCheck   className="h-4 w-4 text-blue-400" />,
-  task_started:     <Zap         className="h-4 w-4 text-blue-500" />,
+  task_started:     <PlayCircle  className="h-4 w-4 text-blue-500" />,
   task_review:      <Eye         className="h-4 w-4 text-amber-500" />,
   task_approved:    <CheckCircle2 className="h-4 w-4 text-green-500" />,
   task_revision:    <AlertCircle  className="h-4 w-4 text-orange-500" />,
@@ -68,7 +67,7 @@ function timeAgo(dateStr: string): string {
   return `${days}d`;
 }
 
-type NavChild = { href: string; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; roles: string[] };
+type NavChild = { href: string; label: string; icon: Icon; roles: string[] };
 type NavItem  = NavChild & { children?: NavChild[] };
 
 
@@ -76,11 +75,19 @@ const COORD_ROLES  = ["admin", "supervisor", "coordinator"];
 const NON_ADMIN    = ["supervisor", "coordinator", "editor"];
 const COORD_ACTIVE = ["supervisor", "coordinator"];
 
+/** Seções do menu lateral (a ordem dos itens vem de NAV_ITEMS). */
+const SECTIONS: { label: string; hrefs: string[] }[] = [
+  { label: "Trabalho", hrefs: ["/", "/fila", "/tasks", "/feed", "/duty"] },
+  { label: "Gestão", hrefs: ["/fila/supervisao", "/reports", "/team"] },
+  { label: "Sistema", hrefs: ["/settings"] },
+];
+
 const NAV_ITEMS: NavItem[] = [
-  { href: "/",         label: "Dashboard",      icon: LayoutDashboard, roles: NON_ADMIN    },
-  { href: "/tasks",    label: "Tarefas",         icon: ClipboardList,   roles: NON_ADMIN    },
-  { href: "/feed",     label: "Feed",             icon: Zap,             roles: NON_ADMIN    },
-  { href: "/agenda",   label: "Agenda Geral",     icon: LayoutGrid,      roles: COORD_ROLES  },
+  { href: "/",         label: "Dashboard",      icon: LayoutDashboard, roles: COORD_ACTIVE },
+  { href: "/fila",     label: "Fila",             icon: ListOrdered,     roles: NON_ADMIN    },
+  { href: "/tasks",    label: "Jobs",            icon: ClipboardList,   roles: COORD_ACTIVE },
+  { href: "/feed",     label: "Mural",            icon: Newspaper,       roles: NON_ADMIN    },
+  { href: "/fila/supervisao", label: "Supervisão",  icon: Gauge,           roles: ["admin","supervisor"] },
   { href: "/reports",  label: "Relatórios",       icon: BarChart3,       roles: COORD_ACTIVE },
   { href: "/team",     label: "Membros",          icon: Users,           roles: COORD_ROLES  },
   { href: "/duty",     label: "Plantões",         icon: Shield,          roles: ["admin","supervisor","coordinator","editor"] },
@@ -89,7 +96,12 @@ const NAV_ITEMS: NavItem[] = [
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const [location, navigate] = useLocation();
-  const [collapsed, setCollapsed] = useState(true);
+  // menu lateral recolhido ou aberto: lembrado no navegador
+  const [collapsed, setCollapsedState] = useState(() => { try { return localStorage.getItem("sidebar:collapsed") !== "0"; } catch { return true; } });
+  const setCollapsed = (v: boolean) => { setCollapsedState(v); try { localStorage.setItem("sidebar:collapsed", v ? "1" : "0"); } catch { /* ok */ } };
+  // conexão em tempo real (rodapé)
+  const [online, setOnline] = useState(() => getSocket().connected);
+  const [clock, setClock] = useState(() => new Date());
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -107,7 +119,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const { settings } = useSettings();
   const { openTask } = useTaskModal();
-  const { theme, scale, toggleTheme, setScale } = useTheme();
+  const { scale, setScale } = useTheme();
+  useEffect(() => {
+    const s = getSocket(), up = () => setOnline(true), down = () => setOnline(false);
+    s.on("connect", up); s.on("disconnect", down);
+    const t = setInterval(() => setClock(new Date()), 30_000);
+    return () => { s.off("connect", up); s.off("disconnect", down); clearInterval(t); };
+  }, []);
 
   const fetchNotifications = useCallback(() => {
     apiFetch<AppNotification[]>("/api/notifications").then(data => {
@@ -238,163 +256,88 @@ export function Shell({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const isActiveHref = (href: string) => href === "/" || href === "/fila" ? location === href
+    : href === "/tasks" ? location.startsWith("/tasks") || location.startsWith("/jobs") // página do job conta como "Jobs"
+    : location.startsWith(href);
+  const current = [...navItems].sort((a, b) => b.href.length - a.href.length).find(i => isActiveHref(i.href));
+
   const NavLinks = ({ onClick, forceExpanded }: { onClick?: () => void; forceExpanded?: boolean }) => {
     const isCollapsed = forceExpanded ? false : collapsed;
+    const sections = SECTIONS.map(sec => ({ ...sec, items: navItems.filter(i => sec.hrefs.includes(i.href)) })).filter(sec => sec.items.length);
     return (
-      <nav className="flex flex-col gap-0.5 px-2 py-3">
-        {navItems.map(item => {
-          const childActive = item.children?.some(c => location.startsWith(c.href)) ?? false;
-          const isActive = (item.href === "/" ? location === "/" : location.startsWith(item.href)) || childActive;
-          const isOpen = openGroups.has(item.href);
-
-          if (item.children) {
-            if (isCollapsed) {
+      <nav className="flex flex-col gap-4 px-2 py-3">
+        {sections.map((sec, si) => (
+          <div key={sec.label} className="flex flex-col gap-0.5">
+            {isCollapsed
+              ? si > 0 && <span className="mx-auto mb-1 h-px w-5 bg-[hsl(var(--border))]" aria-hidden />
+              : <p className="px-2.5 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--muted-foreground))]/70">{sec.label}</p>}
+            {sec.items.map(item => {
+              const active = isActiveHref(item.href) && current?.href === item.href;
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  title={item.label}
+                <Link key={item.href} href={item.href} onClick={onClick} title={isCollapsed ? item.label : undefined} aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex justify-center px-2 py-2 rounded-lg text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
-                      : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
-                  )}
-                >
-                  <item.icon className="shrink-0" style={{ height: 18, width: 18 }} />
+                    "group relative flex items-center gap-3 rounded-lg px-2.5 py-2 text-[13.5px] font-medium transition-colors",
+                    isCollapsed && "justify-center px-2",
+                    active ? "bg-[hsl(var(--foreground)/0.07)] text-[hsl(var(--foreground))]"
+                      : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--foreground)/0.04)] hover:text-[hsl(var(--foreground))]",
+                  )}>
+                  {active && <i className="absolute inset-y-1.5 -left-2 w-[3px] rounded-r-full bg-[hsl(var(--primary))]" aria-hidden />}
+                  <item.icon weight={active ? "fill" : "light"} className={cn("shrink-0", active && "text-[hsl(var(--primary))]")} style={{ height: 18, width: 18 }} />
+                  {!isCollapsed && <span className="truncate">{item.label}</span>}
                 </Link>
               );
-            }
-
-            return (
-              <Collapsible.Root
-                key={item.href}
-                open={isOpen}
-                onOpenChange={() => toggleGroup(item.href)}
-              >
-                <div className={cn(
-                  "flex items-center rounded-lg",
-                  isActive
-                    ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
-                    : "text-[hsl(var(--muted-foreground))]"
-                )}>
-                  <Link
-                    href={item.href}
-                    onClick={onClick}
-                    className="flex flex-1 items-center gap-3 px-2.5 py-2 text-sm font-medium hover:text-[hsl(var(--foreground))] transition-colors rounded-l-lg"
-                  >
-                    <item.icon className="shrink-0" style={{ height: 18, width: 18 }} />
-                    <span>{item.label}</span>
-                  </Link>
-                  <Collapsible.Trigger asChild>
-                    <button className="px-2 py-2 rounded-r-lg hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/60 transition-colors">
-                      <ChevronRight className={cn(
-                        "h-3.5 w-3.5 transition-transform duration-200",
-                        isOpen && "rotate-90"
-                      )} />
-                    </button>
-                  </Collapsible.Trigger>
-                </div>
-
-                <Collapsible.Content className="collapsible-content overflow-hidden">
-                  <div className="ml-5 mt-0.5 mb-1 flex flex-col gap-0.5 border-l border-[hsl(var(--border))] pl-2">
-                    {item.children.filter(c => user && c.roles.includes(user.role)).map(child => {
-                      const cActive = location.startsWith(child.href);
-                      return (
-                        <Link
-                          key={child.href}
-                          href={child.href}
-                          onClick={onClick}
-                          className={cn(
-                            "flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
-                            cActive
-                              ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
-                              : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
-                          )}
-                        >
-                          <child.icon className="shrink-0" style={{ height: 14, width: 14 }} />
-                          {child.label}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </Collapsible.Content>
-              </Collapsible.Root>
-            );
-          }
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onClick}
-              title={isCollapsed ? item.label : undefined}
-              className={cn(
-                "flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm font-medium transition-colors",
-                isCollapsed && "justify-center px-2",
-                isActive
-                  ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
-                  : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
-              )}
-            >
-              <item.icon className="shrink-0" style={{ height: 18, width: 18 }} />
-              {!isCollapsed && <span>{item.label}</span>}
-            </Link>
-          );
-        })}
+            })}
+          </div>
+        ))}
       </nav>
     );
   };
 
+  /** Pessoa logada (rodapé do menu lateral e do menu do celular): abre Meu perfil e Sair. */
+  const Me = ({ compact, onClick }: { compact?: boolean; onClick?: () => void }) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" title={compact ? user?.name : undefined}
+          className={cn("flex w-full min-w-0 items-center gap-2.5 rounded-lg p-1.5 text-left transition-colors hover:bg-[hsl(var(--foreground)/0.05)] data-[state=open]:bg-[hsl(var(--foreground)/0.07)]", compact && "justify-center")}>
+          <span className="relative shrink-0">
+            {user?.avatarUrl ? <img src={user.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover" />
+              : <span className="grid h-8 w-8 place-items-center rounded-full bg-[hsl(var(--primary))]/15 text-xs font-semibold text-[hsl(var(--primary))]">{initials}</span>}
+            <i className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[hsl(var(--card))]", online ? "bg-emerald-500" : "bg-amber-500")} title={online ? "Conectado" : "Reconectando"} />
+          </span>
+          {!compact && <>
+            <span className="min-w-0 flex-1"><b className="block truncate text-[13px] font-semibold">{user?.name}</b><span className="block truncate text-[11.5px] text-[hsl(var(--muted-foreground))]">{roleName(user)}</span></span>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 -rotate-90 text-[hsl(var(--muted-foreground))]" />
+          </>}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start" className="w-56">
+        <DropdownMenuItem asChild>
+          <Link href="/profile" onClick={onClick} className="flex cursor-pointer items-center"><UserCircle className="mr-2 h-4 w-4" />Meu perfil</Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => { onClick?.(); logout(); }} className="cursor-pointer text-[hsl(var(--destructive))]"><LogOut className="mr-2 h-4 w-4" />Sair</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
     <div className="flex h-[100dvh] bg-[hsl(var(--background))]">
 
-      {/* ── Desktop Sidebar — full height ────────────────────────── */}
-      <aside
-        className={cn(
-          "hidden md:flex flex-col border-r bg-[hsl(var(--card))] shrink-0 transition-all duration-200 z-20",
-          collapsed ? "w-14" : "w-56"
-        )}
-      >
-
-        {/* Logo + toggle — alinhado com o header */}
-        <div className={cn(
-          "h-14 flex items-center gap-2.5 border-b shrink-0 overflow-hidden",
-          collapsed ? "justify-center px-0" : "px-3"
-        )}>
-          {collapsed ? (
-            <button
-              onClick={() => setCollapsed(false)}
-              className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-              title="Expandir menu"
-            >
-              <Menu style={{ height: 16, width: 16 }} />
-            </button>
-          ) : (
-            <div className="min-w-0 flex-1 flex items-center gap-2.5">
-              <button
-                onClick={() => setCollapsed(true)}
-                className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-                title="Recolher menu"
-              >
-                <Menu style={{ height: 16, width: 16 }} />
-              </button>
-              <div className="min-w-0 flex-1">
-                {settings.logo_url
-                  ? <img src={settings.logo_url} alt={settings.company_name} className="h-6 object-contain" />
-                  : <>
-                      <p className="font-bold text-sm leading-tight text-[hsl(var(--foreground))] truncate"><BrandName name={settings.company_name} /></p>
-                      <p className="text-xs text-[hsl(var(--muted-foreground))] leading-tight truncate"><BrandName name={settings.system_name} /></p>
-                    </>
-                }
-              </div>
-            </div>
-          )}
+      {/* ── Menu lateral (desktop) ── */}
+      <aside className={cn("z-20 hidden shrink-0 flex-col border-r bg-[hsl(var(--card))] transition-[width] duration-200 md:flex", collapsed ? "w-[60px]" : "w-60")}>
+        <div className={cn("flex h-[60px] shrink-0 items-center gap-2 overflow-hidden border-b", collapsed ? "justify-center" : "px-2.5")}>
+          <button type="button" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? "Abrir menu" : "Recolher menu"} aria-expanded={!collapsed} title={collapsed ? "Abrir menu" : "Recolher menu"}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--foreground)/0.06)] hover:text-[hsl(var(--foreground))]">
+            <Menu className="h-5 w-5" />
+          </button>
+          {!collapsed && <Link href="/" className="min-w-0" title={settings.company_name}>
+            <span className="block truncate text-[14px] font-bold leading-tight"><BrandName name={settings.company_name} /></span>
+            <span className="block truncate text-[11.5px] leading-tight text-[hsl(var(--muted-foreground))]"><BrandName name={settings.system_name} /></span>
+          </Link>}
         </div>
-
-        {/* Nav */}
-        <div className="flex-1 overflow-y-auto">
-          <NavLinks />
+        <div className="flex-1 overflow-y-auto overflow-x-hidden"><NavLinks /></div>
+        <div className="flex shrink-0 flex-col gap-1 border-t p-2">
+          <Me compact={collapsed} />
         </div>
       </aside>
 
@@ -402,60 +345,40 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <div className="flex flex-col flex-1 min-w-0">
 
         {/* Top Header */}
-        <header className="h-14 shrink-0 border-b bg-[hsl(var(--card))] flex items-center px-4 gap-3 z-30">
+        <header className="z-30 flex h-[60px] shrink-0 items-center gap-2.5 border-b bg-[hsl(var(--card)/0.85)] px-4 backdrop-blur supports-[backdrop-filter]:bg-[hsl(var(--card)/0.7)]">
 
-          {/* Mobile hamburger */}
-          <button
-            className="md:hidden p-1.5 rounded-lg hover:bg-[hsl(var(--muted))] transition-colors"
-            onClick={() => setMobileOpen(v => !v)}
-          >
-            <Menu className="h-5 w-5 text-[hsl(var(--muted-foreground))]" />
-          </button>
-
-          {/* Logo mobile */}
-          <div className="md:hidden flex items-center gap-2 min-w-0">
-            {settings.logo_url ? (
-              <img src={settings.logo_url} alt={settings.company_name} className="h-6 object-contain" />
-            ) : (
-              <>
-                <div className="h-7 w-7 rounded-lg bg-[hsl(var(--primary))] flex items-center justify-center shrink-0">
-                  <ListTodo className="h-4 w-4 text-white" />
-                </div>
-                <p className="font-bold text-sm truncate"><BrandName name={settings.company_name} /></p>
-              </>
+          {/* esquerda: a página em que a pessoa está (no celular, menu + marca) */}
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <button type="button" aria-label="Abrir menu" className="rounded-lg p-1.5 transition-colors hover:bg-[hsl(var(--muted))] md:hidden" onClick={() => setMobileOpen(v => !v)}>
+              <Menu className="h-5 w-5 text-[hsl(var(--muted-foreground))]" />
+            </button>
+            <Link href="/" className="min-w-0 truncate text-[15px] font-bold md:hidden"><BrandName name={settings.company_name} /></Link>
+            {current && (
+              <span className="hidden min-w-0 items-center gap-2.5 md:flex">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border bg-[hsl(var(--background))]"><current.icon className="h-4 w-4" /></span>
+                <span className="truncate text-[15px] font-semibold">{current.label}</span>
+              </span>
             )}
           </div>
 
-          {/* Logo desktop — aparece no header quando sidebar está colapsado */}
-          {collapsed && (
-            <div className="hidden md:block min-w-0">
-              {settings.logo_url
-                ? <img src={settings.logo_url} alt={settings.company_name} className="h-6 object-contain" />
-                : <>
-                    <p className="font-bold text-sm leading-tight text-[hsl(var(--foreground))] truncate"><BrandName name={settings.company_name} /></p>
-                    <p className="text-xs text-[hsl(var(--muted-foreground))] leading-tight truncate"><BrandName name={settings.system_name} /></p>
-                  </>
-              }
-            </div>
-          )}
+          {/* centro: busca */}
+          <div className="shrink-0"><GlobalSearch /></div>
 
-          <div className="flex-1" />
-
-          {/* Right actions */}
-          <div className="flex items-center gap-1">
-
-            {/* Search */}
-            <GlobalSearch />
+          {/* direita: o "agora", criar, avisos e tamanho do texto */}
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
+            <div className="hidden min-w-0 lg:flex"><NowChip /></div>
+            <QuickCreate />
+            <span className="mx-1 hidden h-6 w-px bg-[hsl(var(--border))] md:block" aria-hidden />
 
             {/* Notifications */}
             <div ref={notifRef} className="relative">
               <button
                 onClick={() => setNotifOpen(v => !v)}
-                className="relative h-8 w-8 flex items-center justify-center rounded-lg hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--muted-foreground))]"
+                className={cn("relative grid h-9 w-9 place-items-center rounded-xl text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--foreground)/0.06)] hover:text-[hsl(var(--foreground))]", notifOpen && "bg-[hsl(var(--foreground)/0.08)] text-[hsl(var(--foreground))]")}
               >
-                <Bell className="h-4 w-4" />
+                <Bell className="h-[18px] w-[18px]" />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] min-h-[16px] px-1 rounded-full bg-orange-500 text-white text-[10px] font-bold flex items-center justify-center leading-none shadow-[0_0_0_1.5px_theme(colors.orange.300)]">
+                  <span className="absolute right-0.5 top-0.5 flex min-h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[hsl(var(--primary))] px-1 text-[10px] font-bold leading-none text-[hsl(var(--primary-foreground))] shadow-[0_0_0_2px_hsl(var(--card))]">
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
@@ -619,7 +542,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                                   onClick={() => {
                                     markRead(n);
                                     setNotifOpen(false);
-                                    if (n.taskId) navigate(`/tasks?tab=lista&highlight=${n.taskId}`);
+                                    if (n.taskId) navigate(user?.role === "editor" ? "/fila" : `/jobs/${n.taskId}`);
                                     else navigate("/");
                                   }}
                                   className={cn(
@@ -666,15 +589,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <div ref={customRef} className="relative">
               <button
                 onClick={() => setCustomOpen(v => !v)}
-                title="Personalizar"
+                title="Tamanho do texto"
                 className={cn(
-                  "h-8 w-8 flex items-center justify-center rounded-lg transition-colors",
+                  "grid h-9 w-9 place-items-center rounded-xl transition-colors",
                   customOpen
-                    ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
-                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
+                    ? "bg-[hsl(var(--foreground)/0.08)] text-[hsl(var(--foreground))]"
+                    : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--foreground)/0.06)] hover:text-[hsl(var(--foreground))]"
                 )}
               >
-                <Palette className="h-4 w-4" />
+                <ALargeSmall className="h-[18px] w-[18px]" />
               </button>
 
               <AnimatePresence>
@@ -683,35 +606,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   className="absolute right-0 top-full mt-1.5 w-60 rounded-xl border bg-[hsl(var(--card))] shadow-xl z-50 overflow-hidden">
                   {/* Header */}
                   <div className="flex items-center gap-2 px-4 py-3 border-b bg-[hsl(var(--muted))]/30">
-                    <Palette className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
-                    <span className="text-sm font-semibold">Personalização</span>
-                  </div>
-
-                  {/* Appearance */}
-                  <div className="px-4 py-3 border-b">
-                    <p className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-widest mb-2.5">Aparência</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(["light", "dark"] as const).map(t => (
-                        <button
-                          key={t}
-                          onClick={() => t !== theme && toggleTheme()}
-                          className={cn(
-                            "flex items-center justify-center gap-1.5 h-9 rounded-lg border text-xs font-medium transition-all",
-                            theme === t
-                              ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/8 text-[hsl(var(--primary))]"
-                              : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--foreground))]/20 hover:text-[hsl(var(--foreground))]"
-                          )}
-                        >
-                          {t === "light" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-                          {t === "light" ? "Claro" : "Escuro"}
-                        </button>
-                      ))}
-                    </div>
+                    <ALargeSmall className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
+                    <span className="text-sm font-semibold">Tamanho do texto</span>
                   </div>
 
                   {/* Size */}
                   <div className="px-4 py-3">
-                    <p className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-widest mb-2.5">Tamanho</p>
+                    <p className="mb-2.5 text-xs text-[hsl(var(--muted-foreground))]">Vale só para este navegador.</p>
                     <div className="grid grid-cols-3 gap-2">
                       {([
                         { key: "sm" as const, label: "Pequeno", px: 10 },
@@ -739,50 +640,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
               </AnimatePresence>
             </div>
 
-            {/* Avatar + dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2 pl-2 pr-1 py-1 rounded-lg hover:bg-[hsl(var(--muted))] transition-colors">
-                  {user?.avatarUrl ? (
-                    <img src={user.avatarUrl} alt={user.name} className="h-7 w-7 rounded-full object-cover shrink-0" />
-                  ) : (
-                    <div className="h-7 w-7 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] flex items-center justify-center font-semibold text-xs shrink-0">
-                      {initials}
-                    </div>
-                  )}
-                  <div className="hidden sm:block text-left">
-                    <p className="text-xs font-medium leading-tight text-[hsl(var(--foreground))] max-w-[100px] truncate">{user?.name}</p>
-                    <p className="text-xs text-[hsl(var(--muted-foreground))] leading-tight truncate max-w-[100px]">{user?.jobTitle || ({ admin: "Admin", supervisor: "Supervisor", coordinator: "Gestor", editor: "Operacional" } as Record<string,string>)[user?.role ?? ""] || user?.role}</p>
-                  </div>
-                  <ChevronRight className="hidden sm:block h-3 w-3 text-[hsl(var(--muted-foreground))] rotate-90" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <div className="px-3 py-2.5 flex items-center gap-2.5">
-                  {user?.avatarUrl ? (
-                    <img src={user.avatarUrl} alt={user.name} className="h-8 w-8 rounded-full object-cover shrink-0" />
-                  ) : (
-                    <div className="h-8 w-8 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] flex items-center justify-center font-semibold text-xs shrink-0">
-                      {initials}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium truncate">{user?.name}</p>
-                    <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{user?.jobTitle || ({ admin: "Admin", supervisor: "Supervisor", coordinator: "Gestor", editor: "Operacional" } as Record<string,string>)[user?.role ?? ""] || user?.role}</p>
-                  </div>
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/profile" className="flex items-center cursor-pointer">
-                    <UserCircle className="h-4 w-4 mr-2" /> Meu perfil
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={logout} className="text-[hsl(var(--destructive))] cursor-pointer">
-                  <LogOut className="h-4 w-4 mr-2" /> Sair
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
         </header>
 
@@ -793,15 +650,28 @@ export function Shell({ children }: { children: React.ReactNode }) {
           transition={{ duration: 0.55, ease: "easeOut" }}
         >
           <BreadcrumbBar />
-          <div className="flex-1 overflow-y-auto overflow-x-hidden">
-            <div className="p-4 md:p-6 pb-8">
-              {children}
+          <div data-scroll-root className="flex-1 overflow-y-auto overflow-x-hidden">
+            <div className="flex min-h-full flex-col">
+              <div className="flex-1 p-4 pb-8 md:p-6">
+                {children}
+              </div>
+              <footer className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t py-3 pl-4 pr-20 text-[11.5px] text-[hsl(var(--muted-foreground))] md:pl-6">
+                <span className="min-w-0 truncate">© {clock.getFullYear()} <BrandName name={settings.company_name} /> · <BrandName name={settings.system_name} /></span>
+                <span className="flex items-center gap-3">
+                  <span className="inline-flex items-center gap-1.5" title={online ? "Atualizações chegam na hora" : "Sem conexão em tempo real; tentando de novo"}>
+                    <i className={cn("h-1.5 w-1.5 rounded-full", online ? "bg-emerald-500 shadow-[0_0_0_3px_rgb(16_185_129/0.15)]" : "animate-pulse bg-amber-500")} />
+                    {online ? "Tempo real conectado" : "Reconectando…"}
+                  </span>
+                  <span className="tabular-nums">{clock.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })} · Brasília</span>
+                </span>
+              </footer>
             </div>
           </div>
         </motion.main>
       </div>
 
       <ChatWidget />
+      {(user?.role === "admin" || user?.role === "supervisor") && <HandoffHost />}
 
       {/* Poke toast */}
       <AnimatePresence>
@@ -834,14 +704,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             onClick={e => e.stopPropagation()}
           >
             {/* Cabeçalho */}
-            <div className="h-14 flex items-center gap-3 px-4 border-b shrink-0">
-              {settings.logo_url ? (
-                <img src={settings.logo_url} alt={settings.company_name} className="h-7 object-contain" />
-              ) : (
-                <div className="h-8 w-8 rounded-lg bg-[hsl(var(--primary))] flex items-center justify-center shrink-0">
-                  <ListTodo className="h-4 w-4 text-white" />
-                </div>
-              )}
+            <div className="h-[60px] flex items-center gap-3 px-4 border-b shrink-0">
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-sm leading-tight truncate"><BrandName name={settings.company_name} /></p>
                 <p className="text-xs text-[hsl(var(--muted-foreground))] leading-tight truncate"><BrandName name={settings.system_name} /></p>
@@ -860,13 +723,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </div>
 
             {/* Rodapé */}
-            <div className="px-3 py-3 border-t shrink-0">
-              <button
-                onClick={() => { logout(); setMobileOpen(false); }}
-                className="flex items-center gap-3 w-full px-2.5 py-2 rounded-lg text-sm font-medium text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive))]/10 transition-colors"
-              >
-                <LogOut className="h-4 w-4 shrink-0" /> Sair
-              </button>
+            <div className="flex shrink-0 flex-col gap-1 border-t px-2 py-2">
+              <Me onClick={() => setMobileOpen(false)} />
             </div>
           </motion.div>
         </div>

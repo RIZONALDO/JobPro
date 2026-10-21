@@ -105,7 +105,7 @@ router.get("/users/:id/tasks", requireCoordinator, async (req, res): Promise<voi
       title: tasksTable.title,
       status: tasksTable.status,
       priority: tasksTable.priority,
-      complexity: tasksTable.complexity,
+      estMinutes: tasksTable.estMinutes,
       dueDate: tasksTable.dueDate,
       client: tasksTable.client,
       color: tasksTable.color,
@@ -174,6 +174,17 @@ router.put("/users/:id", requireSupervisor, async (req, res): Promise<void> => {
     res.status(400).json({ error: "Não é possível inativar a si mesmo" }); return;
   }
   const [before] = await db.select({ status: usersTable.status }).from(usersTable).where(eq(usersTable.id, id));
+  // Jobs abertos no nome de quem sai ficariam parados: primeiro redistribui, ou confirma explicitamente (force).
+  if (status === "inactive" && before?.status === "active" && !req.body?.force) {
+    const [{ n }] = await db.select({ n: count() }).from(tasksTable).where(and(
+      notInArray(tasksTable.status, ["completed", "cancelled"]),
+      sql`(${tasksTable.assignedToId} = ${id} OR ${tasksTable.createdById} = ${id})`,
+    ));
+    if (Number(n) > 0) {
+      res.status(409).json({ error: `Ainda há ${n} job(s) aberto(s) no nome desta pessoa. Redistribua antes de inativar.`, code: "open_tasks", openTasks: Number(n) });
+      return;
+    }
+  }
   if (callerRole === "supervisor" && role && !SUPERVISOR_MANAGED_ROLES.includes(String(role))) {
     res.status(403).json({ error: "Supervisor não pode atribuir este perfil" }); return;
   }

@@ -10,6 +10,7 @@ export async function createFeedItem(params: {
   entityId?: number;
   entityType?: string;
   jobId?: number;
+  targetUserId?: number;
 }) {
   const [item] = await db.insert(feedItemsTable).values({
     type: params.type,
@@ -19,6 +20,7 @@ export async function createFeedItem(params: {
     entityId: params.entityId ?? null,
     entityType: params.entityType ?? null,
     jobId: params.jobId ?? null,
+    targetUserId: params.targetUserId ?? null,
   }).returning();
 
   let actor: { id: number; name: string; avatarUrl: string | null } | null = null;

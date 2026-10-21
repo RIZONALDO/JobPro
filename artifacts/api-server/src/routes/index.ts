@@ -13,6 +13,8 @@ import dutyRouter from "./duty.js";
 import dutyEmailRouter from "./duty-email.js";
 import pushRouter from "./push.js";
 import absencesRouter from "./absences.js";
+import queueRouter from "./queue.js";
+import reportsRouter from "./reports.js";
 
 const router = Router();
 router.use(authRouter);
@@ -29,5 +31,7 @@ router.use(dutyEmailRouter);
 router.use(dutyRouter);
 router.use(pushRouter);
 router.use(absencesRouter);
+router.use(queueRouter);
+router.use(reportsRouter);
 
 export default router;

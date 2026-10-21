@@ -29,6 +29,8 @@
 
 /* ── macOS Sequoia dark — cool blue-black com glow ─────────────────────── */
 .dark {
+  /* app sempre escuro: calendário, relógio e barras de rolagem nativas também no escuro */
+  color-scheme: dark;
   --background: 240 8% 6%;          /* #0d0d10 — azul-preto macOS */
   --foreground: 240 11% 95%;        /* #f0f0f5 — texto Apple */
   --card: 240 5% 11%;               /* #1a1a1e — surface macOS */
@@ -209,3 +211,15 @@ input, textarea, select {
 body:has([role="dialog"][data-state="open"]) [data-chat-fab] {
   display: none;
 }
+
+/* ── Fila em horas ── */
+.fila-stripes { background-image: repeating-linear-gradient(135deg, hsl(var(--foreground) / 0.06) 0 4px, transparent 4px 8px); }
+.fila-late { background-image: repeating-linear-gradient(135deg, rgb(244 63 94 / 0.38) 0 3px, transparent 3px 7px) !important; }
+
+/* Novo job em passos: a pergunta da vez entra suave */
+@keyframes stepIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.step-in { animation: stepIn .28s cubic-bezier(.2,.8,.2,1) both; }
+@media (prefers-reduced-motion: reduce) { .step-in { animation: none; } }

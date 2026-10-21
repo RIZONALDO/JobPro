@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, AlertOctagon } from "lucide-react";
+import { AlertTriangle, AlertOctagon } from "@/lib/icons";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 

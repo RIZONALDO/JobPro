@@ -18,3 +18,5 @@ export * from "./duty_schedules";
 export * from "./email_logs";
 export * from "./push_subscriptions";
 export * from "./user_absences";
+export * from "./queue";
+export * from "./task_followers";

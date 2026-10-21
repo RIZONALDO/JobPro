@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Copy, KeyRound } from "lucide-react";
+import { Copy, KeyRound } from "@/lib/icons";
 import { ROLE_DESCRIPTION, type Member } from "./shared";
 
 const EMPTY = { name: "", login: "", jobTitle: "", email: "", phone: "", role: "editor", password: "", avatarUrl: "", active: true, mustChange: true };

@@ -1,4 +1,4 @@
-import { ArrowUp, Minus, ArrowDown } from "lucide-react";
+import { ArrowUp, Minus, ArrowDown } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 
 export const PRIORITY_LABEL: Record<string, string> = {

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Calendar, ChevronLeft, ChevronRight, X, Clock, ArrowLeft, ChevronUp, ChevronDown } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Clock, ArrowLeft, ChevronUp, ChevronDown } from "@/lib/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 import { Button } from "./button";
 import { motion, AnimatePresence } from "framer-motion";
@@ -10,6 +10,8 @@ interface Props {
   placeholder?: string;
   withTime?: boolean;
   minDate?: string;        // YYYY-MM-DD
+  /** ISO: nada antes deste momento (dias anteriores e horas anteriores no mesmo dia ficam travados) */
+  minDateTime?: string;
   className?: string;
 }
 
@@ -90,7 +92,11 @@ function TimeDrum({ value, label, onUp, onDown }: {
   );
 }
 
-export function DatePicker({ value, onChange, placeholder, withTime, minDate, className }: Props) {
+export function DatePicker({ value, onChange, placeholder, withTime, minDate: minDateProp, minDateTime, className }: Props) {
+  const minDT = minDateTime ? parseToLocal(minDateTime) : null;
+  const minDTDay = minDT ? toStr(minDT) : "";
+  const minDTMin = minDT ? minDT.getHours() * 60 + minDT.getMinutes() : 0;
+  const minDate = [minDateProp, minDTDay].filter(Boolean).sort().pop();
   const today    = useMemo(() => new Date(), []);
   const todayStr = useMemo(() => toStr(today), [today]);
 
@@ -138,6 +144,11 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
     if (isDisabled(d)) return;
     const s = toStr(d);
     setSelDate(s);
+    // no dia mínimo, a hora começa no mínimo permitido
+    if (withTime && minDT && s === minDTDay && selH * 60 + selMin < minDTMin) {
+      const m = Math.ceil(minDTMin / 5) * 5;
+      setSelH(Math.floor(m / 60)); setSelMin(m % 60);
+    }
     if (withTime) {
       setStep("time");
     } else {
@@ -146,8 +157,10 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
     }
   }
 
+  const tooEarly = !!minDT && selDate === minDTDay && selH * 60 + selMin < minDTMin;
+
   function confirm() {
-    if (!selDate) return;
+    if (!selDate || tooEarly) return;
     const hh = String(selH).padStart(2,"0");
     const mm = String(selMin).padStart(2,"0");
     onChange(`${selDate}T${hh}:${mm}:00${localTzOffset()}`);
@@ -281,7 +294,12 @@ export function DatePicker({ value, onChange, placeholder, withTime, minDate, cl
                   />
                 </div>
 
-                <Button type="button" size="sm" className="w-full h-8 text-xs" onClick={confirm}>
+                {tooEarly && (
+                  <p className="text-[11px] text-center text-rose-500">
+                    Antes de {String(minDT!.getHours()).padStart(2,"0")}:{String(minDT!.getMinutes()).padStart(2,"0")} não dá
+                  </p>
+                )}
+                <Button type="button" size="sm" className="w-full h-8 text-xs" onClick={confirm} disabled={tooEarly}>
                   Confirmar {String(selH).padStart(2,"0")}:{String(selMin).padStart(2,"0")}
                 </Button>
               </motion.div>

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ImagePlus, X, TriangleAlert, Settings as SettingsIcon, FlaskConical, CheckCircle2, Volume2, Play } from "lucide-react";
+import { ImagePlus, X, TriangleAlert, Settings as SettingsIcon, FlaskConical, CheckCircle2, Volume2, Play, Check } from "@/lib/icons";
 import { SOUND_OPTIONS, playSound, type SoundPreset } from "@/lib/sounds";
 import { usePageTitle } from "@/lib/use-page-title";
 import {
@@ -257,7 +257,7 @@ export default function SettingsPage() {
             Sons da Plataforma
           </CardTitle>
           <CardDescription>
-            Escolha o som para cada tipo de notificação. Clique em ▶ para ouvir.
+            Escolha o som para cada tipo de notificação. Clique no play para ouvir.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -345,7 +345,7 @@ export default function SettingsPage() {
                 <li>Todas as mensagens de chat e DMs</li>
                 <li>Todas as notificações</li>
               </ul>
-              <span className="block mt-2 text-green-700 dark:text-green-400 font-medium text-sm">✓ Usuários e clientes serão mantidos.</span>
+              <span className="mt-2 flex items-center gap-1 text-green-700 dark:text-green-400 font-medium text-sm"><Check className="h-4 w-4" />Usuários e clientes serão mantidos.</span>
               <span className="block mt-2">Para confirmar, digite <strong>LIMPAR</strong> abaixo:</span>
             </DialogDescription>
           </DialogHeader>

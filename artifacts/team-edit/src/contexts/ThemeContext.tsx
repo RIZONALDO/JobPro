@@ -1,8 +1,6 @@
 import { createContext, useContext, useEffect, useCallback, useState, type ReactNode } from "react";
-import { useAuth } from "./AuthContext";
-import { apiPut } from "@/lib/api";
 
-type Theme = "light" | "dark";
+type Theme = "dark";
 export type Scale = "sm" | "md" | "lg";
 
 interface ThemeContextValue {
@@ -16,9 +14,10 @@ const THEME_KEY = "te_theme";
 const SCALE_KEY = "te_scale";
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function applyTheme(t: Theme) {
-  document.documentElement.classList.toggle("dark", t === "dark");
-  try { localStorage.setItem(THEME_KEY, t); } catch {}
+/** O app é sempre escuro (decisão de produto): não há mais opção de aparência. */
+function applyDark() {
+  document.documentElement.classList.add("dark");
+  try { localStorage.removeItem(THEME_KEY); } catch {}
 }
 
 function applyScale(s: Scale) {
@@ -28,25 +27,16 @@ function applyScale(s: Scale) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const { user, refresh } = useAuth();
-  const theme: Theme = ((user as any)?.theme as Theme) ?? (localStorage.getItem(THEME_KEY) as Theme) ?? "dark";
+  const theme: Theme = "dark";
   const [scale, setScaleState] = useState<Scale>(
     () => (localStorage.getItem(SCALE_KEY) as Scale) ?? "md"
   );
 
-  useEffect(() => { applyTheme(theme); }, [theme]);
+  useEffect(() => { applyDark(); }, []);
   useEffect(() => { applyScale(scale); }, [scale]);
 
-  const toggleTheme = useCallback(async () => {
-    const next: Theme = theme === "dark" ? "light" : "dark";
-    applyTheme(next);
-    try {
-      await apiPut("/api/auth/theme", { theme: next });
-      await refresh();
-    } catch {
-      applyTheme(theme);
-    }
-  }, [theme, refresh]);
+  // mantido para quem ainda chama; não troca mais o tema
+  const toggleTheme = useCallback(() => {}, []);
 
   const setScale = useCallback((s: Scale) => {
     setScaleState(s);

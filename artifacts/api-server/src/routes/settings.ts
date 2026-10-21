@@ -232,7 +232,7 @@ router.post("/admin/seed", requireAdmin, async (_req, res): Promise<void> => {
       client: tpl.client ?? null,
       color,
       priority: tpl.priority as any,
-      complexity: tpl.complexity as any,
+      estMinutes: ({ low: 180, medium: 360, high: 720 } as Record<string, number>)[tpl.complexity] ?? 360,
       status: tpl.status,
       assignedToId: !isDraft ? editor.id : null,
       createdById: coord.id,

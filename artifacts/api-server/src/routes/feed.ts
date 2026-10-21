@@ -1,16 +1,17 @@
 import { Router } from "express";
 import {
-  db,
+  db, tasksTable, taskEventsTable,
   feedItemsTable, feedReactionsTable, feedCommentsTable,
   chatMessagesTable, chatReactionsTable, userPresenceTable, usersTable,
 } from "@workspace/db";
-import { eq, desc, asc, and, gt, lt, inArray, sql } from "drizzle-orm"; // gt used in presence query
+import { eq, desc, asc, and, gt, lt, inArray, isNull, isNotNull, sql } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
 import {
   broadcastFeedReaction, broadcastFeedComment, broadcastFeedCommentDeleted,
   broadcastChatMessage, broadcastChatDeleted, broadcastChatReaction, broadcastPresence,
 } from "../lib/broadcast.js";
 import { createFeedItem } from "../lib/feed.js";
+import { getIo } from "../lib/io.js";
 import { notify } from "../lib/notify.js";
 
 async function notifyMentions(
@@ -68,7 +69,7 @@ async function enrichFeedItems(items: typeof feedItemsTable.$inferSelect[], myUs
   const actorIds = [...new Set(items.map(i => i.actorId).filter((id): id is number => id !== null))];
   const actors = actorIds.length
     ? await db
-        .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+        .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, login: usersTable.login })
         .from(usersTable)
         .where(inArray(usersTable.id, actorIds))
     : [];
@@ -85,37 +86,126 @@ async function enrichFeedItems(items: typeof feedItemsTable.$inferSelect[], myUs
 
 // ── Feed routes ────────────────────────────────────────────────
 
-router.get("/feed", requireAuth, async (req, res): Promise<void> => {
-  const myUserId = req.session.userId!;
-  const items = await db
-    .select()
-    .from(feedItemsTable)
-    .orderBy(desc(feedItemsTable.createdAt))
-    .limit(50);
+/** Tipos que aparecem no mural. Eventos antigos (pausada, cancelada, devolvida…) ficam só no histórico do job. */
+const VISIBLE = ["manual_post", "kudos", "task_completed"];
+const KIND: Record<string, string[]> = { all: VISIBLE, post: ["manual_post"], kudos: ["kudos"], delivery: ["task_completed"] };
+const PAGE = 30;
 
-  res.json(await enrichFeedItems(items, myUserId));
+/** Completa os itens do mural: pessoa reconhecida, detalhes da entrega (job, cliente, editor, gestor, no prazo) e papel do autor. */
+async function enrichMural(items: typeof feedItemsTable.$inferSelect[], me: number) {
+  const base = await enrichFeedItems(items, me);
+  const userIds = [...new Set(items.flatMap(i => [i.targetUserId, i.actorId]).filter((x): x is number => x != null))];
+  const taskIds = [...new Set(items.filter(i => i.type === "task_completed" && i.entityId).map(i => i.entityId as number))];
+  const tasks = taskIds.length ? await db.select({
+    id: tasksTable.id, title: tasksTable.title, n: tasksTable.taskNumber, y: tasksTable.taskYear, client: tasksTable.client,
+    editorId: tasksTable.assignedToId, coordId: tasksTable.createdById, dueDate: tasksTable.dueDate,
+  }).from(tasksTable).where(inArray(tasksTable.id, taskIds)) : [];
+  const firstReview = new Map<number, Date>();
+  if (taskIds.length) {
+    const evs = await db.select({ taskId: taskEventsTable.taskId, at: taskEventsTable.createdAt }).from(taskEventsTable)
+      .where(and(inArray(taskEventsTable.taskId, taskIds), eq(taskEventsTable.toStatus, "review"))).orderBy(asc(taskEventsTable.createdAt));
+    for (const e of evs) if (!firstReview.has(e.taskId)) firstReview.set(e.taskId, e.at);
+  }
+  const allUsers = [...new Set([...userIds, ...tasks.flatMap(t => [t.editorId, t.coordId]).filter((x): x is number => x != null)])];
+  const people = allUsers.length ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, login: usersTable.login, role: usersTable.role, jobTitle: usersTable.jobTitle })
+    .from(usersTable).where(inArray(usersTable.id, allUsers)) : [];
+  const pm = new Map(people.map(u => [u.id, u]));
+  const code = (n: number, y: number) => `${String(n).padStart(3, "0")}.${String(y).padStart(2, "0")}`;
+  return base.map(it => {
+    const t = it.type === "task_completed" ? tasks.find(x => x.id === it.entityId) : undefined;
+    const fr = t ? firstReview.get(t.id) : undefined;
+    return {
+      ...it,
+      actorRole: it.actorId ? pm.get(it.actorId)?.role ?? null : null,
+      actorTitle: it.actorId ? pm.get(it.actorId)?.jobTitle ?? null : null,
+      target: it.targetUserId ? pm.get(it.targetUserId) ?? null : null,
+      delivery: t ? {
+        taskId: t.id, code: code(t.n, t.y), title: t.title, client: t.client,
+        editor: t.editorId ? pm.get(t.editorId) ?? null : null, coordinator: t.coordId ? pm.get(t.coordId) ?? null : null,
+        onTime: fr && t.dueDate ? fr <= t.dueDate : null,
+      } : null,
+    };
+  });
+}
+
+// GET /feed?kind=all|post|kudos|delivery&before=<id>  →  { pinned, items, hasMore }
+router.get("/feed", requireAuth, async (req, res): Promise<void> => {
+  const me = req.session.userId!;
+  const types = KIND[String(req.query.kind ?? "all")] ?? VISIBLE;
+  const before = Number(req.query.before) || 0;
+  const conds = [inArray(feedItemsTable.type, types), isNull(feedItemsTable.pinnedAt)];
+  if (before) conds.push(lt(feedItemsTable.id, before));
+  const rows = await db.select().from(feedItemsTable).where(and(...conds)).orderBy(desc(feedItemsTable.createdAt), desc(feedItemsTable.id)).limit(PAGE + 1);
+  const pinnedRows = before ? [] : await db.select().from(feedItemsTable)
+    .where(and(isNotNull(feedItemsTable.pinnedAt), inArray(feedItemsTable.type, ["manual_post", "kudos"]))).orderBy(desc(feedItemsTable.pinnedAt));
+  res.json({
+    pinned: await enrichMural(pinnedRows, me),
+    items: await enrichMural(rows.slice(0, PAGE), me),
+    hasMore: rows.length > PAGE,
+  });
 });
 
+// Resumo da semana para a lateral do mural: só números da equipe, sem ranking de pessoas.
+router.get("/feed/summary", requireAuth, async (_req, res): Promise<void> => {
+  const nowLocal = new Date(Date.now() - 3 * 3600_000);                 // Brasília (sem horário de verão)
+  const dow = (nowLocal.getUTCDay() + 6) % 7;                           // 0 = segunda
+  const monday = Date.UTC(nowLocal.getUTCFullYear(), nowLocal.getUTCMonth(), nowLocal.getUTCDate() - dow) + 3 * 3600_000;
+  const prevMonday = monday - 7 * 86_400_000;
+  const evs = await db.select({ taskId: taskEventsTable.taskId, at: taskEventsTable.createdAt }).from(taskEventsTable)
+    .where(and(eq(taskEventsTable.toStatus, "completed"), gt(taskEventsTable.createdAt, new Date(prevMonday))));
+  const thisWeek = evs.filter(e => +e.at >= monday), lastWeek = evs.filter(e => +e.at < monday);
+  const days = [0, 0, 0, 0, 0, 0, 0];
+  for (const e of thisWeek) days[Math.min(6, Math.floor((+e.at - monday) / 86_400_000))]++;
+  const ids = [...new Set(thisWeek.map(e => e.taskId))];
+  let onTime: number | null = null;
+  if (ids.length) {
+    const ts = await db.select({ id: tasksTable.id, due: tasksTable.dueDate }).from(tasksTable).where(inArray(tasksTable.id, ids));
+    const rv = await db.select({ taskId: taskEventsTable.taskId, at: taskEventsTable.createdAt }).from(taskEventsTable)
+      .where(and(inArray(taskEventsTable.taskId, ids), eq(taskEventsTable.toStatus, "review"))).orderBy(asc(taskEventsTable.createdAt));
+    const first = new Map<number, Date>(); for (const r of rv) if (!first.has(r.taskId)) first.set(r.taskId, r.at);
+    const rated = ts.filter(t => t.due && first.has(t.id));
+    if (rated.length) onTime = Math.round((rated.filter(t => first.get(t.id)! <= t.due!).length / rated.length) * 100);
+  }
+  res.json({ delivered: new Set(thisWeek.map(e => e.taskId)).size, deliveredLastWeek: new Set(lastWeek.map(e => e.taskId)).size, days, onTime, today: dow });
+});
+
+// POST /feed  { content, kind: "post" | "kudos", targetUserId?, mentions? }
 router.post("/feed", requireAuth, async (req, res): Promise<void> => {
-  const { content, mentions } = req.body ?? {};
-  if (!content?.trim()) { res.status(400).json({ error: "Conteúdo obrigatório" }); return; }
-
+  const { content, mentions, kind, targetUserId } = req.body ?? {};
+  if (!content?.trim()) { res.status(400).json({ error: "Escreva alguma coisa" }); return; }
   const userId = req.session.userId!;
-  const [actor] = await db
-    .select({ id: usersTable.id, name: usersTable.name })
-    .from(usersTable)
-    .where(eq(usersTable.id, userId));
-
+  const isKudos = kind === "kudos";
+  const target = isKudos ? Number(targetUserId) : null;
+  if (isKudos && (!target || target === userId)) { res.status(400).json({ error: "Escolha quem você quer reconhecer" }); return; }
+  const [actor] = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
+  let targetName = "";
+  if (target) {
+    const [t] = await db.select({ name: usersTable.name, status: usersTable.status }).from(usersTable).where(eq(usersTable.id, target));
+    if (!t || t.status !== "active") { res.status(400).json({ error: "Pessoa não encontrada" }); return; }
+    targetName = t.name;
+  }
   await createFeedItem({
-    type: "manual_post",
-    title: `${actor?.name ?? "Alguém"} publicou`,
+    type: isKudos ? "kudos" : "manual_post",
+    title: isKudos ? `${actor?.name ?? "Alguém"} reconheceu ${targetName}` : `${actor?.name ?? "Alguém"} publicou`,
     content: String(content).trim(),
     actorId: userId,
-    entityType: undefined,
+    targetUserId: target ?? undefined,
   });
-
-  await notifyMentions(mentions, userId, "no feed");
+  if (target) await notify(target, "feed_kudos", "Você foi reconhecido(a)", `${actor?.name ?? "Alguém"} reconheceu você no mural: “${String(content).trim().slice(0, 120)}”`);
+  await notifyMentions((mentions ?? []).filter((m: number) => m !== target), userId, "no mural");
   res.status(201).json({ ok: true });
+});
+
+// Fixar / desafixar recado no topo do mural (gestão)
+router.post("/feed/:id/pin", requireAuth, async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id), 10);
+  if (!["admin", "supervisor", "coordinator"].includes(req.session.userRole ?? "")) { res.status(403).json({ error: "Só a gestão fixa recados" }); return; }
+  const [item] = await db.select().from(feedItemsTable).where(eq(feedItemsTable.id, id));
+  if (!item || !["manual_post", "kudos"].includes(item.type)) { res.status(404).json({ error: "Recado não encontrado" }); return; }
+  const pin = !item.pinnedAt;
+  await db.update(feedItemsTable).set({ pinnedAt: pin ? new Date() : null, pinnedById: pin ? req.session.userId! : null }).where(eq(feedItemsTable.id, id));
+  try { getIo().emit("feed:changed"); } catch { /* sem socket */ }
+  res.json({ pinned: pin });
 });
 
 router.put("/feed/:id", requireAuth, async (req, res): Promise<void> => {
@@ -216,6 +306,7 @@ router.get("/feed/:id/comments", requireAuth, async (req, res): Promise<void> =>
       createdAt: feedCommentsTable.createdAt,
       userName: usersTable.name,
       userAvatar: usersTable.avatarUrl,
+      userLogin: usersTable.login,
     })
     .from(feedCommentsTable)
     .leftJoin(usersTable, eq(feedCommentsTable.userId, usersTable.id))
@@ -239,11 +330,11 @@ router.post("/feed/:id/comments", requireAuth, async (req, res): Promise<void> =
     .returning();
 
   const [user] = await db
-    .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+    .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, login: usersTable.login })
     .from(usersTable)
     .where(eq(usersTable.id, userId));
 
-  const enriched = { ...comment, userName: user?.name ?? null, userAvatar: user?.avatarUrl ?? null };
+  const enriched = { ...comment, userName: user?.name ?? null, userAvatar: user?.avatarUrl ?? null, userLogin: user?.login ?? null };
   broadcastFeedComment(feedItemId, enriched);
   await notifyMentions(mentions, userId, "em um comentário");
   res.status(201).json(enriched);

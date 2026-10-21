@@ -1,623 +1,421 @@
-import { motion } from "framer-motion";
-import { staggerContainer, staggerItem } from "@/lib/motion";
-import { useEffect, useRef, useState, useCallback } from "react";
-import Picker from "@emoji-mart/react";
-import data from "@emoji-mart/data";
-import { apiFetch, apiPost, apiPut, apiDelete } from "@/lib/api";
-import { useAuth } from "@/contexts/AuthContext";
-import { useTheme } from "@/contexts/ThemeContext";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { roleName } from "@/lib/roles";
 import { toast } from "sonner";
-import { usePageTitle } from "@/lib/use-page-title";
-import { getSocket } from "@/lib/socket";
 import { cn } from "@/lib/utils";
-import {
-  Trash2, Zap, Folder,
-  CheckCircle2, FolderCheck, Edit3, SmilePlus, MessageCircle, Pencil, X, Check, RotateCcw, Undo2,
-  PauseCircle, XCircle, PlayCircle,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { apiDelete, apiFetch, apiPost, apiPut } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { usePageTitle } from "@/lib/use-page-title";
+import { useTaskModal } from "@/contexts/TaskModalContext";
+import { getSocket } from "@/lib/socket";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { clientColor } from "@/components/fila/job-shared";
+import { MentionTextarea, parseMentions, renderMentions, type MentionUser } from "@/components/feed/mentions";
+import {
+  AtSign, HandsClapping, Heart, Megaphone, MessageCircle, MoreHorizontal, PushPin, PushPinSlash, SealCheck, Search, Share, SmilePlus, X,
+} from "@/lib/icons";
 
-// ── Types ───────────────────────────────────────────────────────
+/**
+ * Mural da equipe (rede social interna). Cada postagem é um cartão com a mesma estrutura:
+ * etiqueta do tipo + tempo → quem postou → texto → cartão do job ou da pessoa → ações.
+ * Fonte Inter em pesos leves; um destaque por nível (nome em peso médio, resto normal/cinza).
+ * Aparecem recados, reconhecimentos entre colegas e entregas aprovadas pelo cliente. Problemas de job não viram post.
+ */
 
-interface MentionUser { id: number; name: string; avatarUrl: string | null; }
-interface FeedActor { id: number; name: string; avatarUrl: string | null; }
-interface FeedReaction { id: number; feedItemId: number; userId: number; emoji: string; userName: string | null; }
-interface FeedComment {
-  id: number; feedItemId: number; userId: number; content: string;
-  createdAt: string; userName: string | null; userAvatar: string | null;
+interface Person { id: number; name: string; avatarUrl: string | null; login?: string; role?: string; jobTitle?: string | null }
+interface Reaction { id: number; userId: number; emoji: string; userName: string | null }
+interface Delivery { taskId: number; code: string; title: string; client: string | null; editor: Person | null; coordinator: Person | null; onTime: boolean | null }
+interface Item {
+  id: number; type: "manual_post" | "kudos" | "task_completed"; title: string; content: string | null; createdAt: string;
+  actorId: number | null; actor: Person | null; actorRole: string | null; actorTitle?: string | null; target: Person | null; delivery: Delivery | null;
+  pinnedAt: string | null; reactions: Reaction[]; commentCount: number;
 }
-interface FeedItem {
-  id: number; type: string; title: string; content: string | null;
-  actorId: number | null; actor: FeedActor | null; reactions: FeedReaction[]; commentCount: number;
-  myReactions: string[]; jobId: number | null; entityId: number | null;
-  entityType: string | null; createdAt: string;
-}
-interface OnlineUser {
-  userId: number; name: string | null; avatarUrl: string | null; isOnline: boolean;
-}
+interface Reply { id: number; userId: number; content: string; createdAt: string; userName: string | null; userAvatar: string | null; userLogin?: string | null }
+interface Summary { delivered: number; deliveredLastWeek: number; days: number[]; onTime: number | null; today: number }
+interface TeamUser extends MentionUser { login: string; role: string; absence: { label: string; endDate: string } | null }
 
-// ── Constants ────────────────────────────────────────────────────
+type Kind = "all" | "post" | "kudos" | "delivery";
+const TABS: [Kind, string][] = [["all", "Para você"], ["post", "Recados"], ["kudos", "Reconhecimentos"], ["delivery", "Entregas"]];
+const LIKE = "❤️";
+const EMOJIS = ["😀", "😂", "😍", "🙌", "👏", "🎉", "🔥", "💪", "🚀", "✅", "🎬", "☕"];
+const MAX = 500;
+const muted = "text-[hsl(var(--muted-foreground))]";
+const hoverRow = "transition-colors hover:bg-[hsl(var(--foreground)/0.03)]";
+const card = "rounded-2xl border bg-[hsl(var(--card))]";
 
-const FEED_ICON: Record<string, React.ReactNode> = {
-  task_completed:    <CheckCircle2 className="h-4 w-4 text-green-500" />,
-  task_reopened:     <RotateCcw className="h-4 w-4 text-rose-500" />,
-  task_returned:     <Undo2 className="h-4 w-4 text-amber-500" />,
-  task_paused:       <PauseCircle className="h-4 w-4 text-violet-500" />,
-  task_cancelled:    <XCircle className="h-4 w-4 text-red-500" />,
-  task_resumed:      <PlayCircle className="h-4 w-4 text-blue-500" />,
-  task_reactivated:  <PlayCircle className="h-4 w-4 text-emerald-500" />,
-  job_completed:     <Zap className="h-4 w-4 text-indigo-500" />,
-  project_completed: <FolderCheck className="h-4 w-4 text-green-600" />,
-  project_created:   <Folder className="h-4 w-4 text-blue-500" />,
-  manual_post:       <Edit3 className="h-4 w-4 text-violet-500" />,
+/** Tempo no estilo do Twitter: 5min · 3h · 13 de out. */
+const ago = (iso: string) => {
+  const m = Math.round((Date.now() - +new Date(iso)) / 60000);
+  if (m < 1) return "agora"; if (m < 60) return `${m}min`; if (m < 1440) return `${Math.floor(m / 60)}h`;
+  return new Date(iso).toLocaleDateString("pt-BR", { day: "numeric", month: "short" });
 };
-
-const FEED_ACCENT: Record<string, string> = {
-  task_completed:    "border-t-green-400",
-  task_reopened:     "border-t-rose-400",
-  task_returned:     "border-t-amber-400",
-  task_paused:       "border-t-violet-400",
-  task_cancelled:    "border-t-red-400",
-  task_resumed:      "border-t-blue-400",
-  task_reactivated:  "border-t-emerald-400",
-  job_completed:     "border-t-indigo-400",
-  project_completed: "border-t-green-500",
-  project_created:   "border-t-blue-400",
-  manual_post:       "border-t-violet-400",
-};
-
-// ── Helpers ──────────────────────────────────────────────────────
-
-function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return "agora";
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}min`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
-}
-
-
-function parseMentions(text: string, users: MentionUser[]): number[] {
-  const ids: number[] = [];
-  const matches = text.match(/@([\w][\w\s]{0,30})/g) ?? [];
-  for (const m of matches) {
-    const q = m.slice(1).trim().toLowerCase();
-    const found = users.find(u => u.name.toLowerCase() === q);
-    if (found && !ids.includes(found.id)) ids.push(found.id);
-  }
-  return ids;
-}
-
-function renderMentions(text: string) {
-  const parts = text.split(/(@[\w][\w\s]{0,30})/g);
-  return parts.map((part, i) =>
-    part.startsWith("@")
-      ? <strong key={i}>{part}</strong>
-      : <span key={i}>{part}</span>
-  );
-}
-
-// ── MentionTextarea ───────────────────────────────────────────────
-
-function MentionTextarea({
-  value, onChange, onSend, users, placeholder, rows = 1, className,
-}: {
-  value: string; onChange: (v: string) => void; onSend?: () => void;
-  users: MentionUser[]; placeholder?: string; rows?: number; className?: string;
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-  const [showDrop, setShowDrop] = useState(false);
-
-  useEffect(() => {
-    if (!ref.current) return;
-    ref.current.style.height = "auto";
-    ref.current.style.height = `${ref.current.scrollHeight}px`;
-  }, [value]);
-  const [query, setQuery] = useState("");
-  const [atIndex, setAtIndex] = useState(-1);
-  const [selIdx, setSelIdx] = useState(0);
-
-  const filtered = users
-    .filter(u => !query || u.name.toLowerCase().includes(query.toLowerCase()))
-    .slice(0, 6);
-
-  const checkAt = (val: string, cursor: number) => {
-    const before = val.slice(0, cursor);
-    const m = before.match(/@([\w\s]{0,30})$/);
-    if (m && !m[1].startsWith(" ")) {
-      setQuery(m[1]); setAtIndex(before.length - m[0].length); setShowDrop(true); setSelIdx(0);
-    } else { setShowDrop(false); }
-  };
-
-  const selectUser = (u: MentionUser) => {
-    const cursor = ref.current?.selectionStart ?? value.length;
-    const before = value.slice(0, atIndex);
-    const after = value.slice(cursor);
-    onChange(`${before}@${u.name} ${after}`);
-    setShowDrop(false);
-    setTimeout(() => {
-      if (!ref.current) return;
-      const pos = before.length + u.name.length + 2;
-      ref.current.focus();
-      ref.current.setSelectionRange(pos, pos);
-    }, 0);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (showDrop && filtered.length > 0) {
-      if (e.key === "ArrowDown") { e.preventDefault(); setSelIdx(i => Math.min(i + 1, filtered.length - 1)); return; }
-      if (e.key === "ArrowUp")   { e.preventDefault(); setSelIdx(i => Math.max(0, i - 1)); return; }
-      if (e.key === "Enter")     { e.preventDefault(); if (filtered[selIdx]) selectUser(filtered[selIdx]); return; }
-      if (e.key === "Escape")    { setShowDrop(false); return; }
-    }
-    if (e.key === "Enter" && !e.shiftKey && onSend) { e.preventDefault(); onSend(); }
-  };
-
-  return (
-    <div className="relative">
-      <Textarea
-        ref={ref}
-        value={value}
-        onChange={e => { onChange(e.target.value); checkAt(e.target.value, e.target.selectionStart ?? 0); }}
-        onKeyDown={handleKeyDown}
-        onBlur={() => setTimeout(() => setShowDrop(false), 150)}
-        placeholder={placeholder}
-        rows={rows}
-        className={cn("resize-none overflow-hidden border-none shadow-none focus-visible:ring-0 bg-transparent p-0 text-sm placeholder:text-[hsl(var(--muted-foreground))]", className)}
-      />
-      {showDrop && filtered.length > 0 && (
-        <div className="absolute bottom-[calc(100%+6px)] left-0 w-56 rounded-xl border bg-[hsl(var(--card))] shadow-2xl z-[200] overflow-hidden">
-          <div className="px-3 py-1.5 border-b bg-[hsl(var(--muted))]/30">
-            <span className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Mencionar</span>
-          </div>
-          {filtered.map((u, i) => (
-            <button key={u.id} type="button" onMouseDown={e => { e.preventDefault(); selectUser(u); }}
-              className={cn("flex items-center gap-2 w-full px-3 py-2 text-xs text-left transition-colors",
-                i === selIdx ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]" : "hover:bg-[hsl(var(--muted))]"
-              )}>
-              <AvatarDisplay name={u.name ?? "?"} avatarUrl={u.avatarUrl} size={24} />
-              <span className="font-medium truncate">@{u.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── EmojiReactions ────────────────────────────────────────────────
-
-function EmojiReactions({ feedItemId, reactions, myUserId, onUpdate }: {
-  feedItemId: number; reactions: FeedReaction[]; myUserId: number;
-  onUpdate: (newReactions: FeedReaction[]) => void;
-}) {
-  const [showPicker, setShowPicker] = useState(false);
-  const { theme } = useTheme();
-  const pickerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setShowPicker(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const toggle = async (emoji: string) => {
-    try {
-      const updated = await apiPost<FeedReaction[]>(`/api/feed/${feedItemId}/reactions`, { emoji });
-      onUpdate(updated);
-    } catch {}
-  };
-
-  const grouped = Object.entries(
-    reactions.reduce<Record<string, { count: number; users: string[]; mine: boolean }>>((acc, r) => {
-      if (!acc[r.emoji]) acc[r.emoji] = { count: 0, users: [], mine: false };
-      acc[r.emoji].count++;
-      acc[r.emoji].users.push(r.userName ?? "?");
-      if (r.userId === myUserId) acc[r.emoji].mine = true;
-      return acc;
-    }, {})
-  );
-
-  return (
-    <div className="flex items-center gap-1.5 flex-wrap">
-      {grouped.map(([emoji, g]) => (
-        <button key={emoji} title={g.users.join(", ")} onClick={() => toggle(emoji)}
-          className={cn(
-            "flex items-center gap-1 px-2.5 py-1 rounded-full text-sm border transition-all",
-            g.mine
-              ? "bg-[hsl(var(--primary))]/10 border-[hsl(var(--primary))]/30 text-[hsl(var(--primary))]"
-              : "bg-[hsl(var(--muted))]/50 border-transparent hover:border-[hsl(var(--border))]"
-          )}>
-          <span>{emoji}</span>
-          <span className="text-xs font-semibold">{g.count}</span>
-        </button>
-      ))}
-
-      <div className="relative" ref={pickerRef}>
-        <button onClick={() => setShowPicker(v => !v)}
-          className="flex items-center gap-1 px-2 py-1 rounded-full border border-dashed border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--foreground))]/30 transition-all">
-          <SmilePlus className="h-4 w-4" />
-        </button>
-        {showPicker && (
-          <div className="absolute bottom-10 left-0 z-[100]">
-            <Picker
-              data={data}
-              onEmojiSelect={(e: { native: string }) => { toggle(e.native); setShowPicker(false); }}
-              locale="pt"
-              theme={theme}
-              previewPosition="none"
-              skinTonePosition="none"
-              maxFrequentRows={2}
-              perLine={8}
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── FeedCard ─────────────────────────────────────────────────────
-
-function FeedCard({ item, myUserId, myRole, users, onReact, updatedReactions, onDelete, onEdit }: {
-  item: FeedItem; myUserId: number; myRole: string; users: MentionUser[];
-  onReact: (itemId: number, newReactions: FeedReaction[]) => void;
-  updatedReactions?: FeedReaction[];
-  onDelete: (itemId: number) => void;
-  onEdit: (itemId: number, content: string) => void;
-}) {
-  const reactions = updatedReactions ?? item.reactions;
-  const [expanded, setExpanded] = useState(false);
-  const [comments, setComments] = useState<FeedComment[]>([]);
-  const [commentCount, setCommentCount] = useState(item.commentCount);
-  const [loadingComments, setLoadingComments] = useState(false);
-  const [commentText, setCommentText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [editText, setEditText] = useState(item.content ?? "");
-  const [saving, setSaving] = useState(false);
-  const { user } = useAuth();
-
-  const isAuthor = item.actorId === myUserId;
-  const canManage = isAuthor || ["admin", "supervisor"].includes(myRole);
-
-  const saveEdit = async () => {
-    if (!editText.trim()) return;
-    setSaving(true);
-    try {
-      await apiPut(`/api/feed/${item.id}`, { content: editText.trim() });
-      onEdit(item.id, editText.trim());
-      setEditing(false);
-    } catch { toast.error("Erro ao editar"); }
-    finally { setSaving(false); }
-  };
-
-  const deletePost = async () => {
-    try {
-      await apiDelete(`/api/feed/${item.id}`);
-      onDelete(item.id);
-    } catch { toast.error("Erro ao excluir"); }
-  };
-
-  useEffect(() => {
-    if (expanded && comments.length === 0) {
-      setLoadingComments(true);
-      apiFetch<FeedComment[]>(`/api/feed/${item.id}/comments`)
-        .then(setComments).catch(() => {}).finally(() => setLoadingComments(false));
-    }
-  }, [expanded]);
-
-  useEffect(() => {
-    const socket = getSocket();
-    const onNew = ({ feedItemId, comment }: { feedItemId: number; comment: FeedComment }) => {
-      if (feedItemId !== item.id) return;
-      setComments(prev => prev.some(c => c.id === comment.id) ? prev : [...prev, comment]);
-      setCommentCount(prev => prev + 1);
-    };
-    const onDel = ({ feedItemId, commentId }: { feedItemId: number; commentId: number }) => {
-      if (feedItemId !== item.id) return;
-      setComments(prev => prev.filter(c => c.id !== commentId));
-      setCommentCount(prev => Math.max(0, prev - 1));
-    };
-    socket.on("feed:comment", onNew);
-    socket.on("feed:comment_deleted", onDel);
-    return () => { socket.off("feed:comment", onNew); socket.off("feed:comment_deleted", onDel); };
-  }, [item.id]);
-
-  const sendComment = async () => {
-    if (!commentText.trim()) return;
-    setSending(true);
-    try {
-      const mentions = parseMentions(commentText, users);
-      const c = await apiPost<FeedComment>(`/api/feed/${item.id}/comments`, { content: commentText, mentions });
-      if (!comments.some(x => x.id === c.id)) {
-        setComments(prev => [...prev, c]);
-        setCommentCount(prev => prev + 1);
-      }
-      setCommentText("");
-    } catch {
-      toast.error("Erro ao enviar comentário");
-    } finally { setSending(false); }
-  };
-
-  const deleteComment = async (commentId: number) => {
-    try {
-      await apiDelete(`/api/feed/comments/${commentId}`);
-      setComments(prev => prev.filter(c => c.id !== commentId));
-      setCommentCount(prev => Math.max(0, prev - 1));
-    } catch {}
-  };
-
-  return (
-    <div className={cn("rounded-2xl border-t-4 bg-[hsl(var(--card))] shadow-sm overflow-visible", FEED_ACCENT[item.type] ?? "border-t-slate-300")}>
-
-      {/* Header */}
-      <div className="flex gap-3 px-5 pt-4 pb-3">
-        <AvatarDisplay name={item.actor?.name ?? "?"} avatarUrl={item.actor?.avatarUrl ?? null} size={40} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 justify-between">
-            <div className="flex items-center gap-1.5">
-              <span className="font-semibold text-sm">{item.actor?.name ?? "Sistema"}</span>
-              <span className="text-[hsl(var(--muted-foreground))] text-xs">·</span>
-              <span className="text-xs text-[hsl(var(--muted-foreground))]">{timeAgo(item.createdAt)}</span>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {FEED_ICON[item.type]}
-              {canManage && item.type === "manual_post" && !editing && (
-                <>
-                  {isAuthor && (
-                    <button onClick={() => { setEditText(item.content ?? ""); setEditing(true); }}
-                      className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors">
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                  <button onClick={deletePost}
-                    className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] transition-colors">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-          <p className="text-xs text-[hsl(var(--muted-foreground))] leading-tight">{item.title}</p>
-        </div>
-      </div>
-
-      {/* Content */}
-      {editing ? (
-        <div className="px-5 pb-4 space-y-2">
-          <MentionTextarea
-            value={editText} onChange={setEditText} users={users}
-            placeholder="Editar publicação..."
-            rows={3} className="w-full text-[15px] leading-relaxed border rounded-xl px-3 py-2 bg-[hsl(var(--muted))]/30"
-          />
-          <div className="flex gap-2 justify-end">
-            <button onClick={() => setEditing(false)}
-              className="flex items-center gap-1 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors px-3 py-1.5 rounded-lg hover:bg-[hsl(var(--muted))]/40">
-              <X className="h-3.5 w-3.5" />Cancelar
-            </button>
-            <button onClick={saveEdit} disabled={saving || !editText.trim()}
-              className="flex items-center gap-1 text-xs text-white bg-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/90 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors">
-              <Check className="h-3.5 w-3.5" />Salvar
-            </button>
-          </div>
-        </div>
-      ) : item.content ? (
-        <div className="px-5 pb-4">
-          <p className="text-[15px] leading-relaxed">{renderMentions(item.content)}</p>
-        </div>
-      ) : null}
-
-      {/* Divider */}
-      <div className="border-t mx-5" />
-
-      {/* Actions bar */}
-      <div className="px-5 py-2.5 flex items-center gap-4">
-        <EmojiReactions
-          feedItemId={item.id}
-          reactions={reactions}
-          myUserId={myUserId}
-          onUpdate={r => onReact(item.id, r)}
-        />
-        <button
-          onClick={() => setExpanded(v => !v)}
-          className="ml-auto flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
-        >
-          <MessageCircle className="h-4 w-4" />
-          <span>{commentCount}</span>
-        </button>
-      </div>
-
-      {/* Comments */}
-      {expanded && (
-        <div className="border-t">
-          {loadingComments ? (
-            <p className="text-xs text-[hsl(var(--muted-foreground))] px-5 py-3">Carregando...</p>
-          ) : (
-            <div className="divide-y">
-              {comments.map(c => (
-                <div key={c.id} className="flex gap-3 px-5 py-3 group">
-                  <AvatarDisplay name={c.userName ?? "?"} avatarUrl={c.userAvatar} size={32} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs">
-                      <strong className="font-semibold mr-1">{c.userName ?? "?"}</strong>
-                      {renderMentions(c.content)}
-                    </p>
-                    <span className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 block">{timeAgo(c.createdAt)}</span>
-                  </div>
-                  {(c.userId === myUserId || ["admin", "supervisor"].includes(myRole)) && (
-                    <button onClick={() => deleteComment(c.id)}
-                      className="opacity-0 group-hover:opacity-100 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] transition-all shrink-0 self-start mt-0.5">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Comment input — Instagram style */}
-          <div className="flex gap-3 px-5 py-3 border-t items-start">
-            <AvatarDisplay name={user?.name ?? "?"} avatarUrl={user?.avatarUrl ?? null} size={32} />
-            <div className="flex-1 flex items-end gap-2 bg-[hsl(var(--muted))]/40 rounded-2xl px-3 py-2">
-              <MentionTextarea
-                value={commentText}
-                onChange={setCommentText}
-                onSend={sendComment}
-                users={users}
-                placeholder="Adicionar comentário..."
-                rows={1}
-                className="flex-1 min-h-[20px] text-sm leading-snug"
-              />
-              {commentText.trim() && (
-                <button onClick={sendComment} disabled={sending}
-                  className="text-[hsl(var(--primary))] font-semibold text-sm shrink-0 hover:opacity-70 transition-opacity pb-0.5">
-                  Publicar
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Main page ────────────────────────────────────────────────────
+const handle = (p?: { login?: string | null } | null) => (p?.login ? `@${p.login}` : "");
 
 export default function FeedPage() {
-  usePageTitle("Feed");
+  usePageTitle("Mural");
   const { user } = useAuth();
+  const [kind, setKind] = useState<Kind>("all");
+  const [pinned, setPinned] = useState<Item[]>([]);
+  const [items, setItems] = useState<Item[] | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [users, setUsers] = useState<TeamUser[]>([]);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [q, setQ] = useState("");
 
-  const [items, setItems] = useState<FeedItem[]>([]);
-  const [loadingFeed, setLoadingFeed] = useState(true);
-  const [postText, setPostText] = useState("");
-  const [posting, setPosting] = useState(false);
-  const [postFocused, setPostFocused] = useState(false);
-  const [reactionsMap, setReactionsMap] = useState<Record<number, FeedReaction[]>>({});
+  const load = useCallback(() => {
+    apiFetch<{ pinned: Item[]; items: Item[]; hasMore: boolean }>(`/api/feed?kind=${kind}`)
+      .then(r => { setPinned(r.pinned); setItems(r.items); setHasMore(r.hasMore); }).catch(e => toast.error(e.message));
+    apiFetch<Summary>("/api/feed/summary").then(setSummary).catch(() => {});
+  }, [kind]);
+  useEffect(() => { setItems(null); load(); }, [load]);
+  useEffect(() => { apiFetch<TeamUser[]>("/api/users?active=1").then(setUsers).catch(() => {}); }, []);
 
-  const [allUsers, setAllUsers] = useState<MentionUser[]>([]);
-  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
-  const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const loadFeed = useCallback(() => {
-    apiFetch<FeedItem[]>("/api/feed")
-      .then(setItems).catch(() => toast.error("Erro ao carregar feed"))
-      .finally(() => setLoadingFeed(false));
-  }, []);
-
-  const ping = useCallback(() => { apiPost("/api/presence/ping", {}).catch(() => {}); }, []);
-
-  useEffect(() => {
-    loadFeed();
-    apiFetch<OnlineUser[]>("/api/presence").then(setOnlineUsers).catch(() => {});
-    apiFetch<MentionUser[]>("/api/users?active=1").then(setAllUsers).catch(() => {});
-    ping();
-    pingRef.current = setInterval(ping, 30_000);
-    return () => { if (pingRef.current) clearInterval(pingRef.current); };
-  }, []);
-
-  useEffect(() => {
-    const socket = getSocket();
-    const onFeedItem = (item: FeedItem) =>
-      setItems(prev => prev.some(i => i.id === item.id) ? prev : [item, ...prev]);
-    const onFeedReaction = ({ feedItemId, reactions }: { feedItemId: number; reactions: FeedReaction[] }) =>
-      setReactionsMap(prev => ({ ...prev, [feedItemId]: reactions }));
-    socket.on("feed:new_item", onFeedItem);
-    socket.on("feed:reaction", onFeedReaction);
-    return () => {
-      socket.off("feed:new_item", onFeedItem);
-      socket.off("feed:reaction", onFeedReaction);
-    };
-  }, [user]);
-
-  const publish = async () => {
-    if (!postText.trim()) return;
-    setPosting(true);
-    try {
-      const mentions = parseMentions(postText, allUsers);
-      await apiPost("/api/feed", { content: postText, mentions });
-      setPostText(""); setPostFocused(false);
-    } catch { toast.error("Erro ao publicar"); }
-    finally { setPosting(false); }
+  const more = async () => {
+    const last = items?.[items.length - 1]; if (!last) return;
+    const r = await apiFetch<{ items: Item[]; hasMore: boolean }>(`/api/feed?kind=${kind}&before=${last.id}`);
+    setItems(x => [...(x ?? []), ...r.items]); setHasMore(r.hasMore);
   };
 
-  const myInitials = user?.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() ?? "?";
+  useEffect(() => {
+    const s = getSocket();
+    const onReaction = ({ feedItemId, reactions }: { feedItemId: number; reactions: Reaction[] }) => {
+      const upd = (l: Item[]) => l.map(i => (i.id === feedItemId ? { ...i, reactions } : i));
+      setItems(l => (l ? upd(l) : l)); setPinned(upd);
+    };
+    s.on("feed:new_item", load); s.on("feed:changed", load); s.on("feed:reaction", onReaction);
+    return () => { s.off("feed:new_item", load); s.off("feed:changed", load); s.off("feed:reaction", onReaction); };
+  }, [load]);
+
+  // busca da lateral: filtra o que já está na tela (texto, autor, cliente, job)
+  const match = useCallback((it: Item) => {
+    const t = q.trim().toLowerCase(); if (!t) return true;
+    return [it.content, it.actor?.name, it.actor?.login, it.target?.name, it.delivery?.title, it.delivery?.client, it.delivery?.editor?.name].some(x => x?.toLowerCase().includes(t));
+  }, [q]);
+  const shownPinned = kind === "delivery" ? [] : pinned.filter(match);
+  const shown = useMemo(() => (items ?? []).filter(match), [items, match]);
+
+  if (!user) return null;
+  const me = users.find(u => u.id === user.id);
+  const ctx: Ctx = { me: user.id, meUser: me, role: user.role, users, reload: load };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
-
-      {/* ── Compose box — Twitter/Instagram style ─────────────── */}
-      <div className="relative rounded-2xl border bg-[hsl(var(--card))] shadow-sm overflow-visible">
-        <div className="flex gap-3 p-4">
-          {/* Avatar */}
-          <div className="shrink-0 pt-0.5">
-            <AvatarDisplay name={user?.name ?? "?"} avatarUrl={user?.avatarUrl ?? null} size={40} />
+    <div className="mx-auto grid max-w-[1020px] items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <main className="flex min-w-0 flex-col gap-4">
+        <header className="flex flex-col gap-3">
+          <div>
+            <h1 className="text-[22px] font-semibold tracking-tight">Mural</h1>
+            <p className={cn("text-[14px]", muted)}>Recados, reconhecimentos e as entregas que o cliente aprovou.</p>
           </div>
+          <nav className="flex gap-1 overflow-x-auto [scrollbar-width:none]">
+            {TABS.map(([k, l]) => (
+              <button key={k} type="button" onClick={() => setKind(k)} className={cn("h-9 shrink-0 whitespace-nowrap rounded-full px-4 text-[14px] transition-colors",
+                kind === k ? "bg-[hsl(var(--foreground))] font-medium text-[hsl(var(--background))]" : cn("font-normal hover:bg-[hsl(var(--accent))]", muted))}>{l}</button>
+            ))}
+          </nav>
+        </header>
 
-          {/* Compose area */}
-          <div className="flex-1 min-w-0">
-            <MentionTextarea
-              value={postText}
-              onChange={setPostText}
-              users={allUsers}
-              placeholder="No que você está pensando?"
-              rows={postFocused || postText ? 4 : 2}
-              className={cn("w-full text-[15px] leading-relaxed transition-all", postFocused || postText ? "min-h-[90px]" : "min-h-[44px]")}
-            />
+        <Composer ctx={ctx} onDone={load} />
 
-            {(postFocused || postText) && (
-              <div className="flex items-center justify-between pt-3 mt-2 border-t">
-                <span className="text-xs text-[hsl(var(--muted-foreground))]">@ para mencionar · Ctrl+Enter publica</span>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => { setPostText(""); setPostFocused(false); }}
-                    className="text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors px-2 py-1">
-                    Cancelar
+        {shownPinned.map(it => <Post key={`p${it.id}`} it={it} ctx={ctx} />)}
+        {items == null ? <p className={cn("py-16 text-center text-[15px]", muted)}>Carregando…</p>
+          : !shown.length && !shownPinned.length ? <Empty kind={kind} searching={!!q.trim()} />
+          : shown.map(it => <Post key={it.id} it={it} ctx={ctx} />)}
+        {hasMore && !q && <button type="button" onClick={more} className={cn(card, "py-3 text-[14px] font-medium text-[hsl(var(--primary))]", hoverRow)}>Ver postagens anteriores</button>}
+      </main>
+
+      <aside className="hidden flex-col gap-4 lg:sticky lg:top-0 lg:flex">
+        <label className="flex h-11 items-center gap-3 rounded-full border bg-[hsl(var(--card))] px-4 focus-within:border-[hsl(var(--primary))]">
+          <Search className={cn("h-[18px] w-[18px]", muted)} />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar no mural" className="min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-[hsl(var(--muted-foreground))]" />
+          {q && <button type="button" onClick={() => setQ("")} aria-label="Limpar busca" className={cn("grid h-6 w-6 place-items-center rounded-full hover:bg-[hsl(var(--accent))]", muted)}><X className="h-3.5 w-3.5" /></button>}
+        </label>
+        <WeekBox s={summary} />
+        <OffBox users={users} />
+      </aside>
+    </div>
+  );
+}
+
+function Empty({ kind, searching }: { kind: Kind; searching: boolean }) {
+  const [t, s] = searching ? ["Nada encontrado", "Tente outra palavra ou o nome de alguém."] : {
+    all: ["Nada no mural ainda", "Publique um recado ou reconheça alguém da equipe."],
+    post: ["Nenhum recado ainda", "Quando alguém publicar, aparece aqui."],
+    kudos: ["Ninguém foi reconhecido ainda", "Seja o primeiro a agradecer um colega."],
+    delivery: ["Nenhuma entrega aprovada", "As entregas que o cliente aprovar aparecem aqui."],
+  }[kind];
+  return <div className={cn(card, "px-6 py-12 text-center")}><p className="text-[17px] font-medium">{t}</p><p className={cn("mt-1 text-[14px]", muted)}>{s}</p></div>;
+}
+
+/* ── publicar ── */
+interface Ctx { me: number; meUser?: TeamUser; role: string; users: TeamUser[]; reload: () => void }
+
+function Composer({ ctx, onDone }: { ctx: Ctx; onDone: () => void }) {
+  const [text, setText] = useState("");
+  const [kudos, setKudos] = useState(false);
+  const [target, setTarget] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const people = ctx.users.filter(u => u.id !== ctx.me);
+  const tgt = people.find(p => p.id === target);
+  const over = text.length > MAX;
+  const ok = !!text.trim() && !over && (!kudos || !!target);
+  const send = async () => {
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await apiPost("/api/feed", { content: text.trim(), kind: kudos ? "kudos" : "post", targetUserId: target, mentions: parseMentions(text, ctx.users) });
+      setText(""); setTarget(null); setKudos(false); onDone();
+    } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
+  };
+  const tool = cn("inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] transition-colors hover:bg-[hsl(var(--accent))]", muted);
+  return (
+    <section className={cn(card, "p-4")}>
+      <div className="flex gap-3">
+        <AvatarDisplay name={ctx.meUser?.name ?? "?"} avatarUrl={ctx.meUser?.avatarUrl ?? null} size={40} />
+        <div className="min-w-0 flex-1">
+          {kudos && (
+            <div className="mb-2">
+              <p className="mb-1.5 text-[13px] text-amber-600 dark:text-amber-400">Quem você quer reconhecer?</p>
+              <div className="flex flex-wrap gap-1.5">
+                {tgt ? (
+                  <button type="button" onClick={() => setTarget(null)} className="inline-flex h-8 items-center gap-1.5 rounded-full bg-amber-500/15 pl-1 pr-2.5 text-[13px] font-medium">
+                    <AvatarDisplay name={tgt.name} avatarUrl={tgt.avatarUrl} size={24} />{tgt.name}<X className="h-3.5 w-3.5" />
                   </button>
-                  <Button size="sm" onClick={publish} disabled={posting || !postText.trim()} className="rounded-full px-5">
-                    Publicar
-                  </Button>
-                </div>
+                ) : people.map(u => (
+                  <button key={u.id} type="button" onClick={() => setTarget(u.id)} className="inline-flex h-8 items-center gap-1.5 rounded-full border pl-1 pr-3 text-[13px] hover:bg-[hsl(var(--accent))]">
+                    <AvatarDisplay name={u.name} avatarUrl={u.avatarUrl} size={24} />{u.name.split(" ")[0]}
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
+          )}
+          <MentionTextarea value={text} onChange={setText} users={ctx.users} rows={2} className="min-h-[48px] py-2 text-[16px] leading-6"
+            placeholder={kudos ? (tgt ? `Conte o que ${tgt.name.split(" ")[0]} fez de bom…` : "Escolha a pessoa acima") : "Escreva um recado para a equipe…"} />
+        </div>
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-2 border-t pt-3">
+        <div className="-ml-2 flex flex-wrap items-center">
+          <button type="button" onClick={() => { setKudos(k => !k); setTarget(null); }} className={cn(tool, kudos && "bg-amber-500/15 text-amber-700 dark:text-amber-300")}><HandsClapping className="h-[18px] w-[18px]" /><span className="hidden sm:inline">Reconhecer alguém</span></button>
+          <button type="button" onClick={() => setText(t => `${t}${t && !t.endsWith(" ") ? " " : ""}@`)} className={tool}><AtSign className="h-[18px] w-[18px]" /><span className="hidden sm:inline">Mencionar</span></button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><button type="button" className={tool}><SmilePlus className="h-[18px] w-[18px]" /><span className="hidden sm:inline">Emoji</span></button></DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="grid w-[216px] grid-cols-6 gap-0.5 p-1.5">
+              {EMOJIS.map(e => <DropdownMenuItem key={e} onSelect={() => setText(t => t + e)} className="grid h-8 w-8 place-items-center p-0 text-lg">{e}</DropdownMenuItem>)}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        <div className="flex items-center gap-3">
+          {text.length > MAX - 80 && <span className={cn("text-[13px] tabular-nums", over ? "text-rose-500" : muted)}>{MAX - text.length}</span>}
+          <button type="button" disabled={!ok || busy} onClick={send} className="h-9 rounded-full bg-[hsl(var(--primary))] px-5 text-[14px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40">Publicar</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── postagem ── */
+const canPin = (role: string) => ["admin", "supervisor", "coordinator"].includes(role);
+const BADGE: Record<Item["type"], { label: string; cls: string; icon: React.ReactNode }> = {
+  manual_post: { label: "Recado", cls: "bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))]", icon: <Megaphone className="h-3.5 w-3.5" /> },
+  kudos: { label: "Reconhecimento", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-300", icon: <HandsClapping className="h-3.5 w-3.5" /> },
+  task_completed: { label: "Entrega aprovada", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", icon: <SealCheck className="h-3.5 w-3.5" /> },
+};
+
+function Post({ it, ctx }: { it: Item; ctx: Ctx }) {
+  const { openTask } = useTaskModal();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(it.content ?? "");
+  const [count, setCount] = useState(it.commentCount);
+  useEffect(() => setCount(it.commentCount), [it.commentCount]);
+  const d = it.delivery;
+  // entrega aparece como conquista de quem editou; recado e reconhecimento, de quem escreveu
+  const author = d?.editor ?? it.actor;
+  const role = d ? roleName(d.editor ? { role: "editor", ...d.editor } : { role: "editor" }) : roleName({ role: it.actorRole, jobTitle: it.actorTitle });
+  const mine = it.actorId === ctx.me, canDelete = mine || ["admin", "supervisor"].includes(ctx.role);
+  const likes = it.reactions.filter(r => r.emoji === LIKE), liked = likes.some(r => r.userId === ctx.me);
+  const run = async (p: Promise<unknown>, ok?: string) => { try { await p; if (ok) toast.success(ok); ctx.reload(); } catch (e) { toast.error((e as Error).message); } };
+  const like = () => apiPost(`/api/feed/${it.id}/reactions`, { emoji: LIKE }).catch(e => toast.error(e.message));
+  const share = () => {
+    const txt = d ? `${d.title}${d.client ? ` · ${d.client}` : ""} foi aprovado pelo cliente.` : `${it.actor?.name}: ${it.content}`;
+    navigator.clipboard.writeText(txt).then(() => toast.success("Texto copiado"));
+  };
+  const b = BADGE[it.type];
+
+  return (
+    <article className={cn(card, "overflow-hidden", it.pinnedAt && "border-[hsl(var(--primary)/0.45)]")}>
+      <div className="flex flex-col gap-3 p-4">
+        {/* 1. tipo + tempo */}
+        <div className="flex items-center gap-2">
+          <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium", b.cls)}>{b.icon}{b.label}</span>
+          {it.pinnedAt && <span className={cn("inline-flex items-center gap-1 text-[12px]", muted)}><PushPin weight="fill" className="h-3.5 w-3.5" />Fixado</span>}
+          <span className={cn("ml-auto text-[13px]", muted)} title={new Date(it.createdAt).toLocaleString("pt-BR")}>{ago(it.createdAt)}</span>
+          {(canDelete || canPin(ctx.role)) && it.type !== "task_completed" && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild><button type="button" aria-label="Mais opções" className={cn("-my-1 -mr-1.5 grid h-8 w-8 place-items-center rounded-full hover:bg-[hsl(var(--accent))]", muted)}><MoreHorizontal className="h-5 w-5" /></button></DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[220px]">
+                {canPin(ctx.role) && <DropdownMenuItem onSelect={() => run(apiPost(`/api/feed/${it.id}/pin`, {}), it.pinnedAt ? "Desafixado" : "Fixado no topo do mural")}>
+                  {it.pinnedAt ? <PushPinSlash className="h-[18px] w-[18px]" /> : <PushPin className="h-[18px] w-[18px]" />}{it.pinnedAt ? "Desafixar" : "Fixar no topo do mural"}</DropdownMenuItem>}
+                {mine && <DropdownMenuItem onSelect={() => setEditing(true)}>Editar postagem</DropdownMenuItem>}
+                {canDelete && <DropdownMenuItem className="text-rose-500" onSelect={() => run(apiDelete(`/api/feed/${it.id}`), "Postagem excluída")}>Excluir postagem</DropdownMenuItem>}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+
+        {/* 2. quem */}
+        <div className="flex items-center gap-3">
+          <AvatarDisplay name={author?.name ?? "?"} avatarUrl={author?.avatarUrl ?? null} size={40} />
+          <div className="min-w-0">
+            <p className="truncate text-[15px] font-medium leading-5">{author?.name ?? "Alguém"}</p>
+            <p className={cn("truncate text-[13px] leading-5", muted)}>{[role || null, handle(author)].filter(Boolean).join(" · ")}</p>
           </div>
         </div>
 
-        {/* Click anywhere in the empty state to expand */}
-        {!postFocused && !postText && (
-          <div className="absolute inset-0 cursor-text" onClick={() => setPostFocused(true)} />
+        {/* 3. texto */}
+        {editing ? (
+          <div className="rounded-xl border p-3">
+            <MentionTextarea value={text} onChange={setText} users={ctx.users} rows={2} className="text-[15px]" />
+            <div className="mt-2 flex justify-end gap-2">
+              <button type="button" onClick={() => setEditing(false)} className="h-8 rounded-full border px-4 text-[13px] font-medium">Cancelar</button>
+              <button type="button" onClick={async () => { await run(apiPut(`/api/feed/${it.id}`, { content: text }), "Postagem atualizada"); setEditing(false); }} className="h-8 rounded-full bg-[hsl(var(--primary))] px-4 text-[13px] font-medium text-white">Salvar</button>
+            </div>
+          </div>
+        ) : d ? (
+          <p className="text-[15px] leading-[1.6]">O cliente aprovou a entrega{d.client ? ` de ${d.client}` : ""}.</p>
+        ) : it.content && <p className="whitespace-pre-wrap break-words text-[15px] leading-[1.6]">{renderMentions(it.content)}</p>}
+
+        {/* 4. anexo: pessoa reconhecida ou job */}
+        {it.type === "kudos" && it.target && (
+          <div className="flex items-center gap-3 rounded-xl bg-amber-500/[0.08] p-3">
+            <AvatarDisplay name={it.target.name} avatarUrl={it.target.avatarUrl} size={44} />
+            <div className="min-w-0 flex-1">
+              <p className={cn("text-[12px]", muted)}>Reconhecimento para</p>
+              <p className="truncate text-[15px] font-medium">{it.target.name}</p>
+            </div>
+            <HandsClapping className="h-7 w-7 shrink-0 text-amber-500" />
+          </div>
+        )}
+        {d && (
+          <button type="button" onClick={() => openTask(d.taskId)} className="flex flex-col gap-2 rounded-xl border p-3 text-left transition-colors hover:bg-[hsl(var(--foreground)/0.03)]">
+            <div className="flex items-center gap-2 text-[12.5px]"><i className="h-2 w-2 rounded-full" style={{ background: clientColor(d.client) }} /><span className={muted}>{d.client ?? "Sem cliente"}</span><span className={cn("ml-auto font-mono text-[12px]", muted)}>{d.code}</span></div>
+            <p className="text-[15px] font-medium leading-5">{d.title}</p>
+            <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]", muted)}>
+              {d.editor && <span>Edição: {d.editor.name.split(" ")[0]}</span>}
+              {d.coordinator && <span>Gestão: {d.coordinator.name.split(" ")[0]}</span>}
+              {d.onTime && <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><SealCheck className="h-4 w-4" />1ª versão no prazo</span>}
+            </div>
+          </button>
         )}
       </div>
 
-      {/* ── Feed items ───────────────────────────────────────── */}
-      {loadingFeed ? (
-        <div className="text-sm text-[hsl(var(--muted-foreground))] text-center py-10">Carregando...</div>
-      ) : items.length === 0 ? (
-        <div className="py-24 flex flex-col items-center gap-3 text-center">
-          <Zap className="h-12 w-12 text-[hsl(var(--muted-foreground))]/20" />
-          <p className="font-semibold text-[hsl(var(--muted-foreground))]">Nenhuma atividade ainda.</p>
-          <p className="text-sm text-[hsl(var(--muted-foreground))]/60">Eventos de tarefas, jobs e projetos aparecerão aqui.</p>
-        </div>
-      ) : (
-        items.map(item => (
-          <FeedCard
-            key={item.id} item={item}
-            myUserId={user?.id ?? 0} myRole={user?.role ?? "editor"}
-            users={allUsers} onReact={(id, r) => setReactionsMap(prev => ({ ...prev, [id]: r }))}
-            updatedReactions={reactionsMap[item.id]}
-            onDelete={id => setItems(prev => prev.filter(i => i.id !== id))}
-            onEdit={(id, content) => setItems(prev => prev.map(i => i.id === id ? { ...i, content } : i))}
-          />
-        ))
-      )}
+      {/* 5. ações */}
+      <div className="flex items-center gap-1 border-t px-2 py-1.5">
+        <Action icon={<Heart className="h-[18px] w-[18px]" weight={liked ? "fill" : "light"} />} label={likes.length ? `${likes.length} ${likes.length === 1 ? "curtida" : "curtidas"}` : "Curtir"} tone="like" active={liked} onClick={like} title={likes.map(r => r.userName).filter(Boolean).join(", ")} />
+        <Action icon={<MessageCircle className="h-[18px] w-[18px]" />} label={count ? `${count} ${count === 1 ? "resposta" : "respostas"}` : "Responder"} tone="primary" active={open} onClick={() => setOpen(o => !o)} />
+        <span className="ml-auto"><Action icon={<Share className="h-[18px] w-[18px]" />} label="Copiar" tone="primary" onClick={share} /></span>
+      </div>
+      {open && <Replies it={it} ctx={ctx} onCount={setCount} />}
+    </article>
+  );
+}
 
+function Action({ icon, label, tone, active, onClick, title }: { icon: React.ReactNode; label: string; tone: "primary" | "like"; active?: boolean; onClick: () => void; title?: string }) {
+  return (
+    <button type="button" title={title || label} onClick={onClick}
+      className={cn("inline-flex h-9 items-center gap-2 rounded-full px-3 text-[13px] transition-colors",
+        active ? (tone === "like" ? "text-rose-500" : "text-[hsl(var(--primary))]") : muted,
+        tone === "like" ? "hover:bg-rose-500/10 hover:text-rose-500" : "hover:bg-[hsl(var(--primary)/0.1)] hover:text-[hsl(var(--primary))]")}>
+      {icon}{label}
+    </button>
+  );
+}
+
+/* ── respostas ── */
+function Replies({ it, ctx, onCount }: { it: Item; ctx: Ctx; onCount: (n: number) => void }) {
+  const [list, setList] = useState<Reply[] | null>(null);
+  const [text, setText] = useState("");
+  useEffect(() => {
+    apiFetch<Reply[]>(`/api/feed/${it.id}/comments`).then(setList).catch(() => setList([]));
+    const s = getSocket();
+    const onNew = ({ feedItemId, comment }: { feedItemId: number; comment: Reply }) => { if (feedItemId === it.id) setList(c => (c?.some(x => x.id === comment.id) ? c : [...(c ?? []), comment])); };
+    const onDel = ({ feedItemId, commentId }: { feedItemId: number; commentId: number }) => { if (feedItemId === it.id) setList(c => c?.filter(x => x.id !== commentId) ?? c); };
+    s.on("feed:comment", onNew); s.on("feed:comment_deleted", onDel);
+    return () => { s.off("feed:comment", onNew); s.off("feed:comment_deleted", onDel); };
+  }, [it.id]);
+  useEffect(() => { if (list) onCount(list.length); }, [list, onCount]);
+  const send = async () => {
+    if (!text.trim()) return;
+    try { const c = await apiPost<Reply>(`/api/feed/${it.id}/comments`, { content: text.trim(), mentions: parseMentions(text, ctx.users) }); setList(x => (x?.some(y => y.id === c.id) ? x : [...(x ?? []), c])); setText(""); }
+    catch (e) { toast.error((e as Error).message); }
+  };
+  return (
+    <div className="flex flex-col gap-3 border-t bg-[hsl(var(--muted)/0.35)] p-4">
+      {list?.map(r => (
+        <div key={r.id} className="group flex gap-2.5">
+          <AvatarDisplay name={r.userName ?? "?"} avatarUrl={r.userAvatar} size={32} />
+          <div className="min-w-0 flex-1 rounded-2xl bg-[hsl(var(--card))] px-3.5 py-2">
+            <p className="flex items-baseline gap-2 text-[13px]">
+              <span className="font-medium">{r.userName}</span><span className={muted}>{ago(r.createdAt)}</span>
+              {(r.userId === ctx.me || ["admin", "supervisor"].includes(ctx.role)) && (
+                <button type="button" onClick={() => apiDelete(`/api/feed/comments/${r.id}`).then(() => setList(x => x?.filter(y => y.id !== r.id) ?? x)).catch(e => toast.error(e.message))}
+                  className="ml-auto text-[12px] text-rose-500 opacity-0 group-hover:opacity-100">Excluir</button>
+              )}
+            </p>
+            <p className="mt-0.5 whitespace-pre-wrap break-words text-[14px] leading-[1.55]">{renderMentions(r.content)}</p>
+          </div>
+        </div>
+      ))}
+      <div className="flex items-center gap-2.5">
+        <AvatarDisplay name={ctx.meUser?.name ?? "?"} avatarUrl={ctx.meUser?.avatarUrl ?? null} size={32} />
+        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full border bg-[hsl(var(--card))] py-1 pl-4 pr-1">
+          <div className="min-w-0 flex-1"><MentionTextarea value={text} onChange={setText} onSend={send} users={ctx.users} placeholder="Escreva uma resposta…" className="py-1.5 text-[14px]" /></div>
+          <button type="button" disabled={!text.trim()} onClick={send} className="h-8 shrink-0 rounded-full bg-[hsl(var(--primary))] px-4 text-[13px] font-medium text-white disabled:opacity-40">Enviar</button>
+        </div>
+      </div>
     </div>
+  );
+}
+
+/* ── lateral ── */
+function Box({ title, children }: { title: string; children: React.ReactNode }) {
+  return <section className={cn(card, "overflow-hidden")}><h2 className="px-4 pb-1 pt-4 text-[15px] font-medium">{title}</h2>{children}</section>;
+}
+
+function WeekBox({ s }: { s: Summary | null }) {
+  const max = Math.max(1, ...(s?.days ?? [0]));
+  const diff = s ? s.delivered - s.deliveredLastWeek : 0;
+  return (
+    <Box title="Esta semana na equipe">
+      {!s ? <p className={cn("px-4 pb-4 text-[14px]", muted)}>Carregando…</p> : <>
+        <div className="grid grid-cols-2 gap-2 px-4 pt-2">
+          <div className="rounded-xl bg-[hsl(var(--muted)/0.6)] p-3"><p className="text-[22px] font-medium leading-none">{s.delivered}</p><p className={cn("mt-1.5 text-[12px] leading-4", muted)}>entregas aprovadas</p></div>
+          <div className="rounded-xl bg-[hsl(var(--muted)/0.6)] p-3"><p className="text-[22px] font-medium leading-none">{s.onTime == null ? "—" : `${s.onTime}%`}</p><p className={cn("mt-1.5 text-[12px] leading-4", muted)}>1ª versão no prazo</p></div>
+        </div>
+        <div className="flex h-20 items-end gap-2 px-4 pt-3">
+          {s.days.map((n, i) => (
+            <div key={i} className="flex h-full flex-1 flex-col items-center justify-end gap-1" title={`${n} entrega(s)`}>
+              <span className="flex w-full flex-1 items-end"><i className={cn("block w-full rounded-md", i > s.today ? "bg-[hsl(var(--muted))]" : "bg-[hsl(var(--primary)/0.8)]")} style={{ height: `${n ? 18 + (n / max) * 82 : 6}%` }} /></span>
+              <span className={cn("text-[11px]", i === s.today ? "font-medium" : muted)}>{"STQQSSD"[i]}</span>
+            </div>
+          ))}
+        </div>
+        <p className={cn("px-4 pb-4 pt-2 text-[13px]", muted)}>{diff > 0 ? `${diff} a mais que na semana passada.` : diff < 0 ? `Semana passada: ${s.deliveredLastWeek}.` : "Mesmo ritmo da semana passada."}</p>
+      </>}
+    </Box>
+  );
+}
+
+function OffBox({ users }: { users: TeamUser[] }) {
+  const off = users.filter(u => u.absence);
+  return (
+    <Box title="Fora hoje">
+      {!off.length ? <p className={cn("px-4 pb-4 pt-1 text-[14px]", muted)}>Toda a equipe está trabalhando hoje.</p>
+        : <div className="pb-2">{off.map(u => (
+          <div key={u.id} className={cn("flex items-center gap-3 px-4 py-2.5", hoverRow)}>
+            <AvatarDisplay name={u.name} avatarUrl={u.avatarUrl} size={36} />
+            <div className="min-w-0 flex-1"><p className="truncate text-[14px] font-medium">{u.name}</p><p className={cn("truncate text-[12.5px]", muted)}>{u.absence!.label}</p></div>
+          </div>
+        ))}</div>}
+    </Box>
   );
 }

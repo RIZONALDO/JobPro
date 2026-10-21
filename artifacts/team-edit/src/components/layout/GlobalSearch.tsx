@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Search, X, ClipboardList, Users, FolderOpen, Loader2 } from "lucide-react";
+import { ROLE_LABEL, roleName } from "@/lib/roles";
+import { Search, X, ClipboardList, Users, FolderOpen, Loader2 } from "@/lib/icons";
 import { apiFetch } from "@/lib/api";
 import { useLocation } from "wouter";
 import { useTaskModal } from "@/contexts/TaskModalContext";
@@ -39,12 +40,6 @@ interface SearchResults {
 }
 
 
-const ROLE_LABEL: Record<string, string> = {
-  admin: "Admin",
-  supervisor: "Supervisor",
-  coordinator: "Gestor",
-  editor: "Operacional",
-};
 
 function MiniAvatar({ name, url }: { name: string | null; url: string | null }) {
   const initials = (name ?? "?").split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
@@ -153,14 +148,14 @@ export function GlobalSearch() {
     <div ref={containerRef} className="relative hidden sm:block">
       {/* Input pill */}
       <div className={cn(
-        "flex items-center gap-2 rounded-lg border px-2.5 h-8 transition-all duration-150",
+        "flex h-9 items-center gap-2.5 rounded-xl border px-3 transition-all duration-150",
         open
-          ? "w-72 border-[hsl(var(--primary))]/50 bg-[hsl(var(--card))] shadow-sm"
-          : "w-52 bg-[hsl(var(--muted))]/40 border-transparent hover:border-[hsl(var(--border))]"
+          ? "w-[min(480px,40vw)] border-[hsl(var(--primary))]/50 bg-[hsl(var(--card))] shadow-[0_0_0_4px_hsl(var(--primary)/0.12)]"
+          : "w-[min(440px,36vw)] border-[hsl(var(--border))] bg-[hsl(var(--foreground)/0.03)] hover:border-[hsl(var(--foreground)/0.2)]"
       )}>
         {loading
           ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[hsl(var(--muted-foreground))]" />
-          : <Search  className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" />
+          : <Search  className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
         }
         <input
           ref={inputRef}
@@ -169,9 +164,10 @@ export function GlobalSearch() {
           onChange={e => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
-          placeholder="Buscar...  ⌘K"
-          className="flex-1 min-w-0 bg-transparent text-xs outline-none placeholder:text-[hsl(var(--muted-foreground))]"
+          placeholder="Buscar jobs, pessoas, clientes…"
+          className="flex-1 min-w-0 bg-transparent text-[13.5px] outline-none placeholder:text-[hsl(var(--muted-foreground))]"
         />
+        {!query && <kbd className="hidden shrink-0 rounded-md border bg-[hsl(var(--background))] px-1.5 py-0.5 font-sans text-[10.5px] font-semibold text-[hsl(var(--muted-foreground))] lg:inline">⌘K</kbd>}
         {query && (
           <button onClick={clear} className="shrink-0 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors">
             <X className="h-3.5 w-3.5" />
@@ -187,7 +183,7 @@ export function GlobalSearch() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.98 }}
             transition={{ duration: 0.13 }}
-            className="absolute top-full right-0 mt-2 w-[460px] rounded-2xl border bg-[hsl(var(--card))] shadow-2xl z-[200] overflow-hidden"
+            className="absolute top-full left-0 mt-2 w-[min(520px,calc(100vw-32px))] rounded-2xl border bg-[hsl(var(--card))] shadow-2xl z-[200] overflow-hidden"
             style={{ borderColor: "hsl(var(--border))" }}
           >
 
@@ -277,7 +273,7 @@ export function GlobalSearch() {
                           <MiniAvatar name={u.name} url={u.avatarUrl} />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium leading-tight">{u.name}</p>
-                            <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">{u.jobTitle || ROLE_LABEL[u.role] || u.role}</p>
+                            <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">{roleName(u)}</p>
                           </div>
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium shrink-0"
                             style={{ backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { DayPicker } from "react-day-picker";
 import { ptBR } from "date-fns/locale";
 import { format, parse, isValid } from "date-fns";
-import { Calendar, Clock, X, ChevronLeft, ChevronUp, ChevronDown } from "lucide-react";
+import { Calendar, Clock, X, ChevronLeft, ChevronUp, ChevronDown } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 import { useSettings } from "@/contexts/SettingsContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiPost, apiPut } from "@/lib/api";
+import { openHandoff } from "@/components/fila/HandoffDialog";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -8,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Palmtree } from "lucide-react";
+import { Palmtree } from "@/lib/icons";
 import { ABSENCE_TYPE_OPTIONS, type Absence } from "@/lib/availability";
 import type { Member } from "./shared";
 
@@ -50,12 +51,13 @@ export function AbsenceForm({ members, editing, presetUserId, onSaved, onCancel,
         : await apiPost<{ conflicts: AbsenceConflicts }>("/api/absences", body);
       const nTasks = r?.conflicts?.tasks.length ?? 0;
       const nDuties = r?.conflicts?.duties.length ?? 0;
-      if (nTasks + nDuties > 0) {
-        const parts = [nTasks ? `${nTasks} tarefa(s) aberta(s)` : "", nDuties ? `${nDuties} plantão(ões)` : ""].filter(Boolean).join(" e ");
-        toast.warning(`Ausência salva. Há ${parts} nesse período — avise quem coordena.`, { duration: 8000 });
+      if (nDuties > 0) {
+        toast.warning(`Ausência salva. Há ${nDuties} plantão(ões) nesse período: confira a escala.`, { duration: 8000 });
       } else {
         toast.success("Ausência salva");
       }
+      // jobs no período: já abre a redistribuição (o supervisor escolhe o que espera a volta)
+      if (nTasks > 0) openHandoff({ userId: Number(f.userId), context: "absence" });
       if (!f.id) setF({ ...EMPTY });
       onSaved();
     } catch (err: unknown) {

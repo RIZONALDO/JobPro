@@ -1,4 +1,5 @@
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
+import { IconContext } from "@/lib/icons";
 import { useState, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -12,20 +13,19 @@ import LoginPage from "@/pages/login";
 import ChangePasswordPage from "@/pages/change-password";
 import Dashboard from "@/pages/dashboard";
 
-import CalendarPage from "@/pages/calendar";
 import Team from "@/pages/team";
 import TeamAbsences from "@/pages/team-absences";
 import SettingsPage from "@/pages/settings";
 import Profile from "@/pages/profile";
-import TimelinePage from "@/pages/timeline";
 import Reports from "@/pages/reports";
 import FeedPage from "@/pages/feed";
-import TasksOverview from "@/pages/tasks-overview";
-import TasksHub      from "@/pages/tasks-hub";
+import JobsPage      from "@/pages/jobs";
+import JobPage       from "@/pages/job";
 import DutyPage      from "@/pages/duty";
 import FaviconDebugPage from "@/pages/favicon-debug";
-import AgendaGeral from "@/pages/agenda-geral";
-import AgendaClassica from "@/pages/agenda-classica";
+import MinhaFila from "@/pages/fila/minha-fila";
+import Filas from "@/pages/fila/filas";
+import Supervisao from "@/pages/fila/supervisao";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } });
 
@@ -77,21 +77,25 @@ function Router() {
     <TaskModalProvider>
     <Shell>
       <Switch>
-        <Route path="/">{user.role === "admin" ? <Redirect to="/team" /> : <Dashboard />}</Route>
+        <Route path="/">{user.role === "admin" ? <Redirect to="/team" /> : user.role === "editor" ? <Redirect to="/fila" /> : <Dashboard />}</Route>
+        <Route path="/fila/supervisao">{["admin", "supervisor"].includes(user.role) ? <Supervisao /> : <Redirect to="/fila" />}</Route>
+        <Route path="/fila">{user.role === "editor" ? <MinhaFila /> : <Filas />}</Route>
         
-        <Route path="/my-tasks"><Redirect to="/tasks?tab=lista" /></Route>
-        <Route path="/calendar" component={CalendarPage} />
+        <Route path="/my-tasks"><Redirect to="/fila" /></Route>
+        <Route path="/calendar"><Redirect to="/tasks?group=prazo" /></Route>
         <Route path="/team/ausencias" component={TeamAbsences} />
         <Route path="/team" component={Team} />
         <Route path="/settings" component={SettingsPage} />
         <Route path="/profile" component={Profile} />
-        <Route path="/timeline" component={TimelinePage} />
+        <Route path="/timeline"><Redirect to="/fila" /></Route>
+        <Route path="/pipeline"><Redirect to="/fila" /></Route>
         <Route path="/reports" component={Reports} />
         <Route path="/feed" component={FeedPage} />
-        <Route path="/tasks" component={TasksHub} />
+        <Route path="/tasks" component={JobsPage} />
+        <Route path="/jobs/:id" component={JobPage} />
         <Route path="/duty" component={DutyPage} />
-        <Route path="/agenda/classica" component={AgendaClassica} />
-        <Route path="/agenda" component={AgendaGeral} />
+        <Route path="/agenda/classica"><Redirect to="/fila" /></Route>
+        <Route path="/agenda"><Redirect to="/fila" /></Route>
         <Route>
           <div className="text-center py-20">
             <h2 className="text-2xl font-bold">404</h2>
@@ -112,8 +116,12 @@ function SettingsGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Ícones (Phosphor): traço "light" no app inteiro; 24px quando a tela não define tamanho (h-4 w-4 etc. vencem).
+const ICONS = { weight: "light" as const, size: 24, mirrored: false };
+
 function App() {
   return (
+    <IconContext.Provider value={ICONS}>
     <QueryClientProvider client={queryClient}>
       <SettingsProvider>
         <SettingsGate>
@@ -126,6 +134,7 @@ function App() {
         </SettingsGate>
       </SettingsProvider>
     </QueryClientProvider>
+    </IconContext.Provider>
   );
 }
 

@@ -1,11 +1,13 @@
 import { Router } from "express";
-import { db, tasksTable, usersTable, taskRevisionsTable, taskEventsTable, taskEditorsTable } from "@workspace/db";
-import { eq, ne, desc, asc, and, or, gte, lte, isNotNull, lt, inArray, isNull, sql } from "drizzle-orm";
+import { db, tasksTable, usersTable, taskRevisionsTable, taskEventsTable, taskEditorsTable, taskFollowersTable } from "@workspace/db";
+import { eq, ne, desc, asc, and, or, gte, lte, isNotNull, lt, inArray, notInArray, isNull, sql } from "drizzle-orm";
 import { requireAuth, requireCoordinator } from "../lib/auth.js";
-import { notify } from "../lib/notify.js";
+import { notify, notifyFollowers } from "../lib/notify.js";
 import { broadcastTaskChange } from "../lib/broadcast.js";
 import { createFeedItem } from "../lib/feed.js";
-import { findInactive, getAbsenceMapOn, getAbsencesInRange, absenceWarning, todayStr as availabilityToday } from "../lib/availability.js";
+import { findInactive } from "../lib/availability.js";
+import { placeTask, playTask, sendToApproval, stopTask, newRound } from "./queue.js";
+import { loadState, orderAfterHead, logEvent, QUEUE_STATUSES } from "../lib/queue.js";
 
 /** Responde 400 se algum dos ids for de usuário inativo. Retorna true se bloqueou. */
 async function rejectInactive(res: import("express").Response, ids: (number | null | undefined)[]): Promise<boolean> {
@@ -30,43 +32,17 @@ const dueDateKey = (d: Date | string | null | undefined): string => {
 
 // ── Create task ──────────────────────────────────────────────────────────────
 router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
-  const { title, description, startDate, dueDate, priority, complexity, assignedToId, editorIds,
-          folderUrl, client, color, status } = req.body ?? {};
+  // Fila em horas: o job nasce sem lugar na fila e é colocado por placeTask (fim, prioridade ou supervisão).
+  const { title, description, startDate, dueDate, priority, estMinutes, lockReason, folderUrl, client, color, status, placement, assignedToId, followerIds } = req.body ?? {};
 
   if (!title) { res.status(400).json({ error: "Título obrigatório" }); return; }
-
-  const parsedAssignee = assignedToId ? parseInt(String(assignedToId), 10) : null;
-  const initialStatus = status === "rascunho" ? "rascunho" : "pending";
-
-  if (initialStatus === "pending" && !dueDate) {
-    res.status(400).json({ error: "Informe o prazo antes de publicar a tarefa" }); return;
-  }
-  const allEditorIdsCheck = new Set<number>();
-  if (parsedAssignee) allEditorIdsCheck.add(parsedAssignee);
-  if (Array.isArray(editorIds)) editorIds.map(Number).filter(n => !isNaN(n) && n > 0).forEach(n => allEditorIdsCheck.add(n));
-  if (initialStatus === "pending" && allEditorIdsCheck.size === 0) {
-    res.status(400).json({ error: "Atribua ao menos um editor para publicar a tarefa" }); return;
-  }
-
-  // Usuários inativos não podem receber tarefas
-  {
-    const ids: number[] = [];
-    if (parsedAssignee) ids.push(parsedAssignee);
-    if (Array.isArray(editorIds)) ids.push(...editorIds.map(Number));
-    if (await rejectInactive(res, ids)) return;
-  }
-
-  // ── Bloqueio server-side de capacidade (fecha race condition) ─────────────
-  // Se a tarefa tem startDate futuro, tarefas do editor que encerram antes dessa data não contam
-  if (parsedAssignee && initialStatus !== "rascunho") {
-    const fromDate = startDate ? new Date(String(startDate)) : undefined;
-    const score = await editorScore(parsedAssignee, undefined, fromDate);
-    const newW   = COMPLEXITY_WEIGHT[String(complexity ?? "medium")] ?? 6;
-    if (score + newW > 12) {
-      const [ed] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, parsedAssignee));
-      res.status(422).json({ error: `${ed?.name ?? "Editor"} está no limite de capacidade (${score} pts). Reduza a complexidade, escolha outro editor ou ajuste as datas.` });
-      return;
-    }
+  const isDraft = status === "rascunho";
+  const est = Math.round(Number(estMinutes) || 0);
+  if (!isDraft) {
+    if (!dueDate) { res.status(400).json({ error: "Informe o prazo prometido ao cliente" }); return; }
+    if (!(est > 0)) { res.status(400).json({ error: "Informe as horas de trabalho" }); return; }
+    if (!placement || (!placement.editorId && placement.mode !== "gestor")) { res.status(400).json({ error: "Escolha onde o job entra" }); return; }
+    if (placement.editorId && await rejectInactive(res, [Number(placement.editorId)])) return;
   }
 
   const seqResult = await db.execute<{ nextval: string }>(sql`SELECT nextval('te_task_number_seq') AS nextval`);
@@ -81,33 +57,77 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
     client: client ? String(client) : null,
     color: color ? String(color) : "#6366f1",
     startDate: startDate ? new Date(String(startDate)) : null,
+    lockReason: startDate && lockReason ? String(lockReason) : null,
     dueDate: dueDate ? new Date(String(dueDate)) : null,
     priority: priority ?? "medium",
-    complexity: complexity ?? "medium",
-    status: initialStatus,
-    assignedToId: parsedAssignee,
+    estMinutes: est,
+    estConfirmed: false,
+    status: isDraft ? "rascunho" : "pending",
+    // rascunho guarda o editor pretendido; job publicado só ganha editor ao entrar na fila
+    assignedToId: isDraft && assignedToId ? Number(assignedToId) : null,
+    queueHold: !isDraft,
     folderUrl: folderUrl ? String(folderUrl) : null,
     createdById: req.session.userId,
   }).returning();
 
-  // Editores na tabela de junção (principal + adicionais)
-  for (const editorId of allEditorIdsCheck) {
-    await db.insert(taskEditorsTable).values({
-      taskId: task.id,
-      userId: editorId,
-      assignedById: req.session.userId,
-    }).onConflictDoNothing();
-    if (initialStatus !== "rascunho") {
-      await notify(editorId, "task_assigned",
-        "Nova tarefa atribuída",
-        `A tarefa "${task.title}" foi atribuída a você`,
-        { taskId: task.id }
-      );
-    }
-  }
+  await logEvent({ kind: "created", taskId: task.id, actorId: req.session.userId, coordId: req.session.userId, text: isDraft ? "Rascunho criado" : "Job criado" });
+  if (Array.isArray(followerIds) && followerIds.length) await setFollowers(task.id, followerIds, req.session.userId!);
+  if (isDraft) { broadcastTaskChange(); res.status(201).json(task); return; }
 
+  const out = await placeTask(task.id, placement.editorId ? Number(placement.editorId) : null, String(placement.mode ?? "end"), req.session.userId!, req.session.userRole!);
+  if (out.status !== 200) {
+    // não coube: volta a ser rascunho para não sumir
+    await db.update(tasksTable).set({ status: "rascunho", queueHold: false }).where(eq(tasksTable.id, task.id));
+    broadcastTaskChange();
+    res.status(out.status).json({ ...out.body, draftId: task.id });
+    return;
+  }
+  res.status(201).json({ ...task, ...out.body });
+});
+
+// ── Acompanhantes (gestores que seguem o job sem ser o dono) ─────────────────
+const FOLLOWER_ROLES = ["coordinator", "supervisor", "admin"];
+
+/** Troca a lista de acompanhantes (só o dono do job chama). Ignora o dono, inativos e quem não é gestor. Avisa só quem entrou agora. */
+async function setFollowers(taskId: number, userIds: unknown[], actorId: number): Promise<number[]> {
+  const [t] = await db.select({ createdById: tasksTable.createdById, title: tasksTable.title }).from(tasksTable).where(eq(tasksTable.id, taskId));
+  if (!t) return [];
+  const want = [...new Set(userIds.map(Number).filter(n => Number.isInteger(n) && n !== t.createdById))];
+  const ok = want.length ? await db.select({ id: usersTable.id }).from(usersTable)
+    .where(and(inArray(usersTable.id, want), inArray(usersTable.role, FOLLOWER_ROLES), eq(usersTable.status, "active"))) : [];
+  const valid = ok.map(u => u.id);
+  const rows = await db.select({ userId: taskFollowersTable.userId, addedById: taskFollowersTable.addedById }).from(taskFollowersTable).where(eq(taskFollowersTable.taskId, taskId));
+  const before = rows.map(r => r.userId);
+  const gone = before.filter(id => !valid.includes(id)), added = valid.filter(id => !before.includes(id));
+  if (gone.length) await db.delete(taskFollowersTable).where(and(eq(taskFollowersTable.taskId, taskId), inArray(taskFollowersTable.userId, gone)));
+  if (added.length) await db.insert(taskFollowersTable).values(added.map(userId => ({ taskId, userId, addedById: actorId }))).onConflictDoNothing();
+  if (added.length) {
+    const [actor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, actorId));
+    for (const uid of added) if (uid !== actorId) await notify(uid, "task_follow", "Você está acompanhando um job",
+      `${actor?.name ?? "Alguém"} incluiu você para acompanhar "${t.title}". Você recebe os avisos importantes dele.`, { taskId });
+    await logEvent({ kind: "follow", taskId, actorId, coordId: t.createdById, text: `Acompanhando: ${added.length} pessoa(s) incluída(s)` });
+  }
+  return valid;
+}
+
+// só o dono do job (gestor ou supervisor que criou) escolhe quem acompanha
+router.put("/tasks/:id/followers", requireCoordinator, async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id), 10);
+  const [t] = await db.select({ createdById: tasksTable.createdById }).from(tasksTable).where(eq(tasksTable.id, id));
+  if (!t) { res.status(404).json({ error: "Job não encontrado" }); return; }
+  const me = req.session.userId!;
+  if (t.createdById !== me) { res.status(403).json({ error: "Só o gestor dono do job escolhe quem acompanha" }); return; }
+  const list = await setFollowers(id, Array.isArray(req.body?.userIds) ? req.body.userIds : [], me);
   broadcastTaskChange();
-  res.status(201).json(task);
+  res.json({ followerIds: list });
+});
+
+// quem foi incluído pode sair por conta própria (não existe "seguir" job dos outros)
+router.delete("/tasks/:id/follow", requireCoordinator, async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id), 10), me = req.session.userId!;
+  await db.delete(taskFollowersTable).where(and(eq(taskFollowersTable.taskId, id), eq(taskFollowersTable.userId, me)));
+  broadcastTaskChange();
+  res.json({ ok: true });
 });
 
 // ── Overview (coordinator: all tasks created by coordinators) ────────────────
@@ -188,6 +208,18 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
   for (const e of overviewReviewEvents) {
     if (!overviewReviewedAtMap.has(e.taskId)) overviewReviewedAtMap.set(e.taskId, e.createdAt);
   }
+  // quando foi concluído/cancelado de fato (updatedAt muda com qualquer edição)
+  const closeEvents = taskIds.length
+    ? await db.select({ taskId: taskEventsTable.taskId, createdAt: taskEventsTable.createdAt })
+        .from(taskEventsTable)
+        .where(and(inArray(taskEventsTable.taskId, taskIds), inArray(taskEventsTable.toStatus, ["completed", "cancelled"])))
+        .orderBy(asc(taskEventsTable.createdAt))
+    : [];
+  const followRows = taskIds.length
+    ? await db.select({ taskId: taskFollowersTable.taskId, userId: taskFollowersTable.userId }).from(taskFollowersTable).where(inArray(taskFollowersTable.taskId, taskIds))
+    : [];
+  const closedAtMap = new Map<number, Date>();
+  for (const e of closeEvents) closedAtMap.set(e.taskId, e.createdAt);
 
   res.json(rows.map(r => ({
     id: r.id,
@@ -196,7 +228,7 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     description: r.description,
     status: r.status,
     priority: r.priority,
-    complexity: r.complexity,
+    estMinutes: r.estMinutes, workedMinutes: r.workedMinutes,
     startDate: r.startDate,
     dueDate: r.dueDate,
     folderUrl: r.folderUrl,
@@ -206,8 +238,11 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     editors: editorsMap.get(r.id) ?? [],
     coordinator: r.createdById ? (personMap.get(r.createdById) ?? null) : null,
     isOwn: r.createdById === userId,
-    updatedAt: r.updatedAt,
+    followerIds: followRows.filter(f => f.taskId === r.id).map(f => f.userId),
+    isFollowing: followRows.some(f => f.taskId === r.id && f.userId === userId),
+    updatedAt: r.updatedAt, createdAt: r.createdAt,
     reviewedAt: overviewReviewedAtMap.get(r.id)?.toISOString() ?? null,
+    closedAt: closedAtMap.get(r.id)?.toISOString() ?? null,
   })));
 });
 
@@ -309,11 +344,12 @@ router.get("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
   if (!task) { res.status(404).json({ error: "Tarefa não encontrada" }); return; }
 
+  const person = { id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, role: usersTable.role, jobTitle: usersTable.jobTitle };
   const [createdBy] = task.createdById
-    ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, task.createdById))
+    ? await db.select(person).from(usersTable).where(eq(usersTable.id, task.createdById))
     : [null];
   const [assignedTo] = task.assignedToId
-    ? await db.select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl }).from(usersTable).where(eq(usersTable.id, task.assignedToId))
+    ? await db.select(person).from(usersTable).where(eq(usersTable.id, task.assignedToId))
     : [null];
   const revisions = await db
     .select({ id: taskRevisionsTable.id, revisionNumber: taskRevisionsTable.revisionNumber, comment: taskRevisionsTable.comment, createdAt: taskRevisionsTable.createdAt })
@@ -325,8 +361,21 @@ router.get("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     .innerJoin(usersTable, eq(taskEditorsTable.userId, usersTable.id))
     .where(eq(taskEditorsTable.taskId, id));
 
+  // mudanças de status (jobs antigos não têm eventos da fila; isto completa o histórico)
+  const statusEvents = await db
+    .select({ id: taskEventsTable.id, from: taskEventsTable.fromStatus, to: taskEventsTable.toStatus, by: usersTable.name, at: taskEventsTable.createdAt })
+    .from(taskEventsTable).leftJoin(usersTable, eq(usersTable.id, taskEventsTable.changedById))
+    .where(eq(taskEventsTable.taskId, id)).orderBy(asc(taskEventsTable.createdAt));
+
+  const followers = await db
+    .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, role: usersTable.role, jobTitle: usersTable.jobTitle, addedById: taskFollowersTable.addedById })
+    .from(taskFollowersTable).innerJoin(usersTable, eq(usersTable.id, taskFollowersTable.userId))
+    .where(eq(taskFollowersTable.taskId, id)).orderBy(asc(taskFollowersTable.createdAt));
+
   res.json({
     ...task,
+    statusEvents,
+    followers,
     taskCode: fmtCode(task.taskNumber, task.taskYear),
     createdBy: createdBy ?? null,
     assignedTo: assignedTo ?? null,
@@ -346,15 +395,9 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   const role = req.session.userRole!;
   const userId = req.session.userId!;
 
-  const { title, description, startDate, dueDate, priority, complexity, assignedToId, folderUrl, status, revisionComment, startComment, client, color } = req.body ?? {};
+  const { title, description, startDate, dueDate, priority, estMinutes, lockReason, assignedToId, folderUrl, status, revisionComment, revisionMinutes, client, color, placement } = req.body ?? {};
   const update: Record<string, unknown> = {};
   let eventComment: string | undefined;
-
-  // Trocar o responsável por um usuário inativo não é permitido (manter o atual, mesmo inativo, é).
-  if (assignedToId) {
-    const nextAssignee = parseInt(String(assignedToId), 10);
-    if (nextAssignee !== task.assignedToId && await rejectInactive(res, [nextAssignee])) return;
-  }
 
   if (role === "editor") {
     const [editorEntry] = await db.select({ taskId: taskEditorsTable.taskId })
@@ -363,105 +406,21 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     const isAssigned = task.assignedToId === userId || !!editorEntry;
     if (!isAssigned) { res.status(403).json({ error: "Sem permissão" }); return; }
     if (status) {
+      // Na fila em horas o editor só começa (▶) e entrega; as regras ficam em routes/queue.ts.
       const s = String(status);
-      const editorTransitions: Record<string, string[]> = {
-        pending:     ["in_progress"],
-        in_progress: ["review"],
-        in_revision: ["review"],
-        reopened:    ["in_progress"],
-      };
-      const allowed = editorTransitions[task.status] ?? [];
-      if (!allowed.includes(s)) { res.status(400).json({ error: "Transição de status não permitida" }); return; }
-
-      // Bloqueia iniciar tarefa antes do startDate agendado (compara só a data, sem hora)
-      if (s === "in_progress" && task.startDate) {
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const startStr = task.startDate.toISOString().slice(0, 10);
-        if (startStr > todayStr) {
-          res.status(400).json({ error: "Esta tarefa está agendada para iniciar em " + startStr + ". Aguarde a data para iniciá-la." });
-          return;
+      const st = await loadState();
+      if (s === "in_progress" && QUEUE_STATUSES.includes(task.status)) {
+        if (task.startDate && task.startDate > new Date()) {
+          res.status(400).json({ error: "Este job ainda não pode começar" + (task.lockReason ? `: ${task.lockReason}` : "") }); return;
         }
-      }
-
-      update.status = s;
-      if (s === "in_progress" && task.startDate) {
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const startStr = task.startDate.toISOString().slice(0, 10);
-        if (startStr > todayStr) update.startDate = new Date(todayStr + "T00:00:00Z");
-      }
-
-      // ── Reserva de slot: editor confirma/ajusta a complexidade ao iniciar ──
-      if (s === "in_progress" && complexity && ["low","medium","high"].includes(String(complexity))) {
-        const editorComplexity  = String(complexity);
-        const coordComplexity   = task.complexity ?? "medium";
-        update.complexity            = editorComplexity;
-        update.editorComplexitySet   = true;
-
-        if (editorComplexity !== coordComplexity && task.createdById) {
-          const LABEL: Record<string,string> = { low: "Baixa", medium: "Média", high: "Alta" };
-          const [editor]  = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
-          const editorName = editor?.name ?? "Editor";
-          const toLbl      = LABEL[editorComplexity]  ?? editorComplexity;
-          const taskCode   = fmtCode(task.taskNumber ?? 0, task.taskYear ?? 0);
-          const considera  = startComment ? ` por considerar: ${String(startComment).slice(0, 200)}` : "";
-
-          const fromDate     = task.startDate ?? undefined;
-          const currentScore = await editorScore(userId, id, fromDate);
-          const newWeight    = COMPLEXITY_WEIGHT[editorComplexity] ?? 6;
-          const totalScore   = currentScore + newWeight;
-
-          if (totalScore > 12) {
-            await notify(
-              task.createdById,
-              "complexity_conflict",
-              "Capacidade excedida",
-              `${editorName} definiu complexidade ${toLbl} para "${taskCode} ${task.title}"${considera}. A carga do editor excede o limite recomendado — verifique a distribuição de tarefas.`,
-              { taskId: id }
-            );
-          } else {
-            await notify(
-              task.createdById,
-              "complexity_adjusted",
-              "Complexidade definida",
-              `${editorName} definiu complexidade ${toLbl} para "${taskCode} ${task.title}"${considera}.`,
-              { taskId: id }
-            );
-          }
-        }
-      }
-      // Se está iniciando sem complexity no body, marca como definido
-      if (s === "in_progress") update.editorComplexitySet = true;
+        await playTask(st, task, userId);
+      } else if (s === "review" && QUEUE_STATUSES.includes(task.status)) {
+        await sendToApproval(st, task, userId);
+      } else { res.status(400).json({ error: "Transição de status não permitida" }); return; }
+      broadcastTaskChange();
+      const [fresh] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+      res.json(fresh); return;
     }
-
-    // ── Editor define complexidade sem iniciar (tarefa permanece pending) ──
-    if (!status && complexity && ["low","medium","high"].includes(String(complexity))) {
-      const editorComplexity = String(complexity);
-      const coordComplexity  = task.complexity ?? "medium";
-      update.complexity          = editorComplexity;
-      update.editorComplexitySet = true;
-
-      if (editorComplexity !== coordComplexity && task.createdById) {
-        const LABEL: Record<string,string> = { low: "Baixa", medium: "Média", high: "Alta" };
-        const [editor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
-        const editorName = editor?.name ?? "Editor";
-        const toLbl      = LABEL[editorComplexity] ?? editorComplexity;
-        const taskCode   = fmtCode(task.taskNumber ?? 0, task.taskYear ?? 0);
-        const considera  = startComment ? ` por considerar: ${String(startComment).slice(0, 200)}` : "";
-        const fromDate     = task.startDate ?? undefined;
-        const currentScore = await editorScore(userId, id, fromDate);
-        const totalScore   = currentScore + (COMPLEXITY_WEIGHT[editorComplexity] ?? 6);
-        await notify(
-          task.createdById,
-          totalScore > 12 ? "complexity_conflict" : "complexity_adjusted",
-          totalScore > 12 ? "Capacidade excedida" : "Complexidade definida",
-          totalScore > 12
-            ? `${editorName} definiu complexidade ${toLbl} para "${taskCode} ${task.title}"${considera}. A carga do editor excede o limite recomendado — verifique a distribuição de tarefas.`
-            : `${editorName} definiu complexidade ${toLbl} para "${taskCode} ${task.title}"${considera}.`,
-          { taskId: id }
-        );
-      }
-    }
-
     if (folderUrl !== undefined) update.folderUrl = folderUrl ? String(folderUrl) : null;
   } else {
     if (role === "coordinator" && task.createdById !== userId) {
@@ -473,6 +432,18 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     if (color) update.color = String(color);
     if (startDate !== undefined) {
       update.startDate = startDate ? new Date(String(startDate)) : null;
+      if (!startDate) update.lockReason = null;
+    }
+    if (lockReason !== undefined) update.lockReason = lockReason ? String(lockReason) : null;
+    if (estMinutes !== undefined) {
+      const est = Math.round(Number(estMinutes));
+      if (!(est > 0)) { res.status(400).json({ error: "Horas inválidas" }); return; }
+      if (est !== task.estMinutes) {
+        update.estMinutes = est;
+        update.estExpiredAt = null;
+        // horas mudaram: o editor confere de novo
+        if (task.status !== "rascunho") { update.estConfirmed = false; update.estDisputeOpen = false; }
+      }
     }
     if (dueDate !== undefined) {
       if (dueDate) {
@@ -489,8 +460,8 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
       }
     }
     if (priority) update.priority = String(priority);
-    if (complexity) update.complexity = String(complexity);
-    if (assignedToId !== undefined) {
+    // rascunho guarda o editor pretendido; nos demais, trocar de editor passa pela fila (placement)
+    if (assignedToId !== undefined && task.status === "rascunho") {
       update.assignedToId = assignedToId ? parseInt(String(assignedToId), 10) : null;
     }
     if (folderUrl !== undefined) update.folderUrl = folderUrl ? String(folderUrl) : null;
@@ -508,81 +479,70 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         }
         eventComment = actionComment;
         update.status = s;
+        const st = await loadState();
+        await stopTask(st, task);
+        await logEvent({ kind: s === "paused" ? "blocked" : "cancelled", taskId: id, actorId: userId, coordId: task.createdById, editorId: task.assignedToId, text: actionComment });
       } else if (s === "reopened") {
         if (task.status !== "completed") {
           res.status(400).json({ error: "Só é possível reabrir tarefas aprovadas" }); return;
         }
         const comment = revisionComment ? String(revisionComment).trim() : "";
         if (!comment) { res.status(400).json({ error: "Informe o motivo da reabertura" }); return; }
-        const newRevision = (task.revisionCount ?? 0) + 1;
-        update.revisionCount = newRevision;
-        update.status = "reopened";
-        await db.insert(taskRevisionsTable).values({
-          taskId: id,
-          revisionNumber: newRevision,
-          comment,
-          createdById: userId,
-        });
+        if (Object.keys(update).length) await db.update(tasksTable).set(update).where(eq(tasksTable.id, id));
+        const st = await loadState();
+        await newRound(st, task, userId, Math.round(Number(revisionMinutes) || 120), comment, true);
+        broadcastTaskChange();
+        const [fresh] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+        res.json(fresh); return;
       } else if (s === "pending" && task.status === "cancelled") {
         const dueDateAfterUpdate = update.dueDate !== undefined ? update.dueDate : task.dueDate;
         if (!dueDateAfterUpdate) {
           res.status(400).json({ error: "Informe um prazo para reativar a tarefa" }); return;
         }
         update.status = "pending";
-      } else if (s === "pending" && (task.status === "paused" || task.status === "rascunho")) {
-        if (task.status === "rascunho") {
-          const dueDateAfterUpdate = update.dueDate !== undefined ? update.dueDate : task.dueDate;
-          if (!dueDateAfterUpdate) {
-            res.status(400).json({ error: "Informe o prazo antes de publicar a tarefa" }); return;
-          }
-          const existingEditors = await db.select({ id: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
-          const { editorIds: newEditorIds } = req.body ?? {};
-          const incomingEditorIds = Array.isArray(newEditorIds)
-            ? (newEditorIds as unknown[]).map(Number).filter(n => !isNaN(n) && n > 0)
-            : [];
-          const hasEditors = existingEditors.length > 0 || task.assignedToId || update.assignedToId || incomingEditorIds.length > 0;
-          if (!hasEditors) {
-            res.status(400).json({ error: "Atribua ao menos um editor para publicar a tarefa" }); return;
-          }
+        update.queueOrder = 1e9; // reativado entra no fim da fila
+      } else if (s === "pending" && task.status === "paused") {
+        update.status = task.workedMinutes > 0 ? "in_progress" : "pending";
+        if (task.assignedToId) {
+          const st = await loadState();
+          update.queueOrder = orderAfterHead(st.cal, st.tasks, task.assignedToId, st.now, id);
         }
-        update.status = "pending";
+      } else if (s === "pending" && task.status === "rascunho") {
+        // publicar rascunho = colocar na fila
+        const dueAfter = update.dueDate !== undefined ? update.dueDate : task.dueDate;
+        const estAfter = update.estMinutes !== undefined ? update.estMinutes : task.estMinutes;
+        if (!dueAfter) { res.status(400).json({ error: "Informe o prazo antes de publicar a tarefa" }); return; }
+        if (!(Number(estAfter) > 0)) { res.status(400).json({ error: "Informe as horas de trabalho antes de publicar" }); return; }
+        const pl = placement ?? (task.assignedToId ? { editorId: task.assignedToId, mode: "end" } : null);
+        if (!pl || (!pl.editorId && pl.mode !== "gestor")) { res.status(400).json({ error: "Escolha onde o job entra" }); return; }
+        if (pl.editorId && await rejectInactive(res, [Number(pl.editorId)])) return;
+        await db.update(tasksTable).set({ ...update, status: "pending", assignedToId: null, queueHold: true, estConfirmed: false }).where(eq(tasksTable.id, id));
+        await db.insert(taskEventsTable).values({ taskId: id, fromStatus: "rascunho", toStatus: "pending", changedById: userId });
+        const out = await placeTask(id, pl.editorId ? Number(pl.editorId) : null, String(pl.mode ?? "end"), userId, role);
+        if (out.status !== 200) {
+          await db.update(tasksTable).set({ status: "rascunho", queueHold: false }).where(eq(tasksTable.id, id));
+          broadcastTaskChange();
+          res.status(out.status).json(out.body); return;
+        }
+        const [fresh] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+        res.json({ ...fresh, ...out.body }); return;
       } else {
-        // Normal approval flow (task must be in "review")
+        // Avaliação do que foi entregue (task must be in "review")
         if (task.status !== "review") { res.status(400).json({ error: `Coordenador só pode avaliar tarefas em revisão (status atual: ${task.status})` }); return; }
         if (!["completed", "in_progress"].includes(s)) { res.status(400).json({ error: "Transição inválida" }); return; }
-        update.status = s === "in_progress" ? "in_revision" : s;
         if (s === "in_progress") {
-          const newRevision = (task.revisionCount ?? 0) + 1;
-          update.revisionCount = newRevision;
           const comment = revisionComment ? String(revisionComment).trim() : "";
           if (!comment) { res.status(400).json({ error: "Informe o comentário da alteração" }); return; }
-          await db.insert(taskRevisionsTable).values({
-            taskId: id,
-            revisionNumber: newRevision,
-            comment,
-            createdById: userId,
-          });
+          if (Object.keys(update).length) await db.update(tasksTable).set(update).where(eq(tasksTable.id, id));
+          const st = await loadState();
+          await newRound(st, task, userId, Math.round(Number(revisionMinutes) || 120), comment, false);
+          broadcastTaskChange();
+          const [fresh] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+          res.json(fresh); return;
         }
+        update.status = s;
+        update.playingSince = null;
       }
-    }
-  }
-
-  // ── Bloqueio server-side de capacidade em edições ─────────────────────────
-  // Aplica quando muda editor OU complexidade, para tarefas reais (não rascunho)
-  // Editores estão excluídos: ao iniciar uma tarefa eles declaram a própria carga — nunca são bloqueados aqui
-  const changingAssignee   = update.assignedToId !== undefined && update.assignedToId !== task.assignedToId;
-  const changingComplexity = update.complexity   !== undefined && update.complexity   !== task.complexity;
-  const targetAssignee     = update.assignedToId !== undefined ? (update.assignedToId as number | null) : task.assignedToId;
-  const targetComplexity   = update.complexity   !== undefined ? String(update.complexity) : (task.complexity ?? "medium");
-
-  if (role !== "editor" && (changingAssignee || changingComplexity) && targetAssignee && task.status !== "rascunho") {
-    const taskFromDate = task.startDate ?? undefined;
-    const score = await editorScore(targetAssignee, id, taskFromDate); // exclui a própria tarefa; considera startDate
-    const newW  = COMPLEXITY_WEIGHT[targetComplexity] ?? 6;
-    if (score + newW > 12) {
-      const [ed] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, targetAssignee));
-      res.status(422).json({ error: `${ed?.name ?? "Editor"} está no limite de capacidade (${score} pts). Reduza a complexidade ou escolha outro editor.` });
-      return;
     }
   }
 
@@ -590,7 +550,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
 
   if (update.status && update.status !== task.status) {
     const resolvedComment = eventComment
-      || (update.status === "in_progress" && startComment ? String(startComment).slice(0, 500) : undefined);
+      || undefined;
     await db.insert(taskEventsTable).values({
       taskId: id,
       fromStatus: task.status,
@@ -645,13 +605,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           { taskId: id }
         );
       }
-      await createFeedItem({
-        type: "task_cancelled",
-        title: `Tarefa cancelada: "${task.title}"`,
-        actorId: userId,
-        entityId: id,
-        entityType: "task",
-      }).catch(() => {});
+      await notifyFollowers(id, [userId, ...cancelRecipients], "task_cancelled", "Job cancelado", `"${task.title}" foi cancelado${comment ? `: ${comment}` : ""}.`);
     }
     if (newStatus === "paused") {
       const comment = eventComment ?? "";
@@ -665,15 +619,8 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           { taskId: id }
         );
       }
-      await createFeedItem({
-        type: "task_paused",
-        title: `Tarefa pausada: "${task.title}"`,
-        actorId: userId,
-        entityId: id,
-        entityType: "task",
-      }).catch(() => {});
     }
-    if (newStatus === "pending" && task.status === "paused") {
+    if ((newStatus === "pending" || newStatus === "in_progress") && task.status === "paused") {
       const resumedEditors = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
       const resumeRecipients = new Set<number>(resumedEditors.map(e => e.userId));
       if (task.assignedToId) resumeRecipients.add(task.assignedToId);
@@ -684,13 +631,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           { taskId: id }
         );
       }
-      await createFeedItem({
-        type: "task_resumed",
-        title: `Tarefa retomada: "${task.title}"`,
-        actorId: userId,
-        entityId: id,
-        entityType: "task",
-      }).catch(() => {});
     }
     if (newStatus === "pending" && task.status === "cancelled") {
       const reactivatedEditors = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
@@ -703,13 +643,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           { taskId: id }
         );
       }
-      await createFeedItem({
-        type: "task_reactivated",
-        title: `Tarefa reativada: "${task.title}"`,
-        actorId: userId,
-        entityId: id,
-        entityType: "task",
-      }).catch(() => {});
     }
     if (newStatus === "pending" && task.status === "rascunho") {
       const editorRows = await db.select({ userId: taskEditorsTable.userId }).from(taskEditorsTable).where(eq(taskEditorsTable.taskId, id));
@@ -754,13 +687,6 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
           );
         }
       }
-      await createFeedItem({
-        type: "task_reopened",
-        title: `Tarefa reaberta: "${task.title}"`,
-        actorId: userId,
-        entityId: id,
-        entityType: "task",
-      }).catch(() => {});
     }
 
   }
@@ -813,6 +739,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
             { taskId: id }
           );
         }
+        await notifyFollowers(id, [userId, ...recipients], "due_date_changed", "Prazo alterado", `O prazo de "${task.title}" foi alterado para ${fmtBR(newDate)}`);
       }
     }
   }
@@ -832,12 +759,14 @@ router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> =>
   const role = req.session.userRole!;
   const userId = req.session.userId!;
 
-  if (role === "editor" && task.assignedToId !== userId) {
-    res.status(403).json({ error: "Você só pode devolver tarefas atribuídas a você." }); return;
+  // Na fila em horas o editor não recusa job: se não dá para seguir, ele marca "Travado".
+  if (role === "editor") {
+    res.status(403).json({ error: "Na fila o editor não devolve job. Se não dá para seguir, use “Travado” e diga o motivo." }); return;
   }
-  if (!["pending", "in_progress", "in_revision"].includes(task.status)) {
+  if (!["pending", "in_progress", "in_revision", "reopened"].includes(task.status)) {
     res.status(400).json({ error: "Só é possível devolver uma tarefa pendente, em edição ou em revisão." }); return;
   }
+  { const st = await loadState(); await stopTask(st, task); }
 
   const returnComment = req.body?.returnComment ? String(req.body.returnComment).trim() : "";
   if (!returnComment) {
@@ -846,7 +775,7 @@ router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> =>
 
   const prevStatus = task.status;
   const [updated] = await db.update(tasksTable)
-    .set({ status: "pending", assignedToId: null })
+    .set({ status: "pending", assignedToId: null, queueHold: false })
     .where(eq(tasksTable.id, id))
     .returning();
 
@@ -870,13 +799,6 @@ router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> =>
     );
   }
 
-  await createFeedItem({
-    type: "task_returned",
-    title: `Tarefa devolvida: "${task.title}"`,
-    actorId: userId,
-    entityId: id,
-    entityType: "task",
-  }).catch(() => {});
 
   broadcastTaskChange();
   res.json(updated);
@@ -1120,315 +1042,6 @@ router.get("/calendar", requireAuth, async (req, res): Promise<void> => {
   })));
 });
 
-// ── Workload ──────────────────────────────────────────────────────────────────
-const COMPLEXITY_WEIGHT: Record<string, number> = { low: 3, medium: 6, high: 12 };
-
-/** Score de um editor na data fromDate (ou hoje se omitido).
- *  Conta apenas tarefas que estão ativas nessa data:
- *  - dueDate >= fromDate (não terminou antes)
- *  - startDate <= fromDate ou sem startDate (já começou)  */
-async function editorScore(editorId: number, excludeTaskId?: number, fromDate?: Date): Promise<number> {
-  const conds = [
-    eq(tasksTable.assignedToId, editorId),
-    ne(tasksTable.status, "completed"),
-    ne(tasksTable.status, "cancelled"),
-    ne(tasksTable.status, "paused"),
-    ne(tasksTable.status, "rascunho"),
-    ne(tasksTable.status, "review"),
-  ];
-  if (excludeTaskId) conds.push(ne(tasksTable.id, excludeTaskId));
-  const rows = await db.select({ complexity: tasksTable.complexity, dueDate: tasksTable.dueDate, startDate: tasksTable.startDate }).from(tasksTable).where(and(...conds));
-  return rows
-    .filter(r => {
-      if (!fromDate) return true;
-      if (r.dueDate   && r.dueDate   < fromDate) return false; // terminou antes da data alvo
-      if (r.startDate && r.startDate > fromDate) return false; // ainda não começou na data alvo
-      return true;
-    })
-    .reduce((s, r) => s + (COMPLEXITY_WEIGHT[r.complexity ?? "medium"] ?? 6), 0);
-}
-
-router.get("/workload", requireCoordinator, async (req, res): Promise<void> => {
-  // Só editores ativos compõem o time. Inativos ficam fora da carga e dos seletores.
-  const editors = await db
-    .select({ id: usersTable.id, name: usersTable.name, login: usersTable.login, avatarUrl: usersTable.avatarUrl })
-    .from(usersTable).where(and(eq(usersTable.role, "editor"), eq(usersTable.status, "active")));
-
-  const todayStr = new Date().toISOString().split("T")[0];
-
-  // projected date from query param (default = today)
-  const projDateStr = typeof req.query.date === "string" ? req.query.date : todayStr;
-  const projDate = new Date(projDateStr + "T23:59:59Z");
-  const isProjFuture = projDateStr > todayStr;
-
-  const open = await db
-    .select({
-      id: tasksTable.id,
-      status: tasksTable.status,
-      complexity: tasksTable.complexity,
-      assignedToId: tasksTable.assignedToId,
-      startDate: tasksTable.startDate,
-      dueDate: tasksTable.dueDate,
-    })
-    .from(tasksTable)
-    .where(and(
-      ne(tasksTable.status, "completed"),
-      ne(tasksTable.status, "cancelled"),
-      ne(tasksTable.status, "paused"),
-      ne(tasksTable.status, "rascunho"),
-      ne(tasksTable.status, "review"),
-      isNotNull(tasksTable.assignedToId),
-    ));
-
-  const todayEnd = new Date(todayStr + "T23:59:59Z");
-
-  // Ausência (férias/afastamento) que cobre a data projetada — só sinaliza, não bloqueia.
-  const absenceMap = await getAbsenceMapOn(projDateStr, editors.map(e => e.id));
-
-  const result = editors.map(editor => {
-    const all = open.filter(t => t.assignedToId === editor.id);
-
-    // Current score: tasks with no startDate OR startDate <= today.
-    // When projecting: exclude tasks whose dueDate is strictly before the projection day
-    // (they're expected to be delivered by then).
-    const current = all.filter(t => {
-      if (!(!t.startDate || t.startDate <= todayEnd)) return false;
-      if (isProjFuture && t.dueDate) {
-        const dueStr = t.dueDate.toISOString().slice(0, 10);
-        if (dueStr < projDateStr) return false;
-      }
-      return true;
-    });
-    const score = current.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
-
-    // Scheduled score: tasks starting after today up to projDate,
-    // but only if they're still active on the projection day (dueDate >= projDate or no dueDate).
-    const scheduled = all.filter(t => {
-      if (!t.startDate || t.startDate <= todayEnd || t.startDate > projDate) return false;
-      if (t.dueDate) {
-        const dueStr = t.dueDate.toISOString().slice(0, 10);
-        if (dueStr < projDateStr) return false;
-      }
-      return true;
-    });
-    const scheduledScore = scheduled.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
-
-    // Projected = current + scheduled (all tasks up to projDate)
-    const projectedScore = score + scheduledScore;
-
-    return {
-      id: editor.id, name: editor.name, login: editor.login, avatarUrl: editor.avatarUrl ?? null,
-      absence: absenceMap.get(editor.id) ?? null,
-      taskCount: current.length,
-      scheduledCount: scheduled.length,
-      score,
-      scheduledScore,
-      projectedScore,
-      byComplexity: {
-        low:    current.filter(t => t.complexity === "low").length,
-        medium: current.filter(t => t.complexity === "medium").length,
-        high:   current.filter(t => t.complexity === "high").length,
-      },
-      byStatus: {
-        pending:     current.filter(t => t.status === "pending").length,
-        in_progress: current.filter(t => t.status === "in_progress").length,
-        in_revision: current.filter(t => t.status === "in_revision").length,
-        review:      current.filter(t => t.status === "review").length,
-      },
-    };
-  });
-  result.sort((a, b) => b.score - a.score);
-  res.json(result);
-});
-
-// ── Workload calendar — per-day score for one editor ─────────────────────────
-router.get("/workload/calendar", requireCoordinator, async (req, res): Promise<void> => {
-  const editorId = parseInt(req.query.editorId as string, 10);
-  const monthStr = typeof req.query.month === "string" ? req.query.month : ""; // "YYYY-MM"
-  if (!editorId || !monthStr || !/^\d{4}-\d{2}$/.test(monthStr)) {
-    res.status(400).json({ error: "editorId e month (YYYY-MM) são obrigatórios" });
-    return;
-  }
-
-  // Fetch all non-terminal tasks for this editor
-  const tasks = await db
-    .select({
-      id: tasksTable.id,
-      complexity: tasksTable.complexity,
-      startDate: tasksTable.startDate,
-      dueDate: tasksTable.dueDate,
-    })
-    .from(tasksTable)
-    .where(and(
-      eq(tasksTable.assignedToId, editorId),
-      ne(tasksTable.status, "completed"),
-      ne(tasksTable.status, "cancelled"),
-      ne(tasksTable.status, "paused"),
-      ne(tasksTable.status, "rascunho"),
-      ne(tasksTable.status, "review"),
-    ));
-
-  // Generate per-day data for the month
-  const [year, month] = monthStr.split("-").map(Number);
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const days: { date: string; score: number; count: number; absence: string | null }[] = [];
-  const monthAbsences = await getAbsencesInRange(`${monthStr}-01`, `${monthStr}-${String(daysInMonth).padStart(2, "0")}`, [editorId]);
-
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dayStr = `${monthStr}-${String(d).padStart(2, "0")}`;
-    const dayEnd   = new Date(dayStr + "T23:59:59Z"); // UTC explícito
-    const dayStart = new Date(dayStr + "T00:00:00Z"); // UTC explícito
-
-    const active = tasks.filter(t => {
-      // Task is active on this day if:
-      // startDate <= end-of-day (or null = already started)
-      const started = !t.startDate || t.startDate <= dayEnd;
-      // dueDate >= start-of-day (or null = no deadline = always counts)
-      const notDone = !t.dueDate || t.dueDate >= dayStart;
-      return started && notDone;
-    });
-
-    const score = active.reduce((sum, t) => sum + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
-    const abs = monthAbsences.find(a => a.startDate <= dayStr && a.endDate >= dayStr);
-    days.push({ date: dayStr, score, count: active.length, absence: abs ? abs.label : null });
-  }
-
-  res.json(days);
-});
-
-// ── Nível 3: verificação de período ───────────────────────────────────────────
-// GET /api/workload/period-check?editorId=X&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&complexity=low|medium|high&excludeTaskId=N
-router.get("/workload/period-check", requireCoordinator, async (req, res): Promise<void> => {
-  const editorId      = parseInt(req.query.editorId as string, 10);
-  const startDate     = req.query.startDate as string;
-  const endDate       = req.query.endDate   as string;
-  const complexity    = (req.query.complexity as string) ?? "medium";
-  const excludeTaskId = req.query.excludeTaskId ? parseInt(req.query.excludeTaskId as string, 10) : null;
-
-  if (!editorId || !startDate || !endDate) {
-    res.status(400).json({ error: "editorId, startDate e endDate são obrigatórios" }); return;
-  }
-
-  const newWeight = COMPLEXITY_WEIGHT[complexity] ?? 6;
-  const startD    = new Date(startDate + "T00:00:00Z");
-  const endD      = new Date(endDate   + "T23:59:59Z");
-
-  const conds = [
-    eq(tasksTable.assignedToId, editorId),
-    ne(tasksTable.status, "completed"),
-    ne(tasksTable.status, "cancelled"),
-    ne(tasksTable.status, "paused"),
-    ne(tasksTable.status, "rascunho"),
-    ne(tasksTable.status, "review"),
-  ];
-  if (excludeTaskId) conds.push(ne(tasksTable.id, excludeTaskId));
-
-  const tasks = await db
-    .select({ id: tasksTable.id, complexity: tasksTable.complexity, startDate: tasksTable.startDate, dueDate: tasksTable.dueDate })
-    .from(tasksTable).where(and(...conds));
-
-  const conflictDays: string[] = [];
-  let maxScore = 0;
-  const DAY_MS = 86_400_000;
-
-  for (let d = new Date(startD); d <= endD; d = new Date(d.getTime() + DAY_MS)) {
-    const dayEnd = new Date(d.getTime() + DAY_MS - 1);
-    const active = tasks.filter(t => {
-      const started = !t.startDate || t.startDate <= dayEnd;
-      const notDone = !t.dueDate   || t.dueDate   >= d;
-      return started && notDone;
-    });
-    const dayScore = active.reduce((s, t) => s + (COMPLEXITY_WEIGHT[t.complexity ?? "medium"] ?? 6), 0);
-    const projected = dayScore + newWeight;
-    if (projected > maxScore) maxScore = projected;
-    if (projected > 12) conflictDays.push(d.toISOString().slice(0, 10));
-  }
-
-  // Ausências no período: aviso, não bloqueio
-  const absences = await getAbsencesInRange(startDate, endDate, [editorId]);
-  let absenceMessage: string | null = null;
-  if (absences.length > 0) {
-    const [ed] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, editorId));
-    absenceMessage = absences.map(a => absenceWarning(ed?.name ?? "Editor", a)).join("; ");
-  }
-
-  res.json({ blocked: conflictDays.length > 0, conflictDays, maxScore, absences, absenceMessage });
-});
-
-// ── Nível 2: agenda geral de todos os editores ────────────────────────────────
-// GET /api/agenda
-router.get("/agenda", requireCoordinator, async (_req, res): Promise<void> => {
-  const allEditors = await db
-    .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl, status: usersTable.status })
-    .from(usersTable).where(eq(usersTable.role, "editor"));
-
-  const tasks = await db
-    .select({
-      id:           tasksTable.id,
-      taskNumber:   tasksTable.taskNumber,
-      taskYear:     tasksTable.taskYear,
-      title:        tasksTable.title,
-      status:       tasksTable.status,
-      priority:     tasksTable.priority,
-      complexity:   tasksTable.complexity,
-      color:        tasksTable.color,
-      client:       tasksTable.client,
-      startDate:    tasksTable.startDate,
-      dueDate:      tasksTable.dueDate,
-      assignedToId: tasksTable.assignedToId,
-      createdById:  tasksTable.createdById,
-    })
-    .from(tasksTable)
-    .where(and(
-      ne(tasksTable.status, "completed"),
-      ne(tasksTable.status, "cancelled"),
-      ne(tasksTable.status, "rascunho"),
-      isNotNull(tasksTable.assignedToId),
-    ));
-
-  const creatorIds = [...new Set(tasks.map(t => t.createdById).filter(Boolean))] as number[];
-  const creatorMap = new Map<number, { id: number; name: string; avatarUrl: string | null }>();
-  if (creatorIds.length > 0) {
-    const creators = await db
-      .select({ id: usersTable.id, name: usersTable.name, avatarUrl: usersTable.avatarUrl })
-      .from(usersTable).where(inArray(usersTable.id, creatorIds));
-    creators.forEach(c => creatorMap.set(c.id, c));
-  }
-
-  // Inativos só aparecem se ainda tiverem tarefa aberta (para que nada "suma" sem ser reatribuído).
-  const assignedIds = new Set(tasks.map(t => t.assignedToId));
-  const editors = allEditors.filter(e => e.status === "active" || assignedIds.has(e.id));
-
-  // Ausências de 30 dias atrás até 1 ano à frente
-  const today = availabilityToday();
-  const fromAbs = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  const toAbs   = new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10);
-  const absences = await getAbsencesInRange(fromAbs, toAbs, editors.map(e => e.id));
-
-  const result = editors.map(editor => ({
-    editor: { ...editor, inactive: editor.status !== "active" },
-    absences: absences.filter(a => a.userId === editor.id),
-    currentAbsence: absences.find(a => a.userId === editor.id && a.startDate <= today && a.endDate >= today) ?? null,
-    tasks: tasks
-      .filter(t => t.assignedToId === editor.id)
-      .map(t => ({
-        id:        t.id,
-        taskCode:  fmtCode(t.taskNumber ?? 0, t.taskYear ?? 0),
-        title:     t.title,
-        status:    t.status,
-        priority:  t.priority,
-        complexity: t.complexity,
-        color:     t.color,
-        client:    t.client,
-        startDate: t.startDate ? t.startDate.toISOString() : null,
-        dueDate:   t.dueDate   ? t.dueDate.toISOString()   : null,
-        creator:   t.createdById ? (creatorMap.get(t.createdById) ?? null) : null,
-      })),
-  }));
-
-  res.json(result);
-});
-
 // ── Dashboard extras ──────────────────────────────────────────────────────────
 router.get("/dashboard-extras", requireAuth, async (_req, res): Promise<void> => {
   const todayStr = new Date().toISOString().split("T")[0];
@@ -1579,7 +1192,7 @@ router.get("/pipeline", requireAuth, async (req, res): Promise<void> => {
   const tasks = await db
     .select({
       id: tasksTable.id, title: tasksTable.title, status: tasksTable.status,
-      priority: tasksTable.priority, complexity: tasksTable.complexity,
+      priority: tasksTable.priority, estMinutes: tasksTable.estMinutes,
       dueDate: tasksTable.dueDate, color: tasksTable.color, client: tasksTable.client,
       revisionCount: tasksTable.revisionCount, assignedToId: tasksTable.assignedToId,
       createdById: tasksTable.createdById, createdAt: tasksTable.createdAt,
@@ -1690,7 +1303,7 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
       title: task.title,
       status: task.status,
       priority: task.priority,
-      complexity: task.complexity,
+      estMinutes: task.estMinutes, workedMinutes: task.workedMinutes,
       client: task.client,
       color: task.color,
       dueDate: task.dueDate,
@@ -1717,7 +1330,7 @@ router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
       description: tasksTable.description,
       status: tasksTable.status,
       priority: tasksTable.priority,
-      complexity: tasksTable.complexity,
+      estMinutes: tasksTable.estMinutes,
       dueDate: tasksTable.dueDate,
       color: tasksTable.color,
       client: tasksTable.client,
@@ -1752,7 +1365,7 @@ router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
     description: t.description,
     status: t.status,
     priority: t.priority,
-    complexity: t.complexity,
+    estMinutes: t.estMinutes,
     dueDate: t.dueDate,
     color: t.color,
     client: t.client,
@@ -1768,7 +1381,7 @@ router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
 // ── Reports ───────────────────────────────────────────────────────────────────
 router.get("/reports", requireCoordinator, async (req, res): Promise<void> => {
   const { from, to, assignedToId: filterEditor, status: filterStatus, client: filterClient,
-          priority: filterPriority, complexity: filterComplexity, scope } = req.query as Record<string, string | undefined>;
+          priority: filterPriority, scope } = req.query as Record<string, string | undefined>;
 
   const userId = req.session.userId!;
   const userRole = req.session.userRole!;
@@ -1780,7 +1393,6 @@ router.get("/reports", requireCoordinator, async (req, res): Promise<void> => {
     filterStatus ? eq(tasksTable.status, filterStatus) : undefined,
     filterClient ? eq(tasksTable.client, filterClient) : undefined,
     filterPriority ? eq(tasksTable.priority, filterPriority) : undefined,
-    filterComplexity ? eq(tasksTable.complexity, filterComplexity) : undefined,
   ].filter(Boolean);
 
   // "Minhas" scope: only tasks created by this coordinator
@@ -1810,7 +1422,7 @@ router.get("/reports", requireCoordinator, async (req, res): Promise<void> => {
       title: r.title,
       status: r.status,
       priority: r.priority,
-      complexity: r.complexity,
+      estMinutes: r.estMinutes, workedMinutes: r.workedMinutes,
       client: r.client,
       color: r.color,
       revisionCount: r.revisionCount,
@@ -1885,47 +1497,20 @@ router.delete("/tasks/:id/editors/:editorId", requireCoordinator, async (req, re
   res.json({ ok: true });
 });
 
+// Passar para outro editor: entra no fim da fila do novo editor (use /queue/tasks/:id/place para prioridade).
 router.post("/tasks/:id/reassign", requireCoordinator, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const newEditorId = parseInt(String(req.body.editorId), 10);
   if (isNaN(id) || isNaN(newEditorId)) { res.status(400).json({ error: "IDs inválidos" }); return; }
-
-  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
-  if (!task) { res.status(404).json({ error: "Tarefa não encontrada" }); return; }
-
-  const [newEditorUser] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, newEditorId));
-  if (!newEditorUser) { res.status(404).json({ error: "Editor não encontrado" }); return; }
   if (await rejectInactive(res, [newEditorId])) return;
-
-  const oldEditorId = task.assignedToId;
-
-  if (oldEditorId && oldEditorId !== newEditorId) {
-    await notify(oldEditorId, "task_reassigned",
-      "Tarefa reatribuída",
-      `A tarefa "${task.title}" foi reatribuída para ${newEditorUser.name}`,
-      { taskId: id }
-    );
-    await db.delete(taskEditorsTable)
-      .where(and(eq(taskEditorsTable.taskId, id), eq(taskEditorsTable.userId, oldEditorId)));
+  // mesma regra do "passar para outro editor": gestor só mexe nos próprios jobs
+  const role = req.session.userRole!;
+  if (!["admin", "supervisor"].includes(role)) {
+    const [t] = await db.select({ createdById: tasksTable.createdById }).from(tasksTable).where(eq(tasksTable.id, id));
+    if (!t || t.createdById !== req.session.userId) { res.status(403).json({ error: "Você só mexe nos seus jobs" }); return; }
   }
-
-  const [updated] = await db.update(tasksTable)
-    .set({ assignedToId: newEditorId })
-    .where(eq(tasksTable.id, id))
-    .returning();
-
-  await db.insert(taskEditorsTable).values({
-    taskId: id, userId: newEditorId, assignedById: req.session.userId,
-  }).onConflictDoNothing();
-
-  await notify(newEditorId, "task_assigned",
-    "Tarefa atribuída a você",
-    `A tarefa "${task.title}" foi atribuída a você`,
-    { taskId: id }
-  );
-
-  broadcastTaskChange();
-  res.json(updated);
+  const out = await placeTask(id, newEditorId, String(req.body?.mode ?? "end"), req.session.userId!, role, { reason: req.body?.reason });
+  res.status(out.status).json(out.body);
 });
 
 export default router;

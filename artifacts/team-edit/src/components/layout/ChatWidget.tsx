@@ -1,7 +1,8 @@
+import { LiveDot } from "@/components/fila/ui";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Send, MessageCircle, X, ExternalLink, Check, CheckCheck, ChevronLeft, SmilePlus, Reply, Trash2, ChevronDown } from "lucide-react";
+import { Send, MessageCircle, X, ExternalLink, Check, CheckCheck, ChevronLeft, SmilePlus, Reply, Trash2, ChevronDown } from "@/lib/icons";
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -415,7 +416,7 @@ function MsgContent({ text, mine, onClose }: {
       <button
         key={m.index}
         type="button"
-        onClick={() => { onClose(); window.location.href = `/tasks?tab=lista&highlight=${id}`; }}
+        onClick={() => { onClose(); window.location.href = `/jobs/${id}`; }}
         className={cn(
           "font-mono font-bold underline underline-offset-2 hover:opacity-80 transition-opacity cursor-pointer",
           mine ? "text-white" : "text-[hsl(var(--primary))]"
@@ -1119,7 +1120,7 @@ export function ChatWidget() {
                     <div>
                       <p className="text-sm font-semibold leading-tight truncate">{currentDmUser?.name ?? "?"}</p>
                       <p className="text-xs" style={{ color: onlineUsers.some(u => u.userId === (activeView as number)) ? "rgb(5 150 105)" : "hsl(var(--muted-foreground))" }}>
-                        {onlineUsers.some(u => u.userId === (activeView as number)) ? "● online" : "offline"}
+                        {onlineUsers.some(u => u.userId === (activeView as number)) ? <span className="inline-flex items-center gap-1"><LiveDot pulse={false} className="h-1.5 w-1.5" />online</span> : "offline"}
                       </p>
                     </div>
                   </>
@@ -1431,7 +1432,7 @@ export function ChatWidget() {
                           <div className="w-[3px] shrink-0" style={{ backgroundColor: "hsl(var(--primary))" }} />
                           <button
                             type="button"
-                            onClick={() => navigate(`/tasks?tab=lista&highlight=${dmTaskRef.id}`)}
+                            onClick={() => navigate(`/jobs/${dmTaskRef.id}`)}
                             className="flex-1 min-w-0 flex flex-col items-start px-3 py-2 text-left hover:opacity-90 transition-opacity"
                             style={{ color: "#fff" }}
                           >

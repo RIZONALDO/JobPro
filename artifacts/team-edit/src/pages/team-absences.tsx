@@ -7,7 +7,7 @@ import { usePageTitle } from "@/lib/use-page-title";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
-import { ChevronLeft, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil, Trash2 } from "@/lib/icons";
 import { fmtShortDate, isActiveUser, type Absence } from "@/lib/availability";
 import type { Member } from "@/components/team/shared";
 import { AbsenceForm, AbsenceDialog } from "@/components/team/absence-form";

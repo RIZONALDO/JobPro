@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/lib/use-page-title";
 import { useSettings } from "@/contexts/SettingsContext";
 import { Input } from "@/components/ui/input";
-import { ListTodo, Eye, EyeOff } from "lucide-react";
+import { ListTodo, Eye, EyeOff } from "@/lib/icons";
 
 export default function LoginPage() {
   usePageTitle("Login");

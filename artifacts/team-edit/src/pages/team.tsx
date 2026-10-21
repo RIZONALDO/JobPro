@@ -7,10 +7,12 @@ import { usePageTitle } from "@/lib/use-page-title";
 import { cn } from "@/lib/utils";
 import { ROLE_LABEL } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
+import { HeadAction } from "@/components/fila/ui";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Search, LayoutGrid, List, Pencil, CalendarPlus, Palmtree, Users, KeyRound, Copy, UserX } from "lucide-react";
+import { Plus, Search, LayoutGrid, List, Pencil, CalendarPlus, Palmtree, Users, KeyRound, Copy, UserX, Shuffle } from "@/lib/icons";
+import { openHandoff } from "@/components/fila/HandoffDialog";
 import { fmtShortDate, isActiveUser, type Absence } from "@/lib/availability";
 import {
   MEMBER_GROUPS, groupOf, isAway, fmtJoined, fmtLastSeen,
@@ -159,7 +161,7 @@ export default function Team() {
           <Button variant="outline" asChild>
             <Link href="/team/ausencias"><Palmtree className="h-4 w-4 mr-2 text-amber-500" />Ausências</Link>
           </Button>
-          {canManage && <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Novo membro</Button>}
+          {canManage && <HeadAction icon={Plus} label="Novo membro" short="Novo" onClick={openNew} />}
         </div>
       </div>
 
@@ -389,6 +391,12 @@ export default function Team() {
                   <Button variant="outline" className="flex-[1_1_140px]" onClick={() => { setResetPw(generatePassword()); setResetFor(sel); }}>
                     <KeyRound className="h-4 w-4 mr-1.5" />Redefinir senha
                   </Button>
+                  {sel.id !== user?.id && (
+                    <Button variant="outline" className="flex-[1_1_100%]"
+                      onClick={() => openHandoff({ userId: sel.id, context: "queue", onDone: reloadAll })}>
+                      <Shuffle className="h-4 w-4 mr-1.5" />Redistribuir jobs…
+                    </Button>
+                  )}
                   {isActiveUser(sel) && sel.id !== user?.id && (
                     <Button variant="outline" className="flex-[1_1_100%] border-red-500/40 text-red-600 hover:bg-red-500/10 dark:text-red-400"
                       onClick={() => setInactivating(sel)}>

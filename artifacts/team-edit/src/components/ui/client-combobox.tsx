@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { apiFetch, apiPost } from "@/lib/api";
-import { Check, ChevronsUpDown, Plus } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, X } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 
 interface Client { id: number; name: string; }
@@ -78,7 +78,7 @@ export function ClientCombobox({ value, onChange, placeholder = "Buscar ou criar
         {query ? (
           <button type="button" onClick={clear}
             className="absolute right-2 text-muted-foreground hover:text-foreground transition-colors text-xs font-bold">
-            ✕
+            <X className="h-3.5 w-3.5" />
           </button>
         ) : (
           <ChevronsUpDown className="absolute right-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />

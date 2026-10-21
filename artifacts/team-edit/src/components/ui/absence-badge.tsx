@@ -1,4 +1,4 @@
-import { Palmtree, UserX } from "lucide-react";
+import { Palmtree, UserX } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 import { absenceShort, type Absence } from "@/lib/availability";
 

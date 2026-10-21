@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Camera, User, Mail, Phone, Lock, Eye, EyeOff, Save } from "lucide-react";
+import { Camera, User, Mail, Phone, Lock, Eye, EyeOff, Save } from "@/lib/icons";
 import { usePageTitle } from "@/lib/use-page-title";
 
 import { ROLE_LABEL } from "@/lib/roles";

@@ -15,6 +15,8 @@ export const usersTable = pgTable("te_users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   theme: text("theme").notNull().default("dark"),
+  idleSince: timestamp("idle_since", { withTimezone: true }),        // fila: parado (sem ▶) desde
+  idleAlertedAt: timestamp("idle_alerted_at", { withTimezone: true }), // fila: aviso de "parado" já enviado
 });
 
 export type User = typeof usersTable.$inferSelect;
