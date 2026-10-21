@@ -783,7 +783,8 @@ export async function placeTask(
       return { status: 200, body: { message: msg } };
     }
 
-    // prioridade
+    // prioridade: só se, na frente, o job cabe no prazo (com a folga). Senão a saída é mudar o prazo ou as horas.
+    if (!p.prio.fits && !opts.approved && r.dueDate) return { status: 409, body: { error: `Nem em ${p.prio.k + 1}º na fila de ${edName} ${q(r)} fica pronto a tempo (pronto ${fmtLm(p.prio.end)}). Diminua as horas, mude o prazo ou escolha outro editor.` } };
     if (!p.prio.hurt.length || opts.approved) {
       await db.update(tasksTable).set({ ...common, queueOrder: p.prio.order, queueHold: false }).where(eq(tasksTable.id, r.id));
       if (p.prio.passed) await logEvent({ kind: "furou", taskId: r.id, actorId: me, coordId: r.createdById, editorId, text: `Na frente de ${p.prio.passed} job(s) de outro coordenador na fila de ${edName}. Ninguém atrasou.` });

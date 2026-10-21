@@ -7,8 +7,8 @@ import { broadcastTaskChange } from "../lib/broadcast.js";
 import { createFeedItem } from "../lib/feed.js";
 import { findInactive } from "../lib/availability.js";
 import { placeTask, playTask, sendToApproval, stopTask, newRound } from "./queue.js";
-import { loadState, loadCalendar, orderAfterHead, logEvent, QUEUE_STATUSES } from "../lib/queue.js";
-import { DUE_OFF_SHIFT, inShift, toLm } from "../lib/workcal.js";
+import { loadState, loadCalendar, orderAfterHead, logEvent, schedule, FOLGA, QUEUE_STATUSES } from "../lib/queue.js";
+import { DUE_OFF_SHIFT, inShift, consume, toLm, fmtLm } from "../lib/workcal.js";
 
 /** Prazo do cliente só dentro do expediente (fim do turno conta). */
 const dueInShift = async (d: Date) => inShift(await loadCalendar(), toLm(d));
@@ -458,6 +458,19 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         }
         const same = task.dueDate && +new Date(task.dueDate as Date) === +parsed;
         if (!same && task.status !== "rascunho" && !(await dueInShift(parsed))) { res.status(400).json({ error: DUE_OFF_SHIFT }); return; }
+        // encurtar o prazo de job na fila: tem de caber na fila do editor dele, com a folga mínima
+        const shorter = !task.dueDate || +parsed < +new Date(task.dueDate as Date);
+        if (!same && shorter && task.assignedToId && QUEUE_STATUSES.includes(task.status)) {
+          const st = await loadState(), slot = schedule(st.cal, st.tasks, st.now).get(task.id);
+          if (slot) {
+            let min = Math.ceil(consume(st.cal, slot.end, FOLGA, task.assignedToId).end / 30) * 30;
+            for (let g = 0; g < 2000 && !inShift(st.cal, min); g++) min += 30;
+            if (toLm(parsed) < min) {
+              res.status(400).json({ error: `Com a fila atual do editor, este job fica pronto ${fmtLm(slot.end)}. O prazo mais cedo possível é ${fmtLm(min)} (1h de folga). Para entregar antes: diminua as horas, passe para outro editor ou peça prioridade na fila.`, minDue: min });
+              return;
+            }
+          }
+        }
         update.dueDate = parsed;
       } else {
         if (task.status !== "rascunho") {

@@ -420,10 +420,13 @@ function PlanCard({ p, est, limit, user, isSup, busy, name, needsOk, onPick, onH
       </>}
       <span className="text-[11px] font-bold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Mudar o prazo</span>
       <div><Btn size="sm" disabled={busy} onClick={() => onPick("end")}>{needsOk("end") ? ask : ""}Colocar no fim: prazo passa para {fmt(p.newDue)}</Btn></div>
-      <span className="text-[11px] font-bold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Pedir prioridade</span>
-      <span className="text-xs text-[hsl(var(--muted-foreground))]">{pr.fits ? `Entraria em ${pr.k + 1}º e fica pronto ${fmt(pr.end)}.` : `Mesmo em ${pr.k + 1}º fica pronto só ${fmt(pr.end)}: passa do prazo.`}{pr.passed ? ` Passa na frente de ${pr.passed} job${pr.passed > 1 ? "s" : ""} de outro coordenador.` : ""}</span>
-      {pr.impacts.length > 0 && <ul className="list-disc pl-5 text-xs text-[hsl(var(--muted-foreground))]">{pr.impacts.map((x, i) => <li key={i} className={x.bad ? "text-rose-500" : ""}>{x.text}</li>)}</ul>}
-      <div><Btn size="sm" disabled={busy} onClick={() => onPick("prio")}>{needsOk("prio") ? `${ask}colocar na frente` : pr.approverId ? `Pedir prioridade a ${name(pr.approverId).split(" ")[0]}` : "Colocar na frente (ninguém de outro coordenador atrasa)"}</Btn></div>
+      {/* prioridade só aparece se, na frente, o job fica pronto a tempo */}
+      {pr.fits && <>
+        <span className="text-[11px] font-bold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Pedir prioridade</span>
+        <span className="text-xs text-[hsl(var(--muted-foreground))]">Entraria em {pr.k + 1}º e fica pronto {fmt(pr.end)}.{pr.passed ? ` Passa na frente de ${pr.passed} job${pr.passed > 1 ? "s" : ""} de outro coordenador.` : ""}</span>
+        {pr.impacts.length > 0 && <ul className="list-disc pl-5 text-xs text-[hsl(var(--muted-foreground))]">{pr.impacts.map((x, i) => <li key={i} className={x.bad ? "text-rose-500" : ""}>{x.text}</li>)}</ul>}
+        <div><Btn size="sm" disabled={busy} onClick={() => onPick("prio")}>{needsOk("prio") ? `${ask}colocar na frente` : pr.approverId ? `Pedir prioridade a ${name(pr.approverId).split(" ")[0]}` : "Colocar na frente (ninguém de outro coordenador atrasa)"}</Btn></div>
+      </>}
     </div>
   );
 }
