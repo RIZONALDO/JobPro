@@ -370,7 +370,10 @@ router.post("/queue/tasks/:id/estimate", requireAuth, async (req, res): Promise<
   if (!res.headersSent) res.json({ ok: true });
 });
 
-/** Editor pede para fazer um job antes. Se ninguém atrasa, troca na hora; senão vira pedido. */
+/**
+ * Editor faz um job antes: troca na hora, sem pedir permissão. Os gestores dos jobs que mudam de previsão são avisados;
+ * quem passa a ter job atrasado recebe o aviso de que precisa decidir (outro editor ou novo prazo com o cliente).
+ */
 router.post("/queue/tasks/:id/request-first", requireAuth, async (req, res): Promise<void> => {
   const r = await editorTask(req, res); if (!r) return;
   const me = req.session.userId!, dry = !!req.body?.dryRun;
@@ -381,30 +384,23 @@ router.post("/queue/tasks/:id/request-first", requireAuth, async (req, res): Pro
   const hurt = ev.changes.filter(c => c.newlyLate);
   const impacts = ev.changes.map(c => changeText(c, names));
   const headPlaying = queueOf(s.tasks, me).some(t => t.playing && t.id !== r.id);
-  const approverId = hurt[0]?.t.coordId ?? null;
-  if (dry) { res.json({ auto: !hurt.length, impacts, newlyLate: hurt.map(c => c.t.id), approverId, headPlaying }); return; }
-  const pending = await db.select().from(queueRequestsTable).where(and(eq(queueRequestsTable.taskId, r.id), eq(queueRequestsTable.status, "pendente")));
-  if (pending.length) { res.status(409).json({ error: "Já existe um pedido para este job" }); return; }
+  if (dry) { res.json({ auto: true, impacts, newlyLate: hurt.map(c => c.t.id), headPlaying }); return; }
+  const ed = names.get(me)?.name ?? "O editor", when = headPlaying ? "logo depois do job atual" : "agora";
   await watchHeads(me, async () => {
-    if (!hurt.length) {
-      const t = ev.ts.find(x => x.id === r.id)!;
-      await db.update(tasksTable).set({ queueOrder: t.order }).where(eq(tasksTable.id, r.id));
-      await logEvent({ kind: "reorder", taskId: r.id, actorId: me, coordId: r.createdById, editorId: me, text: `${names.get(me)?.name} passou ${q(r)} para frente. Ninguém atrasa.` });
-      for (const c of new Set(ev.changes.map(c => c.t.coordId).filter((x): x is number => !!x))) {
-        await notify(c, "queue_reorder", "Ordem da fila mudou",
-          `${names.get(me)?.name} trocou a ordem: agora faz ${q(r)} ${headPlaying ? "logo depois do job atual" : "primeiro"}. Ninguém atrasa.`, { taskId: r.id });
-      }
-      return;
+    const t = ev.ts.find(x => x.id === r.id)!;
+    await db.update(tasksTable).set({ queueOrder: t.order }).where(eq(tasksTable.id, r.id));
+    await logEvent({ kind: hurt.length ? "furou" : "reorder", taskId: r.id, actorId: me, coordId: r.createdById, editorId: me,
+      text: `${ed} passou ${q(r)} para frente${hurt.length ? `. Passa a atrasar: ${hurt.map(c => `“${c.t.title}”`).join(", ")}` : ". Ninguém atrasa."}` });
+    const coords = new Set([r.createdById, ...ev.changes.map(c => c.t.coordId)].filter((x): x is number => !!x));
+    for (const c of coords) {
+      const mine = hurt.filter(h => h.t.coordId === c);
+      if (mine.length) await notify(c, "queue_reorder", mine.length > 1 ? "Seus jobs vão atrasar" : "Seu job vai atrasar",
+        `${ed} vai fazer ${q(r)} ${when}. Com isso ${mine.map(h => `“${h.t.title}”`).join(", ")} passa${mine.length > 1 ? "m" : ""} do prazo. Decida: outro editor ou novo prazo com o cliente.`, { taskId: mine[0].t.id });
+      else await notify(c, "queue_reorder", "Ordem da fila mudou",
+        `${ed} vai fazer ${q(r)} ${when}.${c === r.createdById ? "" : " Seus jobs continuam no prazo."}`, { taskId: r.id });
     }
-    await db.insert(queueRequestsTable).values({
-      kind: "first", taskId: r.id, editorId: me, requestedById: me, approverId, impacts,
-    });
-    await logEvent({ kind: "request", taskId: r.id, actorId: me, coordId: r.createdById, editorId: me, text: `Pediu para fazer ${q(r)} antes` });
-    const hurtRow = s.rows.find(x => x.id === hurt[0].t.id)!;
-    await notify(approverId!, "queue_request", "Pedido de troca na fila",
-      `${names.get(me)?.name} pediu para fazer ${q(r)} antes. Isso atrasa ${q(hurtRow)}. Precisa da sua resposta.`, { taskId: r.id });
   });
-  res.json({ auto: !hurt.length, approverId });
+  res.json({ auto: true, newlyLate: hurt.map(c => c.t.id), coords: [...new Set(hurt.map(c => c.t.coordId))] });
 });
 
 /* ═════════════════════════ AÇÕES DA COORDENAÇÃO ═════════════════════════ */

@@ -37,7 +37,6 @@ function EditorView({ board, reload }: { board: Board; reload: () => void }) {
   const [blockText, setBlockText] = useState("");
   const [remH, setRemH] = useState("2");
   const [estInput, setEstInput] = useState<Record<number, string>>({});
-  const [preview, setPreview] = useState<{ id: number; auto: boolean; impacts: string[]; approverId: number | null; headPlaying: boolean } | null>(null);
   const [notes, setNotes] = useState<Notif[]>([]);
   const [prevEnds, setPrevEnds] = useState<Record<number, number>>({});
   const [changed, setChanged] = useState<Set<number>>(new Set());
@@ -65,11 +64,13 @@ function EditorView({ board, reload }: { board: Board; reload: () => void }) {
 
   const act = async (path: string, body: unknown = {}, ok?: string) => { if (await run(apiPost(path, body), ok)) reload(); };
 
-  const openPreview = async (t: QTask) => {
-    try {
-      const r = await apiPost<{ auto: boolean; impacts: string[]; approverId: number | null; headPlaying: boolean }>(`/api/queue/tasks/${t.id}/request-first`, { dryRun: true });
-      setPreview({ id: t.id, ...r });
-    } catch (e) { toast.error((e as Error).message); }
+  // fazer antes: troca na hora; os gestores são avisados pelo servidor
+  const doFirst = async (t: QTask) => {
+    let r: { newlyLate: number[]; coords: number[] };
+    try { r = await apiPost(`/api/queue/tasks/${t.id}/request-first`, {}); } catch (e) { toast.error((e as Error).message); return; }
+    reload();
+    if (r.newlyLate.length) toast.warning(`Feito. ${r.newlyLate.length > 1 ? `${r.newlyLate.length} jobs passam` : "1 job passa"} do prazo: ${r.coords.map(c => personName(board, c).split(" ")[0]).join(", ")} foi avisado(a) para decidir.`);
+    else toast.success("Feito. Ninguém atrasa e os gestores foram avisados.");
   };
 
   // meu dia
@@ -85,7 +86,7 @@ function EditorView({ board, reload }: { board: Board; reload: () => void }) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">Minha fila</h1>
-          <p className="text-[13px] text-[hsl(var(--muted-foreground))]">Você vê só os seus jobs. A ordem é definida pela coordenação. Você faz o 1º e pode pedir troca.</p>
+          <p className="text-[13px] text-[hsl(var(--muted-foreground))]">Você vê só os seus jobs. A ordem é definida pela coordenação. Você faz o 1º e pode adiantar outro: os gestores são avisados.</p>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {(["all", ...coords] as (number | "all")[]).map(c => (
@@ -160,7 +161,6 @@ function EditorView({ board, reload }: { board: Board; reload: () => void }) {
               {rest.map(t => {
                 const s = t.slot!, locked = t.notBefore != null && t.notBefore > now;
                 const pending = myReqs.find(r => r.taskId === t.id);
-                const pv = preview?.id === t.id ? preview : null;
                 return (
                   <li key={t.id} className={cn("flex flex-col gap-1.5 rounded-xl border border-l-4 bg-[hsl(var(--card))] px-3 py-2.5", changed.has(t.id) && "ring-1 ring-amber-500/60")} style={{ borderLeftColor: coordColor(t.coordId) }}>
                     <div className="flex flex-wrap items-center gap-2">
@@ -177,20 +177,7 @@ function EditorView({ board, reload }: { board: Board; reload: () => void }) {
                     {s.filled && <span className="text-xs text-[hsl(var(--primary))]">Encaixado no buraco antes de “{board.tasks.find(x => x.id === s.filled)?.title}”, que só pode começar depois.</span>}
                     {pending ? <Chip tone="acc" className="self-start">Pedido enviado: aguardando {pending.escalated ? "a supervisão" : personName(board, pending.approverId)}</Chip>
                       : s.pos === 1 && head?.playing ? <span className="text-xs text-[hsl(var(--muted-foreground))]">É o próximo, logo depois do job atual.</span>
-                      : !locked && !pv && <div><Btn size="sm" onClick={() => openPreview(t)}>Pedir para fazer antes</Btn></div>}
-                    {pv && (
-                      <div className="flex flex-col gap-2 rounded-xl border bg-[hsl(var(--background))] p-3 text-[13px]">
-                        <b>Se você fizer este {pv.headPlaying ? "logo depois do job atual" : "agora, antes do job atual"}:</b>
-                        <ul className="list-disc pl-5">{pv.impacts.length ? pv.impacts.map((x, i) => <li key={i} className={x.includes("passa do prazo") ? "text-rose-500" : ""}>{x}</li>) : <li>Nada muda.</li>}</ul>
-                        {pv.auto
-                          ? <span className="text-xs text-[hsl(var(--muted-foreground))]">Ninguém atrasa. A troca acontece na hora e os coordenadores são avisados.</span>
-                          : <span className="text-xs text-[hsl(var(--muted-foreground))]">Isso atrasa um job de {personName(board, pv.approverId)}. Vai como pedido e precisa da aprovação dela(e). Sem resposta em 30 min, a supervisão decide.</span>}
-                        <div className="flex gap-2">
-                          <Btn v="pri" size="sm" onClick={async () => { await act(`/api/queue/tasks/${t.id}/request-first`, {}, pv.auto ? "Ordem trocada" : "Pedido enviado"); setPreview(null); }}>{pv.auto ? "Trocar agora" : `Enviar pedido para ${personName(board, pv.approverId).split(" ")[0]}`}</Btn>
-                          <Btn v="ghost" size="sm" onClick={() => setPreview(null)}>Cancelar</Btn>
-                        </div>
-                      </div>
-                    )}
+                      : !locked && <div><Btn size="sm" onClick={() => doFirst(t)}>Fazer antes</Btn></div>}
                   </li>
                 );
               })}
