@@ -5,6 +5,8 @@
  *  - pedido sem resposta há 30 min de expediente → vai para a supervisão;
  *  - job travado: o prazo continua correndo. Lembra o responsável a cada 2h de expediente parado e avisa
  *    a supervisão quando o prazo entra em risco (já atrasa ou sobra menos de 4h de folga se destravar agora).
+ *  - fim do expediente: ▶ ligado pausa sozinho. A empresa não faz hora extra; sem isso o ▶ esquecido voltaria a
+ *    contar às 08:30 e somaria horas que ninguém trabalhou.
  * Nada é avisado fora do expediente.
  */
 import { db, tasksTable, usersTable, queueRequestsTable, queueEventsTable, appSettingsTable } from "@workspace/db";
@@ -12,17 +14,27 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { notify, notifyFollowers } from "./notify.js";
 import { broadcastTaskChange } from "./broadcast.js";
 import { logger } from "./logger.js";
-import { loadState, schedule, queueOf, logEvent, unblockForecast, blockRisk, QUEUE_STATUSES } from "./queue.js";
-import { DAY, periods, workBetween, isWorking, toLm, fmtH } from "./workcal.js";
+import { loadState, schedule, queueOf, logEvent, unblockForecast, blockRisk, accrue, QUEUE_STATUSES } from "./queue.js";
+import { DAY, periods, workBetween, isWorking, inDayWindow, toLm, fmtH } from "./workcal.js";
 
 const IDLE_ALERT = 30;
 const ESCALATE_AFTER = 30;
 const BLOCK_REMIND = 120;
 
 async function tick() {
-  const s = await loadState();
+  let s = await loadState();
   let changed = false;
   const names = new Map((await db.select({ id: usersTable.id, name: usersTable.name, idleSince: usersTable.idleSince, idleAlertedAt: usersTable.idleAlertedAt, status: usersTable.status }).from(usersTable)).map(u => [u.id, u]));
+
+  // 0. fim do expediente: pausa (de manhã o editor toca em Começar)
+  for (const r of s.rows) {
+    if (!r.playingSince || inDayWindow(s.cal, s.now, r.assignedToId)) continue;
+    await db.update(tasksTable).set(accrue(s.cal, r, s.now)).where(eq(tasksTable.id, r.id));
+    if (r.assignedToId) await db.update(usersTable).set({ idleSince: new Date() }).where(eq(usersTable.id, r.assignedToId));
+    await logEvent({ kind: "pause", taskId: r.id, coordId: r.createdById, editorId: r.assignedToId, text: "Pausa automática: fim do expediente" });
+    changed = true;
+  }
+  if (changed) s = await loadState();
 
   // 1. estimativa vencida
   for (const r of s.rows) {

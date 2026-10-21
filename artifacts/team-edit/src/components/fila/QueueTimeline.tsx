@@ -1,8 +1,8 @@
 import { LiveDot } from "@/components/fila/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight } from "@/lib/icons";
-import { DAY, coordColor, fmt, fmtDay, fmtH, personName, inQueue, rem, type Board, type QTask } from "@/lib/fila";
+import { ChevronLeft, ChevronRight, Moon } from "@/lib/icons";
+import { DAY, coordColor, fmt, fmtDay, fmtH, personName, inQueue, rem, shiftState, type Board, type QTask } from "@/lib/fila";
 
 const LW = 128;
 const fmtClock = (t: number) => { const m = ((t % DAY) + DAY) % DAY; return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
@@ -80,6 +80,9 @@ export function QueueTimeline({ board, me, onOpen }: { board: Board; me: number 
     return acc;
   }, []) : [];
   const nowIn = board.now >= first * DAY && board.now < (first + days.length) * DAY;
+  // depois do último turno de hoje (ou dia sem expediente): o relógio diz que o dia de trabalho acabou
+  const todayP = board.days.find(d => d.day === today)?.periods ?? [];
+  const afterHours = !todayP.length || board.now - today * DAY >= todayP[todayP.length - 1][1] || board.now - today * DAY < todayP[0][0];
   const rangeLabel = days.length === 1 ? (days[0].day === today ? `Hoje, ${fmtDay(days[0].day)}` : fmtDay(days[0].day)) : `${fmtDay(days[0].day)} – ${fmtDay(days[days.length - 1].day)}`;
   const seg = "h-7 rounded-md px-2.5 text-[12px] font-semibold transition-colors";
   const nav = "grid h-7 w-7 place-items-center rounded-md text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--foreground)/0.06)] hover:text-[hsl(var(--foreground))] disabled:pointer-events-none disabled:opacity-35";
@@ -127,11 +130,15 @@ export function QueueTimeline({ board, me, onOpen }: { board: Board; me: number 
           {board.editors.map(ed => {
             const q = board.tasks.filter(t => inQueue(t) && t.editorId === ed.id && t.slot);
             const mineH = me ? q.filter(t => t.coordId === me).reduce((s, t) => s + rem(t), 0) : 0;
+            // fim do expediente: quem já encerrou o dia (o ▶ pausa sozinho)
+            const sh = shiftState(ed, board.now);
+            const status = sh.state === "off" || sh.state === "before" ? <span className="inline-flex items-center gap-1 font-mono text-[9.5px] leading-[15px] text-[hsl(var(--muted-foreground))]" title={`Retoma ${fmt(sh.resumes)}`}><Moon className="h-2.5 w-2.5" />encerrado</span> : null;
             return (
               <div key={ed.id} className="group/row flex">
                 <div className="sticky left-0 z-[4] flex shrink-0 flex-col justify-center border-r border-t bg-[hsl(var(--card))] px-3 py-2" style={{ width: LW }}>
                   <b className="truncate text-[13px]">{ed.name}</b>
                   <small className="truncate font-mono text-[10px] text-[hsl(var(--muted-foreground))]">{me ? `${fmtH(mineH)} seus/${fmtH(ed.queueMinutes)}` : `${fmtH(ed.queueMinutes)} na fila`}</small>
+                  {status && <div className="mt-0.5 flex">{status}</div>}
                 </div>
                 <div className="relative h-[60px] border-t transition-colors group-hover/row:bg-[hsl(var(--foreground)/0.015)]" style={{ width: W }}>
                   {days.map((d, i) => {
@@ -189,7 +196,7 @@ export function QueueTimeline({ board, me, onOpen }: { board: Board; me: number 
           {nowIn && (
             <div className="pointer-events-none absolute bottom-0 top-10 z-[3] w-px bg-rose-500/80" style={{ left: LW + xOf(board.now) }}>
               <i className="absolute -left-[3px] -top-[3px] h-[7px] w-[7px] rounded-full bg-rose-500 ring-2 ring-[hsl(var(--card))]" />
-              <span className="absolute -top-[17px] left-1/2 -translate-x-1/2 rounded-[4px] bg-rose-500 px-1 font-mono text-[9.5px] font-semibold leading-[14px] text-white">{fmtClock(board.now)}</span>
+              <span className="absolute -top-[17px] left-1/2 -translate-x-1/2 whitespace-nowrap rounded-[4px] bg-rose-500 px-1 font-mono text-[9.5px] font-semibold leading-[14px] text-white">{fmtClock(board.now)}{afterHours ? " · encerrado" : ""}</span>
             </div>
           )}
         </div>

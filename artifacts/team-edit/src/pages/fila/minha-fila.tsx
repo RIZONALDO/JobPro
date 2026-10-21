@@ -6,7 +6,7 @@ import { apiFetch, apiPost } from "@/lib/api";
 import { usePageTitle } from "@/lib/use-page-title";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { useRealtime } from "@/hooks/use-realtime";
-import { DAY, coordColor, fmt, fmtDay, fmtH, inQueue, personName, rem, useBoard, type Board, type QTask } from "@/lib/fila";
+import { DAY, clock, coordColor, fmt, fmtDay, fmtH, inQueue, personName, rem, shiftState, useBoard, type Board, type QEditor, type QTask } from "@/lib/fila";
 import { Alert, Btn, Chip, DeadlineChip, Free, Kv, Section, Who, inputCls, LiveDot } from "@/components/fila/ui";
 
 const BLOCK_REASONS = ["Falta material do cliente", "Aguardando resposta do cliente", "Aguardando a coordenação", "Problema técnico"];
@@ -101,7 +101,7 @@ function EditorView({ board, reload }: { board: Board; reload: () => void }) {
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex min-w-0 flex-col gap-3">
           {ed?.offToday && <Alert tone="info" icon={<Moon />} title={`Hoje sem expediente para você: ${ed.offToday}.`}>A fila conta só os dias em que você trabalha.</Alert>}
-          {head && !head.playing && (ed?.idleMinutes ?? 0) >= 30 && (
+          {head && !head.playing && (ed?.idleMinutes ?? 0) >= 30 && ["on", "ending"].includes(shiftState(ed, now).state) && (
             <Alert tone="info" title={`Seu próximo job é “${head.title}”.`}>
               <span>Quando começar, toque em “Começar” para as horas contarem certo. Se algo está impedindo, use “Travado” e conte o motivo.</span>
             </Alert>
@@ -137,7 +137,7 @@ function EditorView({ board, reload }: { board: Board; reload: () => void }) {
 
           {!head ? <Free>Nenhum job na sua fila. Você está livre.</Free>
             : filter !== "all" && head.coordId !== filter ? <Free>O job atual é de {personName(board, head.coordId)}. Filtro ativo.</Free>
-            : <NowCard board={board} t={head} onOpen={() => openTask(head.id)}
+            : <NowCard board={board} ed={ed} t={head} onOpen={() => openTask(head.id)}
                 onPlay={() => act(`/api/queue/tasks/${head.id}/play`, {}, "Job em execução")}
                 onPause={() => act(`/api/queue/tasks/${head.id}/pause`, {}, "Pausado")}
                 onSend={() => act(`/api/queue/tasks/${head.id}/send`, {}, "Enviado para aprovação")}
@@ -222,21 +222,28 @@ function EditorView({ board, reload }: { board: Board; reload: () => void }) {
   );
 }
 
-function NowCard({ board, t, onOpen, onPlay, onPause, onSend, onMore, blockOpen, setBlockOpen, blockUi }: {
-  board: Board; t: QTask; onOpen: () => void; onPlay: () => void; onPause: () => void; onSend: () => void; onMore: (minutes: number) => Promise<unknown> | void;
+function NowCard({ board, ed, t, onOpen, onPlay, onPause, onSend, onMore, blockOpen, setBlockOpen, blockUi }: {
+  board: Board; ed: QEditor | undefined; t: QTask; onOpen: () => void; onPlay: () => void; onPause: () => void; onSend: () => void; onMore: (minutes: number) => Promise<unknown> | void;
   blockOpen: boolean; setBlockOpen: (v: boolean) => void; blockUi: React.ReactNode;
 }) {
   const s = t.slot!, c = coordColor(t.coordId), now = board.now;
   const locked = t.notBefore != null && t.notBefore > now;
+  // fim do expediente: o ▶ pausa sozinho e só volta no próximo expediente (a empresa não faz hora extra)
+  const sh = shiftState(ed, now);
+  const closed = !t.playing && (sh.state === "off" || sh.state === "before");
   // "Preciso de mais tempo": o editor diz quanto ainda falta; a previsão muda, o prazo do cliente não
   const [more, setMore] = useState(false);
   const [left, setLeft] = useState("2");
   const leftMin = Math.round((parseFloat(left.replace(",", ".")) || 0) * 60);
   return (
-    <div className={cn("flex flex-col gap-3 rounded-2xl border border-l-[5px] bg-[hsl(var(--card))] p-4", t.playing && "ring-1 ring-emerald-500/50")} style={{ borderLeftColor: c }}>
+    <div className={cn("flex flex-col gap-3 rounded-2xl border border-l-[5px] bg-[hsl(var(--card))] p-4", t.playing && "ring-1 ring-emerald-500/50", closed && "bg-[hsl(var(--muted)/0.35)]")} style={{ borderLeftColor: c }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Agora</span>
-        <span className={cn("inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider", t.playing ? "text-emerald-500" : locked ? "text-amber-500" : "text-[hsl(var(--muted-foreground))]")}>{t.playing ? <><LiveDot />Em execução</> : locked ? <><Lock className="h-3.5 w-3.5" />Só a partir de {fmt(t.notBefore)}</> : <><Play className="h-3.5 w-3.5" />Pronto para começar</>}</span>
+        <span className={cn("inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider", t.playing ? "text-emerald-500" : locked ? "text-amber-500" : "text-[hsl(var(--muted-foreground))]")}>
+          {t.playing ? <><LiveDot />Em execução</>
+            : closed ? <><Moon className="h-3.5 w-3.5" />{sh.state === "before" ? "Expediente ainda não começou" : `Expediente encerrado${sh.end != null ? ` · ${clock(sh.end)}` : ""}`}</>
+            : locked ? <><Lock className="h-3.5 w-3.5" />Só a partir de {fmt(t.notBefore)}</> : <><Play className="h-3.5 w-3.5" />Pronto para começar</>}
+        </span>
       </div>
       <div className="flex flex-col gap-1">
         <button type="button" onClick={onOpen} className="text-left text-[22px] font-bold leading-tight tracking-tight hover:underline">{t.title}</button>
@@ -257,8 +264,19 @@ function NowCard({ board, t, onOpen, onPlay, onPause, onSend, onMore, blockOpen,
           {t.folderUrl && <span className="inline-flex items-center gap-1.5 text-xs"><FolderOpen className="h-3.5 w-3.5" /><span className="truncate font-mono">{t.folderUrl}</span></span>}
         </div>
       )}
+      {/* fim do dia: uma decisão só, no próprio card */}
+      {t.playing && sh.state === "ending" && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border bg-[hsl(var(--background))] px-3 py-2.5 text-[13px]">
+          <Moon className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
+          <span className="min-w-0 flex-1">O expediente acaba às <b className="font-mono">{clock(sh.end!)}</b> (em {fmtH(sh.left)}). O job pausa sozinho e o contador volta amanhã.</span>
+          <Btn size="sm" onClick={onPause}>Pausar agora</Btn>
+        </div>
+      )}
+      {closed && <span className="text-[13px] text-[hsl(var(--muted-foreground))]">Contador parado em <b className="text-[hsl(var(--foreground))]">{fmtH(t.worked)}</b>. Retoma {fmt(sh.resumes)} quando você tocar em Começar.</span>}
       <div className="flex flex-wrap gap-2">
-        {t.playing ? <Btn size="lg" onClick={onPause}><Pause weight="fill" className="h-4 w-4" />Pausar</Btn> : <Btn size="lg" v="go" disabled={locked} onClick={onPlay}><Play weight="fill" className="h-4 w-4" />Começar</Btn>}
+        {t.playing ? <Btn size="lg" onClick={onPause}><Pause weight="fill" className="h-4 w-4" />Pausar</Btn>
+          : closed ? <Btn size="lg" disabled><Moon className="h-4 w-4" />Retoma {fmt(sh.resumes)}</Btn>
+          : <Btn size="lg" v="go" disabled={locked} onClick={onPlay}><Play weight="fill" className="h-4 w-4" />Começar</Btn>}
         <Btn size="lg" disabled={!t.worked && !t.playing} onClick={onSend}><Send className="h-4 w-4" />Enviar para aprovação</Btn>
         {(t.playing || t.worked > 0) && <Btn size="lg" onClick={() => { setMore(!more); setBlockOpen(false); }}><Timer className="h-4 w-4" />Preciso de mais tempo</Btn>}
         <Btn size="lg" v="danger" onClick={() => { setBlockOpen(!blockOpen); setMore(false); }}>Travado</Btn>

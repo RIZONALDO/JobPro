@@ -11,7 +11,7 @@ import {
   type QTask, type State, type TaskRow, type Plan, QUEUE_STATUSES, FOLGA, loadState, schedule, heads, evaluate, queueOf, queueMinutes, rem, orderAt,
   orderAfterHead, moveFirstMut, planFor, unblockForecast, blockRisk, getLimit, accrue, userNames, changeText, logEvent, invalidateHolidays, toQ,
 } from "../lib/queue.js";
-import { DAY, WEEK_MINUTES, DUE_OFF_SHIFT, inShift, consume, workBetween, periods, dayOff, dayKey, toLm, fromLm, fmtLm, fmtH } from "../lib/workcal.js";
+import { DAY, WEEK_MINUTES, DUE_OFF_SHIFT, inShift, consume, workBetween, periods, dayOff, dayKey, dayWindow, inDayWindow, toLm, fromLm, fmtLm, fmtH } from "../lib/workcal.js";
 
 const router = Router();
 
@@ -19,6 +19,8 @@ const isSup = (role?: string) => role === "admin" || role === "supervisor";
 const isCoord = (role?: string) => isSup(role) || role === "coordinator";
 const code = (r: TaskRow) => `${String(r.taskNumber ?? 0).padStart(3, "0")}.${String(r.taskYear ?? 0).padStart(2, "0")}`;
 const q = (r: TaskRow) => `“${r.title}”`;
+/** Quanto antes do fim do expediente o card do editor avisa que o job vai pausar sozinho. */
+const SHIFT_WARN = 15;
 
 async function getRow(id: number) {
   const [r] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
@@ -144,6 +146,8 @@ router.get("/queue/board", requireAuth, async (req, res): Promise<void> => {
       offToday: dayOff(s.cal, today, u.id), offDays,
       todayCap: periods(s.cal, today, u.id).reduce((a, [x, y]) => a + y - x, 0),
       todayDone: workBetween(s.cal, today * DAY, s.now, u.id),
+      // expediente de hoje (do 1º turno ao fim do último) e quando volta
+      shift: { window: dayWindow(s.cal, today, u.id), resumes: consume(s.cal, s.now, 0, u.id).start, warnBefore: SHIFT_WARN },
     };
   });
 
@@ -234,6 +238,8 @@ router.post("/queue/tasks/:id/play", requireAuth, async (req, res): Promise<void
     const sl = sch.get(r.id);
     if (!sl || sl.pos !== 0) { res.status(409).json({ error: "Só o 1º job da fila pode ser começado. Para fazer outro antes, peça a troca." }); return false; }
     if (r.startDate && toLm(r.startDate) > s.now) { res.status(409).json({ error: `Este job só pode começar ${fmtLm(toLm(r.startDate))}${r.lockReason ? `: ${r.lockReason}` : ""}.` }); return false; }
+    // sem hora extra: fora do expediente o contador não liga
+    if (!inDayWindow(s.cal, s.now, me)) { res.status(409).json({ error: `Expediente encerrado. Retoma ${fmtLm(consume(s.cal, s.now, 0, me).start)}.` }); return false; }
     await playTask(s, r, me);
     if (r.createdById && r.createdById !== me) {
       const [u] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, me));

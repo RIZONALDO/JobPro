@@ -28,7 +28,22 @@ export interface QEditor {
   id: number; name: string; avatarUrl: string | null; inactive: boolean;
   queueMinutes: number; byCoord: Record<number, number>; freeFrom: number; idleMinutes: number;
   offToday: string | null; offDays: { day: number; off: string }[]; todayCap: number; todayDone: number;
+  shift: { window: [number, number] | null; resumes: number; warnBefore: number };
 }
+
+/**
+ * Expediente do editor agora: "on" (inclui o almoço), "ending" (falta pouco para o fim do último turno),
+ * "before" (antes do 1º turno) ou "off" (acabou, ou dia sem expediente).
+ */
+export function shiftState(ed: QEditor | undefined, now: number): { state: "on" | "ending" | "before" | "off"; end: number | null; resumes: number; left: number } {
+  const w = ed?.shift.window ?? null, resumes = ed?.shift.resumes ?? now;
+  if (!w) return { state: "off", end: null, resumes, left: 0 };
+  if (now < w[0]) return { state: "before", end: w[1], resumes, left: 0 };
+  if (now >= w[1]) return { state: "off", end: w[1], resumes, left: 0 };
+  const left = w[1] - now;
+  return { state: left <= (ed?.shift.warnBefore ?? 15) ? "ending" : "on", end: w[1], resumes, left };
+}
+export const clock = (lm: number) => { const m = ((lm % DAY) + DAY) % DAY; return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
 export interface QRequest {
   id: number; kind: "first" | "swap" | "insert" | "reassign"; taskId: number; swapWithId: number | null; editorId: number;
   requestedById: number; approverId: number | null; status: string; impacts: string[]; passed: number; escalated: boolean; createdAt: number;

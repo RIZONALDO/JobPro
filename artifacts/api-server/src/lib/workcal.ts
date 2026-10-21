@@ -93,6 +93,16 @@ export function workBetween(cal: Calendar, a: number, b: number, editorId?: numb
   return s;
 }
 
+/** Janela do dia: do começo do 1º turno ao fim do último (o almoço fica dentro). null = dia sem expediente. */
+export function dayWindow(cal: Calendar, d: number, editorId?: number | null): [number, number] | null {
+  const ps = periods(cal, d, editorId);
+  return ps.length ? [d * DAY + ps[0][0], d * DAY + ps[ps.length - 1][1]] : null;
+}
+/** Dentro da janela do dia (almoço conta como dentro)? Fora dela o ▶ não fica ligado. */
+export function inDayWindow(cal: Calendar, t: number, editorId?: number | null): boolean {
+  const w = dayWindow(cal, Math.floor(t / DAY), editorId);
+  return !!w && t >= w[0] && t < w[1];
+}
 /** Está dentro do expediente agora? */
 export function isWorking(cal: Calendar, t: number, editorId?: number | null): boolean {
   const d = Math.floor(t / DAY), m = t - d * DAY;
