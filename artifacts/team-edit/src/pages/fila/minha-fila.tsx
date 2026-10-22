@@ -228,9 +228,10 @@ function NowCard({ board, ed, t, onOpen, onPlay, onPause, onSend, onMore, blockO
 }) {
   const s = t.slot!, c = coordColor(t.coordId), now = board.now;
   const locked = t.notBefore != null && t.notBefore > now;
-  // fim do expediente: o ▶ pausa sozinho e só volta no próximo expediente (a empresa não faz hora extra)
+  // fora do expediente o contador não conta; com ▶ ligado ele volta sozinho no próximo expediente (sem novo "Começar")
   const sh = shiftState(ed, now);
-  const closed = !t.playing && (sh.state === "off" || sh.state === "before");
+  const offHours = sh.state === "off" || sh.state === "before";
+  const closed = !t.playing && offHours, resting = t.playing && offHours;
   // "Preciso de mais tempo": o editor diz quanto ainda falta; a previsão muda, o prazo do cliente não
   const [more, setMore] = useState(false);
   const [left, setLeft] = useState("2");
@@ -240,7 +241,8 @@ function NowCard({ board, ed, t, onOpen, onPlay, onPause, onSend, onMore, blockO
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Agora</span>
         <span className={cn("inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider", t.playing ? "text-emerald-500" : locked ? "text-amber-500" : "text-[hsl(var(--muted-foreground))]")}>
-          {t.playing ? <><LiveDot />Em execução</>
+          {resting ? <><Moon className="h-3.5 w-3.5" />Volta sozinho {fmt(sh.resumes)}</>
+            : t.playing ? <><LiveDot />Em execução</>
             : closed ? <><Moon className="h-3.5 w-3.5" />{sh.state === "before" ? "Expediente ainda não começou" : `Expediente encerrado${sh.end != null ? ` · ${clock(sh.end)}` : ""}`}</>
             : locked ? <><Lock className="h-3.5 w-3.5" />Só a partir de {fmt(t.notBefore)}</> : <><Play className="h-3.5 w-3.5" />Pronto para começar</>}
         </span>
@@ -268,10 +270,10 @@ function NowCard({ board, ed, t, onOpen, onPlay, onPause, onSend, onMore, blockO
       {t.playing && sh.state === "ending" && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border bg-[hsl(var(--background))] px-3 py-2.5 text-[13px]">
           <Moon className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
-          <span className="min-w-0 flex-1">O expediente acaba às <b className="font-mono">{clock(sh.end!)}</b> (em {fmtH(sh.left)}). O job pausa sozinho e o contador volta amanhã.</span>
-          <Btn size="sm" onClick={onPause}>Pausar agora</Btn>
+          <span className="min-w-0 flex-1">O expediente acaba às <b className="font-mono">{clock(sh.end!)}</b> (em {fmtH(sh.left)}). O contador para e volta sozinho no próximo expediente: não precisa tocar em Começar de novo.</span>
         </div>
       )}
+      {resting && <span className="text-[13px] text-[hsl(var(--muted-foreground))]">Fora do expediente o contador não conta. Ele volta sozinho {fmt(sh.resumes)}, sem precisar tocar em Começar. Se não for continuar este job, toque em Pausar.</span>}
       {closed && <span className="text-[13px] text-[hsl(var(--muted-foreground))]">Contador parado em <b className="text-[hsl(var(--foreground))]">{fmtH(t.worked)}</b>. Retoma {fmt(sh.resumes)} quando você tocar em Começar.</span>}
       <div className="flex flex-wrap gap-2">
         {t.playing ? <Btn size="lg" onClick={onPause}><Pause weight="fill" className="h-4 w-4" />Pausar</Btn>
