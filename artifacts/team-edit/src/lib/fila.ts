@@ -23,6 +23,8 @@ export interface QTask {
   slot: Slot | null;
   /** só em job travado: desde quando, expediente parado e a entrega se destravar agora */
   blocked: { since: number | null; stopped: number | null; ifNow: { end: number; late: boolean; lateBy: number | null } | null; critical: boolean } | null;
+  /** vai atrasar: prazo mais cedo possível pela fila; o gestor dono assina o novo prazo a partir daqui */
+  proposedDue: number | null;
 }
 export interface QEditor {
   id: number; name: string; avatarUrl: string | null; inactive: boolean;

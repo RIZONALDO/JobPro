@@ -5,6 +5,7 @@
  *  - pedido sem resposta há 30 min de expediente → vai para a supervisão;
  *  - job travado: o prazo continua correndo. Lembra o responsável a cada 2h de expediente parado e avisa
  *    a supervisão quando o prazo entra em risco (já atrasa ou sobra menos de 4h de folga se destravar agora).
+ *  - job que passa a atrasar: o gestor dono recebe "assine o novo prazo" (uma vez, até assinar ou o atraso sumir);
  *  - fim do expediente: ▶ ligado pausa sozinho. A empresa não faz hora extra; sem isso o ▶ esquecido voltaria a
  *    contar às 08:30 e somaria horas que ninguém trabalhou.
  * Nada é avisado fora do expediente.
@@ -14,8 +15,8 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { notify, notifyFollowers } from "./notify.js";
 import { broadcastTaskChange } from "./broadcast.js";
 import { logger } from "./logger.js";
-import { loadState, schedule, queueOf, logEvent, unblockForecast, blockRisk, accrue, QUEUE_STATUSES } from "./queue.js";
-import { DAY, periods, workBetween, isWorking, inDayWindow, toLm, fmtH } from "./workcal.js";
+import { loadState, schedule, queueOf, logEvent, unblockForecast, blockRisk, accrue, safeDue, QUEUE_STATUSES } from "./queue.js";
+import { DAY, periods, workBetween, isWorking, inDayWindow, toLm, fmtH, fmtLm } from "./workcal.js";
 
 const IDLE_ALERT = 30;
 const ESCALATE_AFTER = 30;
@@ -78,6 +79,24 @@ async function tick() {
       `Seu próximo job é “${head.title}”. Quando começar, toque em “Começar” para as horas contarem certo.`, { taskId: head.id });
     await logEvent({ kind: "idle_alert", taskId: head.id, coordId: head.coordId, editorId: ed, text: `“${head.title}” aguardando início` });
     changed = true;
+  }
+
+  // 2b. vai atrasar: o prazo do cliente precisa de um novo, assinado pelo gestor dono
+  if (isWorking(s.cal, s.now)) {
+    const late = s.tasks.filter(t => t.editorId && t.coordId && t.promised != null && QUEUE_STATUSES.includes(t.status) && !t.hold && sch.get(t.id)?.late);
+    if (late.length) {
+      const evs = await db.select({ taskId: queueEventsTable.taskId, kind: queueEventsTable.kind }).from(queueEventsTable)
+        .where(and(inArray(queueEventsTable.taskId, late.map(t => t.id)), inArray(queueEventsTable.kind, ["due_sign_needed", "due_signed"])))
+        .orderBy(desc(queueEventsTable.createdAt));
+      for (const t of late) {
+        if (evs.find(e => e.taskId === t.id)?.kind === "due_sign_needed") continue; // já avisado e ainda não assinado
+        const sl = sch.get(t.id)!, min = safeDue(s.cal, sl.end, t.editorId);
+        const text = `“${t.title}” vai atrasar ${fmtH(sl.lateBy)}: pela fila fica pronto ${fmtLm(sl.end)} e o prazo é ${fmtLm(t.promised!)}. Assine o novo prazo (a partir de ${fmtLm(min)}) ou passe para outro editor.`;
+        await notify(t.coordId!, "due_sign_needed", "Assine o novo prazo", text, { taskId: t.id });
+        await logEvent({ kind: "due_sign_needed", taskId: t.id, coordId: t.coordId, editorId: t.editorId, text: `Vai atrasar ${fmtH(sl.lateBy)}: novo prazo a assinar (a partir de ${fmtLm(min)})` });
+        changed = true;
+      }
+    }
   }
 
   // 3. pedido sem resposta

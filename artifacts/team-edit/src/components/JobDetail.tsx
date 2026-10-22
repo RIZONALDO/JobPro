@@ -14,6 +14,7 @@ import { Btn, Chip, LiveDot } from "@/components/fila/ui";
 import { JobForm, type JobFormMode } from "@/components/fila/JobForm";
 import { AskDialog, STAGES, ago, clientColor, stageOf, type Ask } from "@/components/fila/job-shared";
 import { FollowersPicker, type FollowerUser } from "@/components/fila/followers";
+import { SignDueDialog } from "@/components/fila/SignDue";
 
 /**
  * Página do job (`/jobs/:id`).
@@ -38,7 +39,7 @@ const EVENT: Record<string, [string, Tone]> = {
   created: ["Criou o job", "neu"], assign: ["Entrou na fila", "acc"], play: ["Começou a editar", "ok"], pause: ["Pausou", "neu"],
   sent: ["Enviou para o cliente", "acc"], blocked: ["Travou o job", "warn"], unblocked: ["Destravou", "ok"], inform: ["Pediu mais tempo", "warn"],
   est_confirm: ["Confirmou a estimativa", "ok"], est_contest: ["Contestou a estimativa", "warn"], est_keep: ["Manteve a estimativa", "neu"],
-  est_use: ["Aceitou a estimativa do editor", "ok"], reorder: ["Mudou a ordem", "neu"], furou: ["Furou a fila", "warn"], reneg: ["Prazo empurrado", "bad"],
+  est_use: ["Aceitou a estimativa do editor", "ok"], reorder: ["Mudou a ordem", "neu"], furou: ["Furou a fila", "warn"], reneg: ["Prazo empurrado", "bad"], due_signed: ["Novo prazo assinado", "warn"], due_sign_needed: ["Prazo a assinar", "bad"],
   reassign: ["Passou para outro editor", "acc"], follow: ["Incluiu quem acompanha", "neu"], client_change: ["Cliente pediu alteração", "warn"], client_ok: ["Cliente aprovou", "ok"],
   request: ["Pediu mudança na fila", "neu"], decide: ["Respondeu pedido", "neu"], idle_alert: ["Lembrete: job aguardando início", "neu"],
   est_expired: ["Horas estimadas acabaram", "bad"], cancelled: ["Cancelou", "bad"], archived: ["Encerrou job travado", "neu"],
@@ -59,6 +60,7 @@ export function JobDetail({ taskId, onLoaded, onGone }: { taskId: number; onLoad
   const [err, setErr] = useState<string | null>(null);
   const [form, setForm] = useState<JobFormMode | null>(null);
   const [ask, setAsk] = useState<Ask | null>(null);
+  const [signing, setSigning] = useState(false);
 
   const load = useCallback(() => {
     apiFetch<TaskDetail>(`/api/tasks/${taskId}`).then(t => { setTask(t); setErr(null); }).catch(e => setErr(e.message));
@@ -85,12 +87,13 @@ export function JobDetail({ taskId, onLoaded, onGone }: { taskId: number; onLoad
           <History task={task} events={events} />
         </div>
         <aside className="flex flex-col gap-3 lg:sticky lg:top-16 lg:self-start">
-          <DeadlineCard task={task} live={live} now={now} />
+          <DeadlineCard task={task} live={live} now={now} onSign={canAct && live?.proposedDue != null ? () => setSigning(true) : undefined} />
           <HoursCard task={task} live={live} board={board} />
           <PeopleCard task={task} reload={load} />
         </aside>
       </div>
       <JobForm open={!!form} onOpenChange={o => { if (!o) setForm(null); }} taskId={task.id} mode={form ?? "edit"} onSaved={load} />
+      {board && <SignDueDialog board={board} task={live ?? null} open={signing} onOpenChange={setSigning} onDone={load} />}
       <AskDialog ask={ask} onClose={() => setAsk(null)} onDone={() => (ask?.kind === "delete" ? onGone() : load())} />
     </div>
   );
@@ -324,7 +327,7 @@ function Row({ k, v, sub }: { k: string; v: React.ReactNode; sub?: React.ReactNo
   return <div className="flex items-baseline justify-between gap-3 text-[13px]"><span className={muted}>{k}</span><span className="text-right"><b className="font-semibold">{v}</b>{sub && <span className={cn("block text-[11.5px]", muted)}>{sub}</span>}</span></div>;
 }
 
-function DeadlineCard({ task, live, now }: { task: TaskDetail; live?: QTask; now: number }) {
+function DeadlineCard({ task, live, now, onSign }: { task: TaskDetail; live?: QTask; now: number; onSign?: () => void }) {
   const due = task.dueDate ? toLm(task.dueDate) : null;
   const end = live?.slot?.end ?? null;
   const open = ["fila", "edicao"].includes(stageOf(task.status).k);
@@ -339,6 +342,7 @@ function DeadlineCard({ task, live, now }: { task: TaskDetail; live?: QTask; now
       </div>
       {open && end != null && <Row k="Previsão de entrega" v={fmt(end)} sub={due != null ? (end > due ? <span className="text-rose-500">{fmtH(live!.slot!.lateBy ?? 0)} de expediente depois do prazo</span> : `folga até o prazo`) : undefined} />}
       {open && live && <div><Chip tone={deadlineState(live, now).tone}>{deadlineState(live, now).label}</Chip></div>}
+      {onSign && <div className="flex flex-col gap-1.5 rounded-lg bg-rose-500/[0.07] px-2.5 py-2 text-xs"><span>Pela fila não dá para entregar neste prazo. O novo prazo precisa da sua assinatura (a partir de <b>{fmt(live!.proposedDue)}</b>).</span><div><Btn size="sm" v="pri" onClick={onSign}>Assinar novo prazo</Btn></div></div>}
       {!open && sent && due != null && <Row k="1ª versão ao cliente" v={fmt(toLm(sent))} sub={toLm(sent) > due ? <span className="text-rose-500">depois do prazo</span> : <span className="text-emerald-600 dark:text-emerald-400">no prazo</span>} />}
       {task.startDate && stageOf(task.status).open && <div className="flex gap-2 rounded-lg bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-300"><Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>Não começar antes de <b>{fmt(toLm(task.startDate))}</b>{task.lockReason ? `: ${task.lockReason}` : ""}</span></div>}
     </Card>

@@ -10,6 +10,7 @@ import { createFeedItem } from "../lib/feed.js";
 import {
   type QTask, type State, type TaskRow, type Plan, QUEUE_STATUSES, FOLGA, loadState, schedule, heads, evaluate, queueOf, queueMinutes, rem, orderAt,
   orderAfterHead, moveFirstMut, planFor, unblockForecast, blockRisk, getLimit, accrue, userNames, changeText, logEvent, invalidateHolidays, toQ,
+  safeDue, signDue,
 } from "../lib/queue.js";
 import { DAY, WEEK_MINUTES, DUE_OFF_SHIFT, inShift, consume, workBetween, periods, dayOff, dayKey, dayWindow, inDayWindow, toLm, fromLm, fmtLm, fmtH } from "../lib/workcal.js";
 
@@ -117,6 +118,8 @@ router.get("/queue/board", requireAuth, async (req, res): Promise<void> => {
       sentAt: sent ? toLm(sent.createdAt) : null, blockReason: blk?.text ?? null,
       slot: sl ? { ...sl, lateBy: Number.isFinite(sl.lateBy) ? sl.lateBy : null } : null,
       blocked: r.status === "paused" ? blockedInfo(s, r, blk?.createdAt ?? null) : null,
+      // vai atrasar: o prazo do cliente precisa de um novo, assinado pelo gestor dono do job (este é o mais cedo possível)
+      proposedDue: sl?.late && t.promised != null ? safeDue(s.cal, sl.end, r.assignedToId) : null,
     };
   });
 
@@ -598,6 +601,27 @@ router.post("/queue/tasks/:id/archive", requireCoordinator, async (req, res): Pr
   res.json({ ok: true });
 });
 
+/**
+ * Assinar o novo prazo de um job que vai atrasar: o gestor dono (ou a supervisão) assume combinar com o cliente.
+ * O prazo não pode ser antes do mais cedo possível pela fila (pronto + 1h de folga, no expediente).
+ */
+router.post("/queue/tasks/:id/sign-due", requireCoordinator, async (req, res): Promise<void> => {
+  const r = await coordTask(req, res); if (!r) return;
+  if (req.body?.signed !== true) { res.status(400).json({ error: "Marque que você assume combinar o novo prazo com o cliente." }); return; }
+  const due = req.body?.dueDate ? toLm(new Date(String(req.body.dueDate))) : NaN;
+  if (!Number.isFinite(due)) { res.status(400).json({ error: "Escolha o novo prazo" }); return; }
+  const s = await loadState();
+  if (!inShift(s.cal, due)) { res.status(400).json({ error: DUE_OFF_SHIFT }); return; }
+  const sl = schedule(s.cal, s.tasks, s.now).get(r.id);
+  if (sl) {
+    const min = safeDue(s.cal, sl.end, r.assignedToId);
+    if (due < min) { res.status(400).json({ error: `Pela fila, “${r.title}” fica pronto ${fmtLm(sl.end)}. O prazo mais cedo possível é ${fmtLm(min)} (1h de folga).`, minDue: min }); return; }
+  }
+  await signDue(r, due, req.session.userId!, String(req.body?.reason ?? "").trim() ? `Motivo: ${String(req.body.reason).trim()}.` : "");
+  broadcastTaskChange();
+  res.json({ ok: true, message: `Novo prazo assinado: ${fmtLm(due)}. Avise o cliente.` });
+});
+
 /** Cliente aprovou: job concluído. */
 router.post("/queue/tasks/:id/client-ok", requireCoordinator, async (req, res): Promise<void> => {
   const r = await coordTask(req, res); if (!r) return;
@@ -714,7 +738,7 @@ router.post("/queue/plan", requireCoordinator, async (req, res): Promise<void> =
  */
 export async function placeTask(
   taskId: number, editorId: number | null, mode: string, me: number, role: string,
-  opts: { reason?: string; approved?: boolean } = {},
+  opts: { reason?: string; approved?: boolean; signed?: boolean } = {},
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const names = await userNames(), limit = await getLimit();
   return watchHeads(me, async s => {
@@ -759,6 +783,10 @@ export async function placeTask(
       await notifySupervisors("Troca de editor para aprovar", `${actor} quer passar ${q(r)} de ${from} para ${edName}, mexendo em prazo. Motivo: ${reason}`, r.id);
       return { status: 200, body: { message: `Pedido enviado à supervisão. ${q(r)} continua com ${from} até a resposta.`, pending: true } };
     }
+    // empurrar o prazo do cliente só com a assinatura de quem coloca (ou com a aprovação da supervisão)
+    if (mode === "end" && !p.fits && r.dueDate && !opts.signed && !opts.approved) {
+      return { status: 409, body: { code: "sign_due", newDue: p.newDue, error: `Nesta fila o prazo do cliente passa de ${fmtLm(toLm(r.dueDate))} para ${fmtLm(p.newDue)}. Isso precisa da sua assinatura.` } };
+    }
     const qq = queueOf(s.tasks.filter(t => t.id !== r.id), editorId);
     const common: Partial<TaskRow> = { ...base, assignedToId: editorId, status, estMinutes: r.estMinutes + handover, estConfirmed: prevEditor === editorId ? r.estConfirmed : false };
     const edName = names.get(editorId)?.name;
@@ -775,14 +803,12 @@ export async function placeTask(
     if (mode === "end") {
       const upd: Partial<TaskRow> = { ...common, queueOrder: orderAt(qq, qq.length), queueHold: false };
       let msg = `${q(r)} entrou no fim da fila de ${edName}. Pronto ${fmtLm(p.end)}.`;
-      if (!p.fits && r.dueDate) {
-        upd.dueDateOriginal = r.dueDateOriginal ?? r.dueDate;
-        upd.dueDate = fromLm(p.newDue);
-        await logEvent({ kind: "reneg", taskId: r.id, actorId: me, coordId: r.createdById, editorId, text: `Prazo empurrado de ${fmtLm(toLm(r.dueDate))} para ${fmtLm(p.newDue)}` });
-        msg = `${q(r)} entrou no fim da fila de ${edName}. Novo prazo ${fmtLm(p.newDue)}: avise o cliente.`;
-        await notifyFollowers(r.id, [me], "due_date_changed", "Prazo empurrado", `O prazo de ${q(r)} passou de ${fmtLm(toLm(r.dueDate))} para ${fmtLm(p.newDue)}.`);
-      }
       await db.update(tasksTable).set(upd).where(eq(tasksTable.id, r.id));
+      if (!p.fits && r.dueDate) {
+        await logEvent({ kind: "reneg", taskId: r.id, actorId: me, coordId: r.createdById, editorId, text: `Prazo empurrado de ${fmtLm(toLm(r.dueDate))} para ${fmtLm(p.newDue)}` });
+        await signDue({ ...r, assignedToId: editorId }, p.newDue, me, opts.approved && !opts.signed ? `Fim da fila de ${edName}, aprovado pela supervisão.` : `Fim da fila de ${edName}.`);
+        msg = `${q(r)} entrou no fim da fila de ${edName}. Novo prazo ${fmtLm(p.newDue)}, assinado por você: avise o cliente.`;
+      }
       await logEvent({ kind: "assign", taskId: r.id, actorId: me, coordId: r.createdById, editorId, text: `Fim da fila de ${edName}${p.full ? " (agenda já cheia, decisão da supervisão)" : ""}` });
       await notify(editorId, "task_assigned", "Job novo na sua fila",
         `${actor} colocou ${q(r)} no fim da sua fila com ${fmtH(r.estMinutes + handover)}${p.full ? ", com a agenda já cheia, por decisão da supervisão" : ""}. Confira a estimativa.`, { taskId: r.id });
@@ -824,7 +850,7 @@ router.post("/queue/tasks/:id/place", requireCoordinator, async (req, res): Prom
     const [u] = await db.select({ status: usersTable.status }).from(usersTable).where(eq(usersTable.id, editorId));
     if (!u || u.status !== "active") { res.status(400).json({ error: "Editor inativo não recebe jobs" }); return; }
   }
-  const out = await placeTask(r.id, editorId, String(req.body?.mode ?? "end"), req.session.userId!, req.session.userRole!, { reason: req.body?.reason });
+  const out = await placeTask(r.id, editorId, String(req.body?.mode ?? "end"), req.session.userId!, req.session.userRole!, { reason: req.body?.reason, signed: req.body?.signed === true });
   res.status(out.status).json(out.body);
 });
 
@@ -1019,7 +1045,8 @@ router.post("/queue/handoff/:userId", requireSupervisor, async (req, res): Promi
     }
     const pend = await db.select().from(queueRequestsTable).where(and(eq(queueRequestsTable.taskId, r.id), eq(queueRequestsTable.status, "pendente")));
     for (const p of pend) await db.update(queueRequestsTable).set({ status: "cancelado", decidedAt: new Date(), decidedById: me }).where(eq(queueRequestsTable.id, p.id));
-    const resp = await placeTask(r.id, mode === "gestor" ? null : editorId, mode, me, role);
+    // passagem de jobs pela supervisão: quem confirma a passagem assina os prazos que ela empurra
+    const resp = await placeTask(r.id, mode === "gestor" ? null : editorId, mode, me, role, { signed: true });
     if (resp.status !== 200) { out.errors.push(String(resp.body.error ?? `Falha no job ${taskId}`)); continue; }
     if (mode === "gestor") out.gestor++; else if (resp.body.pending) out.requests++; else out.moved++;
   }

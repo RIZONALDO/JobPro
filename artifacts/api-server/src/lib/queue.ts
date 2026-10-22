@@ -14,8 +14,9 @@
 import { db, tasksTable, usersTable, holidaysTable, userAbsencesTable, queueEventsTable, appSettingsTable } from "@workspace/db";
 import { and, eq, gte, inArray, notInArray } from "drizzle-orm";
 import {
-  type Calendar, type Absence, DAY, RESERVA, consume, workBetween, toLm, fmtLm, fmtH, dayKey,
+  type Calendar, type Absence, DAY, RESERVA, consume, workBetween, inShift, toLm, fromLm, fmtLm, fmtH, dayKey,
 } from "./workcal.js";
+import { notify, notifyFollowers } from "./notify.js";
 import { ABSENCE_LABEL } from "./availability.js";
 
 export const QUEUE_STATUSES = ["pending", "in_progress", "in_revision", "reopened"];
@@ -272,4 +273,29 @@ export async function logEvent(e: { kind: string; taskId?: number | null; actorI
     kind: e.kind, taskId: e.taskId ?? null, actorId: e.actorId ?? null, text: e.text ?? null,
     coordId: e.coordId ?? null, editorId: e.editorId ?? null, data: e.data ?? null,
   });
+}
+
+/* ═════════════════════════ PRAZO DO CLIENTE: SÓ COM ASSINATURA ═════════════════════════ */
+
+/** Prazo mais cedo que dá para prometer a um job que fica pronto em `end`: + FOLGA, meia hora cheia, no expediente. */
+export function safeDue(cal: Calendar, end: number, editorId?: number | null): number {
+  let m = Math.ceil(consume(cal, end, FOLGA, editorId).end / 30) * 30;
+  for (let g = 0; g < 2000 && !inShift(cal, m); g++) m += 30;
+  return m;
+}
+
+/**
+ * Muda o prazo do cliente com a assinatura de quem muda: fica no histórico do job (de → para, motivo, quem assinou)
+ * e o editor e quem acompanha ficam sabendo. O prazo original fica guardado na primeira mudança.
+ */
+export async function signDue(r: TaskRow, due: number, actorId: number, why = "") {
+  const [u] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, actorId));
+  const who = u?.name ?? "Gestor";
+  const from = r.dueDate ? fmtLm(toLm(r.dueDate)) : "sem prazo";
+  await db.update(tasksTable).set({ dueDate: fromLm(due), dueDateOriginal: r.dueDateOriginal ?? r.dueDate ?? null }).where(eq(tasksTable.id, r.id));
+  await logEvent({ kind: "due_signed", taskId: r.id, actorId, coordId: r.createdById, editorId: r.assignedToId,
+    text: `Prazo do cliente: ${from} → ${fmtLm(due)}.${why ? ` ${why}` : ""} Assinado por ${who}, que assume combinar o novo prazo com o cliente.`,
+    data: { from: r.dueDate ? toLm(r.dueDate) : null, to: due } });
+  if (r.assignedToId && r.assignedToId !== actorId) await notify(r.assignedToId, "due_date_changed", "Novo prazo", `Novo prazo de “${r.title}”: ${fmtLm(due)} (era ${from}), assinado por ${who}.`, { taskId: r.id });
+  await notifyFollowers(r.id, [actorId, r.assignedToId], "due_date_changed", "Novo prazo", `O prazo de “${r.title}” passou de ${from} para ${fmtLm(due)}, assinado por ${who}.`);
 }

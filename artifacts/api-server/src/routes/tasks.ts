@@ -7,8 +7,8 @@ import { broadcastTaskChange } from "../lib/broadcast.js";
 import { createFeedItem } from "../lib/feed.js";
 import { findInactive } from "../lib/availability.js";
 import { placeTask, playTask, sendToApproval, stopTask, newRound } from "./queue.js";
-import { loadState, loadCalendar, orderAfterHead, logEvent, schedule, FOLGA, QUEUE_STATUSES } from "../lib/queue.js";
-import { DUE_OFF_SHIFT, inShift, consume, toLm, fmtLm } from "../lib/workcal.js";
+import { loadState, loadCalendar, orderAfterHead, logEvent, schedule, evaluate, safeDue, signDue, FOLGA, QUEUE_STATUSES, type TaskRow } from "../lib/queue.js";
+import { DUE_OFF_SHIFT, inShift, consume, toLm, fmtLm, fmtH } from "../lib/workcal.js";
 
 /** Prazo do cliente só dentro do expediente (fim do turno conta). */
 const dueInShift = async (d: Date) => inShift(await loadCalendar(), toLm(d));
@@ -79,7 +79,7 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
   if (Array.isArray(followerIds) && followerIds.length) await setFollowers(task.id, followerIds, req.session.userId!);
   if (isDraft) { broadcastTaskChange(); res.status(201).json(task); return; }
 
-  const out = await placeTask(task.id, placement.editorId ? Number(placement.editorId) : null, String(placement.mode ?? "end"), req.session.userId!, req.session.userRole!);
+  const out = await placeTask(task.id, placement.editorId ? Number(placement.editorId) : null, String(placement.mode ?? "end"), req.session.userId!, req.session.userRole!, { signed: placement.signed === true });
   if (out.status !== 200) {
     // não coube: volta a ser rascunho para não sumir
     await db.update(tasksTable).set({ status: "rascunho", queueHold: false }).where(eq(tasksTable.id, task.id));
@@ -458,19 +458,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         }
         const same = task.dueDate && +new Date(task.dueDate as Date) === +parsed;
         if (!same && task.status !== "rascunho" && !(await dueInShift(parsed))) { res.status(400).json({ error: DUE_OFF_SHIFT }); return; }
-        // encurtar o prazo de job na fila: tem de caber na fila do editor dele, com a folga mínima
-        const shorter = !task.dueDate || +parsed < +new Date(task.dueDate as Date);
-        if (!same && shorter && task.assignedToId && QUEUE_STATUSES.includes(task.status)) {
-          const st = await loadState(), slot = schedule(st.cal, st.tasks, st.now).get(task.id);
-          if (slot) {
-            let min = Math.ceil(consume(st.cal, slot.end, FOLGA, task.assignedToId).end / 30) * 30;
-            for (let g = 0; g < 2000 && !inShift(st.cal, min); g++) min += 30;
-            if (toLm(parsed) < min) {
-              res.status(400).json({ error: `Com a fila atual do editor, este job fica pronto ${fmtLm(slot.end)}. O prazo mais cedo possível é ${fmtLm(min)} (1h de folga). Para entregar antes: diminua as horas, passe para outro editor ou peça prioridade na fila.`, minDue: min });
-              return;
-            }
-          }
-        }
+        // job na fila: a conferência com a agenda do editor é feita abaixo, junto com horas e trava
         update.dueDate = parsed;
       } else {
         if (task.status !== "rascunho") {
@@ -538,7 +526,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         if (pl.editorId && await rejectInactive(res, [Number(pl.editorId)])) return;
         await db.update(tasksTable).set({ ...update, status: "pending", assignedToId: null, queueHold: true, estConfirmed: false }).where(eq(tasksTable.id, id));
         await db.insert(taskEventsTable).values({ taskId: id, fromStatus: "rascunho", toStatus: "pending", changedById: userId });
-        const out = await placeTask(id, pl.editorId ? Number(pl.editorId) : null, String(pl.mode ?? "end"), userId, role);
+        const out = await placeTask(id, pl.editorId ? Number(pl.editorId) : null, String(pl.mode ?? "end"), userId, role, { signed: pl.signed === true });
         if (out.status !== 200) {
           await db.update(tasksTable).set({ status: "rascunho", queueHold: false }).where(eq(tasksTable.id, id));
           broadcastTaskChange();
@@ -566,7 +554,61 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     }
   }
 
-  const [updated] = await db.update(tasksTable).set(update).where(eq(tasksTable.id, id)).returning();
+  // Prazo do cliente: só muda com a assinatura de quem muda. Job na fila: mexer em horas, prazo ou trava confere a
+  // agenda do editor. O prazo nunca fica antes do trabalho; job seu que passa a atrasar ganha novo prazo assinado
+  // junto; job de outro gestor não pode passar a atrasar (só a supervisão, assinando).
+  const dueChanged = update.dueDate !== undefined && task.status !== "rascunho" && !update.status
+    && !(task.dueDate && update.dueDate && +new Date(task.dueDate as Date) === +(update.dueDate as Date));
+  if (dueChanged && req.body?.dueSigned !== true) {
+    res.status(400).json({ code: "sign_due", error: "Mudar o prazo do cliente precisa da sua assinatura: marque que você assume combinar o novo prazo com o cliente." }); return;
+  }
+  const signLater: { r: TaskRow; due: number; why: string }[] = [];
+  const touchesQueue = !update.status && !!task.assignedToId && !task.queueHold && QUEUE_STATUSES.includes(task.status)
+    && (update.estMinutes !== undefined || update.dueDate !== undefined || update.startDate !== undefined);
+  if (touchesQueue) {
+    const st = await loadState();
+    const ev = evaluate(st.cal, st.tasks, st.now, ts => {
+      const x = ts.find(t => t.id === id); if (!x) return;
+      if (update.estMinutes !== undefined) x.est = Number(update.estMinutes);
+      if (update.dueDate !== undefined) x.promised = update.dueDate ? toLm(update.dueDate as Date) : null;
+      if (update.startDate !== undefined) x.notBefore = update.startDate ? toLm(update.startDate as Date) : null;
+    });
+    const own = ev.after.get(id), x = ev.ts.find(t => t.id === id);
+    if (own && x?.promised != null) {
+      const min = safeDue(st.cal, own.end, task.assignedToId);
+      if (x.promised < min) {
+        const [ed] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, task.assignedToId!));
+        res.status(400).json({ code: "due_too_early", minDue: min,
+          error: `Com ${fmtH(x.est - x.worked > 0 ? x.est - x.worked : 60)} de edição pela frente e a fila atual de ${ed?.name ?? "o editor"}, este job fica pronto ${fmtLm(own.end)}. O prazo do cliente não pode ser antes de ${fmtLm(min)} (1h de folga). Diminua as horas ou mude o prazo.` });
+        return;
+      }
+    }
+    const isSupRole = ["admin", "supervisor"].includes(role);
+    // prejudicado: fica atrasado depois da mudança e mais tarde do que estava (passar a atrasar ou atrasar mais)
+    const hurt = ev.changes.filter(c => c.t.id !== id && c.t.promised != null && c.to > c.from && !!ev.after.get(c.t.id)?.late);
+    const foreign = hurt.filter(c => c.t.coordId !== userId);
+    if (foreign.length && !isSupRole) {
+      const c = foreign[0];
+      const [o] = c.t.coordId ? await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, c.t.coordId)) : [];
+      res.status(409).json({ code: "hurts_other", error: `Isso faz “${c.t.title}” (de ${o?.name ?? "outro gestor"}) ${c.newlyLate ? "passar do prazo" : "atrasar ainda mais"}: ficaria pronto ${fmtLm(c.to)}, e o prazo é ${fmtLm(c.t.promised!)}. Diminua as horas, mude a ordem da fila ou combine com ${o?.name?.split(" ")[0] ?? "o gestor"}.` });
+      return;
+    }
+    const impacts = hurt.map(c => ({ id: c.t.id, title: c.t.title, from: c.t.promised!, end: c.to, to: safeDue(st.cal, c.to, c.t.editorId) }));
+    if (impacts.length && req.body?.signOthers !== true) {
+      res.status(409).json({ code: "sign_others", impacts, error: `Isso faz ${impacts.length > 1 ? `${impacts.length} jobs passarem` : "outro job passar"} do prazo (ou atrasar mais). Assine ${impacts.length > 1 ? "os novos prazos" : "o novo prazo"} para continuar.` });
+      return;
+    }
+    for (const i of impacts) { const row = st.rows.find(r => r.id === i.id); if (row) signLater.push({ r: row, due: i.to, why: `Ajuste porque “${task.title}” mudou.` }); }
+  }
+  let newDue: number | null = null;
+  if (dueChanged) { newDue = toLm(update.dueDate as Date); delete update.dueDate; }
+
+  let [updated] = Object.keys(update).length
+    ? await db.update(tasksTable).set(update).where(eq(tasksTable.id, id)).returning()
+    : await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+  if (newDue != null) await signDue({ ...task, ...update } as TaskRow, newDue, userId, "Editado no job.");
+  for (const x of signLater) await signDue(x.r, x.due, userId, x.why);
+  if (newDue != null) [updated] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
 
   if (update.status && update.status !== task.status) {
     const resolvedComment = eventComment
@@ -1529,7 +1571,7 @@ router.post("/tasks/:id/reassign", requireCoordinator, async (req, res): Promise
     const [t] = await db.select({ createdById: tasksTable.createdById }).from(tasksTable).where(eq(tasksTable.id, id));
     if (!t || t.createdById !== req.session.userId) { res.status(403).json({ error: "Você só mexe nos seus jobs" }); return; }
   }
-  const out = await placeTask(id, newEditorId, String(req.body?.mode ?? "end"), req.session.userId!, role, { reason: req.body?.reason });
+  const out = await placeTask(id, newEditorId, String(req.body?.mode ?? "end"), req.session.userId!, role, { reason: req.body?.reason, signed: req.body?.signed === true });
   res.status(out.status).json(out.body);
 });
 

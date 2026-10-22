@@ -12,6 +12,7 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { blockedLine, coordColor, deadlineState, fmt, fmtH, inQueue, personName, rem, useBoard, type Board, type QTask, type QRequest } from "@/lib/fila";
 import { Alert, Btn, Chip, HeadAction, DeadlineChip, Section, inputCls, LiveDot } from "@/components/fila/ui";
 import { QueueTimeline } from "@/components/fila/QueueTimeline";
+import { SignDueDialog } from "@/components/fila/SignDue";
 import { JobForm, type JobFormMode } from "@/components/fila/JobForm";
 import { AskDialog, type Ask } from "@/components/fila/job-shared";
 
@@ -75,6 +76,7 @@ function CoordView({ board, reload }: { board: Board; reload: () => void }) {
   const isSup = board.role === "admin" || board.role === "supervisor";
   const canManage = (t: QTask) => isSup || t.coordId === me;
   const [form, setForm] = useState<{ open: boolean; id?: number | null; mode?: JobFormMode }>({ open: false });
+  const [signing, setSigning] = useState<QTask | null>(null);
   const [ask, setAsk] = useState<Ask | null>(null);
   const [chg, setChg] = useState<{ id: number; h: string; c: string } | null>(null);
   const [notes, setNotes] = useState<Notif[]>([]);
@@ -156,8 +158,9 @@ function CoordView({ board, reload }: { board: Board; reload: () => void }) {
   for (const t of late) items.push(
     <Alert key={`l${t.id}`} tone="warn" icon={<Timer />} title={`“${t.title}” ${t.promised != null && t.promised <= now ? "está atrasado" : `vai atrasar ${fmtH(t.slot?.lateBy)}`}`}>
       <span>{personName(board, t.editorId)} · pronto {fmt(t.slot?.end)} · prazo {fmt(t.promised)}</span>
-      <div className="flex flex-wrap gap-2"><Btn size="sm" onClick={() => setForm({ open: true, id: t.id, mode: "move" })}>Passar para outro editor</Btn>
-        <Btn size="sm" v="ghost" onClick={() => setForm({ open: true, id: t.id, mode: "edit" })}>Combinar novo prazo com o cliente</Btn></div>
+      {t.proposedDue != null && <span className="text-[12.5px]">O prazo do cliente precisa mudar: a partir de <b>{fmt(t.proposedDue)}</b>, com a sua assinatura.</span>}
+      <div className="flex flex-wrap gap-2">{t.proposedDue != null && <Btn size="sm" v="pri" onClick={() => setSigning(t)}>Assinar novo prazo</Btn>}
+        <Btn size="sm" onClick={() => setForm({ open: true, id: t.id, mode: "move" })}>Passar para outro editor</Btn></div>
     </Alert>);
 
   return (
@@ -193,6 +196,7 @@ function CoordView({ board, reload }: { board: Board; reload: () => void }) {
       <EditorQueues board={board} me={me} now={now} canManage={canManage} onOpen={id => openTask(id)}
         onEdit={id => setForm({ open: true, id, mode: "edit" })} onPass={id => setForm({ open: true, id, mode: "move" })} reload={reload} />
 
+      <SignDueDialog board={board} task={signing} open={!!signing} onOpenChange={o => { if (!o) setSigning(null); }} onDone={reload} />
       <JobForm open={form.open} onOpenChange={o => setForm(f => ({ ...f, open: o }))} taskId={form.id} mode={form.mode} onSaved={reload} />
       <AskDialog ask={ask} onClose={() => setAsk(null)} onDone={reload} />
     </div>

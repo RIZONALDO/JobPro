@@ -13,6 +13,7 @@ import { DAY, coordColor, deadlineState, fmt, fmtDay, fmtH, personName, toLm, us
 import { Btn, Chip, HeadAction, LiveDot } from "@/components/fila/ui";
 import { Widget } from "@/components/ui/widget";
 import { JobForm } from "@/components/fila/JobForm";
+import { SignDueDialog } from "@/components/fila/SignDue";
 import { STAGES, ago, clientColor, stageOf } from "@/components/fila/job-shared";
 
 /**
@@ -224,7 +225,7 @@ function Sparkline({ data }: { data: number[] }) {
 }
 
 /* ── para você ── */
-interface Need { key: string; tone: "bad" | "warn" | "acc" | "neu"; title: string; sub: React.ReactNode; taskId?: number; href?: string; cta: string }
+interface Need { key: string; tone: "bad" | "warn" | "acc" | "neu"; title: string; sub: React.ReactNode; taskId?: number; href?: string; cta: string; sign?: QTask }
 function needsYou(ctx: Ctx): Need[] {
   const { board, tasks, me, isSup, now } = ctx, out: Need[] = [];
   const title = (id: number) => board.tasks.find(t => t.id === id)?.title ?? "job";
@@ -238,7 +239,7 @@ function needsYou(ctx: Ctx): Need[] {
     if (t.estDisputeOpen) out.push({ key: `d${t.id}`, tone: "warn", title: `Editor contestou a estimativa de “${t.title}”`, sub: <>Ele acha que precisa de {fmtH(t.estEditor)}; você estimou {fmtH(t.estCoord ?? t.est)}</>, taskId: t.id, cta: "Decidir" });
     if (t.status === "paused") out.push({ key: `b${t.id}`, tone: "warn", title: `“${t.title}” está travado`, sub: t.blockReason ?? "Esperando algo para continuar", taskId: t.id, cta: "Ver" });
     if (t.status === "review" && t.sentAt != null && now - t.sentAt > 2 * DAY) out.push({ key: `c${t.id}`, tone: "acc", title: `Cobrar o cliente: “${t.title}”`, sub: <>Com o cliente há {ago(now - t.sentAt)}</>, taskId: t.id, cta: "Ver" });
-    if (QUEUE.includes(t.status) && t.editorId && t.slot?.late) out.push({ key: `l${t.id}`, tone: "bad", title: `“${t.title}” vai atrasar ${fmtH(t.slot.lateBy)}`, sub: <>Termina {fmt(t.slot.end)} · prazo {fmt(t.promised)}</>, taskId: t.id, cta: "Resolver" });
+    if (QUEUE.includes(t.status) && t.editorId && t.slot?.late) out.push({ key: `l${t.id}`, tone: "bad", title: `“${t.title}” vai atrasar ${fmtH(t.slot.lateBy)}`, sub: <>Termina {fmt(t.slot.end)} · prazo {fmt(t.promised)}{t.proposedDue != null ? <> · novo prazo a partir de {fmt(t.proposedDue)}</> : null}</>, taskId: t.id, cta: t.proposedDue != null ? "Assinar novo prazo" : "Resolver", sign: t.proposedDue != null ? t : undefined });
     if (t.status === "pending" && !t.editorId && !t.hold && (isSup || t.coordId === me)) out.push({ key: `n${t.id}`, tone: "bad", title: `“${t.title}” está sem editor`, sub: "Nenhuma fila comportava no prazo", taskId: t.id, cta: "Ver" });
   }
   const rank = { bad: 0, warn: 1, acc: 2, neu: 3 };
@@ -249,6 +250,7 @@ function ForYou({ ctx }: { ctx: Ctx }) {
   const { openTask } = useTaskModal();
   const [, navigate] = useLocation();
   const [tab, setTab] = useState<"need" | "next" | "late">("need");
+  const [signing, setSigning] = useState<QTask | null>(null);
   const today = Math.floor(ctx.now / DAY);
   const needs = needsYou(ctx);
   const open = ctx.jobs.filter(j => OPEN.includes(j.status) && j.dueDate);
@@ -259,6 +261,7 @@ function ForYou({ ctx }: { ctx: Ctx }) {
 
   return (
     <Widget icon={CheckCircle2} title="Para você" sub="O que pede uma ação sua agora">
+      <SignDueDialog board={ctx.board} task={signing} open={!!signing} onOpenChange={o => { if (!o) setSigning(null); }} />
       <div className="-mx-4 -mt-4 mb-1 flex gap-1 overflow-x-auto border-b px-3">
         {tabs.map(([k, l, n]) => (
           <button key={k} type="button" onClick={() => setTab(k)} className={cn("-mb-px flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-2 py-2 text-[13px] font-semibold",
@@ -270,7 +273,7 @@ function ForYou({ ctx }: { ctx: Ctx }) {
       <ul className="flex max-h-[340px] min-h-0 flex-1 flex-col overflow-y-auto">
         {tab === "need" ? (needs.length ? needs.map(n => (
           <li key={n.key}>
-            <button type="button" onClick={() => (n.taskId ? openTask(n.taskId) : navigate(n.href!))} className="group flex w-full items-center gap-3 rounded-lg px-1.5 py-2 text-left hover:bg-[hsl(var(--accent)/0.6)]">
+            <button type="button" onClick={() => (n.sign ? setSigning(n.sign) : n.taskId ? openTask(n.taskId) : navigate(n.href!))} className="group flex w-full items-center gap-3 rounded-lg px-1.5 py-2 text-left hover:bg-[hsl(var(--accent)/0.6)]">
               <i className={cn("h-2 w-2 shrink-0 rounded-full", { bad: "bg-rose-500", warn: "bg-amber-500", acc: "bg-[hsl(var(--primary))]", neu: "bg-[hsl(var(--muted-foreground))]" }[n.tone])} />
               <span className="min-w-0 flex-1"><b className="block truncate text-[13px] font-semibold">{n.title}</b><span className={cn("block truncate text-xs", muted)}>{n.sub}</span></span>
               <span className="shrink-0 text-xs font-semibold text-[hsl(var(--primary))] opacity-70 group-hover:opacity-100">{n.cta} →</span>

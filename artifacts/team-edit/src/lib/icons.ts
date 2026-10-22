@@ -126,4 +126,7 @@ export {
   Sun, Moon, Palette,
   TextAa as ALargeSmall,
   Flask as FlaskConical,
+
+  /* prazo do cliente */
+  Signature,                            // assinatura do gestor no novo prazo
 } from "@phosphor-icons/react";

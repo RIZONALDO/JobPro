@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, Check, Lock } from "@/lib/icons";
 import { cn } from "@/lib/utils";
-import { apiFetch, apiPost, apiPut } from "@/lib/api";
+import { ApiError, apiFetch, apiPost, apiPut } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ClientCombobox } from "@/components/ui/client-combobox";
@@ -20,6 +20,7 @@ function durLabel(m: number): string {
 }
 import { Alert, Btn, Chip } from "@/components/fila/ui";
 import { FollowersPicker } from "@/components/fila/followers";
+import { SignCheck, lmToPicker } from "@/components/fila/SignDue";
 
 interface Plan {
   editorId: number; full: boolean; queueMinutes: number; end: number; fits: boolean; lateBy: number;
@@ -79,6 +80,12 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
   const [reason, setReason] = useState("");
   const reasonRef = useRef<HTMLTextAreaElement>(null);
   const seq = useRef(0);
+  // prazo do cliente: mudar exige assinatura; se a mudança faz outros jobs seus atrasarem, eles entram na assinatura
+  const [due0, setDue0] = useState("");
+  const [dueSigned, setDueSigned] = useState(false);
+  const [impacts, setImpacts] = useState<{ id: number; title: string; from: number; end: number; to: number }[] | null>(null);
+  const [othersSigned, setOthersSigned] = useState(false);
+  const [minDueErr, setMinDueErr] = useState<number | null>(null);
 
   const isDraft = task?.status === "rascunho";
   const placing = mode === "new" || mode === "move" || isDraft;
@@ -92,7 +99,7 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
     if (taskId) {
       apiFetch<TaskFull>(`/api/tasks/${taskId}`).then(t => {
         setTask(t); setTitle(t.title); setClient(t.client ?? ""); setDescription(t.description ?? ""); setFolderUrl(t.folderUrl ?? "");
-        setHours(String((t.estMinutes || 480) / 60)); setDue(toPickerValue(t.dueDate));
+        setHours(String((t.estMinutes || 480) / 60)); setDue(toPickerValue(t.dueDate)); setDue0(toPickerValue(t.dueDate));
         setLockOn(!!t.startDate); setNotBefore(toPickerValue(t.startDate)); setLockReason(t.lockReason ?? "");
         const f = (t.followers ?? []).map(x => x.id); setFollowers(f); setFollowers0(f);
       }).catch(e => toast.error(e.message));
@@ -101,6 +108,7 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
       setDue(initialDueDate ? localDT(new Date(`${initialDueDate.slice(0, 10)}T12:00:00`), "18:30") : localDT(addWorkdays(2), "18:30")); setLockOn(false); setNotBefore(""); setLockReason("");
     }
     setPlans(null); setStep(0); setReason("");
+    setDueSigned(false); setImpacts(null); setOthersSigned(false); setMinDueErr(null); if (!taskId) setDue0("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, taskId]);
 
@@ -137,7 +145,11 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
   });
   const missing = [!title.trim() && "título", !(est > 0) && "tempo de execução", !dueValid && "prazo do cliente", dueValid && dueError && "prazo dentro do expediente"].filter(Boolean) as string[];
 
-  async function submit(placement: { editorId?: number | null; mode: "end" | "prio" | "gestor" } | null, draft = false) {
+  // job publicado com prazo mexido: precisa da assinatura (rascunho não tem cliente esperando ainda)
+  const dueMoved = mode === "edit" && !!task && task.status !== "rascunho" && dueValid && !!due0 && +new Date(due) !== +new Date(due0);
+  useEffect(() => { setImpacts(null); setOthersSigned(false); setMinDueErr(null); }, [hours, due, lockOn, notBefore]);
+
+  async function submit(placement: { editorId?: number | null; mode: "end" | "prio" | "gestor"; signed?: boolean } | null, draft = false) {
     if (!draft && missing.length) { toast.error(`Falta: ${missing.join(", ")}`); return; }
     if (draft && !title.trim()) { toast.error("Dê um título ao rascunho"); return; }
     setBusy(true);
@@ -147,9 +159,16 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
         const r = await apiPost<{ message?: string }>(`/api/queue/tasks/${taskId}/place`, { ...placement, reason: reason.trim() || undefined });
         msg = r.message ?? msg;
       } else if (taskId) {
-        const body: Record<string, unknown> = fields();
+        const body: Record<string, unknown> = { ...fields(), dueSigned: dueMoved && dueSigned, signOthers: !!impacts && othersSigned };
         if (isDraft && placement && !draft) { body.status = "pending"; body.placement = placement; }
-        const r = await apiPut<{ message?: string }>(`/api/tasks/${taskId}`, body);
+        let r: { message?: string };
+        try { r = await apiPut<{ message?: string }>(`/api/tasks/${taskId}`, body); }
+        catch (e) {
+          // a mudança faz outros jobs seus atrasarem: mostra quais e pede a assinatura dos novos prazos
+          if (e instanceof ApiError && e.data.code === "sign_others") { setImpacts(e.data.impacts as typeof impacts); setOthersSigned(false); }
+          if (e instanceof ApiError && e.data.code === "due_too_early") setMinDueErr(Number(e.data.minDue));
+          throw e;
+        }
         if (canFollowers && followers.join() !== followers0.join()) await apiPut(`/api/tasks/${taskId}/followers`, { userIds: followers });
         msg = r.message ?? (isDraft && !draft ? "Publicado" : "Alterações salvas");
       } else {
@@ -257,6 +276,11 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
                 <div className="max-w-sm"><DatePicker value={due} onChange={v => { setDue(v); setAdjusted(null); }} withTime placeholder="DD/MM/AAAA HH:MM" minDateTime={minDueValue || new Date().toISOString()} /></div>
                 {minDue != null && <p className="text-xs text-[hsl(var(--muted-foreground))]">Com {fmtH(est)} de edição, a entrega mais cedo possível é <b className="text-[hsl(var(--foreground))]">{fmt(minDue)}</b> (com um editor disponível agora, contando só o expediente e 1h de folga antes do prazo).{adjusted && <span className="text-amber-600 dark:text-amber-400"> O prazo foi ajustado para {adjusted}.</span>}</p>}
                 {dueValid && dueError && <Alert tone="bad">{dueError}</Alert>}
+                {minDueErr != null && <Alert tone="bad" title="Esse prazo é menor que o trabalho que falta.">
+                  <span>O prazo do cliente não pode ser antes de {fmt(minDueErr)}.</span>
+                  <div><Btn size="sm" onClick={() => { setDue(lmToPicker(minDueErr)); setMinDueErr(null); }}>Usar {fmt(minDueErr)}</Btn></div>
+                </Alert>}
+                {dueMoved && <SignCheck checked={dueSigned} onChange={setDueSigned} what={`o novo prazo (${dueText})`} />}
                 <div className="flex flex-wrap gap-1.5">
                   {[["Hoje", 0], ["Amanhã", 1], ["Em 2 dias", 2], ["Em 1 semana", 5]].map(([l, n]) => {
                     const v = localDT(n ? addWorkdays(n as number) : new Date(), "18:30");
@@ -279,6 +303,13 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
               </Step>
             </>}
 
+            {impacts && impacts.length > 0 && (
+              <Alert tone="warn" title={impacts.length > 1 ? "Essa mudança faz outros jobs seus passarem do prazo" : "Essa mudança faz outro job seu passar do prazo"}>
+                <ul className="flex flex-col gap-1 text-[13px]">{impacts.map(i => <li key={i.id}><b>{i.title}</b>: fica pronto {fmt(i.end)}; prazo {fmt(i.from)} → <b>{fmt(i.to)}</b></li>)}</ul>
+                <SignCheck checked={othersSigned} onChange={setOthersSigned} what={impacts.length > 1 ? "estes novos prazos" : "este novo prazo"} />
+                <span className="text-xs">Ou diminua as horas, ou mude a ordem da fila para ninguém atrasar.</span>
+              </Alert>
+            )}
             {placing && (
               <Step {...stepProps(3)} heading={mode === "move" ? "Para quem passar" : "4 · Onde entra na fila"} question="Quem edita?">
                 <p className="text-xs text-[hsl(var(--muted-foreground))]">
@@ -302,9 +333,9 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
                     <div className="grid gap-2.5 md:grid-cols-2">
                       {sorted.map(p => <PlanCard key={p.editorId} p={p} est={est} limit={limit} user={users.find(u => u.id === p.editorId)} isSup={isSup} busy={busy} name={name}
                         needsOk={m => needsOk(p, m)} onHours={m => setHours(String(m / 60))}
-                        onPick={(m) => {
+                        onPick={(m, signed) => {
                           if (needsOk(p, m) && !reason.trim()) { toast.error("Essa troca mexe em prazo: diga o motivo para a supervisão."); reasonRef.current?.focus(); return; }
-                          submit({ editorId: p.editorId, mode: m });
+                          submit({ editorId: p.editorId, mode: m, signed });
                         }} />)}
                     </div>
                     {none && (
@@ -333,7 +364,7 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
           <div className="flex gap-2">
             {mode !== "move" && (!taskId || isDraft) && <Btn disabled={busy} onClick={() => submit(null, true)}>Salvar rascunho</Btn>}
             {wizard && step < 3 && <Btn v="pri" disabled={!canNext} onClick={next}>Continuar<ArrowRight className="h-4 w-4" /></Btn>}
-            {mode === "edit" && !isDraft && <Btn v="pri" disabled={busy || missing.length > 0} onClick={() => submit(null)}>Salvar alterações</Btn>}
+            {mode === "edit" && !isDraft && <Btn v="pri" disabled={busy || missing.length > 0 || (dueMoved && !dueSigned) || (!!impacts && !othersSigned)} onClick={() => submit(null)}>Salvar alterações</Btn>}
           </div>
         </div>
       </DialogContent>
@@ -388,9 +419,10 @@ function Step({ wizard, n, step, label, heading, question, hint, summary, onEdit
 
 function PlanCard({ p, est, limit, user, isSup, busy, name, needsOk, onPick, onHours }: {
   p: Plan; est: number; limit: number; user?: UserLite; isSup: boolean; busy: boolean; name: (id: number | null) => string;
-  needsOk: (m: "end" | "prio") => boolean; onPick: (m: "end" | "prio") => void; onHours: (m: number) => void;
+  needsOk: (m: "end" | "prio") => boolean; onPick: (m: "end" | "prio", signed?: boolean) => void; onHours: (m: number) => void;
 }) {
   const ask = "Pedir à supervisão: ";
+  const [signed, setSigned] = useState(false);
   const head = (
     <div className="flex items-center justify-between gap-2">
       <span className="flex min-w-0 items-center gap-2"><AvatarDisplay name={user?.name ?? "?"} avatarUrl={user?.avatarUrl ?? null} size={26} /><b className="truncate text-sm">{user?.name ?? `#${p.editorId}`}</b>{user?.absence && <Chip tone="warn">{user.absence.label}</Chip>}</span>
@@ -419,7 +451,8 @@ function PlanCard({ p, est, limit, user, isSup, busy, name, needsOk, onPick, onH
         <div><Btn size="sm" disabled={busy} onClick={() => onHours(p.maxEst!)}>Cabe com até {fmtH(p.maxEst)}: usar {fmtH(p.maxEst)}</Btn></div>
       </>}
       <span className="text-[11px] font-bold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Mudar o prazo</span>
-      <div><Btn size="sm" disabled={busy} onClick={() => onPick("end")}>{needsOk("end") ? ask : ""}Colocar no fim: prazo passa para {fmt(p.newDue)}</Btn></div>
+      {!needsOk("end") && <SignCheck checked={signed} onChange={setSigned} what={`o prazo ${fmt(p.newDue)}`} className="text-xs" />}
+      <div><Btn size="sm" disabled={busy || (!needsOk("end") && !signed)} onClick={() => onPick("end", signed)}>{needsOk("end") ? ask : ""}Colocar no fim: prazo passa para {fmt(p.newDue)}</Btn></div>
       {/* prioridade só aparece se, na frente, o job fica pronto a tempo */}
       {pr.fits && <>
         <span className="text-[11px] font-bold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Pedir prioridade</span>
