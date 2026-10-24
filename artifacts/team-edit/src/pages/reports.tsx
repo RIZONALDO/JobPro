@@ -3,11 +3,11 @@
  * Inspirado no que Jira/Asana fazem bem:
  *  - período com atalhos e comparação automática com o período anterior (setas de tendência);
  *  - "Destaques": frases geradas a partir dos números (o que mudou, onde está o gargalo);
- *  - vazão por semana, tempo em cada fase ("time in status"), gráfico de controle do tempo de ciclo;
- *  - recortes por editor, cliente e gestor; riscos e retrabalho;
+ *  - entregas por semana (no prazo × fora do prazo), clientes, retrabalho;
+ *  - sem horas e sem relatório de desempenho de pessoas: a fila não mede tempo de trabalho;
  *  - drill-down: clicar numa barra, linha ou destaque filtra a tabela de jobs embaixo;
  *  - visões salvas (no navegador) e exportação (CSV e documento para imprimir).
- * Os dados vêm de GET /api/reports/analytics (ciclo de vida já calculado, em minutos de expediente).
+ * Os dados vêm de GET /api/reports/analytics (um registro por job).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -17,16 +17,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useRealtime } from "@/hooks/use-realtime";
 import { usePageTitle } from "@/lib/use-page-title";
 import { useTaskModal } from "@/contexts/TaskModalContext";
-import { roleName } from "@/lib/roles";
-import { DAY, fmt, fmtDay, fmtH } from "@/lib/fila";
-import { AvatarDisplay } from "@/components/ui/avatar-display";
+import { DAY, fmt, fmtDay } from "@/lib/fila";
 import { FilterPop, type Opt } from "@/components/fila/FilterPop";
 import { clientColor } from "@/components/fila/job-shared";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   ArrowDownRight, ArrowUpRight, BarChart3, Briefcase, Check, ChevronDown, Clock, Download, FileText, HandPalm,
-  Hourglass, Scales, Shield, Bookmark, Timer, Users, X, AlertTriangle, ArrowRight, Trash2, Save,
+  Bookmark, X, AlertTriangle, ArrowRight, Trash2, Save,
 } from "@/lib/icons";
 
 /* ── bloco de relatório: seção plana de documento (título, explicação, conteúdo), sem cartão ── */
@@ -51,29 +49,13 @@ function Widget({ title, sub, right, children, className }: {
 interface RJob {
   id: number; code: string; title: string; client: string | null; status: string; editorId: number | null; coordId: number | null;
   created: number; firstStart: number | null; firstReview: number | null; closedAt: number | null; cancelledAt: number | null;
-  due: number | null; dueOriginal: number | null; est: number; worked: number; estCoord: number | null; estEditor: number | null;
-  revisions: number; leadFirst: number | null; leadClose: number | null;
-  stage: { fila: number; edicao: number; travado: number; cliente: number };
-  blocks: number; blockReasons: string[]; reneg: number; reassign: number; furou: number; clientChanges: number; estContest: number; estExpired: number;
+  due: number | null; revisions: number;
+  blocks: number; blockReasons: string[]; dueChanged: number; reassign: number; furou: number; clientChanges: number;
 }
 interface RPerson { id: number; name: string; role: string; jobTitle: string | null; avatarUrl: string | null; status: string }
-/** algo que esperou uma resposta: travado, estimativa contestada, job sem editor, pedido */
-interface Wait { taskId: number | null; coordId?: number | null; at: number; resolvedBy?: number | null; open: boolean; wait: number }
-interface RReq extends Wait { id: number; kind: string; requestedById: number; approverId: number | null; decidedById: number | null; status: string; escalated: boolean }
-interface RTeam {
-  blocks: Wait[]; disputes: Wait[]; noEditor: Wait[]; requests: RReq[];
-  actions: { actorId: number; kind: string; taskId: number | null; at: number }[];
-}
-interface RData { now: number; me: number; role: string; jobs: RJob[]; people: RPerson[]; team: RTeam }
+interface RData { now: number; me: number; role: string; jobs: RJob[]; people: RPerson[] }
 
 const muted = "text-[hsl(var(--muted-foreground))]";
-const STAGES = [
-  { k: "fila", label: "Na fila", tone: "bg-[hsl(var(--foreground)/0.22)]" },
-  { k: "edicao", label: "Em edição", tone: "bg-[hsl(var(--foreground)/0.7)]" },
-  { k: "travado", label: "Travado", tone: "bg-amber-500" },
-  { k: "cliente", label: "Com o cliente", tone: "bg-[hsl(var(--foreground)/0.42)]" },
-] as const;
-type StageK = typeof STAGES[number]["k"];
 const STATUS: Record<string, string> = {
   pending: "Na fila", in_progress: "Em edição", in_revision: "Alteração", reopened: "Reaberto", paused: "Travado",
   review: "Com o cliente", completed: "Aprovado", cancelled: "Cancelado",
@@ -103,21 +85,15 @@ function range(p: Preset, today: number, custom: { from: string; to: string }): 
 }
 
 /* ── estatística ── */
-const median = (xs: number[]) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b), h = s.length >> 1; return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2; };
-const pctl = (xs: number[], p: number) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * (s.length - 1)))]; };
-const onTime = (j: RJob) => j.firstReview != null && j.dueOriginal != null ? j.firstReview <= j.dueOriginal : null;
-const ratio = (j: RJob) => (j.est > 0 && j.worked > 0 ? j.worked / j.est : null);
+/** No prazo = a 1ª versão saiu até o prazo de entrega. */
+const onTime = (j: RJob) => j.firstReview != null && j.due != null ? j.firstReview <= j.due : null;
 const pct = (n: number, d: number) => (d ? Math.round((n / d) * 100) : null);
 
 function metrics(js: RJob[]) {
   const ot = js.map(onTime).filter((x): x is boolean => x != null);
-  const rs = js.map(ratio).filter((x): x is number => x != null);
   return {
     n: js.length,
     onTime: pct(ot.filter(Boolean).length, ot.length),
-    lead: median(js.map(j => j.leadFirst).filter((x): x is number => x != null)),
-    hours: js.reduce((s, j) => s + j.worked, 0),
-    est: rs.length ? Math.round((median(rs) ?? 0) * 100) : null,
     revisions: js.length ? js.reduce((s, j) => s + j.revisions, 0) / js.length : null,
   };
 }
@@ -134,23 +110,14 @@ interface Focus { label: string; ids: number[] }
 /* ── catálogo de relatórios ── */
 const REPORTS = [
   { k: "resumo", group: "Visão geral", label: "Resumo do período", q: "Como a ilha entregou no período, comparado ao período anterior, e onde olhar primeiro." },
-  { k: "entregas", group: "Entrega", label: "Entregas e prazos", q: "Quantos jobs saíram por semana e quantos cumpriram o prazo combinado com o cliente." },
-  { k: "ciclo", group: "Entrega", label: "Tempo de ciclo", q: "Quanto expediente cada job levou da criação até a 1ª versão, e quais fugiram do padrão." },
-  { k: "fases", group: "Entrega", label: "Onde o tempo vai", q: "Em que fase os jobs passam mais tempo: fila, edição, travado ou esperando o cliente." },
-  { k: "estimativa", group: "Qualidade", label: "Estimado × realizado", q: "As horas estimadas batem com as horas feitas? Quem estima para mais ou para menos." },
-  { k: "riscos", group: "Qualidade", label: "Riscos e retrabalho", q: "O que atrasou ou encareceu a entrega: alterações, prazos empurrados, travamentos." },
-  { k: "equipe", group: "Equipe", label: "Equipe toda", q: "Como cada pessoa contribuiu no período: quem entrega, quem decide e quanto tempo as coisas esperaram por cada um." },
-  { k: "editores", group: "Equipe", label: "Editores", q: "Entregas, prazo, tempo até a 1ª versão e estimativa de cada editor." },
-  { k: "gestores", group: "Equipe", label: "Gestores", q: "Resultado dos jobs de cada gestor e quanto tempo ele leva para responder ao que depende dele." },
-  { k: "supervisao", group: "Equipe", label: "Supervisão", q: "O que chegou à supervisão, quanto esperou por uma decisão e o que está esperando agora." },
-  { k: "clientes", group: "Clientes", label: "Clientes", q: "Quem mais demanda, quem mais pede alteração e quem demora para aprovar." },
+  { k: "entregas", group: "Entrega", label: "Entregas e prazos", q: "Quantos jobs saíram por semana e quantos saíram dentro do prazo de entrega." },
+  { k: "riscos", group: "Entrega", label: "Retrabalho", q: "O que atrasou ou encareceu a entrega: alterações, prazos mudados, travamentos." },
+  { k: "clientes", group: "Clientes", label: "Clientes", q: "Quem mais demanda e quem mais pede alteração." },
 ] as const;
 type RepK = typeof REPORTS[number]["k"];
 
-const SUP_ONLY: RepK[] = ["equipe", "supervisao"];
-const visibleReports = (isSup: boolean) => REPORTS.filter(r => isSup || !SUP_ONLY.includes(r.k)).map(r => (!isSup && r.k === "gestores" ? { ...r, label: "Meu desempenho", q: "Resultado dos seus jobs e quanto tempo você leva para responder ao que depende de você." } : r));
-function Catalog({ current, onPick, isSup, teaser }: { current: RepK; onPick: (k: RepK) => void; isSup: boolean; teaser: Partial<Record<RepK, string>> }) {
-  const list = visibleReports(isSup);
+function Catalog({ current, onPick, teaser }: { current: RepK; onPick: (k: RepK) => void; teaser: Partial<Record<RepK, string>> }) {
+  const list = REPORTS;
   const groups = [...new Set(list.map(r => r.group))];
   return (
     <nav aria-label="Relatórios" className="min-w-0 lg:sticky lg:top-2">
@@ -201,24 +168,9 @@ function ledeEntregas(cur: RJob[], mc: M, mp: M | null) {
   if (!cur.length) return <p className={muted}>Nenhum job entregue no período.</p>;
   const late = cur.filter(j => onTime(j) === false), noDue = cur.filter(j => onTime(j) == null).length;
   return <>
-    <p>Foram <b>{mc.n} entregas</b>{cmpTxt(mc.n, mp?.n, "", "up")}. <b>{mc.onTime ?? "—"}%</b> saíram dentro do prazo combinado no início{cmpTxt(mc.onTime, mp?.onTime, " p.p.", "up")}{late.length ? <>; <b>{late.length}</b> passaram do prazo</> : ""}{noDue ? `, e ${noDue} não tinham prazo` : ""}.</p>
-    {late.length > 0 && <p className={muted}>O prazo considerado é o prometido ao cliente quando o job foi criado, mesmo que tenha sido renegociado depois.</p>}
+    <p>Foram <b>{mc.n} entregas</b>{cmpTxt(mc.n, mp?.n, "", "up")}. <b>{mc.onTime ?? "—"}%</b> saíram dentro do prazo de entrega{cmpTxt(mc.onTime, mp?.onTime, " p.p.", "up")}{late.length ? <>; <b>{late.length}</b> passaram do prazo</> : ""}{noDue ? `, e ${noDue} não tinham prazo` : ""}.</p>
   </>;
 }
-function ledeCiclo(cur: RJob[], mc: M, mp: M | null) {
-  const ys = cur.map(j => j.leadFirst).filter((x): x is number => x != null);
-  if (!ys.length) return <p className={muted}>Nenhum job entregue no período.</p>;
-  const p85 = pctl(ys, 0.85)!, out = cur.filter(j => (j.leadFirst ?? 0) > p85);
-  return <p>Metade dos jobs chegou à 1ª versão em até <b>{fmtH(mc.lead!)}</b> de expediente{cmpTxt(mc.lead, mp?.lead, "", "down", fmtH)}, e 85% em até <b>{fmtH(p85)}</b>. {out.length > 0 && <><b>{out.length}</b> {out.length === 1 ? "job ficou" : "jobs ficaram"} acima disso: são os pontos no alto do gráfico, bons candidatos para entender o que travou.</>}</p>;
-}
-function ledeFases(cur: RJob[]) {
-  if (!cur.length) return <p className={muted}>Nenhum job entregue no período.</p>;
-  const t = STAGES.map(st => ({ st, m: cur.reduce((a, j) => a + j.stage[st.k], 0) / cur.length }));
-  const all = t.reduce((a, x) => a + x.m, 0), top = [...t].sort((a, b) => b.m - a.m)[0];
-  const edit = t.find(x => x.st.k === "edicao")!.m;
-  return <p>Em média, um job leva <b>{fmtH(all)}</b> de expediente do início ao fim, mas só <b>{fmtH(edit)}</b> ({all ? Math.round((edit / all) * 100) : 0}%) são de edição de fato. A fase mais longa é <b>{top.st.label.toLowerCase()}</b>, com {all ? Math.round((top.m / all) * 100) : 0}% do tempo.</p>;
-}
-
 /** Leitura de um recorte (editor, cliente, gestor): quem concentra as entregas e quem vai melhor no prazo. */
 function ledeGroup(cur: RJob[], key: (j: RJob) => string | null, one: string, many: string) {
   const g = groupBy(cur.filter(j => key(j)), j => key(j)!).map(([k, js]) => ({ k, js, m: metrics(js) }));
@@ -230,27 +182,24 @@ function ledeGroup(cur: RJob[], key: (j: RJob) => string | null, one: string, ma
 }
 function ledeRiscos(cur: RJob[]) {
   if (!cur.length) return <p className={muted}>Nenhum job entregue no período.</p>;
-  const hit = cur.filter(j => j.revisions + j.reneg + j.blocks + j.estExpired + j.reassign > 0);
-  const rev = cur.reduce((a, j) => a + j.revisions, 0), rn = cur.reduce((a, j) => a + j.reneg, 0);
-  return <p><b>{hit.length} de {cur.length}</b> jobs ({Math.round((hit.length / cur.length) * 100)}%) tiveram algum evento de risco ou retrabalho. Foram <b>{rev}</b> {rev === 1 ? "rodada" : "rodadas"} de alteração do cliente e <b>{rn}</b> {rn === 1 ? "prazo empurrado" : "prazos empurrados"}.</p>;
+  const hit = cur.filter(j => j.revisions + j.dueChanged + j.blocks + j.reassign > 0);
+  const rev = cur.reduce((a, j) => a + j.revisions, 0), rn = cur.reduce((a, j) => a + j.dueChanged, 0);
+  return <p><b>{hit.length} de {cur.length}</b> jobs ({Math.round((hit.length / cur.length) * 100)}%) tiveram algum evento de retrabalho. Foram <b>{rev}</b> {rev === 1 ? "rodada" : "rodadas"} de alteração do cliente e <b>{rn}</b> {rn === 1 ? "prazo mudado" : "prazos mudados"}.</p>;
 }
 
 /* ── resumo do período: texto, tabela comparativa e pontos de atenção ── */
-function Summary({ cur, prev, mc, mp, name, periodLabel, onDrill, onGo, isSup }: {
-  cur: RJob[]; prev: RJob[] | null; mc: M; mp: M | null; name: (id: number | null) => string; periodLabel: string; onDrill: (f: Focus) => void; onGo: (k: RepK) => void; isSup: boolean;
+function Summary({ cur, mc, mp, periodLabel, onDrill, onGo }: {
+  cur: RJob[]; mc: M; mp: M | null; periodLabel: string; onDrill: (f: Focus) => void; onGo: (k: RepK) => void;
 }) {
-  const ins = buildInsights(cur, prev, mc, mp, name);
+  const ins = buildInsights(cur, mc, mp);
   const rows: { l: string; a: number | null; b: number | null | undefined; f: (n: number) => string; better: "up" | "down" | null; go: RepK }[] = [
     { l: "Jobs entregues (1ª versão)", a: mc.n, b: mp?.n, f: n => String(n), better: "up", go: "entregas" },
     { l: "Entregues no prazo", a: mc.onTime, b: mp?.onTime, f: n => `${n}%`, better: "up", go: "entregas" },
-    { l: "Tempo até a 1ª versão (mediana)", a: mc.lead, b: mp?.lead, f: fmtH, better: "down", go: "ciclo" },
-    { l: "Horas editadas", a: mc.hours, b: mp?.hours, f: fmtH, better: null, go: "estimativa" },
-    { l: "Realizado sobre o estimado", a: mc.est, b: mp?.est, f: n => `${n}%`, better: null, go: "estimativa" },
     { l: "Alterações por job", a: mc.revisions == null ? null : Math.round(mc.revisions * 10) / 10, b: mp?.revisions == null ? null : Math.round(mp.revisions * 10) / 10, f: n => n.toFixed(1).replace(".", ","), better: "down", go: "riscos" },
   ];
   return <>
     <Lede>
-      <p>De {periodLabel}, a ilha entregou <b>{mc.n} {mc.n === 1 ? "job" : "jobs"}</b>{cmpTxt(mc.n, mp?.n, "", "up")}{mc.onTime != null && <>, <b>{mc.onTime}%</b> dentro do prazo combinado</>}. A mediana até a 1ª versão foi de <b>{mc.lead == null ? "—" : fmtH(mc.lead)}</b> de expediente{mc.revisions != null && <>, e cada job teve em média <b>{mc.revisions.toFixed(1).replace(".", ",")}</b> rodada de alteração do cliente</>}.</p>
+      <p>De {periodLabel}, a ilha entregou <b>{mc.n} {mc.n === 1 ? "job" : "jobs"}</b>{cmpTxt(mc.n, mp?.n, "", "up")}{mc.onTime != null && <>, <b>{mc.onTime}%</b> dentro do prazo de entrega</>}{mc.revisions != null && <>. Cada job teve em média <b>{mc.revisions.toFixed(1).replace(".", ",")}</b> rodada de alteração do cliente</>}.</p>
     </Lede>
 
     <Widget title="Números do período" sub={mp ? "Comparados ao período imediatamente anterior, de mesma duração" : "Ative “vs período anterior” para comparar"}>
@@ -271,7 +220,7 @@ function Summary({ cur, prev, mc, mp, name, periodLabel, onDrill, onGo, isSup }:
                 {mp && <>
                   <td className={cn("px-4 py-2.5 text-right tabular-nums", muted)}>{r.b == null ? "—" : r.f(r.b)}</td>
                   <td className={cn("px-4 py-2.5 text-right font-semibold tabular-nums", good == null ? muted : good ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500")}>
-                    {d == null ? "—" : d === 0 ? "=" : <span className="inline-flex items-center gap-0.5">{d > 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}{r.f(Math.abs(d)).replace("%", r.f === fmtH ? "" : " p.p.")}</span>}
+                    {d == null ? "—" : d === 0 ? "=" : <span className="inline-flex items-center gap-0.5">{d > 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}{r.f(Math.abs(d)).replace("%", " p.p.")}</span>}
                   </td>
                 </>}
                 <td className="pr-3 text-right"><ArrowRight className={cn("inline h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100", muted)} /></td>
@@ -299,12 +248,12 @@ function Summary({ cur, prev, mc, mp, name, periodLabel, onDrill, onGo, isSup }:
             );
           })}
         </ol>
-      ) : <p className={cn("text-[13.5px]", muted)}>Nada fora do comum em prazo, fases, alterações ou estimativa.</p>}
+      ) : <p className={cn("text-[13.5px]", muted)}>Nada fora do comum em prazo, alterações ou travamentos.</p>}
     </Widget>
 
     <Widget title="Continue lendo" sub="Os outros relatórios deste período">
       <div className="grid gap-px overflow-hidden rounded-xl border bg-[hsl(var(--border))] sm:grid-cols-2">
-        {visibleReports(isSup).filter(r => r.k !== "resumo").map(r => (
+        {REPORTS.filter(r => r.k !== "resumo").map(r => (
           <button key={r.k} type="button" onClick={() => onGo(r.k)} className="group flex items-start justify-between gap-3 bg-[hsl(var(--card))] px-4 py-3 text-left hover:bg-[hsl(var(--accent)/0.5)]">
             <span className="min-w-0"><b className="block text-[13.5px] font-semibold">{r.label}</b><span className={cn("block text-[12px] leading-snug", muted)}>{r.q}</span></span>
             <ArrowRight className={cn("mt-1 h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5", muted)} />
@@ -347,86 +296,6 @@ function WeekTable({ jobs, d0, d1, onDrill }: { jobs: RJob[]; d0: number; d1: nu
 }
 
 /* ── distribuição do tempo até a 1ª versão ── */
-function Histogram({ jobs, onDrill }: { jobs: RJob[]; onDrill: (f: Focus) => void }) {
-  const bins = [[0, 240, "até 4h"], [240, 480, "4h a 1 dia"], [480, 960, "1 a 2 dias"], [960, 1440, "2 a 3 dias"], [1440, 2400, "3 a 5 dias"], [2400, Infinity, "mais de 5 dias"]] as const;
-  const xs = jobs.filter(j => j.leadFirst != null);
-  const rows = bins.map(([a, b, l]) => ({ l, js: xs.filter(j => j.leadFirst! >= a && j.leadFirst! < b) }));
-  const max = Math.max(1, ...rows.map(r => r.js.length));
-  return (
-    <Widget title="Distribuição" sub="Quantos jobs em cada faixa de tempo (1 dia = 8h de expediente)">
-      <ul className="flex flex-col gap-1">
-        {rows.map(r => (
-          <li key={r.l}>
-            <button type="button" disabled={!r.js.length} onClick={() => onDrill({ label: `Chegaram à 1ª versão em ${r.l}`, ids: r.js.map(j => j.id) })}
-              className="grid w-full grid-cols-[110px_minmax(0,1fr)_64px] items-center gap-3 rounded-lg px-1.5 py-1.5 text-left text-[13px] hover:bg-[hsl(var(--accent)/0.6)] disabled:opacity-55 disabled:hover:bg-transparent">
-              <span>{r.l}</span>
-              <span className="h-5 overflow-hidden rounded bg-[hsl(var(--muted)/0.6)]"><i className="block h-full rounded bg-[hsl(var(--foreground)/0.5)]" style={{ width: `${(r.js.length / max) * 100}%` }} /></span>
-              <span className="text-right tabular-nums"><b className="font-semibold">{r.js.length}</b><span className={cn("text-xs", muted)}> · {xs.length ? Math.round((r.js.length / xs.length) * 100) : 0}%</span></span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </Widget>
-  );
-}
-
-/* ── estimado × realizado ── */
-function Estimates({ jobs, name, people, onOpen, onDrill }: { jobs: RJob[]; name: (id: number | null) => string; people: RPerson[]; onOpen: (id: number) => void; onDrill: (f: Focus) => void }) {
-  const pts = jobs.filter(j => j.est > 0 && j.worked > 0);
-  const rs = pts.map(j => j.worked / j.est);
-  const med = median(rs);
-  const over = pts.filter(j => j.worked > j.est * 1.2), under = pts.filter(j => j.worked < j.est * 0.8);
-  const top = Math.max(60, ...pts.map(j => Math.max(j.est, j.worked))) * 1.08;
-  const W = 520, H = 360, L = 48, B = 34, T = 10, R = 10;
-  const sx = (m: number) => L + (m / top) * (W - L - R), sy = (m: number) => H - B - (m / top) * (H - B - T);
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => top * f);
-  return <>
-    <Lede>
-      {!pts.length ? <p className={muted}>Nenhum job entregue com horas registradas no período.</p> : <>
-        <p>Em <b>{pts.length}</b> jobs com horas registradas, o realizado ficou em <b>{Math.round((med ?? 1) * 100)}%</b> do estimado (mediana). <b>{over.length}</b> {over.length === 1 ? "levou" : "levaram"} mais de 20% acima do previsto e <b>{under.length}</b> {under.length === 1 ? "ficou" : "ficaram"} mais de 20% abaixo.</p>
-        <p className={muted}>Pontos acima da diagonal levaram mais que o estimado; abaixo, sobrou tempo.</p>
-      </>}
-    </Lede>
-    {pts.length > 0 && (
-      <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <Widget title="Cada job" sub="Horas estimadas (horizontal) × horas feitas (vertical)">
-          <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full max-w-[560px]" role="img" aria-label="Estimado versus realizado por job">
-            {ticks.map(v => <g key={v}>
-              <line x1={L} x2={W - R} y1={sy(v)} y2={sy(v)} className="stroke-[hsl(var(--border))]" strokeDasharray={v ? "3 4" : undefined} />
-              <text x={L - 6} y={sy(v)} textAnchor="end" dominantBaseline="central" className="fill-[hsl(var(--muted-foreground))] text-[11px]">{fmtH(v)}</text>
-              <text x={sx(v)} y={H - B + 16} textAnchor="middle" className="fill-[hsl(var(--muted-foreground))] text-[11px]">{fmtH(v)}</text>
-            </g>)}
-            <polygon points={`${sx(0)},${sy(0)} ${sx(top / 1.2)},${sy(top)} ${sx(top)},${sy(top)} ${sx(top)},${sy(top / 1.2)}`} className="fill-[hsl(var(--foreground)/0.04)]" />
-            <line x1={sx(0)} y1={sy(0)} x2={sx(top)} y2={sy(top)} className="stroke-[hsl(var(--foreground)/0.45)]" strokeDasharray="6 5" strokeWidth={1.5} />
-            <text x={sx(top) - 4} y={sy(top) + 14} textAnchor="end" className="fill-[hsl(var(--muted-foreground))] text-[10.5px]">feito = estimado</text>
-            {pts.map(j => {
-              const bad = j.worked > j.est * 1.2;
-              return (
-                <g key={j.id} className="cursor-pointer" onClick={() => onOpen(j.id)}>
-                  <title>{`${j.code} · ${j.title}
-estimado ${fmtH(j.est)} · feito ${fmtH(j.worked)} · ${name(j.editorId)}`}</title>
-                  <circle cx={sx(j.est)} cy={sy(j.worked)} r={5} className={bad ? "fill-rose-500/85 stroke-rose-500" : "fill-[hsl(var(--foreground)/0.35)] stroke-[hsl(var(--foreground)/0.7)]"} strokeWidth={1.5} />
-                </g>
-              );
-            })}
-          </svg>
-        </Widget>
-        <Widget title="Por editor" sub="Mediana do realizado sobre o estimado">
-          <RankTable rows={groupBy(pts.filter(j => j.editorId), j => String(j.editorId)).map(([k, js]) => ({ key: k, js, p: people.find(p => p.id === Number(k)), r: median(js.map(j => j.worked / j.est))! }))}
-            onDrill={onDrill} label={r => `Jobs de ${r.p?.name ?? "—"} com horas registradas`}
-            head={r => <span className="flex min-w-0 items-center gap-2"><AvatarDisplay name={r.p?.name ?? "?"} avatarUrl={r.p?.avatarUrl ?? null} size={22} /><b className="truncate font-semibold">{r.p?.name.split(" ")[0] ?? "—"}</b></span>}
-            cols={[
-              { k: "n", label: "Jobs", v: r => r.js.length },
-              { k: "r", label: "Realizado", v: r => Math.round(r.r * 100), fmt: n => `${n}%`, bad: r => r.r > 1.2 },
-              { k: "e", label: "Estimado", v: r => r.js.reduce((a, j) => a + j.est, 0), fmt: n => fmtH(n) },
-              { k: "w", label: "Feito", v: r => r.js.reduce((a, j) => a + j.worked, 0), fmt: n => fmtH(n) },
-            ]} />
-        </Widget>
-      </div>
-    )}
-  </>;
-}
-
 export default function Reports() {
   usePageTitle("Relatórios");
   const { user } = useAuth();
@@ -474,8 +343,6 @@ export default function Reports() {
   const cur = deliveredIn(A, B), prev = deliveredIn(PA, A);
   const mc = metrics(cur), mp = compare ? metrics(prev) : null;
   const createdIn = scoped.filter(j => j.created >= A && j.created < B);
-  const inP = <T extends { at: number }>(xs: T[]) => xs.filter(x => x.at >= A && x.at < B);
-  const team: RTeam = { blocks: inP(data.team.blocks), disputes: inP(data.team.disputes), noEditor: inP(data.team.noEditor), requests: inP(data.team.requests), actions: inP(data.team.actions) };
 
   const opts = {
     clients: count(data.jobs, j => j.client ?? "", j => j.client).map(([v, n]) => ({ value: v, label: String(v), n, color: clientColor(String(v)) })) as Opt[],
@@ -488,15 +355,8 @@ export default function Reports() {
   const teaser: Partial<Record<RepK, string>> = {
     resumo: `${mc.n} entregues`,
     entregas: mc.onTime == null ? "—" : `${mc.onTime}% no prazo`,
-    ciclo: mc.lead == null ? "—" : `mediana ${fmtH(mc.lead)}`,
-    fases: (() => { const t = STAGES.map(st => ({ st, m: cur.reduce((x, j) => x + j.stage[st.k], 0) })).sort((x, y) => y.m - x.m)[0]; return t?.m ? `${t.st.label.toLowerCase()}` : "—"; })(),
-    estimativa: mc.est == null ? "—" : `${mc.est}% do estimado`,
-    editores: `${new Set(cur.map(j => j.editorId).filter(Boolean)).size} editores`,
     clientes: `${new Set(cur.map(j => j.client).filter(Boolean)).size} clientes`,
-    gestores: (() => { const w = [...data.team.blocks, ...data.team.disputes].filter(x => x.at >= A && x.at < B && (isSup || x.coordId === data.me)).map(x => x.wait); const m = median(w); return m == null ? `${new Set(cur.map(j => j.coordId).filter(Boolean)).size} gestores` : `responde em ${fmtH(m)}`; })(),
-    supervisao: (() => { const n = data.team.requests.filter(r => r.open && (r.escalated || r.approverId == null)).length + data.team.noEditor.filter(x => x.open).length; return n ? `${n} esperando agora` : "nada esperando"; })(),
-    equipe: `${new Set([...cur.map(j => j.editorId), ...cur.map(j => j.coordId), ...data.team.actions.filter(a => a.at >= A && a.at < B).map(a => a.actorId)].filter(Boolean)).size} pessoas`,
-    riscos: `${cur.filter(j => j.revisions + j.reneg + j.blocks + j.estExpired + j.reassign > 0).length} jobs`,
+    riscos: `${cur.filter(j => j.revisions + j.dueChanged + j.blocks + j.reassign > 0).length} jobs`,
   };
 
   const apply = (v: View) => { setPreset(v.preset); setCustom(v.custom); setCompare(v.compare); setMine(v.mine); setClients(v.clients); setEditors(v.editors); setCoords(v.coords); };
@@ -554,39 +414,25 @@ export default function Reports() {
       </div>
 
       <div className="grid items-start gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <Catalog current={visibleReports(isSup).some(r => r.k === rep) ? rep : "resumo"} onPick={pick} isSup={isSup} teaser={teaser} />
+        <Catalog current={REPORTS.some(r => r.k === rep) ? rep : "resumo"} onPick={pick} teaser={teaser} />
         <article className="min-w-0 rounded-2xl border bg-[hsl(var(--card))] px-4 py-5 shadow-[0_1px_2px_hsl(var(--foreground)/0.04)] sm:px-8 sm:py-7">
           <header className="mb-6 flex flex-wrap items-start justify-between gap-3 border-b pb-5">
             <div className="min-w-0 max-w-2xl">
-              <p className={cn("text-[11px] font-semibold uppercase tracking-wider", muted)}>{visibleReports(isSup).find(r => r.k === rep)!.group} · {periodLabel}</p>
-              <h2 className="mt-1 text-[22px] font-semibold leading-tight tracking-tight">{visibleReports(isSup).find(r => r.k === rep)!.label}</h2>
-              <p className={cn("mt-1 text-[13.5px]", muted)}>{visibleReports(isSup).find(r => r.k === rep)!.q}</p>
+              <p className={cn("text-[11px] font-semibold uppercase tracking-wider", muted)}>{(REPORTS.find(r => r.k === rep) ?? REPORTS[0]).group} · {periodLabel}</p>
+              <h2 className="mt-1 text-[22px] font-semibold leading-tight tracking-tight">{(REPORTS.find(r => r.k === rep) ?? REPORTS[0]).label}</h2>
+              <p className={cn("mt-1 text-[13.5px]", muted)}>{(REPORTS.find(r => r.k === rep) ?? REPORTS[0]).q}</p>
             </div>
-            {rep !== "resumo" && <button type="button" onClick={() => exportCsv(cur, name, `${visibleReports(isSup).find(r => r.k === rep)!.label} ${periodLabel}`)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px] font-semibold hover:bg-[hsl(var(--accent))]"><Download className="h-3.5 w-3.5" />CSV</button>}
+            {rep !== "resumo" && <button type="button" onClick={() => exportCsv(cur, name, `${(REPORTS.find(r => r.k === rep) ?? REPORTS[0]).label} ${periodLabel}`)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px] font-semibold hover:bg-[hsl(var(--accent))]"><Download className="h-3.5 w-3.5" />CSV</button>}
           </header>
 
           <div className="flex flex-col gap-8">
-            {rep === "resumo" && <Summary cur={cur} prev={compare ? prev : null} mc={mc} mp={mp} name={name} periodLabel={periodLabel} onDrill={drill} onGo={pick} isSup={isSup && !mine} />}
+            {rep === "resumo" && <Summary cur={cur} mc={mc} mp={mp} periodLabel={periodLabel} onDrill={drill} onGo={pick} />}
             {rep === "entregas" && <>
               <Lede>{ledeEntregas(cur, mc, mp)}</Lede>
               <Throughput jobs={cur} d0={d0} d1={d1} onDrill={drill} />
               <WeekTable jobs={cur} d0={d0} d1={d1} onDrill={drill} />
             </>}
-            {rep === "ciclo" && <>
-              <Lede>{ledeCiclo(cur, mc, mp)}</Lede>
-              <ControlChart jobs={cur} A={A} B={B} name={name} onOpen={openTask} />
-              <Histogram jobs={cur} onDrill={drill} />
-            </>}
-            {rep === "fases" && <>
-              <Lede>{ledeFases(cur)}</Lede>
-              <TimeInStage jobs={cur} onDrill={drill} />
-            </>}
-            {rep === "estimativa" && <Estimates jobs={cur} name={name} people={data.people} onOpen={openTask} onDrill={drill} />}
-            {rep === "editores" && <><Lede>{ledeGroup(cur, j => j.editorId ? name(j.editorId).split(" ")[0] : null, "editor", "editores")}</Lede><ByEditor jobs={cur} people={data.people} onDrill={drill} /></>}
             {rep === "clientes" && <><Lede>{ledeGroup(cur, j => j.client, "cliente", "clientes")}</Lede><ByClient jobs={cur} onDrill={drill} /></>}
-            {rep === "gestores" && <Managers jobs={cur} team={team} people={data.people} isSup={isSup} me={data.me} onDrill={drill} onOpen={openTask} />}
-            {rep === "supervisao" && isSup && <Supervision team={team} teamAll={data.team} people={data.people} jobs={data.jobs} onDrill={drill} onOpen={openTask} />}
-            {rep === "equipe" && isSup && <Everyone jobs={cur} team={team} people={data.people} onDrill={drill} />}
             {rep === "riscos" && <><Lede>{ledeRiscos(cur)}</Lede><Risks jobs={cur} onDrill={drill} /></>}
 
             <div ref={tableRef} className="scroll-mt-4 border-t pt-6">
@@ -656,29 +502,18 @@ function Views({ views, onApply, onSave, onDelete }: { views: View[]; onApply: (
 
 /* ── destaques: frases geradas a partir dos números ── */
 type Ins = { icon: typeof Clock; text: React.ReactNode; tone?: "bad" | "good"; focus?: Focus };
-function buildInsights(cur: RJob[], prev: RJob[] | null, mc: M, mp: M | null, name: (id: number | null) => string): Ins[] {
+function buildInsights(cur: RJob[], mc: M, mp: M | null): Ins[] {
   const out: Ins[] = [];
   if (mp && mc.onTime != null && mp.onTime != null && Math.abs(mc.onTime - mp.onTime) >= 5) {
     const up = mc.onTime > mp.onTime;
     out.push({ icon: up ? ArrowUpRight : ArrowDownRight, tone: up ? "good" : "bad", text: <>Entregas no prazo {up ? "subiram" : "caíram"} <b>{Math.abs(mc.onTime - mp.onTime)} p.p.</b> em relação ao período anterior ({mp.onTime}% → {mc.onTime}%).</>,
       focus: up ? undefined : { label: "Entregues fora do prazo", ids: cur.filter(j => onTime(j) === false).map(j => j.id) } });
   }
-  // gargalo: fase que mais consome o ciclo
-  const tot = STAGES.map(s => ({ s, m: cur.reduce((a, j) => a + j.stage[s.k], 0) }));
-  const all = tot.reduce((a, x) => a + x.m, 0);
-  const top = [...tot].sort((a, b) => b.m - a.m)[0];
-  if (all > 0 && top.m > 0) out.push({ icon: Hourglass, text: <><b>{Math.round((top.m / all) * 100)}%</b> do tempo dos jobs foi <b>{top.s.label.toLowerCase()}</b>{top.s.k === "fila" ? ": a fila está mais longa que a capacidade" : top.s.k === "cliente" ? ": aprovação do cliente é o gargalo" : top.s.k === "travado" ? ": travamentos estão segurando a entrega" : ""}.</>,
-    focus: { label: `Jobs em que “${top.s.label}” foi a fase mais longa`, ids: cur.filter(j => biggest(j) === top.s.k).map(j => j.id) } });
   // cliente que mais pede alteração
   const byClient = groupBy(cur, j => j.client ?? "Sem cliente").filter(([, js]) => js.length >= 2)
     .map(([c, js]) => ({ c, js, r: js.reduce((a, j) => a + j.revisions, 0) / js.length })).sort((a, b) => b.r - a.r)[0];
   if (byClient && byClient.r >= 1) out.push({ icon: Briefcase, text: <><b>{byClient.c}</b> pede em média <b>{byClient.r.toFixed(1).replace(".", ",")} alterações</b> por job, o maior entre os clientes.</>,
     focus: { label: `Jobs de ${byClient.c}`, ids: byClient.js.map(j => j.id) } });
-  // estimativa por editor mais distante do realizado
-  const est = groupBy(cur.filter(j => ratio(j) != null && j.editorId), j => String(j.editorId)).filter(([, js]) => js.length >= 3)
-    .map(([e, js]) => ({ e: Number(e), js, r: median(js.map(j => ratio(j)!))! })).sort((a, b) => Math.abs(b.r - 1) - Math.abs(a.r - 1))[0];
-  if (est && Math.abs(est.r - 1) >= 0.2) out.push({ icon: Scales, text: <>Jobs de <b>{name(est.e).split(" ")[0]}</b> levam <b>{Math.round(Math.abs(est.r - 1) * 100)}% {est.r > 1 ? "a mais" : "a menos"}</b> que o estimado (mediana de {est.js.length} jobs).</>,
-    focus: { label: `Jobs de ${name(est.e)}`, ids: est.js.map(j => j.id) } });
   const blocked = cur.filter(j => j.blocks > 0);
   if (blocked.length) {
     const reasons = groupBy(blocked.flatMap(j => j.blockReasons.map(r => ({ r: r.split(":")[0].trim(), j }))), x => x.r).sort((a, b) => b[1].length - a[1].length);
@@ -687,7 +522,6 @@ function buildInsights(cur: RJob[], prev: RJob[] | null, mc: M, mp: M | null, na
   }
   return out;
 }
-const biggest = (j: RJob): StageK => (Object.entries(j.stage) as [StageK, number][]).sort((a, b) => b[1] - a[1])[0][0];
 function groupBy<T>(xs: T[], key: (x: T) => string): [string, T[]][] {
   const m = new Map<string, T[]>();
   for (const x of xs) m.set(key(x), [...(m.get(key(x)) ?? []), x]);
@@ -742,90 +576,6 @@ function Throughput({ jobs, d0, d1, onDrill }: { jobs: RJob[]; d0: number; d1: n
   );
 }
 
-/* ── onde o tempo vai: tempo médio em cada fase ── */
-function TimeInStage({ jobs, onDrill }: { jobs: RJob[]; onDrill: (f: Focus) => void }) {
-  const rows = STAGES.map(s => ({ s, avg: jobs.length ? jobs.reduce((a, j) => a + j.stage[s.k], 0) / jobs.length : 0 }));
-  const total = rows.reduce((a, r) => a + r.avg, 0);
-  return (
-    <Widget icon={Hourglass} title="Onde o tempo vai" sub="Média por job entregue, em horas de expediente">
-      {!jobs.length ? <Empty /> : <>
-        <div className="mb-1 flex items-baseline justify-between">
-          <span className={cn("text-xs", muted)}>Ciclo médio</span>
-          <b className="text-[22px] font-semibold tabular-nums">{fmtH(total)}</b>
-        </div>
-        <div className="mb-4 flex h-3 overflow-hidden rounded-full bg-[hsl(var(--muted))]">
-          {rows.map(r => r.avg > 0 && <i key={r.s.k} className={cn("block h-full border-r border-[hsl(var(--card))] last:border-r-0", r.s.tone)} style={{ width: `${(r.avg / total) * 100}%` }} title={`${r.s.label}: ${fmtH(r.avg)}`} />)}
-        </div>
-        <ul className="flex flex-col">
-          {rows.map(r => {
-            const ids = jobs.filter(j => biggest(j) === r.s.k && j.stage[r.s.k] > 0).map(j => j.id);
-            return (
-              <li key={r.s.k}>
-                <button type="button" disabled={!ids.length} onClick={() => onDrill({ label: `Jobs em que “${r.s.label}” foi a fase mais longa`, ids })}
-                  className="flex w-full items-center gap-3 rounded-lg px-1.5 py-2 text-left text-[13px] hover:bg-[hsl(var(--accent)/0.6)] disabled:hover:bg-transparent">
-                  <i className={cn("h-2.5 w-2.5 shrink-0 rounded-sm", r.s.tone)} />
-                  <span className="flex-1">{r.s.label}</span>
-                  <b className="font-semibold tabular-nums">{fmtH(r.avg)}</b>
-                  <span className={cn("w-10 text-right text-xs tabular-nums", muted)}>{total ? Math.round((r.avg / total) * 100) : 0}%</span>
-                  <span className={cn("w-12 text-right text-[11px]", muted)} title="jobs em que essa foi a fase mais longa">{ids.length} jobs</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </>}
-    </Widget>
-  );
-}
-
-/* ── gráfico de controle: tempo até a 1ª versão de cada job ── */
-function ControlChart({ jobs, A, B, name, onOpen }: { jobs: RJob[]; A: number; B: number; name: (id: number | null) => string; onOpen: (id: number) => void }) {
-  const pts = jobs.filter(j => j.leadFirst != null);
-  const ys = pts.map(j => j.leadFirst!);
-  const med = median(ys), p85 = pctl(ys, 0.85);
-  const top = Math.max(60, (pctl(ys, 0.95) ?? 60) * 1.15);
-  const W = 1000, H = 240, L = 44, R = 12, T = 12, Bm = 26;
-  const x = (t: number) => L + ((t - A) / (B - A)) * (W - L - R);
-  const y = (m: number) => T + (1 - Math.min(m, top) / top) * (H - T - Bm);
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => top * f);
-  const days = Math.round((B - A) / DAY), stepD = days <= 14 ? 1 : days <= 60 ? 7 : 30;
-  const xt: number[] = []; for (let d = A / DAY; d < B / DAY; d += stepD) xt.push(d);
-  return (
-    <Widget icon={Timer} title="Tempo até a 1ª versão" sub="Cada ponto é um job: quanto expediente levou da criação ao envio para o cliente"
-      right={<span className={cn("flex items-center gap-3 text-[11px]", muted)}>
-        <span className="inline-flex items-center gap-1.5"><i className="h-px w-4 border-t-2 border-dashed border-[hsl(var(--foreground)/0.6)]" />mediana {med != null ? fmtH(med) : "—"}</span>
-        <span className="hidden items-center gap-1.5 sm:inline-flex"><i className="h-px w-4 border-t-2 border-dotted border-amber-500" />85% até {p85 != null ? fmtH(p85) : "—"}</span>
-        <span className="hidden items-center gap-1.5 sm:inline-flex"><i className="h-2 w-2 rounded-full bg-rose-500" />fora do prazo</span>
-      </span>}>
-      {!pts.length ? <Empty /> : (
-        <div className="-mx-1 overflow-x-auto">
-          <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full min-w-[560px]" role="img" aria-label="Gráfico de controle do tempo até a primeira versão">
-            {ticks.map(v => <g key={v}>
-              <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} className="stroke-[hsl(var(--border))]" strokeDasharray={v ? "3 4" : undefined} />
-              <text x={L - 6} y={y(v)} textAnchor="end" dominantBaseline="central" className="fill-[hsl(var(--muted-foreground))] text-[11px]">{fmtH(v)}</text>
-            </g>)}
-            {xt.map(d => <text key={d} x={x(d * DAY)} y={H - 8} textAnchor="middle" className="fill-[hsl(var(--muted-foreground))] text-[11px]">{fmtDay(d).slice(4)}</text>)}
-            {p85 != null && <line x1={L} x2={W - R} y1={y(p85)} y2={y(p85)} className="stroke-amber-500" strokeWidth={1.5} strokeDasharray="1 4" strokeLinecap="round" />}
-            {med != null && <line x1={L} x2={W - R} y1={y(med)} y2={y(med)} className="stroke-[hsl(var(--foreground)/0.6)]" strokeWidth={1.5} strokeDasharray="6 5" />}
-            {pts.map(j => {
-              const late = onTime(j) === false, over = j.leadFirst! > top;
-              return (
-                <g key={j.id} className="cursor-pointer" onClick={() => onOpen(j.id)}>
-                  <title>{`${j.code} · ${j.title}\n${fmtH(j.leadFirst!)} até a 1ª versão · ${name(j.editorId)}${late ? " · fora do prazo" : ""}`}</title>
-                  <circle cx={x(j.firstReview!)} cy={y(j.leadFirst!)} r={over ? 6 : 5}
-                    className={cn("transition-[r] hover:[r:8]", late ? "fill-rose-500/85 stroke-rose-500" : "fill-[hsl(var(--foreground)/0.35)] stroke-[hsl(var(--foreground)/0.7)]")} strokeWidth={1.5} />
-                  {over && <text x={x(j.firstReview!)} y={y(j.leadFirst!) - 10} textAnchor="middle" className="fill-[hsl(var(--muted-foreground))] text-[10px]">↑{fmtH(j.leadFirst!)}</text>}
-                </g>
-              );
-            })}
-          </svg>
-        </div>
-      )}
-    </Widget>
-  );
-}
-
-/* ── tabelas por pessoa / cliente ── */
 type Col<T> = { k: string; label: string; v: (r: T) => number | null; fmt?: (n: number | null, r: T) => React.ReactNode; bad?: (r: T) => boolean };
 function RankTable<T extends { key: string; js: RJob[] }>({ rows, cols, head, label, onDrill, empty }: {
   rows: T[]; cols: Col<T>[]; head: (r: T) => React.ReactNode; label: (r: T) => string; onDrill: (f: Focus) => void; empty?: string;
@@ -857,7 +607,6 @@ function RankTable<T extends { key: string; js: RJob[] }>({ rows, cols, head, la
     </div>
   );
 }
-const pctFmt = (n: number | null) => (n == null ? "—" : `${n}%`);
 const OnTimeBar = ({ n }: { n: number | null }) => n == null ? <span className={muted}>—</span> : (
   <span className="inline-flex items-center justify-end gap-2">
     <span className="hidden h-1.5 w-14 overflow-hidden rounded-full bg-[hsl(var(--muted))] sm:block"><i className={cn("block h-full", n < 65 ? "bg-rose-500" : "bg-[hsl(var(--foreground)/0.55)]")} style={{ width: `${n}%` }} /></span>
@@ -865,259 +614,34 @@ const OnTimeBar = ({ n }: { n: number | null }) => n == null ? <span className={
   </span>
 );
 
-function ByEditor({ jobs, people, onDrill }: { jobs: RJob[]; people: RPerson[]; onDrill: (f: Focus) => void }) {
-  const rows = groupBy(jobs.filter(j => j.editorId), j => String(j.editorId)).map(([k, js]) => ({ key: k, js, p: people.find(p => p.id === Number(k)), m: metrics(js), blocks: js.reduce((a, j) => a + j.blocks, 0) }));
-  return (
-    <Widget icon={Users} title="Editores" sub="Entregas do período por editor · clique para ver os jobs">
-      <RankTable rows={rows} onDrill={onDrill} label={r => `Jobs de ${r.p?.name ?? "—"}`}
-        head={r => <span className="flex min-w-0 items-center gap-2"><AvatarDisplay name={r.p?.name ?? "?"} avatarUrl={r.p?.avatarUrl ?? null} size={24} /><span className="min-w-0"><b className="block truncate font-semibold">{r.p?.name ?? "—"}</b><span className={cn("block truncate text-[11px]", muted)}>{roleName(r.p)}{r.p?.status === "inactive" ? " · inativo" : ""}</span></span></span>}
-        cols={[
-          { k: "n", label: "Entregues", v: r => r.m.n },
-          { k: "h", label: "Horas", v: r => r.m.hours, fmt: n => fmtH(n) },
-          { k: "ot", label: "No prazo", v: r => r.m.onTime, fmt: n => <OnTimeBar n={n} /> },
-          { k: "lead", label: "Até 1ª versão", v: r => r.m.lead, fmt: n => (n == null ? "—" : fmtH(n)) },
-          { k: "est", label: "Estimativa", v: r => r.m.est, fmt: pctFmt, bad: r => r.m.est != null && r.m.est > 130 },
-          { k: "b", label: "Travou", v: r => r.blocks },
-        ]} />
-    </Widget>
-  );
-}
-
 function ByClient({ jobs, onDrill }: { jobs: RJob[]; onDrill: (f: Focus) => void }) {
-  const rows = groupBy(jobs, j => j.client ?? "Sem cliente").map(([k, js]) => {
-    const appr = js.filter(j => j.leadClose != null && j.leadFirst != null).map(j => j.leadClose! - j.leadFirst!);
-    return { key: k, js, m: metrics(js), appr: median(appr), reneg: js.reduce((a, j) => a + j.reneg, 0) };
-  });
+  const rows = groupBy(jobs, j => j.client ?? "Sem cliente").map(([k, js]) => ({ key: k, js, m: metrics(js), dueChanged: js.reduce((a, j) => a + j.dueChanged, 0) }));
   return (
-    <Widget icon={Briefcase} title="Clientes" sub="Quem mais demanda, quem mais pede alteração e quem demora para aprovar">
+    <Widget icon={Briefcase} title="Clientes" sub="Quem mais demanda e quem mais pede alteração">
       <RankTable rows={rows} onDrill={onDrill} label={r => `Jobs de ${r.key}`}
         head={r => <span className="flex min-w-0 items-center gap-2"><i className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: clientColor(r.key) }} /><b className="truncate font-semibold">{r.key}</b></span>}
         cols={[
           { k: "n", label: "Entregues", v: r => r.m.n },
           { k: "ot", label: "No prazo", v: r => r.m.onTime, fmt: n => <OnTimeBar n={n} /> },
           { k: "rev", label: "Alter./job", v: r => r.m.revisions, fmt: n => (n == null ? "—" : n.toFixed(1).replace(".", ",")), bad: r => (r.m.revisions ?? 0) >= 2 },
-          { k: "ap", label: "Aprovação", v: r => r.appr, fmt: n => (n == null ? "—" : fmtH(n)) },
-          { k: "rn", label: "Empurrou", v: r => r.reneg },
+          { k: "rn", label: "Prazo mudou", v: r => r.dueChanged },
         ]} />
     </Widget>
   );
 }
 
-/* ── equipe: tempo de resposta ── */
-const medW = (xs: Wait[]) => median(xs.map(x => x.wait));
-const fmtW = (n: number | null) => (n == null ? "—" : fmtH(n));
-/** Barra horizontal de tempo de resposta (mediana) por pessoa; o maior define a escala. */
-function ResponseBars({ rows, onPick }: { rows: { key: string; label: React.ReactNode; m: number | null; n: number; open: number }[]; onPick?: (key: string) => void }) {
-  const max = Math.max(60, ...rows.map(r => r.m ?? 0));
-  const list = rows.filter(r => r.n > 0).sort((a, b) => (a.m ?? 0) - (b.m ?? 0));
-  if (!list.length) return <p className={cn("text-[13.5px]", muted)}>Nada dependeu de resposta no período.</p>;
-  return (
-    <ul className="flex flex-col gap-1">
-      {list.map(r => (
-        <li key={r.key}>
-          <button type="button" onClick={() => onPick?.(r.key)} className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 sm:grid-cols-[minmax(0,140px)_minmax(0,1fr)_minmax(150px,auto)] rounded-lg px-1.5 py-1.5 text-left text-[13px] hover:bg-[hsl(var(--accent)/0.6)]">
-            <span className="min-w-0 truncate">{r.label}</span>
-            <span className="col-span-2 h-5 overflow-hidden rounded bg-[hsl(var(--muted)/0.6)] max-sm:order-last sm:col-span-1"><i className={cn("block h-full rounded", (r.m ?? 0) > 480 ? "bg-rose-500/75" : "bg-[hsl(var(--foreground)/0.5)]")} style={{ width: `${((r.m ?? 0) / max) * 100}%` }} /></span>
-            <span className="text-right tabular-nums"><b className="font-semibold">{fmtW(r.m)}</b><span className={cn("text-xs", muted)}> · {r.n} {r.n === 1 ? "item" : "itens"}{r.open ? `, ${r.open} aberto${r.open > 1 ? "s" : ""}` : ""}</span></span>
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** Gestores (ou "Meu desempenho" para o gestor): resultado dos jobs e tempo para responder ao que depende dele. */
-function Managers({ jobs, team, people, isSup, me, onDrill, onOpen }: { jobs: RJob[]; team: RTeam; people: RPerson[]; isSup: boolean; me: number; onDrill: (f: Focus) => void; onOpen: (id: number) => void }) {
-  const ids = [...new Set([...jobs.map(j => j.coordId), ...team.blocks.map(b => b.coordId), ...team.disputes.map(b => b.coordId), ...team.requests.map(r => r.approverId)].filter((x): x is number => !!x))]
-    .filter(id => isSup || id === me)
-    // gestores; supervisão/admin só entram aqui se forem responsáveis por jobs (as decisões deles estão em "Supervisão")
-    .filter(id => { const p = people.find(x => x.id === id); return p && (p.role === "coordinator" || (p.role !== "editor" && jobs.some(j => j.coordId === id))); });
-  const rows = ids.map(id => {
-    const p = people.find(x => x.id === id)!, js = jobs.filter(j => j.coordId === id);
-    const bl = team.blocks.filter(b => b.coordId === id), dp = team.disputes.filter(b => b.coordId === id), rq = team.requests.filter(r => r.approverId === id);
-    const all = [...bl, ...dp, ...rq];
-    return {
-      key: String(id), p, js, m: metrics(js), bl, dp, rq, all,
-      resp: medW(all), open: all.filter(x => x.open).length,
-      escal: rq.filter(r => r.escalated).length,
-      client: median(js.filter(j => j.stage.cliente > 0).map(j => j.stage.cliente)),
-      reneg: js.reduce((a, j) => a + j.reneg, 0), furou: js.reduce((a, j) => a + j.furou, 0),
-    };
-  });
-  const answered = rows.filter(r => r.all.length);
-  const fast = [...answered].sort((a, b) => (a.resp ?? 0) - (b.resp ?? 0))[0], slow = [...answered].sort((a, b) => (b.resp ?? 0) - (a.resp ?? 0))[0];
-  const one = rows.length === 1 ? rows[0] : null;
-  return <>
-    <Lede>
-      {!rows.length ? <p className={muted}>Nenhum job ou pedido de gestor no período.</p> : one ? (
-        <p>{one.key === String(me) ? "Você teve" : <><b>{one.p.name}</b> teve</>} <b>{one.m.n}</b> {one.m.n === 1 ? "job entregue" : "jobs entregues"}{one.m.onTime != null && <>, <b>{one.m.onTime}%</b> no prazo</>}. {one.all.length ? <>Coisas que dependiam de resposta ({one.bl.length} travados, {one.dp.length} estimativas contestadas, {one.rq.length} pedidos) esperaram em mediana <b>{fmtW(one.resp)}</b> de expediente{one.open ? <>; <b>{one.open}</b> ainda {one.open === 1 ? "espera" : "esperam"}</> : ""}.</> : "Nada dependeu de resposta no período."}</p>
-      ) : <>
-        <p><b>{rows.length}</b> gestores com jobs ou decisões no período. {answered.length > 1 && fast && slow && fast.key !== slow.key && <>Quem responde mais rápido ao que depende dele é <b>{fast.p.name.split(" ")[0]}</b> ({fmtW(fast.resp)}); quem mais demora, <b>{slow.p.name.split(" ")[0]}</b> ({fmtW(slow.resp)}).</>}</p>
-        <p className={muted}>Tempo de resposta = quanto expediente passou entre o editor travar, contestar a estimativa ou alguém pedir prioridade, e o gestor resolver.</p>
-      </>}
-    </Lede>
-    {rows.length > 0 && <>
-      <Widget title="Tempo de resposta" sub="Mediana, em horas de expediente · acima de 1 dia fica em vermelho">
-        <ResponseBars rows={rows.map(r => ({ key: r.key, label: <span className="inline-flex items-center gap-2"><AvatarDisplay name={r.p.name} avatarUrl={r.p.avatarUrl} size={20} />{r.p.name.split(" ")[0]}</span>, m: r.resp, n: r.all.length, open: r.open }))}
-          onPick={k => { const r = rows.find(x => x.key === k)!; onDrill({ label: `Jobs com algo esperando ${r.p.name.split(" ")[0]}`, ids: [...new Set(r.all.map(x => x.taskId).filter((x): x is number => x != null))] }); }} />
-      </Widget>
-      <Widget title="Resultado dos jobs" sub="Jobs de cada gestor entregues no período · clique para ver">
-        <RankTable rows={rows} onDrill={onDrill} label={r => `Jobs de ${r.p.name} (responsável)`}
-          head={r => <span className="flex min-w-0 items-center gap-2"><AvatarDisplay name={r.p.name} avatarUrl={r.p.avatarUrl} size={24} /><span className="min-w-0"><b className="block truncate font-semibold">{r.p.name}</b><span className={cn("block truncate text-[11px]", muted)}>{roleName(r.p)}</span></span></span>}
-          cols={[
-            { k: "n", label: "Entregues", v: r => r.m.n },
-            { k: "ot", label: "No prazo", v: r => r.m.onTime, fmt: n => <OnTimeBar n={n} /> },
-            { k: "rev", label: "Alter./job", v: r => r.m.revisions, fmt: n => (n == null ? "—" : n.toFixed(1).replace(".", ",")) },
-            { k: "cl", label: "Com o cliente", v: r => r.client, fmt: fmtW },
-            { k: "rn", label: "Empurrou", v: r => r.reneg },
-            { k: "f", label: "Furou", v: r => r.furou },
-          ]} />
-      </Widget>
-      <Widget title="O que dependeu de cada um" sub="Quantas vezes e quanto esperou, por tipo">
-        <RankTable rows={rows} onDrill={onDrill} label={r => `Jobs com algo esperando ${r.p.name.split(" ")[0]}`}
-          head={r => <b className="font-semibold">{r.p.name.split(" ")[0]}</b>}
-          cols={[
-            { k: "b", label: "Travados", v: r => r.bl.length, fmt: (n, r) => <>{n}<span className={cn("text-xs", muted)}> · {fmtW(medW(r.bl))}</span></> },
-            { k: "d", label: "Contestações", v: r => r.dp.length, fmt: (n, r) => <>{n}<span className={cn("text-xs", muted)}> · {fmtW(medW(r.dp))}</span></> },
-            { k: "q", label: "Pedidos", v: r => r.rq.length, fmt: (n, r) => <>{n}<span className={cn("text-xs", muted)}> · {fmtW(medW(r.rq))}</span></> },
-            { k: "e", label: "Foi à supervisão", v: r => r.escal, bad: r => r.escal > 0 },
-            { k: "o", label: "Aberto agora", v: r => r.open, bad: r => r.open > 0 },
-          ]} />
-      </Widget>
-    </>}
-    {!isSup && rows.length > 0 && <OpenItems onOpen={onOpen} title="Esperando você agora" jobTitle={id => jobs.find(j => j.id === id)?.title ?? "Job"}
-      items={rows.flatMap(r => [...r.bl.map(x => ({ ...x, what: "Travado" })), ...r.dp.map(x => ({ ...x, what: "Estimativa contestada" })), ...r.rq.map(x => ({ ...x, what: "Pedido de prioridade" }))]).filter(x => x.open)} />}
-  </>;
-}
-
-/** Itens abertos (esperando resposta), do que espera há mais tempo para o mais recente. */
-function OpenItems({ items, onOpen, title, jobTitle }: { items: (Wait & { what: string })[]; onOpen: (id: number) => void; title: string; jobTitle: (id: number) => string }) {
-  const list = items.filter(x => x.taskId != null).sort((a, b) => b.wait - a.wait);
-  return (
-    <Widget title={title} sub={list.length ? "Do que espera há mais tempo para o mais recente · clique para abrir o job" : undefined}>
-      {!list.length ? <p className={cn("text-[13.5px]", muted)}>Nada esperando.</p> : (
-        <ul className="flex flex-col divide-y rounded-xl border">
-          {list.slice(0, 12).map((x, i) => (
-            <li key={i}>
-              <button type="button" onClick={() => onOpen(x.taskId!)} className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 text-left text-[13px] hover:bg-[hsl(var(--accent)/0.5)]">
-                <span className="min-w-0"><b className="block truncate font-medium">{jobTitle(x.taskId!)}</b><span className={cn("block text-[12px]", muted)}>{x.what}</span></span>
-                <span className={cn("tabular-nums", x.wait > 480 ? "font-semibold text-rose-500" : muted)}>há {fmtH(x.wait)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Widget>
-  );
-}
-
-/** Supervisão: o que chegou até ela, quanto esperou e o que espera agora. */
-function Supervision({ team, teamAll, people, jobs, onDrill, onOpen }: { team: RTeam; teamAll: RTeam; people: RPerson[]; jobs: RJob[]; onDrill: (f: Focus) => void; onOpen: (id: number) => void }) {
-  const sups = people.filter(p => (p.role === "admin" || p.role === "supervisor"));
-  // chegou à supervisão: pedidos escalados ou sem aprovador (troca de editor), jobs sem editor
-  const reqs = team.requests.filter(r => r.escalated || r.approverId == null);
-  const rows = sups.map(p => {
-    const dec = team.requests.filter(r => r.decidedById === p.id && (r.escalated || r.approverId == null));
-    const ne = team.noEditor.filter(x => x.resolvedBy === p.id), bl = team.blocks.filter(x => x.resolvedBy === p.id && x.coordId !== p.id);
-    const acts = team.actions.filter(a => a.actorId === p.id);
-    const all = [...dec, ...ne];
-    return { key: String(p.id), p, dec, ne, bl, acts, all, js: jobs.filter(j => all.some(x => x.taskId === j.id) || bl.some(x => x.taskId === j.id)), resp: medW(all) };
-  }).filter(r => r.acts.length || r.all.length || r.bl.length);
-  const title = (id: number | null) => jobs.find(j => j.id === id)?.title ?? `job #${id}`;
-  const openNow = [
-    ...teamAll.requests.filter(r => r.open && (r.escalated || r.approverId == null)).map(r => ({ ...r, what: r.kind === "reassign" ? "Troca de editor para aprovar" : "Pedido sem resposta do gestor" })),
-    ...teamAll.noEditor.filter(x => x.open).map(x => ({ ...x, what: "Job sem editor" })),
-    ...teamAll.blocks.filter(x => x.open && x.wait > 240).map(x => ({ ...x, what: "Travado há mais de 4h" })),
-  ].sort((a, b) => b.wait - a.wait);
-  const mReq = medW(reqs), mNe = medW(team.noEditor);
-  return <>
-    <Lede>
-      <p>No período, chegaram à supervisão <b>{reqs.length}</b> {reqs.length === 1 ? "pedido" : "pedidos"} (escalados ou de troca de editor){mReq != null && <>, decididos em mediana em <b>{fmtH(mReq)}</b></>}, e <b>{team.noEditor.length}</b> {team.noEditor.length === 1 ? "job sem editor" : "jobs sem editor"}{mNe != null && <>, que esperaram em mediana <b>{fmtH(mNe)}</b> até alguém atribuir</>}. {openNow.length ? <>Agora há <b>{openNow.length}</b> {openNow.length === 1 ? "item esperando" : "itens esperando"} a supervisão.</> : "Nada esperando a supervisão agora."}</p>
-    </Lede>
-    <Widget title="Esperando a supervisão agora" sub={openNow.length ? "Do mais antigo para o mais recente · clique para abrir o job" : undefined}>
-      {!openNow.length ? <p className={cn("text-[13.5px]", muted)}>Nada esperando.</p> : (
-        <ul className="flex flex-col divide-y rounded-xl border">
-          {openNow.slice(0, 12).map((x, i) => (
-            <li key={i}>
-              <button type="button" onClick={() => x.taskId && onOpen(x.taskId)} className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 text-left text-[13px] hover:bg-[hsl(var(--accent)/0.5)]">
-                <span className="min-w-0"><b className="block truncate font-medium">{title(x.taskId)}</b><span className={cn("block text-[12px]", muted)}>{x.what}</span></span>
-                <span className={cn("tabular-nums", x.wait > 480 ? "font-semibold text-rose-500" : muted)}>há {fmtH(x.wait)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Widget>
-    {rows.length > 0 && <>
-      <Widget title="Tempo de decisão" sub="Mediana entre chegar à supervisão e alguém decidir · acima de 1 dia fica em vermelho">
-        <ResponseBars rows={rows.map(r => ({ key: r.key, label: <span className="inline-flex items-center gap-2"><AvatarDisplay name={r.p.name} avatarUrl={r.p.avatarUrl} size={20} />{r.p.name.split(" ")[0]}</span>, m: r.resp, n: r.all.length, open: 0 }))}
-          onPick={k => { const r = rows.find(x => x.key === k)!; onDrill({ label: `Decididos por ${r.p.name.split(" ")[0]}`, ids: r.js.map(j => j.id) }); }} />
-      </Widget>
-      <Widget title="Quem fez o quê" sub="Decisões e ações de cada pessoa da supervisão no período">
-        <RankTable rows={rows} onDrill={onDrill} label={r => `Jobs em que ${r.p.name.split(" ")[0]} decidiu`}
-          head={r => <span className="flex min-w-0 items-center gap-2"><AvatarDisplay name={r.p.name} avatarUrl={r.p.avatarUrl} size={24} /><span className="min-w-0"><b className="block truncate font-semibold">{r.p.name}</b><span className={cn("block truncate text-[11px]", muted)}>{roleName(r.p)}</span></span></span>}
-          cols={[
-            { k: "d", label: "Pedidos", v: r => r.dec.length },
-            { k: "a", label: "Aprovou", v: r => r.dec.filter(x => (x as RReq).status === "aprovado").length },
-            { k: "n", label: "Sem editor", v: r => r.ne.length },
-            { k: "b", label: "Destravou", v: r => r.bl.length },
-            { k: "t", label: "Ações", v: r => r.acts.length },
-            { k: "r", label: "Resposta", v: r => r.resp, fmt: fmtW },
-          ]} />
-      </Widget>
-    </>}
-  </>;
-}
-
-/** Equipe toda: uma linha por pessoa, com o que ela entregou, o que decidiu e quanto esperaram por ela. */
-function Everyone({ jobs, team, people, onDrill }: { jobs: RJob[]; team: RTeam; people: RPerson[]; onDrill: (f: Focus) => void }) {
-  const ORDER: Record<string, number> = { admin: 0, supervisor: 1, coordinator: 2, editor: 3 };
-  const ids = new Set<number>([...jobs.map(j => j.editorId), ...jobs.map(j => j.coordId), ...team.actions.map(a => a.actorId)].filter((x): x is number => !!x));
-  const rows = [...ids].map(id => people.find(p => p.id === id)).filter((p): p is RPerson => !!p).map(p => {
-    const asEd = jobs.filter(j => j.editorId === p.id), asOwner = jobs.filter(j => j.coordId === p.id);
-    const owed: Wait[] = p.role === "editor" ? [] : p.role === "coordinator"
-      ? [...team.blocks.filter(b => b.coordId === p.id), ...team.disputes.filter(b => b.coordId === p.id), ...team.requests.filter(r => r.approverId === p.id)]
-      : [...team.requests.filter(r => r.decidedById === p.id && (r.escalated || r.approverId == null)), ...team.noEditor.filter(x => x.resolvedBy === p.id)];
-    const mine = p.role === "editor" ? asEd : asOwner;
-    return { key: String(p.id), p, js: [...new Set([...asEd, ...asOwner])], ed: asEd.length, own: asOwner.length, onTime: metrics(mine).onTime, hours: asEd.reduce((a, j) => a + j.worked, 0),
-      acts: team.actions.filter(a => a.actorId === p.id).length, resp: medW(owed), open: owed.filter(x => x.open).length };
-  }).sort((a, b) => (ORDER[a.p.role] ?? 9) - (ORDER[b.p.role] ?? 9) || b.js.length - a.js.length);
-  const roles = [...new Set(rows.map(r => r.p.role))];
-  return <>
-    <Lede>
-      <p><b>{rows.length}</b> pessoas participaram do período: {roles.map(r => `${rows.filter(x => x.p.role === r).length} ${({ admin: "admin", supervisor: "da supervisão", coordinator: "gestores", editor: "editores" } as Record<string, string>)[r] ?? r}`).join(", ")}. Editores contam pelo que entregaram; gestores e supervisão, pelo resultado dos jobs e pelo tempo que as coisas esperaram por eles.</p>
-    </Lede>
-    <Widget title="Todas as pessoas" sub="Clique numa linha para ver os jobs dela">
-      <RankTable rows={rows} onDrill={onDrill} label={r => `Jobs de ${r.p.name}`}
-        head={r => <span className="flex min-w-0 items-center gap-2"><AvatarDisplay name={r.p.name} avatarUrl={r.p.avatarUrl} size={24} /><span className="min-w-0"><b className="block truncate font-semibold">{r.p.name}</b><span className={cn("block truncate text-[11px]", muted)}>{roleName(r.p)}{r.p.status === "inactive" ? " · inativo" : ""}</span></span></span>}
-        cols={[
-          { k: "ed", label: "Editou", v: r => r.ed || null, fmt: n => n ?? "—" },
-          { k: "own", label: "Responsável", v: r => r.own || null, fmt: n => n ?? "—" },
-          { k: "ot", label: "No prazo", v: r => r.onTime, fmt: n => <OnTimeBar n={n} /> },
-          { k: "h", label: "Horas", v: r => r.hours || null, fmt: n => (n ? fmtH(n) : "—") },
-          { k: "a", label: "Ações", v: r => r.acts || null, fmt: n => n ?? "—" },
-          { k: "r", label: "Resposta", v: r => r.resp, fmt: fmtW, bad: r => (r.resp ?? 0) > 480 },
-          { k: "o", label: "Esperando", v: r => r.open || null, fmt: n => n ?? "—", bad: r => r.open > 0 },
-        ]} />
-    </Widget>
-  </>;
-}
-
-/* ── riscos e retrabalho ── */
 function Risks({ jobs, onDrill }: { jobs: RJob[]; onDrill: (f: Focus) => void }) {
   const items = [
     { k: "rev", label: "Alterações do cliente", sub: "rodadas extras de edição", f: (j: RJob) => j.revisions },
-    { k: "rn", label: "Prazo empurrado", sub: "renegociado com o cliente", f: (j: RJob) => j.reneg },
+    { k: "rn", label: "Prazo mudou", sub: "combinado de novo com o cliente", f: (j: RJob) => j.dueChanged },
     { k: "b", label: "Travamentos", sub: "job parado esperando algo", f: (j: RJob) => j.blocks },
-    { k: "ex", label: "Estimativa estourou", sub: "horas acabaram antes da entrega", f: (j: RJob) => j.estExpired },
-    { k: "ct", label: "Estimativa contestada", sub: "editor discordou das horas", f: (j: RJob) => j.estContest },
     { k: "ra", label: "Troca de editor", sub: "passou para outra fila", f: (j: RJob) => j.reassign },
     { k: "fu", label: "Furou a fila", sub: "entrou na frente de outro gestor", f: (j: RJob) => j.furou },
   ].map(x => ({ ...x, n: jobs.reduce((a, j) => a + x.f(j), 0), js: jobs.filter(j => x.f(j) > 0) }));
   const max = Math.max(1, ...items.map(x => x.n));
   const affected = new Set(items.flatMap(x => x.js.map(j => j.id))).size;
   return (
-    <Widget icon={AlertTriangle} title="Riscos e retrabalho" sub={jobs.length ? `${affected} de ${jobs.length} jobs tiveram algum desses eventos` : "Eventos que atrasam ou encarecem a entrega"}>
+    <Widget icon={AlertTriangle} title="Retrabalho" sub={jobs.length ? `${affected} de ${jobs.length} jobs tiveram algum desses eventos` : "Eventos que atrasam ou encarecem a entrega"}>
       {!jobs.length ? <Empty /> : (
         <ul className="flex flex-col">
           {items.map(x => (
@@ -1152,8 +676,6 @@ function JobsTable({ delivered, created, open, focus, onClear, name, onOpen, per
     { k: "client", label: "Cliente", v: j => j.client ?? "" },
     { k: "ed", label: "Editor", v: j => name(j.editorId) },
     { k: "when", label: tab === "created" ? "Criado" : tab === "open" ? "Prazo" : "1ª versão", v: j => tab === "created" ? j.created : tab === "open" ? j.due : j.firstReview, cls: "text-right" },
-    { k: "lead", label: "Levou", v: j => j.leadFirst, cls: "text-right" },
-    { k: "h", label: "Horas", v: j => j.worked, cls: "text-right" },
     { k: "rev", label: "Alter.", v: j => j.revisions, cls: "text-right" },
     { k: "st", label: "Situação", v: j => j.status },
   ];
@@ -1182,7 +704,7 @@ function JobsTable({ delivered, created, open, focus, onClear, name, onOpen, per
       </div>
       {!rows.length ? <Empty text={focus ? "Nenhum job desse recorte nesta aba." : "Nenhum job."} /> : (
         <div className="overflow-x-auto rounded-xl border">
-          <table className="w-full min-w-[760px] text-[13px]">
+          <table className="w-full min-w-[640px] text-[13px]">
             <thead><tr className={cn("border-b bg-[hsl(var(--muted)/0.35)] text-[11px] uppercase tracking-wider", muted)}>
               {cols.map(c => (
                 <th key={c.k} className={cn("px-3 py-2 font-semibold first:pl-4", c.cls ?? "text-left")}>
@@ -1201,8 +723,6 @@ function JobsTable({ delivered, created, open, focus, onClear, name, onOpen, per
                   <td className="max-w-[160px] truncate px-3 py-2"><span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 shrink-0 rounded-full" style={{ background: clientColor(j.client) }} />{j.client ?? "—"}</span></td>
                   <td className={cn("px-3 py-2", muted)}>{name(j.editorId).split(" ")[0]}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{when == null ? "—" : fmt(when as number).slice(4)}{tab === "delivered" && late && <span className="ml-1.5 text-[11px] font-semibold text-rose-500">fora</span>}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{j.leadFirst == null ? "—" : fmtH(j.leadFirst)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{fmtH(j.worked)}<span className={muted}> / {fmtH(j.est)}</span></td>
                   <td className={cn("px-3 py-2 text-right tabular-nums", j.revisions >= 2 && "font-semibold text-amber-600 dark:text-amber-400")}>{j.revisions || "—"}</td>
                   <td className={cn("px-3 py-2", muted)}>{STATUS[j.status] ?? j.status}</td>
                 </tr>
@@ -1236,10 +756,9 @@ function Skeleton() {
 /* ── exportação ── */
 const fmtDate = (lm: number | null) => (lm == null ? "" : fmt(lm).slice(4));
 function exportCsv(js: RJob[], name: (id: number | null) => string, label: string) {
-  const head = ["Código", "Job", "Cliente", "Editor", "Gestor", "Criado", "1ª versão", "Prazo original", "No prazo", "Até 1ª versão (h)", "Horas feitas", "Horas estimadas", "Alterações", "Prazo empurrado", "Travamentos", "Situação"];
-  const h = (m: number | null) => (m == null ? "" : (m / 60).toFixed(1).replace(".", ","));
-  const rows = js.map(j => [j.code, j.title, j.client ?? "", name(j.editorId), name(j.coordId), fmtDate(j.created), fmtDate(j.firstReview), fmtDate(j.dueOriginal),
-    onTime(j) == null ? "" : onTime(j) ? "sim" : "não", h(j.leadFirst), h(j.worked), h(j.est), j.revisions, j.reneg, j.blocks, STATUS[j.status] ?? j.status]);
+  const head = ["Código", "Job", "Cliente", "Editor", "Gestor", "Criado", "1ª versão", "Prazo", "No prazo", "Alterações", "Prazo mudou", "Travamentos", "Situação"];
+  const rows = js.map(j => [j.code, j.title, j.client ?? "", name(j.editorId), name(j.coordId), fmtDate(j.created), fmtDate(j.firstReview), fmtDate(j.due),
+    onTime(j) == null ? "" : onTime(j) ? "sim" : "não", j.revisions, j.dueChanged, j.blocks, STATUS[j.status] ?? j.status]);
   const csv = [head, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n");
   const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" }));
   const a = document.createElement("a"); a.href = url; a.download = `relatorio-${label.replace(/[^\w-]+/g, "-").toLowerCase()}.csv`; a.click();
@@ -1247,18 +766,18 @@ function exportCsv(js: RJob[], name: (id: number | null) => string, label: strin
 }
 function openDocument(js: RJob[], m: M, name: (id: number | null) => string, period: string, who: string) {
   const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const rows = js.map(j => `<tr><td class="c">${j.code}</td><td>${esc(j.title)}</td><td>${esc(j.client ?? "—")}</td><td>${esc(name(j.editorId))}</td><td>${fmtDate(j.firstReview)}</td><td>${fmtDate(j.dueOriginal)}</td><td class="${onTime(j) === false ? "bad" : ""}">${onTime(j) == null ? "—" : onTime(j) ? "sim" : "não"}</td><td class="r">${j.leadFirst == null ? "—" : fmtH(j.leadFirst)}</td><td class="r">${fmtH(j.worked)} / ${fmtH(j.est)}</td><td class="r">${j.revisions || "—"}</td></tr>`).join("");
+  const rows = js.map(j => `<tr><td class="c">${j.code}</td><td>${esc(j.title)}</td><td>${esc(j.client ?? "—")}</td><td>${esc(name(j.editorId))}</td><td>${fmtDate(j.firstReview)}</td><td>${fmtDate(j.due)}</td><td class="${onTime(j) === false ? "bad" : ""}">${onTime(j) == null ? "—" : onTime(j) ? "sim" : "não"}</td><td class="r">${j.revisions || "—"}</td></tr>`).join("");
   const stat = (l: string, v: string) => `<div class="s"><div class="l">${l}</div><div class="v">${v}</div></div>`;
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório · ${esc(period)}</title><style>
     *{box-sizing:border-box;margin:0;padding:0}body{font:11px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:#111;padding:28px 32px}
-    h1{font-size:20px;letter-spacing:-.2px}.sub{color:#666;margin:2px 0 16px}.g{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:18px}
+    h1{font-size:20px;letter-spacing:-.2px}.sub{color:#666;margin:2px 0 16px}.g{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:18px}
     .s{border:1px solid #e5e5e5;border-radius:8px;padding:9px 11px}.l{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#888}.v{font-size:19px;font-weight:700}
     table{width:100%;border-collapse:collapse}th{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#666;text-align:left;padding:6px;border-bottom:1px solid #ddd}
     td{padding:5px 6px;border-bottom:1px solid #f0f0f0}.c{font-family:monospace;color:#666}.r{text-align:right}.bad{color:#e11d48;font-weight:600}
     @media print{@page{size:A4 landscape;margin:1.2cm}body{padding:0}tr{page-break-inside:avoid}}</style></head><body>
     <h1>Relatório de entregas</h1><p class="sub">${esc(period)} · ${js.length} jobs entregues · gerado por ${esc(who)} em ${new Date().toLocaleDateString("pt-BR")}</p>
-    <div class="g">${stat("Entregues", String(m.n))}${stat("No prazo", m.onTime == null ? "—" : m.onTime + "%")}${stat("Até a 1ª versão", m.lead == null ? "—" : fmtH(m.lead))}${stat("Horas editadas", fmtH(m.hours))}${stat("Estimativa", m.est == null ? "—" : m.est + "%")}${stat("Alterações/job", m.revisions == null ? "—" : m.revisions.toFixed(1).replace(".", ","))}</div>
-    <table><thead><tr><th>#</th><th>Job</th><th>Cliente</th><th>Editor</th><th>1ª versão</th><th>Prazo</th><th>No prazo</th><th class="r">Levou</th><th class="r">Horas</th><th class="r">Alter.</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="g">${stat("Entregues", String(m.n))}${stat("No prazo", m.onTime == null ? "—" : m.onTime + "%")}${stat("Alterações/job", m.revisions == null ? "—" : m.revisions.toFixed(1).replace(".", ","))}</div>
+    <table><thead><tr><th>#</th><th>Job</th><th>Cliente</th><th>Editor</th><th>1ª versão</th><th>Prazo</th><th>No prazo</th><th class="r">Alter.</th></tr></thead><tbody>${rows}</tbody></table>
     <script>setTimeout(()=>print(),300)</script></body></html>`;
   const w = window.open("", "_blank");
   if (!w) { toast.error("O navegador bloqueou a nova aba. Permita pop-ups para este site."); return; }

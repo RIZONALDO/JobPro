@@ -30,6 +30,8 @@ export {
 
   /* setas e cursores */
   ArrowDown, ArrowUp, ArrowLeft, ArrowRight,
+  DotsSixVertical as GripVertical,       // arrastar na fila
+  ClockCounterClockwise as History,      // histórico da fila
   ArrowDownRight, ArrowUpRight,
   ArrowSquareOut as ExternalLink,
   ArrowsClockwise as RefreshCw,

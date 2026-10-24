@@ -1,14 +1,14 @@
 /**
  * Peças da barra superior:
  *  - NowChip: o "agora" de cada pessoa. Editor vê o job em edição (ou o próximo); gestor e supervisão veem
- *    quantas coisas esperam por eles (pedidos, travados, estimativas contestadas, jobs sem editor). Leva para a Fila.
+ *    quantas coisas esperam por eles (pedidos, travados, jobs sem editor). Leva para a Fila.
  *  - QuickCreate: atalhos de criação (novo job, recado no mural, ausência), conforme o perfil.
  */
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { useBoard, fmtH } from "@/lib/fila";
+import { useBoard, inQueue } from "@/lib/fila";
 import { JobForm } from "@/components/fila/JobForm";
 import { LiveDot } from "@/components/fila/ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -27,13 +27,12 @@ export function NowChip() {
   if (user.role === "editor") {
     const mine = board.tasks.filter(t => t.editorId === me);
     const playing = mine.find(t => t.playing);
-    const next = mine.filter(t => t.slot).sort((a, b) => a.slot!.pos - b.slot!.pos)[0];
+    const next = mine.filter(inQueue).sort((a, b) => (a.pos ?? 99) - (b.pos ?? 99))[0];
     if (playing) return (
       <button type="button" onClick={go} title={`Em edição: ${playing.title}`} className={cn(chip, "border-emerald-500/30 bg-emerald-500/[0.06] text-emerald-700 dark:text-emerald-300")}>
         <LiveDot className="h-2 w-2 shrink-0" />
         <span className="max-sm:hidden">Editando</span>
         <b className="min-w-0 max-w-[220px] truncate font-semibold">{playing.title}</b>
-        <span className="shrink-0 tabular-nums opacity-80">{fmtH(playing.worked)}</span>
       </button>
     );
     return (
@@ -45,13 +44,11 @@ export function NowChip() {
   }
 
   // gestor e supervisão: o que espera por eles
-  const reqs = board.requests.filter(r => r.approverId === me || (isSup && r.escalated && r.approverId !== me)).length;
   const own = (coordId: number | null) => isSup || coordId === me;
   const blocked = board.tasks.filter(t => t.status === "paused" && own(t.coordId)).length;
-  const disputes = board.tasks.filter(t => t.estDisputeOpen && t.coordId === me).length;
   const noEditor = board.tasks.filter(t => !t.editorId && t.status === "pending" && !t.hold && own(t.coordId)).length;
-  const n = reqs + blocked + disputes + noEditor;
-  const parts = [reqs && `${reqs} pedido${reqs > 1 ? "s" : ""}`, blocked && `${blocked} travado${blocked > 1 ? "s" : ""}`, disputes && `${disputes} estimativa${disputes > 1 ? "s" : ""} contestada${disputes > 1 ? "s" : ""}`, noEditor && `${noEditor} sem editor`].filter(Boolean).join(" · ");
+  const n = blocked + noEditor;
+  const parts = [blocked && `${blocked} travado${blocked > 1 ? "s" : ""}`, noEditor && `${noEditor} sem editor`].filter(Boolean).join(" · ");
   if (!n) return (
     <button type="button" onClick={go} className={cn(chip, "text-[hsl(var(--muted-foreground))]")} title="Nada esperando você na fila">
       <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" /><span className="max-sm:hidden">Tudo em dia</span>

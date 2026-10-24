@@ -105,7 +105,6 @@ router.get("/users/:id/tasks", requireCoordinator, async (req, res): Promise<voi
       title: tasksTable.title,
       status: tasksTable.status,
       priority: tasksTable.priority,
-      estMinutes: tasksTable.estMinutes,
       dueDate: tasksTable.dueDate,
       client: tasksTable.client,
       color: tasksTable.color,

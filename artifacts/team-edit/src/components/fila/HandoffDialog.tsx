@@ -2,16 +2,15 @@
  * Redistribuir os jobs de quem sai (inativação) ou fica fora (férias, afastamento).
  * Abre de qualquer lugar com `openHandoff(...)`; o <HandoffHost/> fica montado no Shell.
  *
- * A prévia vem do servidor (/queue/handoff/:id/preview): sugere um destino para cada job,
- * simulando tudo junto (cada job conta com os anteriores já colocados). Ao trocar um destino,
- * a prévia é refeita e as sugestões dos outros jobs se ajustam.
+ * A prévia vem do servidor (/queue/handoff/:id/preview): sugere para cada job o editor com menos jobs na fila,
+ * contando os já redistribuídos. Ao trocar um destino, a prévia é refeita e as sugestões dos outros se ajustam.
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { apiPost, apiPut } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { roleName } from "@/lib/roles";
-import { fmt, fmtH } from "@/lib/fila";
+import { fmt } from "@/lib/fila";
 import { Button } from "@/components/ui/button";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -33,19 +32,13 @@ export function HandoffHost() {
 
 /* ── dados da prévia ── */
 type Mode = "end" | "prio" | "gestor" | "keep" | "swap";
-interface Opt { editorId: number; end: number; fits: boolean; full: boolean; prioEnd: number; prioFits: boolean; prioApproverId: number | null }
 interface Job {
   id: number; code: string; title: string; client: string | null; status: string; coordId: number | null; editorId: number | null;
-  est: number; worked: number; playing: boolean; promised: number | null;
+  playing: boolean; promised: number | null;
 }
-interface EditJob extends Job {
-  inQueue: boolean; mode: Mode; to: number | null;
-  before: { end: number; late: boolean } | null;
-  result: { end: number; late: boolean; lateBy: number | null } | null;
-  newPromised: number | null; approverId: number | null; options: Opt[];
-}
+interface EditJob extends Job { inQueue: boolean; mode: Mode; to: number | null; late: boolean }
 interface Preview {
-  now: number; limit: number;
+  now: number; returnsAt: number | null;
   person: { id: number; name: string; role: string; status: string; jobTitle: string | null; avatarUrl: string | null };
   editors: { id: number; name: string; jobTitle: string | null; avatarUrl: string | null; before: number; after: number; offToday: string | null }[];
   owners: { id: number; name: string; role: string; jobTitle: string | null; avatarUrl: string | null }[];
@@ -157,7 +150,7 @@ function HandoffDialog({ req, onClose }: { req: HandoffRequest | null; onClose: 
             <>
               {pv.editing.length > 0 && (
                 <section className="px-5 pt-4">
-                  <SectionHead title="Jobs que edita" sub="Sugestão: quem entrega mais cedo dentro do prazo, contando a 1h de troca de mãos." />
+                  <SectionHead title="Jobs que edita" sub={`Sugestão: o editor com menos jobs na fila em que o prazo cabe na ordem.${pv.returnsAt != null ? ` Jobs com prazo depois da volta (${fmt(pv.returnsAt).slice(0, 9)}) ficam com ${first(pv.person.name)}.` : ""}`} />
                   <ul className="divide-y rounded-lg border">
                     {pv.editing.map(j => <EditRow key={j.id} j={j} pv={pv} gone={!!gone} name={name}
                       touched={choices.has(j.id)} onChange={c => setChoice(j, c)} />)}
@@ -224,7 +217,7 @@ function JobInfo({ j, pv, name }: { j: Job; pv: Preview; name: (id: number | nul
         <span className="truncate">{j.title}</span>
       </p>
       <p className="mt-0.5 text-xs leading-snug text-[hsl(var(--muted-foreground))]">
-        {[STATUS[j.status] ?? j.status, j.client, `${fmtH(Math.max(0, j.est - j.worked))} restantes`,
+        {[STATUS[j.status] ?? j.status, j.client,
           j.coordId !== pv.person.id && name(j.coordId) ? `de ${first(name(j.coordId))}` : ""].filter(Boolean).join(" · ")}
         {j.promised != null && <> · prazo <span className={cn(late && "text-rose-600 dark:text-rose-400")}>{fmt(j.promised)}</span></>}
       </p>
@@ -236,8 +229,6 @@ function EditRow({ j, pv, gone, name, touched, onChange }: {
   j: EditJob; pv: Preview; gone: boolean; name: (id: number | null) => string | undefined;
   touched: boolean; onChange: (c: Choice) => void;
 }) {
-  const opt = j.options.find(o => o.editorId === j.to);
-  const canPrio = j.inQueue && opt && j.promised != null && opt.prioEnd < opt.end;
   const value = enc({ editorId: j.to, mode: j.mode });
 
   return (
@@ -247,34 +238,17 @@ function EditRow({ j, pv, gone, name, touched, onChange }: {
         <Select value={value} onValueChange={v => onChange(dec(v, j))}>
           <SelectTrigger className="h-9" aria-label={`Destino de ${j.title}`}><SelectValue /></SelectTrigger>
           <SelectContent>
-            {pv.editors.map(e => {
-              const o = j.options.find(x => x.editorId === e.id);
-              return (
-                <SelectItem key={e.id} value={`ed:${e.id}`}>
-                  {e.name}
-                  {o && <span className="text-[hsl(var(--muted-foreground))]"> · {o.fits ? "no prazo" : o.prioFits ? (o.prioApproverId ? "no prazo, com aprovação" : "no prazo se for na frente") : "atrasa"}{o.full ? " · agenda cheia" : ""}</span>}
-                  {!j.inQueue && <span className="text-[hsl(var(--muted-foreground))]"> · {fmtH(e.after)} na fila</span>}
-                </SelectItem>
-              );
-            })}
+            {pv.editors.map(e => (
+              <SelectItem key={e.id} value={`ed:${e.id}`}>
+                {e.name}<span className="text-[hsl(var(--muted-foreground))]"> · {e.before} na fila{e.offToday ? ` · ${e.offToday}` : ""}</span>
+              </SelectItem>
+            ))}
             {j.inQueue && <SelectItem value="gestor">Supervisão decide</SelectItem>}
             {!j.inQueue && gone && <SelectItem value="none">Sem editor por enquanto</SelectItem>}
             <SelectItem value="keep">{gone ? "Deixar parado" : `Fica com ${first(pv.person.name)}`}</SelectItem>
           </SelectContent>
         </Select>
 
-        {canPrio && (
-          <div role="radiogroup" aria-label="Posição na fila" className="grid grid-cols-2 rounded-md border p-0.5 text-[11px] font-medium">
-            {(["end", "prio"] as const).map(m => (
-              <button key={m} type="button" role="radio" aria-checked={j.mode === m}
-                onClick={() => onChange({ editorId: j.to, mode: m })}
-                className={cn("rounded px-2 py-1 transition-colors",
-                  j.mode === m ? "bg-[hsl(var(--foreground)/0.08)] text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]")}>
-                {m === "end" ? "Fim da fila" : "Na frente"}
-              </button>
-            ))}
-          </div>
-        )}
         <Outcome j={j} gone={gone} name={name} touched={touched} />
       </div>
     </li>
@@ -287,13 +261,9 @@ function Outcome({ j, gone, name, touched }: { j: EditJob; gone: boolean; name: 
   if (j.mode === "gestor") text = "Fica sem editor; a supervisão é avisada.";
   else if (j.mode === "keep") {
     if (gone) { text = "Fica parado, sem ninguém para fazer."; tone = "bad"; }
-    else if (!j.inQueue) text = "Continua como está.";
-    else if (j.result) { text = <>Pronto {fmt(j.result.end)}{j.result.late ? `, atrasa ${fmtH(j.result.lateBy)}` : ""}</>; if (j.result.late) tone = "bad"; }
-    else text = "Continua como está.";
+    else text = "Continua com a pessoa, na mesma posição.";
   } else if (j.mode === "swap") text = j.to ? `Volta para a fila de ${first(name(j.to))} quando reabrir.` : "Fica sem editor.";
-  else if (j.approverId) { text = `Vira pedido: ${first(name(j.approverId))} precisa aprovar.`; tone = "warn"; }
-  else if (j.newPromised != null) { text = <>Prazo passa para {fmt(j.newPromised)}: avise o cliente.</>; tone = "warn"; }
-  else if (j.result) text = <>Pronto {fmt(j.result.end)} · no prazo</>;
+  else text = <>Entra na fila de {first(name(j.to))} pelo prazo{j.late ? <span className="text-rose-600 dark:text-rose-400"> · prazo já vencido</span> : ""}</>;
 
   return (
     <p className={cn("flex items-center gap-1 text-[11.5px] leading-snug text-[hsl(var(--muted-foreground))]",
@@ -304,28 +274,15 @@ function Outcome({ j, gone, name, touched }: { j: EditJob; gone: boolean; name: 
   );
 }
 
-/** Carga de cada editor antes e depois. */
+/** Jobs na fila de cada editor, antes e depois. */
 function Load({ pv }: { pv: Preview }) {
   return (
-    <div className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
-      {pv.editors.map(e => {
-        const pct = (m: number) => `${Math.min(100, (m / pv.limit) * 100)}%`;
-        const over = e.after > pv.limit;
-        return (
-          <div key={e.id} className="min-w-0">
-            <div className="flex items-baseline justify-between gap-2 text-xs">
-              <span className="truncate font-medium">{e.name}{e.offToday ? <span className="font-normal text-[hsl(var(--muted-foreground))]"> · {e.offToday}</span> : ""}</span>
-              <span className={cn("shrink-0 tabular-nums text-[hsl(var(--muted-foreground))]", over && "text-rose-600 dark:text-rose-400")}>
-                {fmtH(e.before)}{e.after !== e.before && <> → {fmtH(e.after)}</>} / {fmtH(pv.limit)}
-              </span>
-            </div>
-            <div className="relative mt-1 h-1.5 overflow-hidden rounded-full bg-[hsl(var(--muted))]">
-              <div className="absolute inset-y-0 left-0 rounded-full bg-[hsl(var(--foreground)/0.25)]" style={{ width: pct(e.after) }} />
-              <div className="absolute inset-y-0 left-0 rounded-full bg-[hsl(var(--foreground)/0.6)]" style={{ width: pct(Math.min(e.before, e.after)) }} />
-            </div>
-          </div>
-        );
-      })}
+    <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs">
+      {pv.editors.map(e => (
+        <span key={e.id} className="text-[hsl(var(--muted-foreground))]">
+          <span className="font-medium text-[hsl(var(--foreground))]">{e.name}</span> {e.before}{e.after !== e.before && <> → {e.after}</>} na fila
+        </span>
+      ))}
     </div>
   );
 }

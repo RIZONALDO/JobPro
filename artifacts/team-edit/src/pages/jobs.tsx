@@ -13,7 +13,7 @@ import { usePageTitle } from "@/lib/use-page-title";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
-import { deadlineState, fmt, fmtDay, fmtH, toLm, useBoard, type QTask } from "@/lib/fila";
+import { deadlineState, fmt, fmtDay, toLm, useBoard, type QTask } from "@/lib/fila";
 import { Btn, Chip, HeadAction, LiveDot } from "@/components/fila/ui";
 import { JobForm, type JobFormMode } from "@/components/fila/JobForm";
 import { FollowersStack } from "@/components/fila/followers";
@@ -31,7 +31,7 @@ import { AskDialog, STAGES, ago, clientColor, stageOf, type Ask, type StageKey }
 interface Person { id: number; name: string; avatarUrl?: string | null }
 interface Job {
   id: number; taskCode?: string; title: string; status: string; client: string | null; color: string;
-  estMinutes: number | null; workedMinutes: number | null; dueDate: string | null; folderUrl: string | null;
+  dueDate: string | null; folderUrl: string | null;
   revisionCount: number; reviewedAt: string | null; closedAt: string | null; assignee: Person | null; coordinator: Person | null;
   isOwn: boolean; isFollowing: boolean; followerIds: number[]; updatedAt: string;
 }
@@ -159,7 +159,6 @@ function Jobs() {
     for (const j of scoped) for (const f of flagsOf(j)) c[f]++;
     return c;
   }, [scoped, flagsOf]);
-  const hoursLeft = useMemo(() => scoped.reduce((s, j) => s + Math.max(0, (j.estMinutes ?? 0) - (live.get(j.id)?.worked ?? j.workedMinutes ?? 0)), 0), [scoped, live]);
 
   const shown = useMemo(() => {
     const list = scoped.filter(j =>
@@ -225,7 +224,7 @@ function Jobs() {
 
       {/* resumo do que está em aberto: pipeline + atenção */}
       {isOpenScope && jobs != null && (
-        <Overview total={scoped.length} hoursLeft={hoursLeft} phaseCounts={phaseCounts} phase={phase} setPhase={setPhase}
+        <Overview total={scoped.length} phaseCounts={phaseCounts} phase={phase} setPhase={setPhase}
           flagCounts={flagCounts} flag={flag} setFlag={f => setFlag(x => (x === f ? null : f))} />
       )}
 
@@ -291,8 +290,8 @@ function GroupMenu({ value, choices, onChange }: { value: GroupBy; choices: Grou
 
 /* ── resumo: barra do pipeline (clica para filtrar a fase) + o que precisa de atenção ── */
 const FLAGS: { k: Flag; label: string; icon: typeof Timer; tone: "bad" | "warn" | "acc"; hint: string }[] = [
-  { k: "late", label: "vão atrasar", icon: Timer, tone: "bad", hint: "A previsão da fila passa do prazo do cliente" },
-  { k: "today", label: "vencem hoje", icon: CalendarDays, tone: "acc", hint: "Prazo do cliente é hoje" },
+  { k: "late", label: "atrasados", icon: Timer, tone: "bad", hint: "O prazo de entrega passou e o job não foi entregue" },
+  { k: "today", label: "vencem hoje", icon: CalendarDays, tone: "acc", hint: "O prazo de entrega é hoje" },
   { k: "noEditor", label: "sem editor", icon: UserX, tone: "warn", hint: "Esperando a supervisão escolher quem edita" },
   { k: "waitClient", label: "cliente sem resposta +2 dias", icon: Hourglass, tone: "warn", hint: "Enviado ao cliente há mais de 2 dias" },
 ];
@@ -302,8 +301,8 @@ const FLAG_TONE = {
   acc: { on: "border-[hsl(var(--primary)/0.5)] bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))]", icon: "text-[hsl(var(--primary))]" },
 };
 
-function Overview({ total, hoursLeft, phaseCounts, phase, setPhase, flagCounts, flag, setFlag }: {
-  total: number; hoursLeft: number; phaseCounts: Record<string, number>; phase: StageKey | null; setPhase: (p: StageKey | null) => void;
+function Overview({ total, phaseCounts, phase, setPhase, flagCounts, flag, setFlag }: {
+  total: number; phaseCounts: Record<string, number>; phase: StageKey | null; setPhase: (p: StageKey | null) => void;
   flagCounts: Record<Flag, number>; flag: Flag | null; setFlag: (f: Flag) => void;
 }) {
   const attention = FLAGS.filter(f => flagCounts[f.k] > 0 || flag === f.k);
@@ -311,7 +310,6 @@ function Overview({ total, hoursLeft, phaseCounts, phase, setPhase, flagCounts, 
     <section className="flex flex-col gap-3 rounded-2xl border bg-[hsl(var(--card))] p-3.5 sm:p-4">
       <div className="flex items-baseline justify-between gap-3">
         <p className="text-[13px]"><b className="text-[22px] font-bold tabular-nums leading-none">{total}</b> <span className={muted}>job{total === 1 ? "" : "s"} em aberto</span></p>
-        {hoursLeft > 0 && <p className={cn("text-[13px]", muted)}><b className="text-[hsl(var(--foreground))]">{fmtH(hoursLeft)}</b> de edição pela frente</p>}
       </div>
       {total > 0 && (
         <div className="flex h-2.5 overflow-hidden rounded-full bg-[hsl(var(--muted))]" role="img" aria-label="Jobs por fase">
@@ -406,9 +404,8 @@ function Groups({ jobs, group, live, now, people, flagsOf, canAct, onOpen, onFor
 }) {
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const [more, setMore] = useState<Record<string, number>>({});
-  const left = (list: Job[]) => list.reduce((s, j) => s + Math.max(0, (j.estMinutes ?? 0) - (live.get(j.id)?.worked ?? j.workedMinutes ?? 0)), 0);
   const lateN = (list: Job[]) => list.filter(j => flagsOf(j).includes("late")).length;
-  const openMeta = (list: Job[]) => { const h = left(list), l = lateN(list); return [h ? `${fmtH(h)} a fazer` : null, l ? <span key="l" className="text-rose-500">{l} vão atrasar</span> : null].filter(Boolean); };
+  const openMeta = (list: Job[]) => { const l = lateN(list); return [l ? <span key="l" className="text-rose-500">{l} atrasado{l > 1 ? "s" : ""}</span> : null].filter(Boolean); };
 
   const groups = useMemo<GroupDef[]>(() => {
     const by = <K,>(key: (j: Job) => K) => { const m = new Map<K, Job[]>(); jobs.forEach(j => { const k = key(j); m.set(k, [...(m.get(k) ?? []), j]); }); return m; };
@@ -452,7 +449,7 @@ function Groups({ jobs, group, live, now, people, flagsOf, canAct, onOpen, onFor
   }, [jobs, group, now, live]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = (k: string) => setClosed(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
-  const head = "hidden grid-cols-[minmax(0,1fr)_132px_170px_120px_200px_36px] items-center gap-4 px-4 lg:grid";
+  const head = "hidden grid-cols-[minmax(0,1fr)_132px_170px_110px_200px_36px] items-center gap-4 px-4 lg:grid";
 
   return (
     <div className="flex flex-col gap-3">
@@ -472,7 +469,7 @@ function Groups({ jobs, group, live, now, people, flagsOf, canAct, onOpen, onFor
             )}
             {!isClosed && <>
               <div className={cn(head, "border-y py-1.5 text-[11px] font-semibold uppercase tracking-wider", muted, g.title == null && "border-t-0")}>
-                <span>Job</span><span>Fase</span><span>Editor · responsável</span><span>Horas</span><span>Prazo do cliente</span><span />
+                <span>Job</span><span>Fase</span><span>Editor · responsável</span><span>Fila</span><span>Prazo de entrega</span><span />
               </div>
               <ul className={cn(g.title != null && "max-lg:border-t")}>
                 {g.items.slice(0, lim).map(j => (
@@ -503,7 +500,6 @@ function Row({ j, t, now, people, flags, canAct, hidePhase, hideEditor, onOpen, 
   onOpen: (id: number) => void; onForm: (id: number, mode: JobFormMode) => void; onAsk: (a: Ask) => void; reload: () => void;
 }) {
   const s = stageOf(j.status);
-  const est = j.estMinutes ?? 0, worked = t?.worked ?? j.workedMinutes ?? 0;
   const followers = j.followerIds.map(id => people.get(id)).filter(Boolean) as { id: number; name: string; avatarUrl: string | null }[];
   const when = whenOf(j, t, now);
   const phase = <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[12.5px] font-medium"><i className="h-2 w-2 rounded-full" style={{ background: STAGE_COLOR[s.k] ?? (s.k === "entregue" ? "#10b981" : "#a1a1aa") }} />{s.label}</span>;
@@ -536,7 +532,7 @@ function Row({ j, t, now, people, flags, canAct, hidePhase, hideEditor, onOpen, 
         <div className="mt-0.5 flex items-center justify-between gap-3">
           <span className="flex min-w-0 items-center gap-1.5 text-[12.5px]">
             {j.assignee ? <><AvatarDisplay name={j.assignee.name} avatarUrl={j.assignee.avatarUrl ?? null} size={20} /><span className="truncate">{j.assignee.name.split(" ")[0]}</span></> : <span className={muted}>sem editor</span>}
-            {est > 0 && s.open && <span className={cn("shrink-0", muted)}>· {worked > 0 ? `${fmtH(worked)}/${fmtH(est)}` : fmtH(est)}</span>}
+            {t?.pos != null && <span className={cn("shrink-0", muted)}>· {t.pos + 1}º na fila</span>}
           </span>
           <span className="flex shrink-0 flex-col items-end text-right">
             <span className={cn("text-[12.5px] font-semibold", when.tone === "bad" && "text-rose-600 dark:text-rose-400")}>{when.main}</span>
@@ -547,7 +543,7 @@ function Row({ j, t, now, people, flags, canAct, hidePhase, hideEditor, onOpen, 
 
       {/* desktop */}
       <div role="link" tabIndex={0} onClick={open} onKeyDown={e => e.key === "Enter" && open()}
-        className="hidden cursor-pointer grid-cols-[minmax(0,1fr)_132px_170px_120px_200px_36px] items-center gap-4 px-4 py-2.5 hover:bg-[hsl(var(--accent)/0.5)] lg:grid">
+        className="hidden cursor-pointer grid-cols-[minmax(0,1fr)_132px_170px_110px_200px_36px] items-center gap-4 px-4 py-2.5 hover:bg-[hsl(var(--accent)/0.5)] lg:grid">
         <div className="min-w-0">
           <p className="flex min-w-0 items-center gap-2"><span className={cn("shrink-0 font-mono text-[11px]", muted)}>{j.taskCode}</span><b className="truncate text-[13.5px] font-semibold">{j.title}</b></p>
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-xs">{j.client && <span className={cn("font-medium", muted)}>{j.client}</span>}{tags}</div>
@@ -560,7 +556,7 @@ function Row({ j, t, now, people, flags, canAct, hidePhase, hideEditor, onOpen, 
             <div className={cn("flex min-w-0 items-center gap-1.5 truncate", muted)}><span className="truncate" title={j.coordinator ? `Responsável pelo job: ${j.coordinator.name}` : undefined}>{j.coordinator ? `resp. ${j.coordinator.name.split(" ")[0]}` : "—"}</span>{followers.length > 0 && <FollowersStack people={followers} />}</div>
           </div>
         </div>
-        <Hours est={est} worked={worked} open={s.open} />
+        <span className={cn("text-xs", muted)}>{t?.playing ? "em edição" : t?.pos != null ? `${t.pos + 1}º na fila` : "—"}</span>
         <div className="min-w-0 text-xs">
           <p className={cn("truncate text-[13px] font-semibold", when.tone === "bad" && "text-rose-600 dark:text-rose-400")}>{when.main}</p>
           {when.chip ? <Chip tone={when.chip.tone} className="mt-0.5 text-[10.5px]">{when.chip.label}</Chip> : when.sub && <p className={cn("truncate", when.subTone ?? muted)}>{when.sub}</p>}
@@ -568,18 +564,6 @@ function Row({ j, t, now, people, flags, canAct, hidePhase, hideEditor, onOpen, 
         {actions}
       </div>
     </li>
-  );
-}
-
-function Hours({ est, worked, open }: { est: number; worked: number; open: boolean }) {
-  if (!est) return <span className={cn("text-xs", muted)}>—</span>;
-  if (!open || !worked) return <span className={cn("text-xs", muted)}>{worked ? `${fmtH(worked)} de ${fmtH(est)}` : `${fmtH(est)} estimadas`}</span>;
-  const pct = Math.min(100, Math.round((worked / est) * 100)), over = worked > est;
-  return (
-    <div className="min-w-0 text-xs" title={`${fmtH(worked)} feitas de ${fmtH(est)}`}>
-      <p className="flex justify-between gap-1"><b className={cn("font-semibold", over && "text-rose-500")}>{fmtH(worked)}</b><span className={muted}>de {fmtH(est)}</span></p>
-      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[hsl(var(--muted))]"><i className={cn("block h-full rounded-full", over ? "bg-rose-500" : "bg-[hsl(var(--primary))]")} style={{ width: `${pct}%` }} /></div>
-    </div>
   );
 }
 
@@ -603,7 +587,6 @@ function whenOf(j: Job, t: QTask | undefined, now: number): { main: string; sub?
   if (!t) return { main: dueTxt };
   const d = deadlineState(t, now);
   if (d.tone === "bad" || d.tone === "warn") return { main: dueTxt, tone: d.tone === "bad" && t.promised != null && t.promised <= now ? "bad" : undefined, chip: { label: d.label, tone: d.tone } };
-  if (t.slot) return { main: dueTxt, sub: `fica pronto ${relWhen(t.slot.end, now)}` };
   if (j.status === "paused") return { main: dueTxt, sub: "fora da fila até destravar" };
   if (!t.editorId) return { main: dueTxt, sub: "supervisão escolhendo editor" };
   return { main: dueTxt };
@@ -614,7 +597,7 @@ function Actions({ j, t, canAct, onOpen, onForm, onAsk, reload }: {
   j: Job; t?: QTask; canAct: boolean; onOpen: (id: number) => void; onForm: (id: number, mode: JobFormMode) => void; onAsk: (a: Ask) => void; reload: () => void;
 }) {
   const s = stageOf(j.status).k;
-  const call = async (p: Promise<unknown>, ok: string) => { try { await p; toast.success(ok); reload(); } catch (e) { toast.error((e as Error).message); } };
+  const call = async (p: Promise<unknown>, ok: string) => { try { const r = await p as { message?: string } | undefined; toast.success(r?.message ?? ok); reload(); } catch (e) { toast.error((e as Error).message); } };
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -629,7 +612,7 @@ function Actions({ j, t, canAct, onOpen, onForm, onAsk, reload }: {
           {s === "rascunho" && <DropdownMenuItem onClick={() => onForm(j.id, "edit")}>Completar e colocar na fila</DropdownMenuItem>}
           {["fila", "edicao", "travado"].includes(s) && <DropdownMenuItem onClick={() => onForm(j.id, "edit")}>Editar job</DropdownMenuItem>}
           {["fila", "edicao", "travado"].includes(s) && <DropdownMenuItem onClick={() => onForm(j.id, "move")}>Passar para outro editor</DropdownMenuItem>}
-          {s === "travado" && <DropdownMenuItem onClick={() => call(apiPost(`/api/queue/tasks/${j.id}/unblock`, {}), "Destravado: volta depois do job atual")}>Destravar</DropdownMenuItem>}
+          {s === "travado" && <DropdownMenuItem onClick={() => call(apiPost(`/api/queue/tasks/${j.id}/unblock`, {}), "Destravado")}>Destravar</DropdownMenuItem>}
           {s === "travado" && <DropdownMenuItem onClick={() => onAsk({ kind: "archive", job: j })}>Encerrar…</DropdownMenuItem>}
           {s === "cliente" && <>
             <DropdownMenuItem onClick={() => call(apiPost(`/api/queue/tasks/${j.id}/client-ok`, {}), "Job entregue")}>Cliente aprovou</DropdownMenuItem>

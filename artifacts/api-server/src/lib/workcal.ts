@@ -1,25 +1,20 @@
 /**
- * Calendário de trabalho (CLT) da fila em horas.
- *
- * Todo o cálculo usa "minutos locais": minutos desde 1970-01-01 00:00 no horário de Brasília
+ * Datas da fila em "minutos locais": minutos desde 1970-01-01 00:00 no horário de Brasília
  * (UTC−3, sem horário de verão desde 2019). Assim um dia é sempre 1440 minutos e
  * `Math.floor(t / 1440)` é o dia local, sem depender do fuso do servidor.
  *
  * Expediente: seg–sex 08:30–12:00 e 14:00–18:30 (8h); sábado 08:30–13:00 (4h30); domingo, feriado
- * e ausência do editor (férias, folga, afastamento) não têm expediente.
+ * e ausência do editor (férias, folga, afastamento) não têm expediente. As horas de trabalho de cada job
+ * são consumidas só dentro dele (`consume`), e o cron só avisa dentro dele.
  */
 
 export const TZ_OFFSET = -180;
 export const DAY = 1440;
-/** Reserva quando as horas estimadas acabam e o editor ainda não disse quanto falta. */
-export const RESERVA = 60;
 
 export const SHIFTS: Record<"weekday" | "saturday", [number, number][]> = {
   weekday: [[510, 720], [840, 1110]],
   saturday: [[510, 780]],
 };
-/** Expediente de uma semana cheia: 5 × 8h + 4h30 = 44h30. */
-export const WEEK_MINUTES = 5 * 480 + 270;
 
 export interface Absence { start: string; end: string; label: string }
 export interface Calendar {
@@ -51,22 +46,8 @@ export function periods(cal: Calendar, day: number, editorId?: number | null): [
   return weekday(day) === 6 ? SHIFTS.saturday : SHIFTS.weekday;
 }
 
-export const dayCap = (cal: Calendar, day: number, editorId?: number | null): number =>
-  periods(cal, day, editorId).reduce((s, [a, b]) => s + b - a, 0);
-
-const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-const turnos = (ps: [number, number][]) => ps.map(([a, b]) => `${hm(a)}–${hm(b)}`).join(" e ");
-export const DUE_OFF_SHIFT = `O prazo precisa cair no expediente: seg a sex ${turnos(SHIFTS.weekday)}, sáb ${turnos(SHIFTS.saturday)}. Almoço, noite, domingo e feriado não valem.`;
-
-/** O prazo cai dentro do expediente? O fim do turno conta; almoço, noite, domingo e feriado não. */
-export function inShift(cal: Calendar, t: number): boolean {
-  const d = Math.floor(t / DAY), m = t - d * DAY;
-  return periods(cal, d).some(([a, b]) => m > a && m <= b);
-}
-
-/** Consome `m` minutos de expediente a partir de `t`. Devolve início real, fim e os trechos usados. */
-export function consume(cal: Calendar, t: number, m: number, editorId?: number | null): { start: number; end: number; segs: [number, number][] } {
-  const segs: [number, number][] = [];
+/** Consome `m` minutos de expediente a partir de `t`. Devolve o início real (1º minuto de expediente) e o fim. */
+export function consume(cal: Calendar, t: number, m: number, editorId?: number | null): { start: number; end: number } {
   let cur = t, start: number | null = null;
   for (let d = Math.floor(t / DAY), g = 0; g < 1500; d++, g++) {
     for (const [a, b] of periods(cal, d, editorId)) {
@@ -74,35 +55,24 @@ export function consume(cal: Calendar, t: number, m: number, editorId?: number |
       if (B <= cur) continue;
       const s = Math.max(A, cur);
       if (start === null) start = s;
-      if (m <= 0) return { start, end: start, segs };
+      if (m <= 0) return { start, end: start };
       const take = Math.min(B - s, m);
-      segs.push([s, s + take]); m -= take; cur = s + take;
-      if (m <= 0) return { start, end: cur, segs };
+      m -= take; cur = s + take;
+      if (m <= 0) return { start, end: cur };
     }
   }
-  return { start: start ?? t, end: cur, segs };
+  return { start: start ?? t, end: cur };
 }
 
-/** Minutos de expediente entre a e b. */
+/** Minutos de expediente entre `a` e `b` (0 se b ≤ a). */
 export function workBetween(cal: Calendar, a: number, b: number, editorId?: number | null): number {
-  if (b <= a) return 0;
-  let s = 0;
-  for (let d = Math.floor(a / DAY); d <= Math.floor(b / DAY); d++) {
-    for (const [p, q] of periods(cal, d, editorId)) s += Math.max(0, Math.min(d * DAY + q, b) - Math.max(d * DAY + p, a));
+  let m = 0;
+  for (let d = Math.floor(a / DAY); d * DAY < b; d++) {
+    for (const [x, y] of periods(cal, d, editorId)) m += Math.max(0, Math.min(b, d * DAY + y) - Math.max(a, d * DAY + x));
   }
-  return s;
+  return m;
 }
 
-/** Janela do dia: do começo do 1º turno ao fim do último (o almoço fica dentro). null = dia sem expediente. */
-export function dayWindow(cal: Calendar, d: number, editorId?: number | null): [number, number] | null {
-  const ps = periods(cal, d, editorId);
-  return ps.length ? [d * DAY + ps[0][0], d * DAY + ps[ps.length - 1][1]] : null;
-}
-/** Dentro da janela do dia (almoço conta como dentro)? Fora dela o ▶ não fica ligado. */
-export function inDayWindow(cal: Calendar, t: number, editorId?: number | null): boolean {
-  const w = dayWindow(cal, Math.floor(t / DAY), editorId);
-  return !!w && t >= w[0] && t < w[1];
-}
 /** Está dentro do expediente agora? */
 export function isWorking(cal: Calendar, t: number, editorId?: number | null): boolean {
   const d = Math.floor(t / DAY), m = t - d * DAY;

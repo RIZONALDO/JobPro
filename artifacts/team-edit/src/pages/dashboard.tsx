@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { ArrowDownRight, ArrowUpRight, Check, Plus, Settings2, Confetti, Settings, CheckCircle2, CalendarDays, Clock, Users, ListOrdered, Briefcase, Newspaper } from "@/lib/icons";
+import { ArrowDownRight, ArrowUpRight, Check, Plus, Settings2, Confetti, Settings, CheckCircle2, CalendarDays, Users, ListOrdered, Briefcase, Newspaper } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -9,24 +9,23 @@ import { usePageTitle } from "@/lib/use-page-title";
 import { useTaskModal } from "@/contexts/TaskModalContext";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { DAY, coordColor, deadlineState, fmt, fmtDay, fmtH, personName, toLm, useBoard, type Board, type QTask } from "@/lib/fila";
+import { DAY, coordColor, deadlineState, fmt, fmtDay, personName, toLm, useBoard, type Board, type QTask } from "@/lib/fila";
 import { Btn, Chip, HeadAction, LiveDot } from "@/components/fila/ui";
 import { Widget } from "@/components/ui/widget";
 import { JobForm } from "@/components/fila/JobForm";
-import { SignDueDialog } from "@/components/fila/SignDue";
 import { STAGES, ago, clientColor, stageOf } from "@/components/fila/job-shared";
 
 /**
  * Dashboard (gestor e supervisão), no espírito do Jira/Asana:
  * saudação com o resumo do dia → indicadores com tendência → "Para você" (o que pede ação) e agenda da semana
- * → linha do dia, disponibilidade da equipe e clientes (à esquerda); fases e atividade (à direita, preenchendo a coluna).
+ * → equipe e clientes (à esquerda); fases e atividade (à direita, preenchendo a coluna).
  * Cada bloco pode ser escondido em "Blocos". "Meus jobs" / "Equipe toda" muda o recorte de tudo.
  */
 
 interface Person { id: number; name: string; avatarUrl?: string | null }
 interface Job {
   id: number; taskCode?: string; title: string; status: string; client: string | null; dueDate: string | null;
-  estMinutes: number | null; workedMinutes: number | null; reviewedAt: string | null; closedAt: string | null;
+  reviewedAt: string | null; closedAt: string | null;
   createdAt: string; updatedAt: string; assignee: Person | null; coordinator: Person | null; isOwn: boolean; isFollowing: boolean;
 }
 interface Activity {
@@ -35,8 +34,8 @@ interface Activity {
 }
 
 const WIDGETS = [
-  ["kpis", "Indicadores"], ["foryou", "Para você"], ["week", "Agenda da semana"], ["day", "Hoje na ilha"],
-  ["phases", "Jobs por fase"], ["team", "Disponibilidade da equipe"], ["activity", "Atividade recente"], ["clients", "Clientes"],
+  ["kpis", "Indicadores"], ["foryou", "Para você"], ["week", "Agenda da semana"],
+  ["phases", "Jobs por fase"], ["team", "Equipe"], ["activity", "Atividade recente"], ["clients", "Clientes"],
 ] as const;
 type WidgetKey = typeof WIDGETS[number][0];
 
@@ -92,7 +91,6 @@ export default function Dashboard() {
       {/* grade em pares: os dois blocos de cada linha têm a mesma altura (sem buracos); sozinho, o bloco ocupa a linha */}
       <div className="grid gap-4 lg:grid-cols-12">
         {pair("foryou", <ForYou ctx={ctx} />, "team", <Team ctx={ctx} />)}
-        {show("day") && <div className="min-w-0 lg:col-span-12"><DayLine ctx={ctx} /></div>}
         {pair("week", <Week ctx={ctx} />, "phases", <Phases ctx={ctx} />)}
         {pair("clients", <Clients ctx={ctx} />, "activity", <Feed items={acts2} />, true)}
       </div>
@@ -125,7 +123,7 @@ function Greeting({ ctx, name, mine, setMine, hidden, setHidden, onNew }: {
   const dueToday = ctx.jobs.filter(j => OPEN.includes(j.status) && j.dueDate && Math.floor(toLm(j.dueDate) / DAY) === today).length;
   const bits = [
     actions ? <><b>{actions}</b> {actions > 1 ? "coisas esperam" : "coisa espera"} você</> : <>nada esperando você</>,
-    late ? <span className="text-rose-500"><b>{late}</b> {late > 1 ? "jobs vão" : "job vai"} atrasar</span> : <span className="text-emerald-600 dark:text-emerald-400">tudo no prazo</span>,
+    late ? <span className="text-rose-500"><b>{late}</b> {late > 1 ? "jobs atrasados" : "job atrasado"}</span> : <span className="text-emerald-600 dark:text-emerald-400">tudo no prazo</span>,
     <><b>{dueToday}</b> {dueToday === 1 ? "entrega" : "entregas"} hoje</>,
   ];
   return (
@@ -170,8 +168,7 @@ function Kpis({ ctx }: { ctx: Ctx }) {
   };
   const open = jobs.filter(j => OPEN.includes(j.status));
   const created7 = jobs.filter(j => Math.floor(toLm(j.createdAt) / DAY) > today - 7).length;
-  const late = ctx.tasks.filter(t => QUEUE.includes(t.status) && t.editorId && deadlineState(t, now).tone === "bad");
-  const overdue = late.filter(t => t.promised != null && t.promised <= now).length;
+  const late = ctx.tasks.filter(t => QUEUE.includes(t.status) && t.editorId && t.late);
   const client = ctx.tasks.filter(t => t.status === "review");
   const oldest = Math.max(0, ...client.map(t => (t.sentAt != null ? now - t.sentAt : 0)));
   const ot = onTime(30, 0), otPrev = onTime(60, 30);
@@ -183,7 +180,7 @@ function Kpis({ ctx }: { ctx: Ctx }) {
       <Kpi label="Entregues · 7 dias" value={d7} delta={d7 - d7prev} deltaTxt="vs 7 dias antes" spark={spark} />
       <Kpi label="No prazo · 30 dias" value={ot == null ? "—" : `${ot}%`} meter={ot ?? undefined} delta={ot != null && otPrev != null ? ot - otPrev : undefined} deltaUnit=" p.p." deltaTxt="vs 30 dias antes"
         tone={ot == null ? undefined : ot >= 85 ? "ok" : ot >= 65 ? "warn" : "bad"} foot={ot == null ? "sem entregas no período" : "1ª versão antes do prazo"} />
-      <Kpi label="Vão atrasar" value={late.length} tone={late.length ? "bad" : "ok"} foot={overdue ? <span className="text-rose-500">{overdue} com prazo já vencido</span> : "pela previsão da fila"} />
+      <Kpi label="Atrasados" value={late.length} tone={late.length ? "bad" : "ok"} foot={late.length ? "prazo vencido, ainda na fila" : "nenhum prazo vencido"} />
       <Kpi label="Com o cliente" value={client.length} tone={oldest > 2 * DAY ? "warn" : undefined} foot={!client.length ? "nada esperando aprovação" : oldest > 0 ? <>mais antigo há {ago(oldest)}</> : "esperando aprovação"} />
     </div>
   );
@@ -225,22 +222,16 @@ function Sparkline({ data }: { data: number[] }) {
 }
 
 /* ── para você ── */
-interface Need { key: string; tone: "bad" | "warn" | "acc" | "neu"; title: string; sub: React.ReactNode; taskId?: number; href?: string; cta: string; sign?: QTask }
+interface Need { key: string; tone: "bad" | "warn" | "acc" | "neu"; title: string; sub: React.ReactNode; taskId?: number; href?: string; cta: string }
 function needsYou(ctx: Ctx): Need[] {
   const { board, tasks, me, isSup, now } = ctx, out: Need[] = [];
-  const title = (id: number) => board.tasks.find(t => t.id === id)?.title ?? "job";
-  for (const r of board.requests) {
-    if (r.status !== "pendente" && r.status !== "pending") continue;
-    if (r.approverId === me || (isSup && r.escalated)) out.push({ key: `r${r.id}`, tone: "warn", title: `${personName(board, r.requestedById).split(" ")[0]} pediu para passar “${title(r.taskId)}” na frente`, sub: r.impacts[0] ?? "Atrasa um job seu na fila", href: "/fila", cta: "Responder" });
-  }
   for (const t of tasks) {
     // ação é de quem é dono do job (ou da supervisão); quem só acompanha vê nos outros blocos
     if (t.coordId !== me && !isSup) continue;
-    if (t.estDisputeOpen) out.push({ key: `d${t.id}`, tone: "warn", title: `Editor contestou a estimativa de “${t.title}”`, sub: <>Ele acha que precisa de {fmtH(t.estEditor)}; você estimou {fmtH(t.estCoord ?? t.est)}</>, taskId: t.id, cta: "Decidir" });
     if (t.status === "paused") out.push({ key: `b${t.id}`, tone: "warn", title: `“${t.title}” está travado`, sub: t.blockReason ?? "Esperando algo para continuar", taskId: t.id, cta: "Ver" });
     if (t.status === "review" && t.sentAt != null && now - t.sentAt > 2 * DAY) out.push({ key: `c${t.id}`, tone: "acc", title: `Cobrar o cliente: “${t.title}”`, sub: <>Com o cliente há {ago(now - t.sentAt)}</>, taskId: t.id, cta: "Ver" });
-    if (QUEUE.includes(t.status) && t.editorId && t.slot?.late) out.push({ key: `l${t.id}`, tone: "bad", title: `“${t.title}” vai atrasar ${fmtH(t.slot.lateBy)}`, sub: <>Termina {fmt(t.slot.end)} · prazo {fmt(t.promised)}{t.proposedDue != null ? <> · novo prazo a partir de {fmt(t.proposedDue)}</> : null}</>, taskId: t.id, cta: t.proposedDue != null ? "Assinar novo prazo" : "Resolver", sign: t.proposedDue != null ? t : undefined });
-    if (t.status === "pending" && !t.editorId && !t.hold && (isSup || t.coordId === me)) out.push({ key: `n${t.id}`, tone: "bad", title: `“${t.title}” está sem editor`, sub: "Nenhuma fila comportava no prazo", taskId: t.id, cta: "Ver" });
+    if (QUEUE.includes(t.status) && t.editorId && t.late) out.push({ key: `l${t.id}`, tone: "bad", title: `“${t.title}” está atrasado`, sub: <>Prazo {fmt(t.promised)} · {personName(board, t.editorId).split(" ")[0]}, {(t.pos ?? 0) + 1}º na fila</>, taskId: t.id, cta: "Resolver" });
+    if (t.status === "pending" && !t.editorId && !t.hold && (isSup || t.coordId === me)) out.push({ key: `n${t.id}`, tone: "bad", title: `“${t.title}” está sem editor`, sub: "A supervisão escolhe quem faz", taskId: t.id, cta: "Ver" });
   }
   const rank = { bad: 0, warn: 1, acc: 2, neu: 3 };
   return out.sort((a, b) => rank[a.tone] - rank[b.tone]);
@@ -250,7 +241,6 @@ function ForYou({ ctx }: { ctx: Ctx }) {
   const { openTask } = useTaskModal();
   const [, navigate] = useLocation();
   const [tab, setTab] = useState<"need" | "next" | "late">("need");
-  const [signing, setSigning] = useState<QTask | null>(null);
   const today = Math.floor(ctx.now / DAY);
   const needs = needsYou(ctx);
   const open = ctx.jobs.filter(j => OPEN.includes(j.status) && j.dueDate);
@@ -261,7 +251,6 @@ function ForYou({ ctx }: { ctx: Ctx }) {
 
   return (
     <Widget icon={CheckCircle2} title="Para você" sub="O que pede uma ação sua agora">
-      <SignDueDialog board={ctx.board} task={signing} open={!!signing} onOpenChange={o => { if (!o) setSigning(null); }} />
       <div className="-mx-4 -mt-4 mb-1 flex gap-1 overflow-x-auto border-b px-3">
         {tabs.map(([k, l, n]) => (
           <button key={k} type="button" onClick={() => setTab(k)} className={cn("-mb-px flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-2 py-2 text-[13px] font-semibold",
@@ -273,7 +262,7 @@ function ForYou({ ctx }: { ctx: Ctx }) {
       <ul className="flex max-h-[340px] min-h-0 flex-1 flex-col overflow-y-auto">
         {tab === "need" ? (needs.length ? needs.map(n => (
           <li key={n.key}>
-            <button type="button" onClick={() => (n.sign ? setSigning(n.sign) : n.taskId ? openTask(n.taskId) : navigate(n.href!))} className="group flex w-full items-center gap-3 rounded-lg px-1.5 py-2 text-left hover:bg-[hsl(var(--accent)/0.6)]">
+            <button type="button" onClick={() => (n.taskId ? openTask(n.taskId) : navigate(n.href!))} className="group flex w-full items-center gap-3 rounded-lg px-1.5 py-2 text-left hover:bg-[hsl(var(--accent)/0.6)]">
               <i className={cn("h-2 w-2 shrink-0 rounded-full", { bad: "bg-rose-500", warn: "bg-amber-500", acc: "bg-[hsl(var(--primary))]", neu: "bg-[hsl(var(--muted-foreground))]" }[n.tone])} />
               <span className="min-w-0 flex-1"><b className="block truncate text-[13px] font-semibold">{n.title}</b><span className={cn("block truncate text-xs", muted)}>{n.sub}</span></span>
               <span className="shrink-0 text-xs font-semibold text-[hsl(var(--primary))] opacity-70 group-hover:opacity-100">{n.cta} →</span>
@@ -326,11 +315,11 @@ function Week({ ctx }: { ctx: Ctx }) {
   const today = Math.floor(ctx.now / DAY);
   const [sel, setSel] = useState(today);
   const open = ctx.jobs.filter(j => OPEN.includes(j.status) && j.dueDate);
-  const days = Array.from({ length: 7 }, (_, i) => today + i).map(d => ({ d, items: open.filter(j => Math.floor(toLm(j.dueDate!) / DAY) === d), off: ctx.board.days.find(x => x.day === d)?.off ?? null }));
+  const days = Array.from({ length: 7 }, (_, i) => today + i).map(d => ({ d, items: open.filter(j => Math.floor(toLm(j.dueDate!) / DAY) === d), off: new Date(d * 86_400_000).getUTCDay() === 0 ? "Domingo" : null }));
   const max = Math.max(1, ...days.map(x => x.items.length));
   const cur = days.find(x => x.d === sel) ?? days[0];
   return (
-    <Widget icon={CalendarDays} title="Agenda da semana" sub="Prazos combinados com o cliente" right={<Link href="/tasks?group=prazo" className="text-xs font-semibold text-[hsl(var(--primary))] hover:underline">Ver prazos</Link>}>
+    <Widget icon={CalendarDays} title="Agenda da semana" sub="Prazos de entrega" right={<Link href="/tasks?group=prazo" className="text-xs font-semibold text-[hsl(var(--primary))] hover:underline">Ver prazos</Link>}>
       <div className="grid grid-cols-7 gap-1.5">
         {days.map(({ d, items, off }) => {
           const late = items.some(j => { const t = live(ctx, j.id); return t && deadlineState(t, ctx.now).tone === "bad"; });
@@ -358,149 +347,6 @@ function Week({ ctx }: { ctx: Ctx }) {
           </button></li>
         )) : <li className={cn("py-4 text-center text-[13px]", muted)}>Nenhum prazo neste dia.</li>}
       </ul>
-    </Widget>
-  );
-}
-
-/* ── hoje na ilha: o expediente de cada editor numa régua, com o que fica pronto e o que vence ── */
-function DayLine({ ctx }: { ctx: Ctx }) {
-  const { openTask } = useTaskModal();
-  const { board, now } = ctx;
-  const today = Math.floor(now / DAY);
-  // hoje; se o expediente já acabou, o próximo dia de trabalho
-  const work = board.days.filter(d => !d.off && d.periods.length);
-  const day = work.find(d => d.day === today && today * DAY + d.periods[d.periods.length - 1][1] > now) ?? work.find(d => d.day > today);
-  if (!day) return null;
-  const base = day.day * DAY, a = base + day.periods[0][0], z = base + day.periods[day.periods.length - 1][1];
-  const pct = (t: number) => Math.min(100, Math.max(0, ((t - a) / (z - a)) * 100));
-  const hh = (t: number) => fmt(t).slice(-5);
-  const isToday = day.day === today;
-  const gaps = day.periods.slice(1).map((p, i) => [base + day.periods[i][1], base + p[0]] as const);
-  const hours = Array.from({ length: 12 }, (_, i) => Math.ceil(a / 60) * 60 + i * 60).filter(t => t <= z);
-  const inScope = new Set(ctx.tasks.map(t => t.id));
-  const eds = board.editors.filter(e => !e.inactive);
-  const first = (id: number | null) => personName(board, id).split(" ")[0];
-
-  type Ev = { t: number; kind: "due" | "done"; task: QTask; bad: boolean };
-  const evs: Ev[] = [];
-  for (const t of ctx.tasks) {
-    if (t.promised != null && t.promised >= a && t.promised <= z && t.status !== "rascunho") evs.push({ t: t.promised, kind: "due", task: t, bad: deadlineState(t, now).tone === "bad" });
-    if (t.slot && QUEUE.includes(t.status) && t.slot.end >= a && t.slot.end <= z) evs.push({ t: t.slot.end, kind: "done", task: t, bad: t.slot.late });
-  }
-  evs.sort((x, y) => x.t - y.t);
-  const ahead = evs.filter(e => e.t >= now);
-  const nextDue = ctx.tasks.filter(t => t.promised != null && t.promised > z && t.status !== "rascunho").sort((x, y) => x.promised! - y.promised!)[0];
-  // horas de edição agendadas no dia (recorte atual)
-  let booked = 0;
-  for (const t of ctx.tasks) if (t.slot) for (const [x, y] of t.slot.segs) booked += Math.max(0, Math.min(y, z) - Math.max(x, a, now));
-  const Mark = ({ e, size = "h-2.5 w-2.5" }: { e: Pick<Ev, "kind" | "bad">; size?: string }) => e.kind === "due"
-    ? <i className={cn("block rotate-45 rounded-[2px]", size, e.bad ? "bg-rose-500" : "bg-[hsl(var(--foreground)/0.8)]")} />
-    : <i className={cn("block rounded-full border-2 bg-[hsl(var(--card))]", size, e.bad ? "border-rose-500" : "border-[hsl(var(--foreground)/0.65)]")} />;
-
-  return (
-    <Widget icon={Clock} title={isToday ? "Hoje na ilha" : `Próximo expediente · ${fmtDay(day.day)}`}
-      sub={`${hh(a)}–${hh(z)} · ${fmtH(booked)} de edição agendadas · ${evs.filter(e => e.kind === "done").length} prontos previstos · ${evs.filter(e => e.kind === "due").length} prazos`}
-      right={<span className={cn("hidden items-center gap-3 text-[11px] sm:flex", muted)}>
-        <span className="inline-flex items-center gap-1.5"><Mark e={{ kind: "due", bad: false }} size="h-2 w-2" />prazo</span>
-        <span className="inline-flex items-center gap-1.5"><Mark e={{ kind: "done", bad: false }} size="h-2 w-2" />fica pronto</span>
-        <span className="hidden items-center gap-1.5 sm:inline-flex"><i className="h-2.5 w-4 rounded-sm border bg-[hsl(var(--foreground)/0.12)]" />agendado</span>
-      </span>}
-      bodyClass="p-0">
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_300px]">
-        {/* régua por editor */}
-        <div className="overflow-x-auto px-4 pb-4 pt-3">
-          <div className="grid min-w-[560px] grid-cols-[96px_minmax(0,1fr)] gap-x-3">
-            <span />
-            <div className="relative mb-1 h-4">
-              {hours.map(t => <span key={t} className={cn("absolute -translate-x-1/2 text-[10.5px] tabular-nums", muted)} style={{ left: `${pct(t)}%` }}>{hh(t).slice(0, 2)}h</span>)}
-            </div>
-            <div className="flex flex-col">
-              {eds.map(e => (
-                <span key={e.id} className="flex h-11 min-w-0 items-center gap-2">
-                  <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={24} />
-                  <span className="truncate text-[13px] font-medium">{e.name.split(" ")[0]}</span>
-                </span>
-              ))}
-            </div>
-            <div className="relative flex flex-col">
-              {/* intervalo, já passou e agora: atravessam todas as faixas */}
-              {gaps.map(([x, y]) => <i key={x} className="fila-stripes pointer-events-none absolute inset-y-0 z-0" style={{ left: `${pct(x)}%`, width: `${pct(y) - pct(x)}%` }} />)}
-              {isToday && <i className="pointer-events-none absolute inset-y-0 left-0 z-0 bg-[hsl(var(--foreground)/0.035)]" style={{ width: `${pct(now)}%` }} />}
-              {isToday && now >= a && now <= z && (
-                <div className="pointer-events-none absolute -top-1 bottom-0 z-20 w-px bg-[hsl(var(--foreground))]" style={{ left: `${pct(now)}%` }}>
-                  <span className="absolute -top-[18px] left-1/2 -translate-x-1/2 rounded bg-[hsl(var(--foreground))] px-1 text-[9.5px] font-bold uppercase tracking-wide text-[hsl(var(--background))]">{hh(now)}</span>
-                </div>
-              )}
-              {eds.map(e => {
-                const off = isToday ? e.offToday : e.offDays.find(o => o.day === day.day)?.off ?? null;
-                const blocks = board.tasks.filter(t => t.editorId === e.id && t.slot && QUEUE.includes(t.status))
-                  .flatMap(t => t.slot!.segs.filter(([x, y]) => y > a && x < z).map(([x, y]) => ({ t, x: Math.max(x, a), y: Math.min(y, z) })));
-                const dues = evs.filter(v => v.kind === "due" && v.task.editorId === e.id);
-                return (
-                  <div key={e.id} className="relative z-10 h-11 border-b border-dashed border-[hsl(var(--border)/0.7)] last:border-b-0">
-                    {off ? <span className={cn("fila-stripes absolute inset-x-0 inset-y-2 grid place-items-center rounded-md text-[11.5px]", muted)}>{off}</span>
-                      : blocks.map(({ t, x, y }, i) => {
-                        const mineT = inScope.has(t.id), w = pct(y) - pct(x);
-                        return (
-                          <button key={`${t.id}-${i}`} type="button" onClick={() => openTask(t.id)}
-                            title={`${t.title} · ${hh(x)}–${hh(y)}${t.slot ? ` · pronto ${fmt(t.slot.end)}` : ""}${t.slot?.late ? " · passa do prazo" : ""}`}
-                            className={cn("absolute inset-y-2 flex items-center overflow-hidden rounded-md border px-1.5 text-left text-[11.5px] font-medium transition-[filter] hover:brightness-110",
-                              t.playing ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                                : mineT ? "border-[hsl(var(--foreground)/0.22)] bg-[hsl(var(--foreground)/0.12)]"
-                                : cn("border-transparent bg-[hsl(var(--foreground)/0.06)]", muted),
-                              t.slot?.late && "border-rose-500/60")}
-                            style={{ left: `${pct(x)}%`, width: `max(${w}%, 6px)` }}>
-                            {w > 9 && <span className="truncate">{t.playing && <LiveDot className="mr-1 inline-block" />}{t.title}</span>}
-                          </button>
-                        );
-                      })}
-                    {dues.map((v, i) => (
-                      <button key={`d${v.task.id}${i}`} type="button" onClick={() => openTask(v.task.id)} title={`${hh(v.t)} · prazo de “${v.task.title}”`}
-                        className="absolute top-0.5 z-10 -translate-x-1/2 p-0.5" style={{ left: `${pct(v.t)}%` }}><Mark e={v} size="h-2 w-2" /></button>
-                    ))}
-                    {blocks.filter(b => b.t.slot && b.y === b.t.slot.end && inScope.has(b.t.id)).map(b => (
-                      <span key={`e${b.t.id}`} className="pointer-events-none absolute bottom-0.5 z-10 -translate-x-1/2" style={{ left: `${pct(b.y)}%` }}><Mark e={{ kind: "done", bad: !!b.t.slot?.late }} size="h-2 w-2" /></span>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* próximos marcos */}
-        <div className="border-t px-4 py-3 lg:border-l lg:border-t-0">
-          <p className={cn("mb-1.5 text-[11px] font-semibold uppercase tracking-wider", muted)}>Próximos marcos</p>
-          {ahead.length ? (
-            <ol className="relative flex flex-col">
-              <span className="absolute bottom-2 left-[5px] top-2 w-px bg-[hsl(var(--border))]" aria-hidden />
-              {ahead.slice(0, 5).map((e, i) => (
-                <li key={`${e.kind}${e.task.id}${i}`}>
-                  <button type="button" onClick={() => openTask(e.task.id)} className="relative flex w-full items-start gap-3 rounded-lg py-1.5 pr-1 text-left hover:bg-[hsl(var(--accent)/0.6)]">
-                    <span className="relative z-10 mt-[5px] grid w-[11px] shrink-0 place-items-center bg-[hsl(var(--card))] py-0.5"><Mark e={e} size="h-2 w-2" /></span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-baseline justify-between gap-2">
-                        <b className="text-[13px] font-semibold tabular-nums">{hh(e.t)}</b>
-                        <span className={cn("text-[11px]", e.bad ? "text-rose-600 dark:text-rose-400" : muted)}>
-                          {e.bad ? (e.kind === "due" ? "vai atrasar" : "depois do prazo") : isToday ? `em ${fmtH(e.t - now)}` : ""}
-                        </span>
-                      </span>
-                      <span className="block truncate text-[12.5px]">{e.kind === "due" ? "Prazo · " : "Pronto · "}{e.task.title}</span>
-                      <span className={cn("block truncate text-[11.5px]", muted)}>{first(e.task.editorId)}{e.task.client ? ` · ${e.task.client}` : ""}</span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-              {ahead.length > 5 && <li className={cn("pl-6 pt-0.5 text-xs", muted)}>+{ahead.length - 5} até {hh(z)}</li>}
-            </ol>
-          ) : (
-            <p className={cn("text-[13px] leading-relaxed", muted)}>
-              Nada vence nem fica pronto {isToday ? "no resto do expediente" : "nesse dia"}.
-              {nextDue && <> Próximo prazo: <button type="button" onClick={() => openTask(nextDue.id)} className="font-semibold text-[hsl(var(--foreground))] hover:underline">{nextDue.title}</button>, {fmt(nextDue.promised)}.</>}
-            </p>
-          )}
-        </div>
-      </div>
     </Widget>
   );
 }
@@ -540,98 +386,33 @@ function Phases({ ctx }: { ctx: Ctx }) {
   );
 }
 
-/* ── carga da equipe (workload) ── */
+/* ── equipe: quantos jobs cada editor tem na fila e o que está fazendo agora ── */
 function Team({ ctx }: { ctx: Ctx }) {
-  const { board, now } = ctx;
-  const [view, setView] = useState<"dia" | "semana">(() => (store.get("dash:teamView") === "semana" ? "semana" : "dia"));
-  useEffect(() => store.set("dash:teamView", view), [view]);
-  const today = Math.floor(now / DAY);
+  const { openTask } = useTaskModal();
+  const { board } = ctx;
   const eds = [...board.editors].filter(e => !e.inactive).sort((a, b) => a.name.localeCompare(b.name));
-  // próximos 6 dias de trabalho da equipe (pula domingo e feriado)
-  const week = board.days.filter(d => d.day >= today && (d.day === today || !d.off)).slice(0, 6);
-
-  /** capacidade (expediente) e minutos agendados de um editor num dia */
-  const dayStats = (edId: number, day: number) => {
-    const e = board.editors.find(x => x.id === edId)!;
-    const d = board.days.find(x => x.day === day);
-    const off = e.offDays.find(o => o.day === day)?.off ?? d?.off ?? null;
-    const cap = day === today ? e.todayCap : off ? 0 : (d?.periods ?? []).reduce((s, [x, y]) => s + y - x, 0);
-    const a = day * DAY, z = a + DAY;
-    let planned = 0;
-    for (const t of board.tasks) if (t.editorId === edId && t.slot) for (const [x, y] of t.slot.segs) planned += Math.max(0, Math.min(y, z) - Math.max(x, a, now));
-    const done = day === today ? Math.min(e.todayDone, cap) : 0;
-    return { cap, done, planned: Math.min(planned, Math.max(0, cap - done)), off };
-  };
-
+  const max = Math.max(1, ...eds.map(e => e.count));
   return (
-    <Widget icon={Users} title="Disponibilidade da equipe" sub={view === "dia" ? "Expediente de hoje de cada editor" : "Ocupação dos próximos dias de trabalho"}
-      right={<div className="flex rounded-lg border p-0.5 text-[12.5px] font-semibold">
-        {([["dia", "Hoje"], ["semana", "Semana"]] as const).map(([k, l]) => (
-          <button key={k} type="button" onClick={() => setView(k)} className={cn("h-7 rounded-md px-2.5", view === k ? "bg-[hsl(var(--primary)/0.14)] text-[hsl(var(--primary))]" : cn(muted, "hover:text-[hsl(var(--foreground))]"))}>{l}</button>
-        ))}
-      </div>}>
-      {/* legenda: uma cor só, significado fixo */}
-      <div className={cn("mb-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px]", muted)}>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-[hsl(var(--primary))]" />agendado</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm border bg-[hsl(var(--muted))]" />livre</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-[hsl(var(--muted-foreground)/0.35)]" />já passou</span>
-        {view === "semana" && <span className="inline-flex items-center gap-1.5"><i className="fila-stripes h-2.5 w-2.5 rounded-sm" />sem expediente</span>}
-      </div>
-
-      {view === "semana" && (
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_64px] items-end gap-3 border-b pb-1.5 pt-1">
-          <span />
-          <div className="grid grid-cols-6 gap-1 text-center">{week.map(d => <span key={d.day} className={cn("text-[10.5px] font-semibold uppercase", d.day === today ? "text-[hsl(var(--primary))]" : muted)}>{d.day === today ? "hoje" : fmtDay(d.day).slice(0, 3)}</span>)}</div>
-          <span className={cn("text-right text-[10.5px] font-semibold uppercase", muted)}>livre</span>
-        </div>
-      )}
-
+    <Widget icon={Users} title="Equipe" sub="Jobs na fila de cada editor" right={<Link href="/fila" className="text-xs font-semibold text-[hsl(var(--primary))] hover:underline">Ver filas</Link>}>
       <ul className="flex flex-col divide-y">
         {eds.map(e => {
           const playing = board.tasks.find(t => t.editorId === e.id && t.playing);
-          if (view === "dia") {
-            const s = dayStats(e.id, today), free = Math.max(0, s.cap - s.done - s.planned);
-            return (
-              <li key={e.id} className="flex items-center gap-3 py-2.5">
-                <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={30} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline justify-between gap-2 text-[13px]">
-                    <b className="truncate font-semibold">{e.name}</b>
-                    <span className={cn("shrink-0 text-xs", muted)}>{s.off ? s.off : s.cap && s.cap - s.done <= 0 ? "dia encerrado" : s.cap ? <>livre <b className={cn("font-semibold", free ? "text-[hsl(var(--foreground))]" : "")}>{fmtH(free)}</b> de {fmtH(s.cap)}</> : "sem expediente hoje"}</span>
-                  </div>
-                  <div className={cn("my-1 flex h-2 overflow-hidden rounded-full bg-[hsl(var(--muted))]", s.off && "fila-stripes")}>
-                    {s.cap > 0 && <>
-                      <i className="block h-full bg-[hsl(var(--muted-foreground)/0.35)]" style={{ width: `${(s.done / s.cap) * 100}%` }} />
-                      <i className="block h-full bg-[hsl(var(--primary))]" style={{ width: `${(s.planned / s.cap) * 100}%` }} />
-                    </>}
-                  </div>
-                  <p className={cn("truncate text-xs", muted)}>
-                    {s.off ? "Fora hoje" : playing ? <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><LiveDot />Em edição: “{playing.title}”</span>
-                      : s.planned ? <>{fmtH(s.planned)} agendadas até o fim do dia</> : s.cap - s.done > 0 ? "Nada agendado para o resto do dia" : "Expediente de hoje encerrado"}
-                  </p>
-                </div>
-              </li>
-            );
-          }
-          const stats = week.map(d => ({ d, ...dayStats(e.id, d.day) }));
-          const free = stats.reduce((sum, x) => sum + Math.max(0, x.cap - x.done - x.planned), 0);
+          const next = board.tasks.find(t => t.editorId === e.id && t.pos === 0 && QUEUE.includes(t.status));
+          const cur = playing ?? next;
           return (
-            <li key={e.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_64px] items-center gap-3 py-2.5">
-              <span className="flex min-w-0 items-center gap-2"><AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={26} /><b className="truncate text-[13px] font-semibold">{e.name}</b></span>
-              <div className="grid grid-cols-6 gap-1">
-                {stats.map(x => {
-                  return (
-                    <div key={x.d.day} title={x.off ? `${fmtDay(x.d.day)}: ${x.off}` : `${fmtDay(x.d.day)}: ${fmtH(x.planned)} agendadas, livre ${fmtH(Math.max(0, x.cap - x.done - x.planned))} de ${fmtH(x.cap)}`}
-                      className={cn("relative h-7 overflow-hidden rounded-md border bg-[hsl(var(--muted))]", x.off && "fila-stripes")}>
-                      {!x.off && x.cap > 0 && <span className="absolute inset-0 flex flex-col justify-end">
-                        <i className="block bg-[hsl(var(--primary))]" style={{ height: `${(x.planned / x.cap) * 100}%` }} />
-                        <i className="block bg-[hsl(var(--muted-foreground)/0.35)]" style={{ height: `${(x.done / x.cap) * 100}%` }} />
-                      </span>}
-                    </div>
-                  );
-                })}
+            <li key={e.id} className="flex items-center gap-3 py-2.5">
+              <AvatarDisplay name={e.name} avatarUrl={e.avatarUrl} size={30} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-2 text-[13px]">
+                  <b className="truncate font-semibold">{e.name}</b>
+                  <span className={cn("shrink-0 text-xs", muted)}>{e.offToday ? e.offToday : <><b className="font-semibold text-[hsl(var(--foreground))]">{e.count}</b> na fila{e.late > 0 && <span className="text-rose-500"> · {e.late} atrasado{e.late > 1 ? "s" : ""}</span>}</>}</span>
+                </div>
+                <div className="my-1 h-2 overflow-hidden rounded-full bg-[hsl(var(--muted))]"><i className="block h-full rounded-full bg-[hsl(var(--primary))]" style={{ width: `${(e.count / max) * 100}%` }} /></div>
+                <p className={cn("truncate text-xs", muted)}>
+                  {playing ? <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><LiveDot />Em edição: </span> : next ? "Próximo: " : "Fila vazia"}
+                  {cur && <button type="button" onClick={() => openTask(cur.id)} className="hover:underline">“{cur.title}”</button>}
+                </p>
               </div>
-              <span className={cn("text-right text-[13px] font-semibold", !free && muted)}>{fmtH(free)}</span>
             </li>
           );
         })}
@@ -643,7 +424,7 @@ function Team({ ctx }: { ctx: Ctx }) {
 /* ── atividade recente ── */
 const VERB: Record<string, string> = {
   created: "criou", assign: "colocou na fila", play: "começou a editar", pause: "pausou", sent: "enviou para o cliente", blocked: "travou",
-  unblocked: "destravou", inform: "pediu mais tempo em", est_confirm: "confirmou a estimativa de", est_contest: "contestou a estimativa de",
+  unblocked: "destravou", inform: "pediu mais tempo em", due_changed: "mudou o prazo de", est_confirm: "confirmou a estimativa de", est_contest: "contestou a estimativa de",
   est_keep: "manteve a estimativa de", est_use: "aceitou a estimativa do editor em", furou: "furou a fila com", reneg: "empurrou o prazo de",
   reassign: "passou para outro editor", client_change: "registrou alteração do cliente em", client_ok: "marcou como aprovado", request: "pediu mudança na fila em",
   decide: "respondeu pedido sobre", follow: "incluiu acompanhantes em", est_expired: "estourou as horas de", cancelled: "cancelou", owner: "trocou o gestor de", archived: "encerrou",

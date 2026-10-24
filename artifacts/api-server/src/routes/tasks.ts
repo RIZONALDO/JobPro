@@ -6,12 +6,9 @@ import { notify, notifyFollowers } from "../lib/notify.js";
 import { broadcastTaskChange } from "../lib/broadcast.js";
 import { createFeedItem } from "../lib/feed.js";
 import { findInactive } from "../lib/availability.js";
-import { placeTask, playTask, sendToApproval, stopTask, newRound } from "./queue.js";
-import { loadState, loadCalendar, orderAfterHead, logEvent, schedule, evaluate, safeDue, signDue, FOLGA, QUEUE_STATUSES, type TaskRow } from "../lib/queue.js";
-import { DUE_OFF_SHIFT, inShift, consume, toLm, fmtLm, fmtH } from "../lib/workcal.js";
-
-/** Prazo do cliente só dentro do expediente (fim do turno conta). */
-const dueInShift = async (d: Date) => inShift(await loadCalendar(), toLm(d));
+import { placeTask, playTask, sendToApproval, stopTask, newRound, parseEst } from "./queue.js";
+import { loadState, logEvent, recalcDues, QUEUE_STATUSES } from "../lib/queue.js";
+import { fmtH } from "../lib/workcal.js";
 
 /** Responde 400 se algum dos ids for de usuário inativo. Retorna true se bloqueou. */
 async function rejectInactive(res: import("express").Response, ids: (number | null | undefined)[]): Promise<boolean> {
@@ -36,16 +33,13 @@ const dueDateKey = (d: Date | string | null | undefined): string => {
 
 // ── Create task ──────────────────────────────────────────────────────────────
 router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
-  // Fila em horas: o job nasce sem lugar na fila e é colocado por placeTask (fim, prioridade ou supervisão).
-  const { title, description, startDate, dueDate, priority, estMinutes, lockReason, folderUrl, client, color, status, placement, assignedToId, followerIds } = req.body ?? {};
+  // O job nasce sem lugar na fila e é colocado por placeTask (fim da fila, ou supervisão). O prazo sai das horas.
+  const { title, description, estMinutes, priority, folderUrl, client, color, status, placement, assignedToId, followerIds } = req.body ?? {};
 
   if (!title) { res.status(400).json({ error: "Título obrigatório" }); return; }
   const isDraft = status === "rascunho";
-  const est = Math.round(Number(estMinutes) || 0);
   if (!isDraft) {
-    if (!dueDate) { res.status(400).json({ error: "Informe o prazo prometido ao cliente" }); return; }
-    if (!(await dueInShift(new Date(String(dueDate))))) { res.status(400).json({ error: DUE_OFF_SHIFT }); return; }
-    if (!(est > 0)) { res.status(400).json({ error: "Informe as horas de trabalho" }); return; }
+    if (!parseEst(estMinutes)) { res.status(400).json({ error: "Informe as horas de trabalho" }); return; }
     if (!placement || (!placement.editorId && placement.mode !== "gestor")) { res.status(400).json({ error: "Escolha onde o job entra" }); return; }
     if (placement.editorId && await rejectInactive(res, [Number(placement.editorId)])) return;
   }
@@ -61,12 +55,8 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
     description: description ? String(description) : null,
     client: client ? String(client) : null,
     color: color ? String(color) : "#6366f1",
-    startDate: startDate ? new Date(String(startDate)) : null,
-    lockReason: startDate && lockReason ? String(lockReason) : null,
-    dueDate: dueDate ? new Date(String(dueDate)) : null,
+    estMinutes: parseEst(estMinutes) ?? 0,
     priority: priority ?? "medium",
-    estMinutes: est,
-    estConfirmed: false,
     status: isDraft ? "rascunho" : "pending",
     // rascunho guarda o editor pretendido; job publicado só ganha editor ao entrar na fila
     assignedToId: isDraft && assignedToId ? Number(assignedToId) : null,
@@ -79,9 +69,9 @@ router.post("/tasks", requireCoordinator, async (req, res): Promise<void> => {
   if (Array.isArray(followerIds) && followerIds.length) await setFollowers(task.id, followerIds, req.session.userId!);
   if (isDraft) { broadcastTaskChange(); res.status(201).json(task); return; }
 
-  const out = await placeTask(task.id, placement.editorId ? Number(placement.editorId) : null, String(placement.mode ?? "end"), req.session.userId!, req.session.userRole!, { signed: placement.signed === true });
+  const out = await placeTask(task.id, placement.editorId ? Number(placement.editorId) : null, String(placement.mode ?? "fila"), req.session.userId!, req.session.userRole!);
   if (out.status !== 200) {
-    // não coube: volta a ser rascunho para não sumir
+    // não entrou: volta a ser rascunho para não sumir
     await db.update(tasksTable).set({ status: "rascunho", queueHold: false }).where(eq(tasksTable.id, task.id));
     broadcastTaskChange();
     res.status(out.status).json({ ...out.body, draftId: task.id });
@@ -233,9 +223,9 @@ router.get("/tasks/overview", requireCoordinator, async (req, res): Promise<void
     description: r.description,
     status: r.status,
     priority: r.priority,
-    estMinutes: r.estMinutes, workedMinutes: r.workedMinutes,
     startDate: r.startDate,
     dueDate: r.dueDate,
+    estMinutes: r.estMinutes,
     folderUrl: r.folderUrl,
     revisionCount: r.revisionCount ?? 0,
     client: r.client,
@@ -400,7 +390,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   const role = req.session.userRole!;
   const userId = req.session.userId!;
 
-  const { title, description, startDate, dueDate, priority, estMinutes, lockReason, assignedToId, folderUrl, status, revisionComment, revisionMinutes, client, color, placement } = req.body ?? {};
+  const { title, description, dueDate, estMinutes, priority, assignedToId, folderUrl, status, revisionComment, client, color, placement } = req.body ?? {};
   const update: Record<string, unknown> = {};
   let eventComment: string | undefined;
 
@@ -411,16 +401,13 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     const isAssigned = task.assignedToId === userId || !!editorEntry;
     if (!isAssigned) { res.status(403).json({ error: "Sem permissão" }); return; }
     if (status) {
-      // Na fila em horas o editor só começa (▶) e entrega; as regras ficam em routes/queue.ts.
+      // Na fila o editor só começa e entrega; as regras ficam em routes/queue.ts.
       const s = String(status);
       const st = await loadState();
       if (s === "in_progress" && QUEUE_STATUSES.includes(task.status)) {
-        if (task.startDate && task.startDate > new Date()) {
-          res.status(400).json({ error: "Este job ainda não pode começar" + (task.lockReason ? `: ${task.lockReason}` : "") }); return;
-        }
         await playTask(st, task, userId);
       } else if (s === "review" && QUEUE_STATUSES.includes(task.status)) {
-        await sendToApproval(st, task, userId);
+        await sendToApproval(task, userId);
       } else { res.status(400).json({ error: "Transição de status não permitida" }); return; }
       broadcastTaskChange();
       const [fresh] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
@@ -435,37 +422,14 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     if (description !== undefined) update.description = description ? String(description) : null;
     if (client !== undefined) update.client = client ? String(client) : null;
     if (color) update.color = String(color);
-    if (startDate !== undefined) {
-      update.startDate = startDate ? new Date(String(startDate)) : null;
-      if (!startDate) update.lockReason = null;
+    // o prazo de entrega é calculado (horas de trabalho + lugar na fila): não se digita
+    if (dueDate !== undefined && dueDate !== null && dueDate !== "" && (!task.dueDate || +new Date(String(dueDate)) !== +task.dueDate)) {
+      res.status(400).json({ error: "O prazo de entrega sai das horas de trabalho e do lugar na fila. Ajuste as horas ou mova o job." }); return;
     }
-    if (lockReason !== undefined) update.lockReason = lockReason ? String(lockReason) : null;
     if (estMinutes !== undefined) {
-      const est = Math.round(Number(estMinutes));
-      if (!(est > 0)) { res.status(400).json({ error: "Horas inválidas" }); return; }
-      if (est !== task.estMinutes) {
-        update.estMinutes = est;
-        update.estExpiredAt = null;
-        // horas mudaram: o editor confere de novo
-        if (task.status !== "rascunho") { update.estConfirmed = false; update.estDisputeOpen = false; }
-      }
-    }
-    if (dueDate !== undefined) {
-      if (dueDate) {
-        const parsed = new Date(String(dueDate));
-        if (isNaN(parsed.getTime())) {
-          res.status(400).json({ error: "Data inválida" }); return;
-        }
-        const same = task.dueDate && +new Date(task.dueDate as Date) === +parsed;
-        if (!same && task.status !== "rascunho" && !(await dueInShift(parsed))) { res.status(400).json({ error: DUE_OFF_SHIFT }); return; }
-        // job na fila: a conferência com a agenda do editor é feita abaixo, junto com horas e trava
-        update.dueDate = parsed;
-      } else {
-        if (task.status !== "rascunho") {
-          res.status(400).json({ error: "Tarefas em andamento precisam ter um prazo definido" }); return;
-        }
-        update.dueDate = null;
-      }
+      const est = parseEst(estMinutes);
+      if (!est) { res.status(400).json({ error: "Horas de trabalho inválidas" }); return; }
+      update.estMinutes = est;
     }
     if (priority) update.priority = String(priority);
     // rascunho guarda o editor pretendido; nos demais, trocar de editor passa pela fila (placement)
@@ -487,8 +451,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         }
         eventComment = actionComment;
         update.status = s;
-        const st = await loadState();
-        await stopTask(st, task);
+        await stopTask(task);
         await logEvent({ kind: s === "paused" ? "blocked" : "cancelled", taskId: id, actorId: userId, coordId: task.createdById, editorId: task.assignedToId, text: actionComment });
       } else if (s === "reopened") {
         if (task.status !== "completed") {
@@ -496,37 +459,40 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         }
         const comment = revisionComment ? String(revisionComment).trim() : "";
         if (!comment) { res.status(400).json({ error: "Informe o motivo da reabertura" }); return; }
+        const est = update.estMinutes as number | undefined; delete update.estMinutes;
+        if (!est) { res.status(400).json({ error: "Informe as horas de trabalho da reabertura" }); return; }
         if (Object.keys(update).length) await db.update(tasksTable).set(update).where(eq(tasksTable.id, id));
-        const st = await loadState();
-        await newRound(st, task, userId, Math.round(Number(revisionMinutes) || 120), comment, true);
-        broadcastTaskChange();
-        const [fresh] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
-        res.json(fresh); return;
+        const out = await newRound(task, userId, role, comment, true, est);
+        res.status(out.status).json(out.body); return;
       } else if (s === "pending" && task.status === "cancelled") {
-        const dueDateAfterUpdate = update.dueDate !== undefined ? update.dueDate : task.dueDate;
-        if (!dueDateAfterUpdate) {
-          res.status(400).json({ error: "Informe um prazo para reativar a tarefa" }); return;
+        if (!((update.estMinutes as number | undefined) ?? task.estMinutes)) {
+          res.status(400).json({ error: "Informe as horas de trabalho para reativar o job" }); return;
         }
-        update.status = "pending";
-        update.queueOrder = 1e9; // reativado entra no fim da fila
+        // reativado volta para o fim da fila do mesmo editor
+        await db.update(tasksTable).set({ ...update, status: "pending", queueHold: false }).where(eq(tasksTable.id, id));
+        await db.insert(taskEventsTable).values({ taskId: id, fromStatus: "cancelled", toStatus: "pending", changedById: userId });
+        if (!task.assignedToId) { broadcastTaskChange(); res.json({ message: "Job reativado, sem editor" }); return; }
+        const out = await placeTask(id, task.assignedToId, "fila", userId, role);
+        if (out.status !== 200) {
+          await db.update(tasksTable).set({ status: "cancelled" }).where(eq(tasksTable.id, id));
+          broadcastTaskChange();
+        }
+        res.status(out.status).json(out.body); return;
       } else if (s === "pending" && task.status === "paused") {
-        update.status = task.workedMinutes > 0 ? "in_progress" : "pending";
-        if (task.assignedToId) {
-          const st = await loadState();
-          update.queueOrder = orderAfterHead(st.cal, st.tasks, task.assignedToId, st.now, id);
-        }
+        // destravar: volta para a fila do editor logo depois do job em edição
+        if (Object.keys(update).length) await db.update(tasksTable).set(update).where(eq(tasksTable.id, id));
+        if (!task.assignedToId) { res.status(400).json({ error: "O job está sem editor: escolha um em “Passar para outro editor”" }); return; }
+        const out = await placeTask(id, task.assignedToId, "fila", userId, role, { at: "front" });
+        res.status(out.status).json(out.body); return;
       } else if (s === "pending" && task.status === "rascunho") {
         // publicar rascunho = colocar na fila
-        const dueAfter = update.dueDate !== undefined ? update.dueDate : task.dueDate;
-        const estAfter = update.estMinutes !== undefined ? update.estMinutes : task.estMinutes;
-        if (!dueAfter) { res.status(400).json({ error: "Informe o prazo antes de publicar a tarefa" }); return; }
-        if (!(Number(estAfter) > 0)) { res.status(400).json({ error: "Informe as horas de trabalho antes de publicar" }); return; }
-        const pl = placement ?? (task.assignedToId ? { editorId: task.assignedToId, mode: "end" } : null);
+        if (!((update.estMinutes as number | undefined) ?? task.estMinutes)) { res.status(400).json({ error: "Informe as horas de trabalho antes de publicar" }); return; }
+        const pl = placement ?? (task.assignedToId ? { editorId: task.assignedToId, mode: "fila" } : null);
         if (!pl || (!pl.editorId && pl.mode !== "gestor")) { res.status(400).json({ error: "Escolha onde o job entra" }); return; }
         if (pl.editorId && await rejectInactive(res, [Number(pl.editorId)])) return;
-        await db.update(tasksTable).set({ ...update, status: "pending", assignedToId: null, queueHold: true, estConfirmed: false }).where(eq(tasksTable.id, id));
+        await db.update(tasksTable).set({ ...update, status: "pending", assignedToId: null, queueHold: true }).where(eq(tasksTable.id, id));
         await db.insert(taskEventsTable).values({ taskId: id, fromStatus: "rascunho", toStatus: "pending", changedById: userId });
-        const out = await placeTask(id, pl.editorId ? Number(pl.editorId) : null, String(pl.mode ?? "end"), userId, role, { signed: pl.signed === true });
+        const out = await placeTask(id, pl.editorId ? Number(pl.editorId) : null, String(pl.mode ?? "fila"), userId, role);
         if (out.status !== 200) {
           await db.update(tasksTable).set({ status: "rascunho", queueHold: false }).where(eq(tasksTable.id, id));
           broadcastTaskChange();
@@ -541,12 +507,11 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
         if (s === "in_progress") {
           const comment = revisionComment ? String(revisionComment).trim() : "";
           if (!comment) { res.status(400).json({ error: "Informe o comentário da alteração" }); return; }
+          const est = update.estMinutes as number | undefined; delete update.estMinutes;
+          if (!est) { res.status(400).json({ error: "Informe as horas de trabalho da alteração" }); return; }
           if (Object.keys(update).length) await db.update(tasksTable).set(update).where(eq(tasksTable.id, id));
-          const st = await loadState();
-          await newRound(st, task, userId, Math.round(Number(revisionMinutes) || 120), comment, false);
-          broadcastTaskChange();
-          const [fresh] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
-          res.json(fresh); return;
+          const out = await newRound(task, userId, role, comment, false, est);
+          res.status(out.status).json(out.body); return;
         }
         update.status = s;
         update.playingSince = null;
@@ -554,61 +519,13 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     }
   }
 
-  // Prazo do cliente: só muda com a assinatura de quem muda. Job na fila: mexer em horas, prazo ou trava confere a
-  // agenda do editor. O prazo nunca fica antes do trabalho; job seu que passa a atrasar ganha novo prazo assinado
-  // junto; job de outro gestor não pode passar a atrasar (só a supervisão, assinando).
-  const dueChanged = update.dueDate !== undefined && task.status !== "rascunho" && !update.status
-    && !(task.dueDate && update.dueDate && +new Date(task.dueDate as Date) === +(update.dueDate as Date));
-  if (dueChanged && req.body?.dueSigned !== true) {
-    res.status(400).json({ code: "sign_due", error: "Mudar o prazo do cliente precisa da sua assinatura: marque que você assume combinar o novo prazo com o cliente." }); return;
-  }
-  const signLater: { r: TaskRow; due: number; why: string }[] = [];
-  const touchesQueue = !update.status && !!task.assignedToId && !task.queueHold && QUEUE_STATUSES.includes(task.status)
-    && (update.estMinutes !== undefined || update.dueDate !== undefined || update.startDate !== undefined);
-  if (touchesQueue) {
-    const st = await loadState();
-    const ev = evaluate(st.cal, st.tasks, st.now, ts => {
-      const x = ts.find(t => t.id === id); if (!x) return;
-      if (update.estMinutes !== undefined) x.est = Number(update.estMinutes);
-      if (update.dueDate !== undefined) x.promised = update.dueDate ? toLm(update.dueDate as Date) : null;
-      if (update.startDate !== undefined) x.notBefore = update.startDate ? toLm(update.startDate as Date) : null;
-    });
-    const own = ev.after.get(id), x = ev.ts.find(t => t.id === id);
-    if (own && x?.promised != null) {
-      const min = safeDue(st.cal, own.end, task.assignedToId);
-      if (x.promised < min) {
-        const [ed] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, task.assignedToId!));
-        res.status(400).json({ code: "due_too_early", minDue: min,
-          error: `Com ${fmtH(x.est - x.worked > 0 ? x.est - x.worked : 60)} de edição pela frente e a fila atual de ${ed?.name ?? "o editor"}, este job fica pronto ${fmtLm(own.end)}. O prazo do cliente não pode ser antes de ${fmtLm(min)} (1h de folga). Diminua as horas ou mude o prazo.` });
-        return;
-      }
-    }
-    const isSupRole = ["admin", "supervisor"].includes(role);
-    // prejudicado: fica atrasado depois da mudança e mais tarde do que estava (passar a atrasar ou atrasar mais)
-    const hurt = ev.changes.filter(c => c.t.id !== id && c.t.promised != null && c.to > c.from && !!ev.after.get(c.t.id)?.late);
-    const foreign = hurt.filter(c => c.t.coordId !== userId);
-    if (foreign.length && !isSupRole) {
-      const c = foreign[0];
-      const [o] = c.t.coordId ? await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, c.t.coordId)) : [];
-      res.status(409).json({ code: "hurts_other", error: `Isso faz “${c.t.title}” (de ${o?.name ?? "outro gestor"}) ${c.newlyLate ? "passar do prazo" : "atrasar ainda mais"}: ficaria pronto ${fmtLm(c.to)}, e o prazo é ${fmtLm(c.t.promised!)}. Diminua as horas, mude a ordem da fila ou combine com ${o?.name?.split(" ")[0] ?? "o gestor"}.` });
-      return;
-    }
-    const impacts = hurt.map(c => ({ id: c.t.id, title: c.t.title, from: c.t.promised!, end: c.to, to: safeDue(st.cal, c.to, c.t.editorId) }));
-    if (impacts.length && req.body?.signOthers !== true) {
-      res.status(409).json({ code: "sign_others", impacts, error: `Isso faz ${impacts.length > 1 ? `${impacts.length} jobs passarem` : "outro job passar"} do prazo (ou atrasar mais). Assine ${impacts.length > 1 ? "os novos prazos" : "o novo prazo"} para continuar.` });
-      return;
-    }
-    for (const i of impacts) { const row = st.rows.find(r => r.id === i.id); if (row) signLater.push({ r: row, due: i.to, why: `Ajuste porque “${task.title}” mudou.` }); }
-  }
-  let newDue: number | null = null;
-  if (dueChanged) { newDue = toLm(update.dueDate as Date); delete update.dueDate; }
-
-  let [updated] = Object.keys(update).length
+  const [updated] = Object.keys(update).length
     ? await db.update(tasksTable).set(update).where(eq(tasksTable.id, id)).returning()
     : await db.select().from(tasksTable).where(eq(tasksTable.id, id));
-  if (newDue != null) await signDue({ ...task, ...update } as TaskRow, newDue, userId, "Editado no job.");
-  for (const x of signLater) await signDue(x.r, x.due, userId, x.why);
-  if (newDue != null) [updated] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+  // horas mudaram (ou o job saiu da fila): os prazos da fila são recalculados
+  const estChanged = update.estMinutes !== undefined && update.estMinutes !== task.estMinutes;
+  if (estChanged) await logEvent({ kind: "est_changed", taskId: id, actorId: userId, coordId: task.createdById, editorId: task.assignedToId, text: `Horas de trabalho: ${fmtH(task.estMinutes ?? 0)} → ${fmtH(update.estMinutes as number)}` });
+  if (estChanged || update.status) await recalcDues(userId);
 
   if (update.status && update.status !== task.status) {
     const resolvedComment = eventComment
@@ -828,7 +745,7 @@ router.post("/tasks/:id/return", requireAuth, async (req, res): Promise<void> =>
   if (!["pending", "in_progress", "in_revision", "reopened"].includes(task.status)) {
     res.status(400).json({ error: "Só é possível devolver uma tarefa pendente, em edição ou em revisão." }); return;
   }
-  { const st = await loadState(); await stopTask(st, task); }
+  await stopTask(task);
 
   const returnComment = req.body?.returnComment ? String(req.body.returnComment).trim() : "";
   if (!returnComment) {
@@ -1254,8 +1171,7 @@ router.get("/pipeline", requireAuth, async (req, res): Promise<void> => {
   const tasks = await db
     .select({
       id: tasksTable.id, title: tasksTable.title, status: tasksTable.status,
-      priority: tasksTable.priority, estMinutes: tasksTable.estMinutes,
-      dueDate: tasksTable.dueDate, color: tasksTable.color, client: tasksTable.client,
+      priority: tasksTable.priority, dueDate: tasksTable.dueDate, color: tasksTable.color, client: tasksTable.client,
       revisionCount: tasksTable.revisionCount, assignedToId: tasksTable.assignedToId,
       createdById: tasksTable.createdById, createdAt: tasksTable.createdAt,
       taskNumber: tasksTable.taskNumber, taskYear: tasksTable.taskYear,
@@ -1365,10 +1281,10 @@ router.get("/tasks/:id/lifecycle", requireAuth, async (req, res): Promise<void> 
       title: task.title,
       status: task.status,
       priority: task.priority,
-      estMinutes: task.estMinutes, workedMinutes: task.workedMinutes,
       client: task.client,
       color: task.color,
       dueDate: task.dueDate,
+      estMinutes: task.estMinutes,
       revisionCount: task.revisionCount ?? 0,
       assignee: task.assignedToId ? (personMap.get(task.assignedToId) ?? null) : null,
       coordinator: task.createdById ? (personMap.get(task.createdById) ?? null) : null,
@@ -1392,7 +1308,6 @@ router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
       description: tasksTable.description,
       status: tasksTable.status,
       priority: tasksTable.priority,
-      estMinutes: tasksTable.estMinutes,
       dueDate: tasksTable.dueDate,
       color: tasksTable.color,
       client: tasksTable.client,
@@ -1427,7 +1342,6 @@ router.get("/timeline", requireAuth, async (req, res): Promise<void> => {
     description: t.description,
     status: t.status,
     priority: t.priority,
-    estMinutes: t.estMinutes,
     dueDate: t.dueDate,
     color: t.color,
     client: t.client,
@@ -1484,7 +1398,6 @@ router.get("/reports", requireCoordinator, async (req, res): Promise<void> => {
       title: r.title,
       status: r.status,
       priority: r.priority,
-      estMinutes: r.estMinutes, workedMinutes: r.workedMinutes,
       client: r.client,
       color: r.color,
       revisionCount: r.revisionCount,
@@ -1565,13 +1478,9 @@ router.post("/tasks/:id/reassign", requireCoordinator, async (req, res): Promise
   const newEditorId = parseInt(String(req.body.editorId), 10);
   if (isNaN(id) || isNaN(newEditorId)) { res.status(400).json({ error: "IDs inválidos" }); return; }
   if (await rejectInactive(res, [newEditorId])) return;
-  // mesma regra do "passar para outro editor": gestor só mexe nos próprios jobs
+  // mover é livre: qualquer gestor passa qualquer job (o prazo é recalculado pelas horas)
   const role = req.session.userRole!;
-  if (!["admin", "supervisor"].includes(role)) {
-    const [t] = await db.select({ createdById: tasksTable.createdById }).from(tasksTable).where(eq(tasksTable.id, id));
-    if (!t || t.createdById !== req.session.userId) { res.status(403).json({ error: "Você só mexe nos seus jobs" }); return; }
-  }
-  const out = await placeTask(id, newEditorId, String(req.body?.mode ?? "end"), req.session.userId!, role, { reason: req.body?.reason, signed: req.body?.signed === true });
+  const out = await placeTask(id, newEditorId, String(req.body?.mode ?? "fila"), req.session.userId!, role);
   res.status(out.status).json(out.body);
 });
 

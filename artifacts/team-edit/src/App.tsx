@@ -1,6 +1,5 @@
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { IconContext } from "@/lib/icons";
-import { useState, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SettingsProvider, useSettings } from "@/contexts/SettingsContext";
@@ -8,7 +7,6 @@ import { TaskModalProvider } from "@/contexts/TaskModalContext";
 import { ChatProvider } from "@/contexts/ChatContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { Shell } from "@/components/layout/Shell";
-import { Toaster as SonnerToaster } from "sonner";
 import LoginPage from "@/pages/login";
 import ChangePasswordPage from "@/pages/change-password";
 import Dashboard from "@/pages/dashboard";
@@ -28,33 +26,6 @@ import Filas from "@/pages/fila/filas";
 import Supervisao from "@/pages/fila/supervisao";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } });
-
-// Observes the `dark` class on <html> so the Toaster always matches the active theme.
-function ThemedSonner() {
-  const [isDark, setIsDark] = useState(() =>
-    document.documentElement.classList.contains("dark")
-  );
-  useEffect(() => {
-    const obs = new MutationObserver(() =>
-      setIsDark(document.documentElement.classList.contains("dark"))
-    );
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-    return () => obs.disconnect();
-  }, []);
-  return (
-    <SonnerToaster
-      theme={isDark ? "dark" : "light"}
-      position="top-center"
-      offset={72}
-      richColors
-      closeButton
-      duration={4000}
-      toastOptions={{
-        style: { fontFamily: "inherit", fontSize: "13px", borderRadius: "10px" },
-      }}
-    />
-  );
-}
 
 function Router() {
   const { user, loading } = useAuth();
@@ -131,7 +102,6 @@ function App() {
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
               <Router />
             </WouterRouter>
-            <ThemedSonner />
           </AuthProvider>
         </SettingsGate>
       </SettingsProvider>

@@ -29,6 +29,8 @@ import { ChatWidget } from "@/components/layout/ChatWidget";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
 import { HandoffHost } from "@/components/fila/HandoffDialog";
 import { NowChip, QuickCreate } from "@/components/layout/TopBar";
+import { StatusLine } from "@/components/layout/StatusLine";
+import { isImportant } from "@/lib/notices";
 
 interface AppNotification {
   id: number;
@@ -128,7 +130,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }, []);
 
   const fetchNotifications = useCallback(() => {
-    apiFetch<AppNotification[]>("/api/notifications").then(data => {
+    // sininho = só o informativo do sistema; o importante fica em Avisos (lib/notices.ts)
+    apiFetch<AppNotification[]>("/api/notifications").then(all => {
+      const data = all.filter(n => !isImportant(n));
       setNotifications(data);
       setUnreadCount(data.filter(n => !n.read).length);
     }).catch(() => {});
@@ -178,9 +182,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const socket = getSocket();
     const handle = (notif: AppNotification) => {
+      if (soundEnabledRef.current) playNotifSound();
+      if (isImportant(notif)) return; // vai para Avisos, não para o sininho
       setNotifications(prev => [notif, ...prev].slice(0, 40));
       setUnreadCount(prev => prev + 1);
-      if (soundEnabledRef.current) playNotifSound();
     };
     const handlePoke = ({ fromName }: { fromName: string }) => {
       playPokeSound();
@@ -213,7 +218,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   };
 
   const markAllRead = async () => {
-    await apiPut("/api/notifications/read-all", {});
+    // só as do sininho (as importantes continuam em Avisos até serem vistas lá)
+    await Promise.all(notifications.filter(n => !n.read).map(n => apiPut(`/api/notifications/${n.id}/read`, {}).catch(() => {})));
     setNotifications(prev => prev.map(x => ({ ...x, read: true })));
     setUnreadCount(0);
   };
@@ -229,7 +235,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   };
 
   const deleteAll = async () => {
-    await apiDelete("/api/notifications");
+    await Promise.all(notifications.map(n => apiDelete(`/api/notifications/${n.id}`).catch(() => {})));
     setNotifications([]);
     setUnreadCount(0);
   };
@@ -671,6 +677,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </div>
 
       <ChatWidget />
+      {/* avisos rápidos (toast): cartões no canto inferior direito, estilo Jira/Asana */}
+      <StatusLine />
       {(user?.role === "admin" || user?.role === "supervisor") && <HandoffHost />}
 
       {/* Poke toast */}

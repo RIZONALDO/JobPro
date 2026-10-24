@@ -2,16 +2,15 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Trash2, Question } from "@/lib/icons";
 import { cn } from "@/lib/utils";
-import { apiDelete, apiFetch, apiPost, apiPut } from "@/lib/api";
+import { apiDelete, apiFetch, apiPost } from "@/lib/api";
 import { usePageTitle } from "@/lib/use-page-title";
 import { useTaskModal } from "@/contexts/TaskModalContext";
-import { coordColor, fmt, fmtH, inQueue, personName, rem, useBoard, type Board } from "@/lib/fila";
+import { coordColor, fmtH, inQueue, personName, useBoard, type Board } from "@/lib/fila";
 import { Alert, Btn, Chip, Kv, Section, Who, inputCls } from "@/components/fila/ui";
-import { QueueTimeline } from "@/components/fila/QueueTimeline";
 import { JobForm } from "@/components/fila/JobForm";
-import { RequestItem } from "@/pages/fila/filas";
+import { QueueTrack } from "@/components/fila/QueueTrack";
 
-/** Supervisão: ocupação de cada editor, jobs que não couberam, pedidos sem resposta e quem mexe na fila. */
+/** Supervisão: jobs na fila de cada editor, jobs sem editor e quem mexe na fila. */
 export default function Supervisao() {
   usePageTitle("Supervisão da fila");
   const { board, error, reload } = useBoard();
@@ -30,46 +29,30 @@ function View({ board, reload }: { board: Board; reload: () => void }) {
 
   const coords = [...new Set(board.tasks.map(t => t.coordId).filter(Boolean))] as number[];
   const statCoords = [...new Set([...coords, ...Object.keys(board.stats ?? {}).map(Number)])];
-  const scale = Math.max(board.limit, ...board.editors.map(e => e.queueMinutes)) * 1.08;
-  const escalated = board.requests.filter(r => r.escalated);
+  const scale = Math.max(1, ...board.editors.map(e => e.count));
   const noEditor = board.tasks.filter(t => !t.editorId && t.status === "pending" && !t.hold);
   const todayKey = new Date().toISOString().slice(0, 10);
-
-  const setLimit = async (v: number) => { try { await apiPut("/api/queue/settings", { limitMinutes: v }); toast.success("Limite atualizado"); reload(); } catch (e) { toast.error((e as Error).message); } };
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4 pb-10">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">Supervisão da fila</h1>
-          <p className="text-[13px] text-[hsl(var(--muted-foreground))]">Ocupação de cada editor em horas. A semana tem {fmtH(board.weekMinutes)} de expediente.</p>
+          <p className="text-[13px] text-[hsl(var(--muted-foreground))]">Quantos jobs cada editor tem na fila, de quais gestores e quantos estão atrasados.</p>
         </div>
-        <label className="flex items-center gap-2 text-[13px] text-[hsl(var(--muted-foreground))]">Limite da fila por editor
-          <select value={board.limit} onChange={e => setLimit(+e.target.value)} className={inputCls}>
-            {[...new Set([1440, 2400, 2670, 3600, 4800, board.limit])].sort((a, b) => a - b).map(m => <option key={m} value={m}>{fmtH(m)}{m === 2670 ? " (1 semana)" : ""}</option>)}
-          </select>
-        </label>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {board.editors.map(o => {
-          const pct = Math.round((o.queueMinutes / board.weekMinutes) * 100), over = o.queueMinutes > board.limit;
-          const late = board.tasks.filter(t => inQueue(t) && t.editorId === o.id && t.slot?.late).length;
+          const pl = board.tasks.find(t => t.editorId === o.id && t.playing), nx = board.tasks.find(t => t.editorId === o.id && inQueue(t) && t.pos === 0);
           return (
             <Section key={o.id} title={<span className="inline-flex items-center gap-2">{o.name}{o.offToday && <Chip tone="warn">{o.offToday}</Chip>}</span>}
-              right={<Chip tone={over ? "bad" : pct >= 80 ? "warn" : "ok"}>{pct}% de uma semana</Chip>}>
-              <div className="relative py-1">
-                <div className="flex h-3.5 overflow-hidden rounded-full bg-[hsl(var(--muted))]">
-                  {Object.entries(o.byCoord).map(([c, m]) => <i key={c} className="block h-full" style={{ width: `${(m / scale) * 100}%`, background: coordColor(+c) }} title={`${personName(board, +c)}: ${fmtH(m)}`} />)}
-                </div>
-                <div className="absolute -bottom-0.5 -top-0.5 w-0.5 bg-rose-500" style={{ left: `${(board.limit / scale) * 100}%` }} title="limite da fila" />
+              right={<Chip tone={o.late ? "bad" : "neu"}>{o.count} na fila{o.late ? ` · ${o.late} atrasado${o.late > 1 ? "s" : ""}` : ""}</Chip>}>
+              <div className="flex h-3.5 overflow-hidden rounded-full bg-[hsl(var(--muted))]">
+                {Object.entries(o.byCoord).map(([c, n]) => <i key={c} className="block h-full" style={{ width: `${(n / scale) * 100}%`, background: coordColor(+c) }} title={`${personName(board, +c)}: ${n}`} />)}
               </div>
-              <Kv k="Na fila" v={<>{fmtH(o.queueMinutes)} · limite {fmtH(board.limit)}{over && <span className="text-rose-500"> · acima</span>}</>} />
-              {Object.entries(o.byCoord).map(([c, m]) => <Kv key={c} k={<Who id={+c} name={personName(board, +c)} />} v={fmtH(m)} />)}
-              <Kv k="Livre a partir de" v={fmt(o.freeFrom)} />
-              {late > 0 && <Kv k="Jobs que vão atrasar" v={<span className="text-rose-500">{late}</span>} />}
-              {(() => { const pl = board.tasks.find(t => t.editorId === o.id && t.playing), nx = board.tasks.find(t => t.editorId === o.id && t.slot?.pos === 0);
-                return <Kv k="Agora" v={pl ? <span className="text-emerald-600 dark:text-emerald-400">em edição: {pl.title}</span> : nx ? <span className="font-normal">próximo: {nx.title}</span> : <span className="font-normal">disponível para novos jobs</span>} />; })()}
+              {Object.entries(o.byCoord).map(([c, n]) => <Kv key={c} k={<Who id={+c} name={personName(board, +c)} />} v={`${n} job${n > 1 ? "s" : ""}`} />)}
+              <Kv k="Agora" v={pl ? <span className="text-emerald-600 dark:text-emerald-400">em edição: {pl.title}</span> : nx ? <span className="font-normal">próximo: {nx.title}</span> : <span className="font-normal">disponível para novos jobs</span>} />
             </Section>
           );
         })}
@@ -78,34 +61,33 @@ function View({ board, reload }: { board: Board; reload: () => void }) {
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-4">
           <Section title="Precisa de você">
-            {escalated.length + noEditor.length === 0 && <p className="text-[13px] text-[hsl(var(--muted-foreground))]">Nada pendente. Jobs sem editor e pedidos sem resposta há 30 min aparecem aqui.</p>}
-            {escalated.map(r => <RequestItem key={r.id} board={board} r={r} onDone={reload} />)}
+            {noEditor.length === 0 && <p className="text-[13px] text-[hsl(var(--muted-foreground))]">Nada pendente. Jobs sem editor aparecem aqui.</p>}
             {noEditor.map(t => (
               <Alert key={t.id} tone="warn" icon={<Question />} title={`“${t.title}” sem editor (${personName(board, t.coordId)})`}>
-                <span>{fmtH(rem(t))} · prazo pedido {fmt(t.promised)}. Nenhuma fila comportava. Se passar do prazo, o novo prazo fica registrado e {personName(board, t.coordId).split(" ")[0]} avisa o cliente.</span>
-                <div className="flex flex-wrap gap-2"><Btn v="pri" size="sm" onClick={() => setMove(t.id)}>Escolher editor (pode passar do limite)</Btn><Btn size="sm" v="ghost" onClick={() => openTask(t.id)}>Ver job</Btn></div>
+                <span>{fmtH(t.est)} de trabalho. {personName(board, t.coordId).split(" ")[0]} pediu à supervisão para escolher o editor.</span>
+                <div className="flex flex-wrap gap-2"><Btn v="pri" size="sm" onClick={() => setMove(t.id)}>Escolher editor</Btn><Btn size="sm" v="ghost" onClick={() => openTask(t.id)}>Ver job</Btn></div>
               </Alert>
             ))}
           </Section>
-          <Section title="Quem mexe na fila" sub="Últimos 30 dias. Não é punição: mostra onde o planejamento falha.">
+          <Section title="Quem mexe na fila" sub="Últimos 30 dias. Não é punição: mostra onde o planejamento muda.">
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-[13px]">
                 <thead><tr className="text-[11px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">
-                  {["Coordenador", "Horas na fila", "Furou a fila", "Estimativa contestada", "Prazo empurrado", "Alterações do cliente"].map((h, i) => <th key={h} className={cn("whitespace-nowrap px-2 py-1.5 font-semibold", i ? "text-right" : "text-left")}>{h}</th>)}
+                  {["Gestor", "Jobs na fila", "Jobs movidos", "Alterações do cliente"].map((h, i) => <th key={h} className={cn("whitespace-nowrap px-2 py-1.5 font-semibold", i ? "text-right" : "text-left")}>{h}</th>)}
                 </tr></thead>
                 <tbody>{statCoords.map(c => {
-                  const st = board.stats?.[c] ?? { furou: 0, contest: 0, reneg: 0, changes: 0 };
-                  const h = board.tasks.filter(t => inQueue(t) && t.coordId === c).reduce((s, t) => s + rem(t), 0);
+                  const st = board.stats?.[c] ?? { moves: 0, changes: 0 };
+                  const n = board.tasks.filter(t => inQueue(t) && t.coordId === c).length;
                   return <tr key={c} className="border-t">
                     <td className="px-2 py-1.5"><Who id={c} name={personName(board, c)} /></td>
-                    {[fmtH(h), st.furou, st.contest, st.reneg, st.changes].map((v, i) => <td key={i} className="px-2 py-1.5 text-right font-mono">{v}</td>)}
+                    {[n, st.moves, st.changes].map((v, i) => <td key={i} className="px-2 py-1.5 text-right font-mono">{v}</td>)}
                   </tr>;
                 })}</tbody>
               </table>
             </div>
           </Section>
         </div>
-        <Section title="Feriados" sub="Dias sem expediente para todos. Ausências (férias, folga) vêm de Membros.">
+        <Section title="Feriados" sub="Nesses dias não há expediente: as horas de trabalho não contam e o sistema não manda lembretes. Ausências (férias, folga) vêm de Membros.">
           <div className="flex flex-wrap gap-2">
             <input type="date" value={hDay} onChange={e => setHDay(e.target.value)} className={inputCls} />
             <input value={hName} onChange={e => setHName(e.target.value)} placeholder="Nome" className={cn(inputCls, "min-w-0 flex-1")} />
@@ -122,7 +104,10 @@ function View({ board, reload }: { board: Board; reload: () => void }) {
         </Section>
       </div>
 
-      <QueueTimeline board={board} me={null} onOpen={t => openTask(t.id)} />
+      <QueueTrack board={board} me={null} onOpen={t => openTask(t.id)} onMove={async (id, editorId, index) => {
+        try { const r = await apiPost<{ message?: string }>(`/api/queue/tasks/${id}/move`, { editorId, index }); toast.success(r?.message ?? "Movido"); reload(); }
+        catch (e) { toast.error((e as Error).message); }
+      }} />
       <JobForm open={move != null} onOpenChange={o => { if (!o) setMove(null); }} taskId={move} mode="move" onSaved={reload} />
     </div>
   );
