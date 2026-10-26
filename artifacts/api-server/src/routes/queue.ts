@@ -9,7 +9,7 @@ import { broadcastTaskChange } from "../lib/broadcast.js";
 import { createFeedItem } from "../lib/feed.js";
 import {
   type QTask, type State, type TaskRow, QUEUE_STATUSES, loadState, loadCalendar, queueOf, isLate, frontPos, orderAt, blockRisk,
-  schedule, recalcDues, userNames, logEvent, invalidateHolidays,
+  schedule, recalcDues, changedQueues, userNames, logEvent, invalidateHolidays,
 } from "../lib/queue.js";
 import { DAY, dayOff, dayKey, toLm, fmtLm, fmtH, workBetween } from "../lib/workcal.js";
 
@@ -51,8 +51,10 @@ async function watchHeads<T>(actorId: number, fn: (s: State) => Promise<T>): Pro
   const s0 = await loadState();
   const h0 = heads(s0.tasks);
   const out = await fn(s0);
-  await recalcDues(actorId);
+  // recalcula só as filas que mudaram com esta ação
   const s1 = await loadState();
+  const changed = changedQueues(s0.tasks, s1.tasks);
+  if (changed.length) await recalcDues(actorId, { editors: changed });
   const h1 = heads(s1.tasks);
   const names = await userNames();
   for (const [ed, id] of h1) {

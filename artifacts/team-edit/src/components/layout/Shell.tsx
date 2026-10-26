@@ -31,6 +31,8 @@ import { HandoffHost } from "@/components/fila/HandoffDialog";
 import { NowChip, QuickCreate } from "@/components/layout/TopBar";
 import { StatusLine } from "@/components/layout/StatusLine";
 import { isImportant } from "@/lib/notices";
+import { startTour } from "@/components/tour/Tour";
+import { Question } from "@/lib/icons";
 
 interface AppNotification {
   id: number;
@@ -376,9 +378,19 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <QuickCreate />
             <span className="mx-1 hidden h-6 w-px bg-[hsl(var(--border))] md:block" aria-hidden />
 
+            {/* tour da tela Fila (gestão) */}
+            {user && user.role !== "editor" && (
+              <button type="button" data-tour="ajuda" title="Tour da tela Fila" aria-label="Abrir o tour da tela Fila"
+                onClick={() => { if (location !== "/fila") { navigate("/fila"); setTimeout(startTour, 700); } else startTour(); }}
+                className="grid h-9 w-9 place-items-center rounded-xl text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--foreground)/0.06)] hover:text-[hsl(var(--foreground))]">
+                <Question className="h-[18px] w-[18px]" />
+              </button>
+            )}
+
             {/* Notifications */}
             <div ref={notifRef} className="relative">
               <button
+                data-tour="sino"
                 onClick={() => setNotifOpen(v => !v)}
                 className={cn("relative grid h-9 w-9 place-items-center rounded-xl text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--foreground)/0.06)] hover:text-[hsl(var(--foreground))]", notifOpen && "bg-[hsl(var(--foreground)/0.08)] text-[hsl(var(--foreground))]")}
               >

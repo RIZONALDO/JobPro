@@ -34,6 +34,14 @@ export interface QTask {
 }
 
 export const inQueue = (t: QTask) => t.editorId != null && !t.hold && QUEUE_STATUSES.includes(t.status);
+/** Retrato da fila de um editor (ordem, em edição, horas): se mudou, os prazos dela são recalculados. */
+export const queueSig = (ts: QTask[], ed: number) => queueOf(ts, ed).map(t => `${t.id}:${t.playing ? t.since : 0}:${t.est}`).join(",");
+/** Editores cuja fila mudou entre dois momentos. */
+export function changedQueues(a: QTask[], b: QTask[]): number[] {
+  const eds = new Set([...a, ...b].filter(inQueue).map(t => t.editorId as number));
+  return [...eds].filter(ed => queueSig(a, ed) !== queueSig(b, ed));
+}
+
 export function queueOf(ts: QTask[], ed: number): QTask[] {
   return ts.filter(t => inQueue(t) && t.editorId === ed)
     .sort((a, b) => (Number(b.playing) - Number(a.playing)) || a.order - b.order || a.id - b.id);
@@ -148,9 +156,10 @@ export async function logEvent(e: { kind: string; taskId?: number | null; actorI
  * Recalcula o prazo de entrega de todos os jobs nas filas (depois de qualquer mudança na fila).
  * Grava só o que mudou, registra no histórico do job e avisa o gestor dono quando foi outra pessoa que mexeu.
  */
-export async function recalcDues(actorId?: number | null, opts: { silent?: boolean } = {}): Promise<number> {
+export async function recalcDues(actorId?: number | null, opts: { silent?: boolean; editors?: number[] } = {}): Promise<number> {
   const s = await loadState();
-  const eds = [...new Set(s.tasks.filter(inQueue).map(t => t.editorId as number))];
+  // só as filas pedidas: o que acontece na fila de um editor não mexe nos prazos de outro
+  const eds = [...new Set(s.tasks.filter(inQueue).map(t => t.editorId as number))].filter(e => !opts.editors || opts.editors.includes(e));
   if (!eds.length) return 0;
   const cal = await loadCalendar(eds);
   const names = actorId ? (await userNames()).get(actorId)?.name : null;

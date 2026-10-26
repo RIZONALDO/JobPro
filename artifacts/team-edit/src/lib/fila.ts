@@ -236,3 +236,30 @@ export function planMove(board: Board, id: number, fromEd: number, toEd: number,
   if (fromEd !== toEd) plan.set(fromEd, simulateQueue(board, fromEd, from));
   return plan;
 }
+
+/* ── ocupação do editor: horas de trabalho que faltam na fila (dia de expediente = 8h) ── */
+export type OccLevel = "livre" | "leve" | "cheia" | "alta";
+export const OCC = {
+  livre: { label: "Livre", color: "#71717a", hint: "sem jobs na fila" },
+  leve: { label: "Leve", color: "#10b981", hint: "até 2 dias de trabalho" },
+  cheia: { label: "Cheia", color: "#f59e0b", hint: "de 2 a 4 dias de trabalho" },
+  alta: { label: "Alta", color: "#f43f5e", hint: "mais de 4 dias de trabalho" },
+} as const;
+/** escala da barrinha: 5 dias de trabalho enchem a barra */
+export const OCC_FULL = 5 * 480;
+export function occupancy(board: Board, editorId: number): { min: number; days: number; level: OccLevel } {
+  const items = board.editors.find(e => e.id === editorId)?.track?.items ?? [];
+  // horas de cada job da fila, menos o que o job em edição já andou
+  const min = items.reduce((s, it) => {
+    const t = board.tasks.find(x => x.id === it.id);
+    return t && inQueue(t) ? s + Math.max(0, t.est - (t.playing ? it.done : 0)) : s;
+  }, 0);
+  const days = min / 480;
+  return { min, days, level: min <= 0 ? "livre" : days <= 2 ? "leve" : days <= 4 ? "cheia" : "alta" };
+}
+/** "3 dias e 2h", "5h30", "—" */
+export function workDays(min: number): string {
+  if (min <= 0) return "—";
+  const d = Math.floor(min / 480), r = min - d * 480;
+  return d ? `${d} dia${d > 1 ? "s" : ""}${r >= 30 ? ` e ${fmtH(r)}` : ""}` : fmtH(min);
+}

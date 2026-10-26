@@ -72,11 +72,11 @@ interface JobStep { at: number; actor: string | null; cause: Cause | null; from:
 const sameRun = (a: { actor: string | null; at: number; cause: Cause | null }, b: Episode) =>
   a.actor === b.actor && b.at - a.at <= MERGE_WINDOW && a.cause?.kind === b.cause?.kind && a.cause?.taskId === b.cause?.taskId;
 
-export function QueueHistoryButton({ editorId, name, className }: { editorId: number; name: string; className?: string }) {
+export function QueueHistoryButton({ editorId, name, className, tour }: { editorId: number; name: string; className?: string; tour?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} aria-label={`Histórico da fila de ${name}`} title="Fila e histórico de prazos"
+      <button type="button" data-tour={tour} onClick={() => setOpen(true)} aria-label={`Histórico da fila de ${name}`} title="Fila e histórico de prazos"
         className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[hsl(var(--accent))]", muted, "hover:text-[hsl(var(--foreground))]", className)}>
         <History className="h-4 w-4" />
       </button>

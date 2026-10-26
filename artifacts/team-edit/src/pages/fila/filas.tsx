@@ -2,7 +2,6 @@ import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Plus, Play, MoreHorizontal, ArrowUp, ArrowDown, GripVertical, ArrowsDownUp, ListOrdered, CalendarRange, HandPalm, Mail, Question, Timer, CheckCircle2, Shuffle } from "@/lib/icons";
 import { openHandoff } from "@/components/fila/HandoffDialog";
-import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { apiPost } from "@/lib/api";
@@ -12,6 +11,8 @@ import { blockedLine, deadlineState, dur, fmt, fmtH, inQueue, personName, planMo
 import { Alert, Btn, Chip, HeadAction, Section } from "@/components/fila/ui";
 import { QueueTrack } from "@/components/fila/QueueTrack";
 import { Notices } from "@/components/fila/Notices";
+import { OccAvatar, OccMeter } from "@/components/fila/Occupancy";
+import { Tour, type TourStep } from "@/components/tour/Tour";
 import { QueueHistoryButton } from "@/components/fila/QueueHistory";
 import { JobForm, type JobFormMode } from "@/components/fila/JobForm";
 import { AskDialog, ago, type Ask } from "@/components/fila/job-shared";
@@ -105,15 +106,15 @@ function CoordView({ board, reload }: { board: Board; reload: () => void }) {
           <h1 className="text-xl font-bold">Filas dos editores</h1>
           <p className="text-[13px] text-[hsl(var(--muted-foreground))]">Você vê a fila de todos. Arraste os jobs para mudar a ordem ou o editor: os prazos de entrega são recalculados pelas horas de trabalho.</p>
         </div>
-        <HeadAction icon={Plus} label="Novo job" onClick={() => setForm({ open: true, id: null, mode: "new" })} />
+        <HeadAction data-tour="novo-job" icon={Plus} label="Novo job" onClick={() => setForm({ open: true, id: null, mode: "new" })} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <Section title={<Title icon={CheckCircle2} n={items.length}>Precisa de você</Title>}>
+        <div data-tour="precisa" className="flex min-w-0"><Section className="flex-1" title={<Title icon={CheckCircle2} n={items.length}>Precisa de você</Title>}>
           {items.length ? <div className="flex flex-col gap-2">{items}</div>
             : <div className="flex items-center gap-2.5 rounded-xl border border-dashed px-3 py-5 text-[13px] text-[hsl(var(--muted-foreground))]"><CheckCircle2 className="h-5 w-5 text-emerald-500" />Tudo em dia. Nada depende de você agora.</div>}
-        </Section>
-        <div className="relative lg:min-h-[220px]"><Notices className="max-h-[420px] lg:absolute lg:inset-0 lg:max-h-none" /></div>
+        </Section></div>
+        <div data-tour="avisos" className="relative lg:min-h-[220px]"><Notices className="max-h-[420px] lg:absolute lg:inset-0 lg:max-h-none" /></div>
       </div>
 
       <PartHead icon={CalendarRange} title="Agenda dos editores" hint="Previsão de cada job nas horas de expediente. Clique num bloco para abrir." />
@@ -124,10 +125,25 @@ function CoordView({ board, reload }: { board: Board; reload: () => void }) {
         onEdit={id => setForm({ open: true, id, mode: "edit" })} onPass={id => setForm({ open: true, id, mode: "move" })} reload={reload} />
 
       <JobForm open={form.open} onOpenChange={o => setForm(f => ({ ...f, open: o }))} taskId={form.id} mode={form.mode} onSaved={reload} />
+      <Tour id="fila-gestor" steps={TOUR} />
       <AskDialog ask={ask} onClose={() => setAsk(null)} onDone={reload} />
     </div>
   );
 }
+
+/* ── tour da tela (abre na primeira visita e pelo "?" do topo) ── */
+const TOUR: TourStep[] = [
+  { target: "novo-job", title: "Comece pelo Novo job", text: "Título, horas de edição e editor. O prazo de entrega é calculado sozinho: horas no expediente + 1h." },
+  { target: "precisa", title: "Precisa de você", text: "Só o que espera uma ação sua, já com os botões para resolver." },
+  { target: "avisos", title: "Avisos", text: "O importante: prazo vencido, job travado, job pronto para o cliente. Clique para abrir o job." },
+  { target: "agenda", title: "Agenda dos editores", text: "Cada bloco é um job, do tamanho das horas de trabalho. Eles ficam colados, na ordem da fila." },
+  { target: "agenda-block", title: "Arraste para mudar a ordem", text: "Solte na mesma linha ou na de outro editor. Antes de soltar, o rodapé mostra quais prazos mudam." },
+  { target: "historico", title: "Por que o prazo mudou?", text: "O relógio ao lado do editor mostra a ordem atual e a história de cada prazo." },
+  { target: "fila", title: "Fila de cada editor", text: "A mesma fila, em lista. O 1º é o job em edição e não sai da frente. Aqui também dá para arrastar." },
+  { target: "fila-menu", title: "Menu do job", text: "Subir ou descer na fila, passar para outro editor ou ajustar as horas." },
+  { target: "sino", title: "Sininho", text: "Só informação: prazo recalculado, job movido, job começou." },
+  { target: "ajuda", title: "Rever quando quiser", text: "Este botão abre o tour de novo." },
+];
 
 /* ── título de cada parte da página ── */
 function PartHead({ icon: Icon, title, hint }: { icon: React.ComponentType<{ className?: string }>; title: string; hint: string }) {
@@ -174,7 +190,7 @@ function EditorQueues({ board, me, now, canManage, onOpen, onFocus, onPlan, onEd
   };
   const mark = <li aria-hidden className="pointer-events-none -mx-2 h-0.5 rounded-full bg-[hsl(var(--primary))] shadow-[0_0_0_3px_hsl(var(--primary)/0.2)]" />;
   return (
-    <section className={cn("grid overflow-hidden rounded-xl border bg-[hsl(var(--card))] transition-opacity md:grid-cols-2 md:divide-x xl:[grid-template-columns:repeat(auto-fit,minmax(380px,1fr))] max-md:divide-y", busy && "pointer-events-none opacity-70")}>
+    <section data-tour="fila" className={cn("grid overflow-hidden rounded-xl border bg-[hsl(var(--card))] transition-opacity md:grid-cols-2 md:divide-x xl:[grid-template-columns:repeat(auto-fit,minmax(380px,1fr))] max-md:divide-y", busy && "pointer-events-none opacity-70")}>
       {board.editors.map(ed => {
         const { items, freeFrom } = queueLine(board, ed.id);
         const q = items.map(i => i.t);
@@ -197,10 +213,11 @@ function EditorQueues({ board, me, now, canManage, onOpen, onFocus, onPlan, onEd
               </div>
             )}
             <header className="mb-5 flex items-center gap-3">
-              <AvatarDisplay name={ed.name} avatarUrl={board.people.find(p => p.id === ed.id)?.avatarUrl ?? null} size={36} />
+              <OccAvatar board={board} editorId={ed.id} name={ed.name} avatarUrl={board.people.find(p => p.id === ed.id)?.avatarUrl ?? null} size={36} />
               <div className="min-w-0 flex-1">
                 <h3 className="flex items-center gap-2 text-[15px] font-semibold">{ed.name}{ed.inactive ? <Chip tone="neu">Inativo</Chip> : ed.offToday && <Chip tone="warn">{ed.offToday}</Chip>}</h3>
                 <p className={cn("text-xs", muted)}>{q.length ? `${q.length} job${q.length > 1 ? "s" : ""} na fila` : "Sem jobs na fila"}{ed.late > 0 && <span className="text-rose-500"> · {ed.late} atrasado{ed.late > 1 ? "s" : ""}</span>}</p>
+                <OccMeter board={board} editorId={ed.id} className="mt-1" />
               </div>
               <QueueHistoryButton editorId={ed.id} name={ed.name} />
             </header>
@@ -249,7 +266,7 @@ function EditorQueues({ board, me, now, canManage, onOpen, onFocus, onPlan, onEd
                           <p className={cn("text-xs leading-5", risk ? cn(stateCls, "font-medium") : muted)} title={atRisk ? "Tem job atrasado na frente e este vence em menos de 24h" : undefined}>{state}</p>
                         </div>
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild><button type="button" aria-label={`Ações de ${t.title}`} className={cn("-mr-1 grid h-7 w-7 place-items-center rounded-md opacity-50 transition-opacity hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))] group-hover:opacity-100 data-[state=open]:opacity-100 max-md:opacity-100", muted)}><MoreHorizontal className="h-4 w-4" /></button></DropdownMenuTrigger>
+                          <DropdownMenuTrigger asChild><button type="button" data-tour={t.playing ? undefined : "fila-menu"} aria-label={`Ações de ${t.title}`} className={cn("-mr-1 grid h-7 w-7 place-items-center rounded-md opacity-50 transition-opacity hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))] group-hover:opacity-100 data-[state=open]:opacity-100 max-md:opacity-100", muted)}><MoreHorizontal className="h-4 w-4" /></button></DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="min-w-[200px]">
                             <DropdownMenuItem onClick={() => onOpen(t.id)}>Abrir job</DropdownMenuItem>
                             {canMove && k > min && <DropdownMenuItem onClick={() => moveTo(t.id, ed.id, k, ed.id, k - 1)}><ArrowUp className="mr-2 h-4 w-4" />Subir na fila</DropdownMenuItem>}

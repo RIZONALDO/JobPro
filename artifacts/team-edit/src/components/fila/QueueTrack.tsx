@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight } from "@/lib/icons";
 import { LiveDot } from "@/components/fila/ui";
 import { QueueHistoryButton } from "@/components/fila/QueueHistory";
+import { OccMeter } from "@/components/fila/Occupancy";
 import { DAY, coordColor, dur, fmt, fmtDay, fmtH, inQueue, personName, planMove, type Board, type PlanItem, type QTask } from "@/lib/fila";
 
 const LW = 148;
@@ -137,7 +138,7 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
   const eds = board.editors.filter(e => !e.inactive || e.count > 0);
 
   return (
-    <div className="rounded-2xl border bg-[hsl(var(--card))]">
+    <div data-tour="agenda" className="rounded-2xl border bg-[hsl(var(--card))]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
         <div className="flex items-center gap-1">
           <button type="button" className={nav} disabled={off === 0} onClick={() => setOffset(Math.max(0, off - (view === "dia" ? 1 : n)))} aria-label="Anterior"><ChevronLeft className="h-4 w-4" /></button>
@@ -186,8 +187,9 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
                   <span className="flex min-w-0 flex-1 flex-col">
                     <b className="truncate text-[13px]">{ed.name}</b>
                     <small className="truncate font-mono text-[10px] text-[hsl(var(--muted-foreground))]">{ed.inactive ? "inativo" : ed.offToday ?? (me ? `${fmtH(mineH)} seus/${fmtH(total)}` : `${fmtH(total)} na fila`)}</small>
+                    {!ed.inactive && <OccMeter board={board} editorId={ed.id} className="mt-1" />}
                   </span>
-                  <QueueHistoryButton editorId={ed.id} name={ed.name} className="h-7 w-7 shrink-0" />
+                  <QueueHistoryButton editorId={ed.id} name={ed.name} className="h-7 w-7 shrink-0" tour="historico" />
                 </div>
                 <div className={cn("relative h-[88px] border-t transition-colors group-hover/row:bg-[hsl(var(--foreground)/0.015)]", drag && over?.ed === ed.id && "bg-[hsl(var(--primary)/0.05)]")} style={{ width: W }}
                   onDragOver={e => {
@@ -235,7 +237,7 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
                       : warn ? `inset 0 0 0 1.5px rgb(${warn} / 0.85)` : null;
                     return rs.map(([a, b], i) => (
                       <button key={`${t.id}-${i}`} type="button" onClick={() => onOpen?.(t)}
-                        draggable={!!onMove && !t.playing}
+                        draggable={!!onMove && !t.playing} data-tour={onMove && !t.playing && i === wide ? "agenda-block" : undefined}
                         onDragStart={e => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(t.id)); setDrag({ id: t.id, ed: ed.id, k: base(ed.id).findIndex(x => x.id === t.id) }); }}
                         onDragEnd={endDrag}
                         className={cn(onMove && !t.playing && "cursor-move", "absolute top-[12px] flex h-[64px] flex-col justify-center overflow-hidden whitespace-nowrap rounded-[4px] px-1.5 text-left leading-tight transition-[left,width,filter,opacity] duration-300 hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
