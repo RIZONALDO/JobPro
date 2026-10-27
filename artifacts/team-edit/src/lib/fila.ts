@@ -237,7 +237,7 @@ export function planMove(board: Board, id: number, fromEd: number, toEd: number,
   return plan;
 }
 
-/* ── ocupação do editor: horas de trabalho que faltam na fila (dia de expediente = 8h) ── */
+/* ── ocupação do editor: horas de trabalho somadas na fila (dia de expediente = 8h); quanto maior a fila, mais quente a cor ── */
 export type OccLevel = "livre" | "leve" | "cheia" | "alta";
 export const OCC = {
   livre: { label: "Livre", color: "#71717a", hint: "sem jobs na fila" },
@@ -245,17 +245,23 @@ export const OCC = {
   cheia: { label: "Cheia", color: "#f59e0b", hint: "de 2 a 4 dias de trabalho" },
   alta: { label: "Alta", color: "#f43f5e", hint: "mais de 4 dias de trabalho" },
 } as const;
-/** escala da barrinha: 5 dias de trabalho enchem a barra */
+/** escala da barrinha: 5 dias de trabalho enchem a barra (e chegam no vermelho) */
 export const OCC_FULL = 5 * 480;
 export function occupancy(board: Board, editorId: number): { min: number; days: number; level: OccLevel } {
   const items = board.editors.find(e => e.id === editorId)?.track?.items ?? [];
-  // horas de cada job da fila, menos o que o job em edição já andou
+  // tamanho da fila: soma das horas de todos os jobs (o mesmo número de "na fila" da agenda); fila maior = mais carregado
   const min = items.reduce((s, it) => {
     const t = board.tasks.find(x => x.id === it.id);
-    return t && inQueue(t) ? s + Math.max(0, t.est - (t.playing ? it.done : 0)) : s;
+    return t && inQueue(t) ? s + t.est : s;
   }, 0);
   const days = min / 480;
   return { min, days, level: min <= 0 ? "livre" : days <= 2 ? "leve" : days <= 4 ? "cheia" : "alta" };
+}
+/** cor contínua da ocupação: verde → âmbar → vermelho conforme a fila cresce (cinza quando vazia) */
+export function occColor(min: number): string {
+  if (min <= 0) return OCC.livre.color;
+  const f = Math.min(1, min / OCC_FULL);
+  return `hsl(${Math.round(158 - 158 * f)} ${Math.round(72 + 12 * f)}% ${Math.round(42 + 8 * f)}%)`;
 }
 /** "3 dias e 2h", "5h30", "—" */
 export function workDays(min: number): string {
