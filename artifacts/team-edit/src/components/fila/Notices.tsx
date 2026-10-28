@@ -8,11 +8,11 @@ import { apiFetch, apiPut } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import { useRealtime } from "@/hooks/use-realtime";
 import { useTaskModal } from "@/contexts/TaskModalContext";
-import { AlertOctagon, Bell, CheckCheck, Eye, HandPalm, RotateCcw, Timer, Undo2, UserPlus, XCircle, AlertTriangle } from "@/lib/icons";
+import { AlertOctagon, Bell, CheckCheck, Eye, HandPalm, Hourglass, PlayCircle, RotateCcw, Timer, Undo2, UserPlus, XCircle, AlertTriangle } from "@/lib/icons";
 import { IMPORTANT, isImportant, type AppNotification } from "@/lib/notices";
 
 const ICON: Record<string, React.ComponentType<{ className?: string }>> = {
-  due_passed: Timer, queue_blocked: HandPalm, queue_escalated: AlertOctagon, task_review: Eye, task_revision: RotateCcw,
+  due_passed: Timer, due_risk: Hourglass, queue_idle: PlayCircle, queue_blocked: HandPalm, queue_escalated: AlertOctagon, task_review: Eye, task_revision: RotateCcw,
   task_reopened: RotateCcw, task_returned: Undo2, task_paused: HandPalm, task_cancelled: XCircle, task_assigned: UserPlus,
 };
 const TILE = {

@@ -1,7 +1,7 @@
 /**
  * Notificações em dois lugares, sem repetir:
  *  - **Avisos** (painel na Fila e em Minha fila): só o que pede atenção ou uma ação — job pronto para o cliente,
- *    prazo vencido, travado, alteração do cliente, devolvido, job novo para o editor…
+ *    prazo vencido, job em risco, lembrete de começar, travado, alteração do cliente, devolvido, job novo para o editor…
  *  - **Sininho** (barra do topo): o resto, informativo do sistema — prazo recalculado, job movido, começou,
  *    aprovado, troca de editor, menções no mural…
  * A API guarda tudo em `te_notifications`; a separação é só pelo `type`.
@@ -17,6 +17,8 @@ export const IMPORTANT: Record<string, NoticeTone> = {
   due_passed: "bad",        // prazo de entrega vencido
   queue_blocked: "bad",     // job travado
   queue_escalated: "bad",   // travado com prazo em risco, foi para a supervisão
+  due_risk: "warn",         // pela conta de agora, o job não cabe no prazo (gestor)
+  queue_idle: "warn",       // editor sem job em edição há 30 min: lembrete para começar
   task_review: "warn",      // pronto: mandar para o cliente
   task_revision: "warn",    // cliente pediu alteração
   task_reopened: "warn",    // job reaberto
