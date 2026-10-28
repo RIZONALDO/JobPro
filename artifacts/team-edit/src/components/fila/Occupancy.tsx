@@ -1,6 +1,6 @@
 /**
  * Sinalizador de ocupação do editor, pelo tamanho da fila em horas de trabalho (`occupancy` em lib/fila.ts):
- * anel colorido no avatar e uma barrinha. A cor esquenta com o tamanho da fila: verde (pouco) → âmbar → vermelho (5 dias ou mais).
+ * anel colorido no avatar e uma barrinha. Verde = leve (até 2 dias), âmbar = cheia (2 a 4), vermelho = alta (mais de 4).
  */
 import { cn } from "@/lib/utils";
 import { AvatarDisplay } from "@/components/ui/avatar-display";
@@ -8,7 +8,7 @@ import { OCC, OCC_FULL, fmtH, occColor, occupancy, workDays, type Board } from "
 
 const tip = (b: Board, id: number) => {
   const o = occupancy(b, id), l = OCC[o.level];
-  return `Ocupação ${l.label.toLowerCase()}: ${o.min ? `${fmtH(o.min)} de trabalho na fila (${workDays(o.min)})` : "sem jobs na fila"}.\nQuanto maior a fila, mais quente a cor: verde → âmbar → vermelho (5 dias).`;
+  return `Ocupação ${l.label.toLowerCase()}: ${o.min ? `${fmtH(o.min)} de trabalho na fila (${workDays(o.min)})` : "sem jobs na fila"}.\nVerde até 2 dias · âmbar 2 a 4 dias · vermelho mais de 4 dias.`;
 };
 
 /** avatar com anel na cor da ocupação */
