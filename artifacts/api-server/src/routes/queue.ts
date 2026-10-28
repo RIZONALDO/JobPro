@@ -54,7 +54,7 @@ async function watchHeads<T>(actorId: number, fn: (s: State) => Promise<T>): Pro
   // recalcula só as filas que mudaram com esta ação
   const s1 = await loadState();
   const changed = changedQueues(s0.tasks, s1.tasks);
-  if (changed.length) await recalcDues(actorId, { editors: changed });
+  if (changed.length) await recalcDues(actorId, { editors: changed, before: s0.tasks });
   const h1 = heads(s1.tasks);
   const names = await userNames();
   for (const [ed, id] of h1) {
@@ -750,13 +750,15 @@ router.get("/queue/holidays", requireAuth, async (_req, res): Promise<void> => {
 router.post("/queue/holidays", requireSupervisor, async (req, res): Promise<void> => {
   const day = String(req.body?.day ?? ""), name = String(req.body?.name ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !name) { res.status(400).json({ error: "Informe a data e o nome" }); return; }
+  const s0 = await loadState(), c0 = await loadCalendar();
   await db.insert(holidaysTable).values({ day, name }).onConflictDoUpdate({ target: holidaysTable.day, set: { name } });
-  invalidateHolidays(); await recalcDues(req.session.userId); broadcastTaskChange();
+  invalidateHolidays(); await recalcDues(req.session.userId, { before: s0.tasks, calBefore: c0 }); broadcastTaskChange();
   res.json({ ok: true });
 });
 router.delete("/queue/holidays/:day", requireSupervisor, async (req, res): Promise<void> => {
+  const s0 = await loadState(), c0 = await loadCalendar();
   await db.delete(holidaysTable).where(eq(holidaysTable.day, String(req.params.day)));
-  invalidateHolidays(); await recalcDues(req.session.userId); broadcastTaskChange();
+  invalidateHolidays(); await recalcDues(req.session.userId, { before: s0.tasks, calBefore: c0 }); broadcastTaskChange();
   res.json({ ok: true });
 });
 

@@ -73,6 +73,29 @@ export function workBetween(cal: Calendar, a: number, b: number, editorId?: numb
   return m;
 }
 
+/** Volta `m` minutos de expediente a partir de `t` (o contrário de `consume`). */
+export function consumeBack(cal: Calendar, t: number, m: number, editorId?: number | null): number {
+  let cur = t;
+  for (let d = Math.floor(t / DAY), g = 0; g < 1500 && m > 0; d--, g++) {
+    for (const [a, b] of [...periods(cal, d, editorId)].reverse()) {
+      const A = d * DAY + a, B = d * DAY + b;
+      if (A >= cur) continue;
+      const e = Math.min(B, cur), take = Math.min(e - A, m);
+      m -= take; cur = e - take;
+      if (m <= 0) return cur;
+    }
+  }
+  return cur;
+}
+
+/** Minutos de expediente de `a` até `b`, com sinal (negativo se `b` vem antes). */
+export const workDelta = (cal: Calendar, a: number, b: number, editorId?: number | null): number =>
+  b >= a ? workBetween(cal, a, b, editorId) : -workBetween(cal, b, a, editorId);
+
+/** Anda `d` minutos de expediente a partir de `t` (para trás se negativo). */
+export const shiftWork = (cal: Calendar, t: number, d: number, editorId?: number | null): number =>
+  d > 0 ? consume(cal, t, d, editorId).end : d < 0 ? consumeBack(cal, t, -d, editorId) : t;
+
 /** Está dentro do expediente agora? */
 export function isWorking(cal: Calendar, t: number, editorId?: number | null): boolean {
   const d = Math.floor(t / DAY), m = t - d * DAY;

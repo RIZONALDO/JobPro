@@ -519,6 +519,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
     }
   }
 
+  const before = (await loadState()).tasks;
   const [updated] = Object.keys(update).length
     ? await db.update(tasksTable).set(update).where(eq(tasksTable.id, id)).returning()
     : await db.select().from(tasksTable).where(eq(tasksTable.id, id));
@@ -526,7 +527,7 @@ router.put("/tasks/:id", requireAuth, async (req, res): Promise<void> => {
   const estChanged = update.estMinutes !== undefined && update.estMinutes !== task.estMinutes;
   if (estChanged) await logEvent({ kind: "est_changed", taskId: id, actorId: userId, coordId: task.createdById, editorId: task.assignedToId, text: `Horas de trabalho: ${fmtH(task.estMinutes ?? 0)} → ${fmtH(update.estMinutes as number)}` });
   // só a fila do editor do job (e a do editor anterior, se trocou)
-  if (estChanged || update.status) await recalcDues(userId, { editors: [task.assignedToId, updated?.assignedToId].filter((e): e is number => e != null) });
+  if (estChanged || update.status) await recalcDues(userId, { editors: [task.assignedToId, updated?.assignedToId].filter((e): e is number => e != null), before });
 
   if (update.status && update.status !== task.status) {
     const resolvedComment = eventComment

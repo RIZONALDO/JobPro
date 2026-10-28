@@ -224,7 +224,34 @@ export function simulateQueue(board: Board, editorId: number, ids: number[]): Pl
   }
   return out;
 }
-/** filas como ficariam movendo `id` para a posição `index` da fila de `toEd` (só as filas que mudam) */
+/** minutos de expediente do editor de `a` até `b`, com sinal (negativo se `b` vem antes) */
+function workDelta(board: Board, editorId: number, a: number, b: number): number {
+  const [x, y, sign] = b >= a ? [a, b, 1] : [b, a, -1];
+  let m = 0;
+  for (let d = Math.floor(x / DAY); d * DAY < y; d++)
+    for (const [p, q] of workPeriods(board, d, editorId)) m += Math.max(0, Math.min(y, d * DAY + q) - Math.max(x, d * DAY + p));
+  return sign * m;
+}
+/** anda `d` minutos de expediente a partir de `t` (para trás se negativo), igual à API (`shiftWork`) */
+function shiftWork(board: Board, editorId: number, t: number, d: number): number {
+  if (d >= 0) return d ? consumeWork(board, editorId, t, d).end : t;
+  let cur = t, m = -d;
+  for (let day = Math.floor(t / DAY), g = 0; g < 400; day--, g++) {
+    for (const [a, b] of [...workPeriods(board, day, editorId)].reverse()) {
+      const A = day * DAY + a, B = day * DAY + b;
+      if (A >= cur) continue;
+      const e = Math.min(B, cur), take = Math.min(e - A, m);
+      m -= take; cur = e - take;
+      if (m <= 0) return cur;
+    }
+  }
+  return cur;
+}
+/**
+ * filas como ficariam movendo `id` para a posição `index` da fila de `toEd` (só as filas que mudam).
+ * `start`/`end` = previsão; `due` = prazo novo, como a API grava: o prazo atual anda só o quanto o movimento mudou
+ * a previsão (atraso do editor fica de fora). Job que entra numa fila nova ganha a previsão como prazo.
+ */
 export function planMove(board: Board, id: number, fromEd: number, toEd: number, index: number): Map<number, PlanItem[]> {
   const order = (ed: number) => board.tasks.filter(t => inQueue(t) && t.editorId === ed).sort((a, b) => (a.pos ?? 99) - (b.pos ?? 99)).map(t => t.id);
   const plan = new Map<number, PlanItem[]>();
@@ -232,8 +259,15 @@ export function planMove(board: Board, id: number, fromEd: number, toEd: number,
   const to = fromEd === toEd ? from : order(toEd);
   const min = board.tasks.find(t => t.id === to[0])?.playing ? 1 : 0;
   to.splice(Math.max(min, Math.min(index, to.length)), 0, id);
-  plan.set(toEd, simulateQueue(board, toEd, to));
-  if (fromEd !== toEd) plan.set(fromEd, simulateQueue(board, fromEd, from));
+  const withDues = (ed: number, ids: number[]) => {
+    const prev = new Map(simulateQueue(board, ed, order(ed)).map(p => [p.id, p]));
+    return simulateQueue(board, ed, ids).map(p => {
+      const o = prev.get(p.id), promised = board.tasks.find(t => t.id === p.id)?.promised;
+      return o && promised != null ? { ...p, due: shiftWork(board, ed, promised, workDelta(board, ed, o.due, p.due)) } : p;
+    });
+  };
+  plan.set(toEd, withDues(toEd, to));
+  if (fromEd !== toEd) plan.set(fromEd, withDues(fromEd, from));
   return plan;
 }
 

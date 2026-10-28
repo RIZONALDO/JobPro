@@ -5,16 +5,19 @@
  *  - Cada editor tem UMA fila, em ordem. O editor faz um job por vez, na ordem; só começa o 1º.
  *  - A ordem é dos gestores: qualquer gestor move qualquer job (arrastar), sem pedido de aprovação.
  *  - Job "em edição agora" (▶, `playing_since`) nunca sai da frente.
- *  - Cada job tem horas de trabalho (`est_minutes`). O prazo de entrega (`due_date`) é CALCULADO:
- *    o fim das horas de trabalho na ordem da fila, dentro do expediente do editor, + 1h de expediente (`BUFFER`).
- *    O job em edição conta a partir de quando começou; os outros, um depois do outro, a partir de agora.
- *  - Para mudar o prazo, muda-se as horas ou o lugar na fila. Toda mudança na fila recalcula os prazos (`recalcDues`).
- *  - Atrasado = o prazo passou e o job não foi entregue. Atraso não empurra ninguém até a fila mudar de novo.
+ *  - Cada job tem horas de trabalho (`est_minutes`). A PREVISÃO (`schedule`) é o fim das horas na ordem da fila,
+ *    dentro do expediente do editor, + 1h de expediente (`BUFFER`): o job em edição conta a partir de quando começou;
+ *    os outros, um depois do outro, a partir de agora.
+ *  - O PRAZO DE ENTREGA (`due_date`) é do gestor. Nasce da previsão quando o job entra na fila e só muda com ação de
+ *    gestor (mover, horas, alteração do cliente, trocar de editor, feriado), e só o quanto essa ação mudou a previsão
+ *    (`recalcDues` com o retrato de antes). Ação de editor (começar, enviar, travar) nunca mexe em prazo: se ele começa
+ *    tarde, o atraso aparece (previsão passa do prazo), não vira prazo novo.
+ *  - Atrasado = o prazo passou e o job não foi entregue.
  */
 import { db, tasksTable, usersTable, holidaysTable, userAbsencesTable, queueEventsTable } from "@workspace/db";
 import { and, eq, gte, inArray, notInArray } from "drizzle-orm";
 import { notify } from "./notify.js";
-import { type Calendar, type Absence, DAY, toLm, fromLm, dayKey, fmtLm, consume } from "./workcal.js";
+import { type Calendar, type Absence, DAY, toLm, fromLm, dayKey, fmtLm, consume, shiftWork, workDelta } from "./workcal.js";
 import { ABSENCE_LABEL } from "./availability.js";
 
 export const QUEUE_STATUSES = ["pending", "in_progress", "in_revision", "reopened"];
@@ -156,28 +159,38 @@ export async function logEvent(e: { kind: string; taskId?: number | null; actorI
  * Recalcula o prazo de entrega de todos os jobs nas filas (depois de qualquer mudança na fila).
  * Grava só o que mudou, registra no histórico do job e avisa o gestor dono quando foi outra pessoa que mexeu.
  */
-export async function recalcDues(actorId?: number | null, opts: { silent?: boolean; editors?: number[] } = {}): Promise<number> {
+export async function recalcDues(
+  actorId?: number | null,
+  opts: { silent?: boolean; editors?: number[]; before?: QTask[]; calBefore?: Calendar } = {},
+): Promise<number> {
+  const users = await userNames();
+  // o prazo é do gestor: ação de editor (começar, enviar, travar) não mexe em prazo nenhum
+  if (actorId && users.get(actorId)?.role === "editor") return 0;
   const s = await loadState();
   // só as filas pedidas: o que acontece na fila de um editor não mexe nos prazos de outro
   const eds = [...new Set(s.tasks.filter(inQueue).map(t => t.editorId as number))].filter(e => !opts.editors || opts.editors.includes(e));
   if (!eds.length) return 0;
   const cal = await loadCalendar(eds);
-  const names = actorId ? (await userNames()).get(actorId)?.name : null;
+  const names = actorId ? users.get(actorId)?.name : null;
   let n = 0;
   const byCoord = new Map<number, string[]>();
   for (const ed of eds) {
     const plan = schedule(cal, queueOf(s.tasks, ed), s.now, ed);
+    // com o retrato de antes: o prazo anda só o quanto a ação do gestor mudou a previsão (atraso do editor fica de fora)
+    const prev = opts.before ? schedule(opts.calBefore ?? cal, queueOf(opts.before, ed), s.now, ed) : null;
     for (const [id, p] of plan) {
       const t = s.tasks.find(x => x.id === id)!;
-      if (t.promised === p.due) continue;
-      await db.update(tasksTable).set({ dueDate: fromLm(p.due) }).where(eq(tasksTable.id, id));
+      const o = prev?.get(id);
+      const due = o && t.promised != null ? shiftWork(cal, t.promised, workDelta(cal, o.due, p.due, ed), ed) : p.due;
+      if (t.promised === due) continue;
+      await db.update(tasksTable).set({ dueDate: fromLm(due) }).where(eq(tasksTable.id, id));
       n++;
       const from = t.promised != null ? fmtLm(t.promised) : "sem prazo";
-      await logEvent({ kind: "due_auto", taskId: id, actorId: actorId ?? null, coordId: t.coordId, editorId: ed, text: `Prazo recalculado pela fila: ${from} → ${fmtLm(p.due)}`, data: { from: t.promised, to: p.due } });
+      await logEvent({ kind: "due_auto", taskId: id, actorId: actorId ?? null, coordId: t.coordId, editorId: ed, text: `Prazo recalculado pela fila: ${from} → ${fmtLm(due)}`, data: { from: t.promised, to: due } });
       // avisa só mudança que conta (15 min ou mais), feita por outra pessoa, num aviso por gestor
-      if (!opts.silent && t.coordId && t.coordId !== actorId && (t.promised == null || Math.abs(p.due - t.promised) >= 15)) {
+      if (!opts.silent && t.coordId && t.coordId !== actorId && (t.promised == null || Math.abs(due - t.promised) >= 15)) {
         const l = byCoord.get(t.coordId) ?? [];
-        l.push(`“${t.title}” ${from} → ${fmtLm(p.due)}`);
+        l.push(`“${t.title}” ${from} → ${fmtLm(due)}`);
         byCoord.set(t.coordId, l);
       }
     }
