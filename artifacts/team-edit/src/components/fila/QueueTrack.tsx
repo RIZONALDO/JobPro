@@ -7,6 +7,7 @@
  * `focus` = job sendo arrastado na fila de baixo: fica em destaque ("arrastando") e os outros apagam.
  * `plan` = prévia ao arrastar (filas simuladas no navegador): a agenda redesenha e o rodapé lista os prazos que mudam.
  * Fora da prévia, contorno vermelho = atrasado, âmbar = pela conta de agora a entrega passa do prazo gravado.
+ * Os blocos são a previsão; o prazo real de cada job é uma linha no relógio (vermelha quando o trabalho passa dela).
  * Com `onMove`, os blocos também se arrastam aqui (menos o em edição): soltar na linha de um editor põe o job na
  * posição sob o mouse (pelos blocos de antes do arrasto), com a mesma prévia ao vivo da fila.
  */
@@ -258,6 +259,23 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
                         style={{ left: rs[0][0] }}>arrastando</span>,
                     ] : []);
                   })}
+                  {/* prazo real de cada job (o gravado; na prévia, o novo): marca no relógio, vermelha quando o trabalho passa dela */}
+                  {items.map(it => {
+                    const t = byId.get(it.id)!, at = plan ? it.due : t.promised;
+                    if (at == null || at < first * DAY || at >= (first + days.length) * DAY) return null;
+                    const x = xOf(at), past = !plan && it.end > at, lit = focus === t.id;
+                    if (focus != null && !lit) return null;
+                    return (
+                      <span key={`${t.id}-due`} className="group/due absolute inset-y-0 z-[2] w-3 -translate-x-1/2" style={{ left: x }}
+                        title={`Prazo de “${t.title}”: ${fmt(at)}${past ? ` · pela conta de agora fica pronto ${fmt(it.end)}` : ""}`}>
+                        <i className={cn("pointer-events-none absolute inset-y-1 left-1/2 w-0.5 -translate-x-1/2 rounded-full", past ? "bg-rose-500" : "bg-[hsl(var(--foreground)/0.7)]")} />
+                        {view === "dia" || COL >= 110
+                          ? <i className={cn("pointer-events-none absolute bottom-0.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-[3px] px-1 font-mono text-[9px] font-semibold not-italic leading-[13px]",
+                              past ? "bg-rose-500 text-white" : "bg-[hsl(var(--foreground)/0.75)] text-[hsl(var(--background))]")}>{fmtClock(at)}</i>
+                          : <i className={cn("pointer-events-none absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full", past ? "bg-rose-500" : "bg-[hsl(var(--foreground)/0.6)]")} />}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -297,6 +315,7 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
           .map(c => <span key={c} className="inline-flex items-center gap-1.5"><i className="h-1.5 w-1.5 rounded-[2px]" style={{ background: coordColor(c) }} />{personName(board, c).split(" ")[0]}</span>)}
         <span><i className="fila-stripes mr-1.5 inline-block h-[11px] w-[18px] rounded-sm align-[-1px]" />sem expediente</span>
         <span className="inline-flex items-center gap-1.5"><LiveDot className="h-1.5 w-1.5 text-emerald-500" />em edição agora</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-[11px] w-0.5 rounded-full bg-[hsl(var(--foreground)/0.7)]" />prazo real (os blocos são a previsão do trabalho)</span>
         <span><i className="mr-1.5 inline-block h-[11px] w-[18px] rounded-[3px] align-[-1px]" style={{ boxShadow: "inset 0 0 0 1.5px rgb(245 158 11 / 0.85)" }} />vai passar do prazo</span>
         <span><i className="mr-1.5 inline-block h-[11px] w-[18px] rounded-[3px] align-[-1px]" style={{ boxShadow: "inset 0 0 0 1.5px rgb(244 63 94 / 0.85)" }} />atrasado</span>
         </div>
