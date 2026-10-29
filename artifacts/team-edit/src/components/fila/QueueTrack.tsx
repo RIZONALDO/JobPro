@@ -17,10 +17,10 @@ import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight } from "@/lib/icons";
 import { LiveDot } from "@/components/fila/ui";
 import { QueueHistoryButton } from "@/components/fila/QueueHistory";
-import { OccMeter } from "@/components/fila/Occupancy";
+import { AvatarDisplay } from "@/components/ui/avatar-display";
 import { DAY, coordColor, dur, fmt, fmtDay, fmtH, inQueue, personName, planMove, workDelta, type Board, type PlanItem, type QTask } from "@/lib/fila";
 
-const LW = 148;
+const LW = 184;
 /** diferença de prazo que conta como mudança (minutos) */
 const SLIP = 15;
 const shortTitle = (s: string) => { const t = s.split(" - ")[0].trim(); return t.length > 28 ? `${t.slice(0, 27)}…` : t; };
@@ -185,11 +185,13 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
             const mineH = me ? items.filter(i => byId.get(i.id)?.coordId === me).reduce((s, i) => s + (byId.get(i.id)?.est ?? 0), 0) : 0;
             return (
               <div key={ed.id} className="group/row flex">
-                <div className="sticky left-0 z-[4] flex shrink-0 items-center gap-1 border-r border-t bg-[hsl(var(--card))] py-2 pl-3 pr-1.5" style={{ width: LW }}>
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <b className="truncate text-[13px]">{ed.name}</b>
-                    <small className="truncate font-mono text-[10px] text-[hsl(var(--muted-foreground))]">{ed.inactive ? "inativo" : ed.offToday ?? (me ? `${fmtH(mineH)} seus/${fmtH(total)}` : `${fmtH(total)} na fila`)}</small>
-                    {!ed.inactive && <OccMeter board={board} editorId={ed.id} className="mt-1" />}
+                <div className="sticky left-0 z-[4] flex shrink-0 items-center gap-2.5 border-r border-t bg-[hsl(var(--card))] py-2 pl-3 pr-1.5" style={{ width: LW }}>
+                  <AvatarDisplay name={ed.name} avatarUrl={ed.avatarUrl} size={34} className={cn("shrink-0", ed.inactive && "opacity-50 grayscale")} />
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <b className="truncate text-[13px] font-semibold leading-tight">{ed.name}</b>
+                    <small className={cn("truncate text-[11px] leading-tight", ed.offToday ? "text-amber-600 dark:text-amber-400" : "text-[hsl(var(--muted-foreground))]")}>
+                      {ed.inactive ? "inativo" : ed.offToday ?? (total ? `${fmtH(total)} na fila${me && mineH ? ` · ${fmtH(mineH)} seus` : ""}` : "fila vazia")}
+                    </small>
                   </span>
                   <QueueHistoryButton editorId={ed.id} name={ed.name} className="h-7 w-7 shrink-0" tour="historico" />
                 </div>
