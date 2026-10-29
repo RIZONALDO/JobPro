@@ -6,8 +6,9 @@
  *  - A ordem é dos gestores: qualquer gestor move qualquer job (arrastar), sem pedido de aprovação.
  *  - Job "em edição agora" (▶, `playing_since`) nunca sai da frente.
  *  - Cada job tem horas de trabalho (`est_minutes`). A PREVISÃO (`schedule`) é o fim das horas na ordem da fila,
- *    dentro do expediente do editor, + 1h de expediente (`BUFFER`): o job em edição conta a partir de quando começou;
- *    os outros, um depois do outro, a partir de agora.
+ *    dentro do expediente do editor, + 1h de expediente (`BUFFER`): o 1º da fila conta a partir de quando virou o 1º
+ *    (`head_since`, carimbado por `stampHeads`), tocando ou não em "Começar" (o Começar só acompanha e gera avisos);
+ *    se as horas dele já acabaram e ele não saiu, vai até agora. Os outros vêm um depois do outro.
  *  - O PRAZO DE ENTREGA (`due_date`) é do gestor. Nasce da previsão quando o job entra na fila e só muda com ação de
  *    gestor (mover, horas, alteração do cliente, trocar de editor, feriado), e só o quanto essa ação mudou a previsão
  *    (`recalcDues` com o retrato de antes). Ação de editor (começar, enviar, travar) nunca mexe em prazo: se ele começa
@@ -34,6 +35,7 @@ export interface QTask {
   hold: boolean;            // fora da fila (pedido antigo)
   est: number;              // horas de trabalho (minutos)
   since: number | null;     // em edição desde (minutos locais)
+  headSince: number | null; // virou o 1º da fila em (minutos locais)
 }
 
 export const inQueue = (t: QTask) => t.editorId != null && !t.hold && QUEUE_STATUSES.includes(t.status);
@@ -80,13 +82,15 @@ export const BUFFER = 60;
 export function schedule(cal: Calendar, q: QTask[], now: number, ed: number): Map<number, { start: number; end: number; due: number }> {
   const out = new Map<number, { start: number; end: number; due: number }>();
   let cur = now;
-  for (const t of q) {
-    const from = t.playing && t.since != null ? t.since : cur;
+  q.forEach((t, i) => {
+    // o 1º conta de quando virou o 1º (clicar em Começar não move a conta); passou das horas e não saiu: vai até agora
+    const from = i === 0 ? t.headSince ?? t.since ?? now : cur;
     const w = consume(cal, from, Math.max(0, t.est), ed);
-    const due = consume(cal, w.end, BUFFER, ed).end;
-    out.set(t.id, { start: w.start, end: w.end, due });
-    cur = Math.max(cur, w.end);
-  }
+    const end = i === 0 ? Math.max(w.end, now) : w.end;
+    const due = consume(cal, end, BUFFER, ed).end;
+    out.set(t.id, { start: w.start, end, due });
+    cur = end;
+  });
   return out;
 }
 
@@ -131,6 +135,7 @@ export function toQ(r: TaskRow): QTask {
     id: r.id, editorId: r.assignedToId, coordId: r.createdById, title: r.title, status: r.status,
     playing: !!r.playingSince, order: r.queueOrder, promised: r.dueDate ? toLm(r.dueDate) : null, hold: r.queueHold,
     est: r.estMinutes ?? 0, since: r.playingSince ? toLm(r.playingSince) : null,
+    headSince: r.headSince ? toLm(r.headSince) : null,
   };
 }
 
@@ -142,6 +147,21 @@ export async function loadState() {
   return { now, rows, tasks: rows.map(toQ) };
 }
 export type State = Awaited<ReturnType<typeof loadState>>;
+
+/**
+ * Carimba quando cada job virou o 1º da fila do editor (`head_since`) e limpa o de quem deixou de ser.
+ * Chamado depois de mexer na fila e a cada minuto pelo relógio; devolve se mudou algo.
+ */
+export async function stampHeads(s?: State): Promise<boolean> {
+  s ??= await loadState();
+  const heads = new Set<number>();
+  for (const ed of new Set(s.tasks.filter(inQueue).map(t => t.editorId as number))) heads.add(queueOf(s.tasks, ed)[0].id);
+  const on = s.tasks.filter(t => heads.has(t.id) && t.headSince == null).map(t => t.id);
+  const off = s.tasks.filter(t => !heads.has(t.id) && t.headSince != null).map(t => t.id);
+  if (on.length) await db.update(tasksTable).set({ headSince: new Date() }).where(inArray(tasksTable.id, on));
+  if (off.length) await db.update(tasksTable).set({ headSince: null }).where(inArray(tasksTable.id, off));
+  return on.length + off.length > 0;
+}
 
 export async function userNames(): Promise<Map<number, { name: string; role: string; status: string }>> {
   const us = await db.select({ id: usersTable.id, name: usersTable.name, role: usersTable.role, status: usersTable.status }).from(usersTable);

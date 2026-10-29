@@ -210,22 +210,26 @@ export function consumeWork(board: Board, editorId: number, t: number, m: number
   return { start: start ?? t, end: cur };
 }
 export interface PlanItem { id: number; start: number; end: number; due: number }
-/** fila de um editor na ordem `ids`: cada job começa quando o anterior termina; o em edição fica onde está */
+/**
+ * fila de um editor na ordem `ids`: cada job começa quando o anterior termina. O 1º da fila que continua 1º fica onde
+ * está (conta de quando virou o 1º, como a API); quem passa a ser o 1º começa agora.
+ */
 export function simulateQueue(board: Board, editorId: number, ids: number[]): PlanItem[] {
   const out: PlanItem[] = [];
+  const head = board.editors.find(e => e.id === editorId)?.track?.items[0];
   let cur = board.now;
   for (const id of ids) {
     const t = board.tasks.find(x => x.id === id);
     if (!t) continue;
-    const cur0 = t.playing ? board.editors.flatMap(e => e.track?.items ?? []).find(i => i.id === id) : undefined;
-    const w = cur0 ? { start: cur0.start, end: cur0.end } : consumeWork(board, editorId, cur, Math.max(0, t.est));
+    const keep = !out.length && head?.id === id ? head : undefined;
+    const w = keep ? { start: keep.start, end: keep.end } : consumeWork(board, editorId, cur, Math.max(0, t.est));
     out.push({ id, start: w.start, end: w.end, due: consumeWork(board, editorId, w.end, BUFFER).end });
-    cur = Math.max(cur, w.end);
+    cur = w.end;
   }
   return out;
 }
 /** minutos de expediente do editor de `a` até `b`, com sinal (negativo se `b` vem antes) */
-function workDelta(board: Board, editorId: number, a: number, b: number): number {
+export function workDelta(board: Board, editorId: number, a: number, b: number): number {
   const [x, y, sign] = b >= a ? [a, b, 1] : [b, a, -1];
   let m = 0;
   for (let d = Math.floor(x / DAY); d * DAY < y; d++)

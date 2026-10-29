@@ -9,7 +9,7 @@ import { broadcastTaskChange } from "../lib/broadcast.js";
 import { createFeedItem } from "../lib/feed.js";
 import {
   type QTask, type State, type TaskRow, QUEUE_STATUSES, loadState, loadCalendar, queueOf, isLate, frontPos, orderAt, blockRisk,
-  schedule, recalcDues, changedQueues, userNames, logEvent, invalidateHolidays,
+  schedule, recalcDues, changedQueues, stampHeads, userNames, logEvent, invalidateHolidays,
 } from "../lib/queue.js";
 import { DAY, dayOff, dayKey, toLm, fmtLm, fmtH, workBetween } from "../lib/workcal.js";
 
@@ -54,6 +54,7 @@ async function watchHeads<T>(actorId: number, fn: (s: State) => Promise<T>): Pro
   // recalcula só as filas que mudaram com esta ação
   const s1 = await loadState();
   const changed = changedQueues(s0.tasks, s1.tasks);
+  await stampHeads(s1);
   if (changed.length) await recalcDues(actorId, { editors: changed, before: s0.tasks });
   const h1 = heads(s1.tasks);
   const names = await userNames();
@@ -113,12 +114,13 @@ router.get("/queue/board", requireAuth, async (req, res): Promise<void> => {
   let lastDay = today + 13;
   const track = (ed: number) => {
     const q = queueOf(s.tasks, ed), sch = schedule(cal, q, s.now, ed);
-    const items = q.map(t => {
+    const items = q.map((t, i) => {
       const p = sch.get(t.id)!;
+      // o 1º: horas já corridas desde que virou o 1º e quanto passou das horas dele (o fim vai até agora)
+      const done = i === 0 ? workBetween(cal, p.start, Math.min(s.now, p.end), ed) : 0;
       return {
         id: t.id, a: W(Math.max(p.start, s.now)), b: W(p.end), start: p.start, end: p.end, due: p.due,
-        done: t.playing ? workBetween(cal, p.start, Math.min(s.now, p.end), ed) : 0,
-        over: t.playing && p.end <= s.now ? workBetween(cal, p.end, s.now, ed) : 0,
+        done, over: Math.max(0, done - t.est),
       };
     });
     const freeAt = items.length ? items[items.length - 1].end : s.now;
@@ -479,7 +481,7 @@ router.post("/queue/plan", requireCoordinator, async (req, res): Promise<void> =
   const today = Math.floor(s.now / DAY);
   const plans = eds.map(ed => {
     const q0 = queueOf(s.tasks, ed).filter(t => t.id !== taskId);
-    const ghost: QTask = { id: -1, editorId: ed, coordId: null, title: "", status: "pending", playing: false, order: orderAt(q0, q0.length), promised: null, hold: false, est, since: null };
+    const ghost: QTask = { id: -1, editorId: ed, coordId: null, title: "", status: "pending", playing: false, order: orderAt(q0, q0.length), promised: null, hold: false, est, since: null, headSince: null };
     const plan = schedule(cal, [...q0, ghost], s.now, ed);
     const g = plan.get(-1)!;
     return {

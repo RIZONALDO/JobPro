@@ -6,8 +6,9 @@
  * Visões: dia (com as horas), semana e 2 semanas; as setas andam pelos 14 dias do board.
  * `focus` = job sendo arrastado na fila de baixo: fica em destaque ("arrastando") e os outros apagam.
  * `plan` = prévia ao arrastar (filas simuladas no navegador): a agenda redesenha e o rodapé lista os prazos que mudam.
- * Fora da prévia, contorno vermelho = atrasado, âmbar = pela conta de agora a entrega passa do prazo gravado.
- * Os blocos são a previsão; o prazo real de cada job é uma linha no relógio (vermelha quando o trabalho passa dela).
+ * Cada card vai normal até o prazo (o gravado; na prévia, o novo); o trabalho que passa do prazo continua no mesmo card,
+ * preenchido em âmbar (borda tracejada = passou das horas e ainda não saiu). Contorno vermelho = atrasado.
+ * O 1º da fila conta de quando virou o 1º (API, `head_since`): tocar ou não em "Começar" não move os cards.
  * Com `onMove`, os blocos também se arrastam aqui (menos o em edição): soltar na linha de um editor põe o job na
  * posição sob o mouse (pelos blocos de antes do arrasto), com a mesma prévia ao vivo da fila.
  */
@@ -17,7 +18,7 @@ import { ChevronLeft, ChevronRight } from "@/lib/icons";
 import { LiveDot } from "@/components/fila/ui";
 import { QueueHistoryButton } from "@/components/fila/QueueHistory";
 import { OccMeter } from "@/components/fila/Occupancy";
-import { DAY, coordColor, dur, fmt, fmtDay, fmtH, inQueue, personName, planMove, type Board, type PlanItem, type QTask } from "@/lib/fila";
+import { DAY, coordColor, dur, fmt, fmtDay, fmtH, inQueue, personName, planMove, workDelta, type Board, type PlanItem, type QTask } from "@/lib/fila";
 
 const LW = 148;
 /** diferença de prazo que conta como mudança (minutos) */
@@ -220,61 +221,61 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
                   <div className="pointer-events-none absolute inset-y-0 left-0 bg-black/[0.035] dark:bg-white/[0.035]" style={{ width: xOf(board.now) }} />
                   {items.map(it => {
                     const t = byId.get(it.id)!;
-                    const mine = !me || t.coordId === me, rs = ranges(it.start, it.end);
-                    if (!rs.length) return null;
-                    const wide = rs.reduce((m, r, i) => (r[1] - r[0] > rs[m][1] - rs[m][0] ? i : m), 0);
+                    const mine = !me || t.coordId === me;
+                    // o card vai normal até o prazo (o gravado; na prévia, o novo); o que passa do prazo continua em âmbar
+                    const dl = plan ? it.due : t.promised;
+                    const pieces = [
+                      ...ranges(it.start, dl == null ? it.end : Math.min(it.end, dl)).map(r => ({ r, over: false })),
+                      ...(dl != null && it.end > dl ? ranges(Math.max(it.start, dl), it.end).map(r => ({ r, over: true })) : []),
+                    ];
+                    if (!pieces.length) return null;
+                    const overMin = dl != null && it.end > dl ? workDelta(board, ed.id, dl, it.end) : 0;
+                    const widest = (over: boolean) => pieces.reduce((m, p, i) => p.over === over && (m < 0 || p.r[1] - p.r[0] > pieces[m].r[1] - pieces[m].r[0]) ? i : m, -1);
+                    // o título vai no trecho mais largo (de preferência o normal); o "+X além do prazo", no âmbar mais largo
+                    const wn = widest(false), wa = widest(true), w = (i: number) => i < 0 ? 0 : pieces[i].r[1] - pieces[i].r[0];
+                    const wide = w(wn) >= 70 || w(wn) >= w(wa) ? wn : wa;
                     const c = coordColor(t.coordId);
                     // seus jobs no roxo do sistema; os dos outros num leve tom da cor do gestor, com fio e brilho no topo
                     const mineHi = !!me && t.coordId === me;
                     const look = mineHi
                       ? { background: "linear-gradient(180deg, hsl(var(--primary) / 0.26), hsl(var(--primary) / 0.16))", boxShadow: "inset 0 0 0 1px hsl(var(--primary) / 0.7), inset 0 1px 0 rgb(255 255 255 / 0.08)", color: "hsl(var(--foreground))" }
                       : { background: `linear-gradient(180deg, color-mix(in srgb, ${c} 18%, hsl(var(--card))), color-mix(in srgb, ${c} 9%, hsl(var(--card))))`, boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${c} 55%, hsl(var(--border))), inset 0 1px 0 rgb(255 255 255 / 0.06)`, color: "hsl(var(--foreground))" };
+                    const amber = { background: "linear-gradient(180deg, #f8a928, #e8920a)", boxShadow: "inset 0 0 0 1px #fbbf24", color: "#1f1405" };
                     const lit = focus === t.id;
                     const moved = !!plan && t.promised != null && Math.abs(it.due - t.promised) >= SLIP;
-                    // fora da prévia: atrasado (vermelho) ou a entrega vai passar do prazo gravado (âmbar)
-                    const warn = !plan && (t.late ? "244 63 94" : t.promised != null && it.due - t.promised >= SLIP ? "245 158 11" : null);
                     const ring = lit ? "0 0 0 2px hsl(var(--foreground) / 0.9), 0 4px 14px rgb(0 0 0 / 0.35)"
                       : moved ? `inset 0 0 0 1.5px rgb(${it.due > t.promised! ? "245 158 11" : "16 185 129"} / 0.9)`
-                      : warn ? `inset 0 0 0 1.5px rgb(${warn} / 0.85)` : null;
-                    return rs.map(([a, b], i) => (
-                      <button key={`${t.id}-${i}`} type="button" onClick={() => onOpen?.(t)}
-                        draggable={!!onMove && !t.playing} data-tour={onMove && !t.playing && i === wide ? "agenda-block" : undefined}
-                        onDragStart={e => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(t.id)); setDrag({ id: t.id, ed: ed.id, k: base(ed.id).findIndex(x => x.id === t.id) }); }}
-                        onDragEnd={endDrag}
-                        className={cn(onMove && !t.playing && "cursor-move", "absolute top-[12px] flex h-[64px] flex-col justify-center overflow-hidden whitespace-nowrap rounded-[4px] px-1.5 text-left leading-tight transition-[left,width,filter,opacity] duration-300 hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
-                          focus != null && !lit && !moved && "opacity-35", lit && "z-[2] brightness-150")}
-                        style={{ left: a, width: Math.max(3, b - a), ...look, ...(ring ? { boxShadow: ring } : {}) }}
-                        title={`${t.title} · ${personName(board, t.coordId)} · ${fmtH(t.est)} · pronto ${fmt(it.end)} · prazo ${fmt(t.promised)}`}>
-                        {i === wide && b - a > 40 && <>
-                          <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] font-semibold">
-                            {t.playing ? <LiveDot className="h-1.5 w-1.5 text-emerald-500" /> : <i className="h-1.5 w-1.5 shrink-0 rounded-[2px]" style={{ background: c }} />}
-                            <span className="truncate">{mine ? t.title : personName(board, t.coordId).split(" ")[0]}</span>
-                          </span>
-                          {b - a > 70 && <span className="truncate pl-3 font-mono text-[9.5px] tracking-tight text-[hsl(var(--foreground)/0.6)]">{fmtH(t.est)}{mine ? "" : ` · ${t.title}`}{view === "dia" ? ` · pronto ${fmt(it.end)}` : ""}</span>}
-                        </>}
-                        {t.playing && i === wide && b - a <= 40 && <LiveDot className="absolute right-1 top-1 h-1.5 w-1.5 text-emerald-500" />}
-                      </button>
-                    )).concat(lit ? [
+                      : !plan && t.late ? "inset 0 0 0 1.5px rgb(244 63 94 / 0.85)" : null;
+                    // passou das horas e ainda não saiu (só fora da prévia: vem da esteira da API)
+                    const open = ((it as { over?: number }).over ?? 0) > 0;
+                    const extra = overMin ? ` · passou do prazo ${fmtH(overMin)}${open ? " e ainda não saiu" : ""}` : "";
+                    return pieces.map(({ r: [a, b], over }, i) => {
+                      const joinL = i > 0 && Math.abs(pieces[i - 1].r[1] - a) < 0.8, joinR = i < pieces.length - 1 && Math.abs(pieces[i + 1].r[0] - b) < 0.8;
+                      return (
+                        <button key={`${t.id}-${i}`} type="button" onClick={() => onOpen?.(t)}
+                          draggable={!!onMove && !t.playing} data-tour={onMove && !t.playing && i === wide ? "agenda-block" : undefined}
+                          onDragStart={e => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(t.id)); setDrag({ id: t.id, ed: ed.id, k: base(ed.id).findIndex(x => x.id === t.id) }); }}
+                          onDragEnd={endDrag}
+                          className={cn(onMove && !t.playing && "cursor-move", "absolute top-[12px] flex h-[64px] flex-col justify-center overflow-hidden whitespace-nowrap rounded-[4px] px-1.5 text-left leading-tight transition-[left,width,filter,opacity] duration-300 hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+                            joinL && "rounded-l-none", joinR && "rounded-r-none", focus != null && !lit && !moved && "opacity-35", lit && "z-[2] brightness-150")}
+                          style={{ left: a, width: Math.max(3, b - a), ...(over ? amber : look), ...(ring ? { boxShadow: ring } : {}) }}
+                          title={`${t.title} · ${personName(board, t.coordId)} · ${fmtH(t.est)} · prazo ${fmt(dl)} · pronto ${fmt(it.end)}${extra}`}>
+                          {i === wide && b - a > 40 && <>
+                            <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] font-semibold">
+                              {t.playing ? <LiveDot className="h-1.5 w-1.5 text-emerald-500" /> : <i className="h-1.5 w-1.5 shrink-0 rounded-[2px]" style={{ background: over ? "#1f1405" : c }} />}
+                              <span className="truncate">{mine ? t.title : personName(board, t.coordId).split(" ")[0]}</span>
+                            </span>
+                            {b - a > 70 && <span className={cn("truncate pl-3 font-mono text-[9.5px] tracking-tight", over ? "font-semibold text-[#1f1405]/85" : "text-[hsl(var(--foreground)/0.6)]")}>{over ? `+${fmtH(overMin)} além do prazo` : `${fmtH(t.est)}${mine ? "" : ` · ${t.title}`} · prazo ${fmt(dl).slice(4)}`}</span>}
+                          </>}
+                          {over && i === wa && i !== wide && b - a > 46 && <span className="truncate font-mono text-[9.5px] font-semibold">+{fmtH(overMin)} além do prazo</span>}
+                          {over && i === pieces.length - 1 && open && <i aria-hidden className="absolute inset-y-0 right-0 w-[3px] opacity-55" style={{ background: "repeating-linear-gradient(180deg, #1f1405 0 3px, transparent 3px 6px)" }} />}
+                          {t.playing && i === wide && b - a <= 40 && <LiveDot className="absolute right-1 top-1 h-1.5 w-1.5 text-emerald-500" />}
+                        </button>
+                      );
+                    }).concat(lit ? [
                       <span key={`${t.id}-drag`} className="pointer-events-none absolute top-0 z-[3] -translate-y-1/2 animate-pulse whitespace-nowrap rounded-[4px] bg-[hsl(var(--foreground))] px-1.5 font-mono text-[9.5px] font-semibold leading-[15px] text-[hsl(var(--background))]"
-                        style={{ left: rs[0][0] }}>arrastando</span>,
+                        style={{ left: pieces[0].r[0] }}>arrastando</span>,
                     ] : []);
-                  })}
-                  {/* prazo real de cada job (o gravado; na prévia, o novo): marca no relógio, vermelha quando o trabalho passa dela */}
-                  {items.map(it => {
-                    const t = byId.get(it.id)!, at = plan ? it.due : t.promised;
-                    if (at == null || at < first * DAY || at >= (first + days.length) * DAY) return null;
-                    const x = xOf(at), past = !plan && it.end > at, lit = focus === t.id;
-                    if (focus != null && !lit) return null;
-                    return (
-                      <span key={`${t.id}-due`} className="group/due absolute inset-y-0 z-[2] w-3 -translate-x-1/2" style={{ left: x }}
-                        title={`Prazo de “${t.title}”: ${fmt(at)}${past ? ` · pela conta de agora fica pronto ${fmt(it.end)}` : ""}`}>
-                        <i className={cn("pointer-events-none absolute inset-y-1 left-1/2 w-0.5 -translate-x-1/2 rounded-full", past ? "bg-rose-500" : "bg-[hsl(var(--foreground)/0.7)]")} />
-                        {view === "dia" || COL >= 110
-                          ? <i className={cn("pointer-events-none absolute bottom-0.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-[3px] px-1 font-mono text-[9px] font-semibold not-italic leading-[13px]",
-                              past ? "bg-rose-500 text-white" : "bg-[hsl(var(--foreground)/0.75)] text-[hsl(var(--background))]")}>{fmtClock(at)}</i>
-                          : <i className={cn("pointer-events-none absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full", past ? "bg-rose-500" : "bg-[hsl(var(--foreground)/0.6)]")} />}
-                      </span>
-                    );
                   })}
                 </div>
               </div>
@@ -315,8 +316,7 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
           .map(c => <span key={c} className="inline-flex items-center gap-1.5"><i className="h-1.5 w-1.5 rounded-[2px]" style={{ background: coordColor(c) }} />{personName(board, c).split(" ")[0]}</span>)}
         <span><i className="fila-stripes mr-1.5 inline-block h-[11px] w-[18px] rounded-sm align-[-1px]" />sem expediente</span>
         <span className="inline-flex items-center gap-1.5"><LiveDot className="h-1.5 w-1.5 text-emerald-500" />em edição agora</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-[11px] w-0.5 rounded-full bg-[hsl(var(--foreground)/0.7)]" />prazo real (os blocos são a previsão do trabalho)</span>
-        <span><i className="mr-1.5 inline-block h-[11px] w-[18px] rounded-[3px] align-[-1px]" style={{ boxShadow: "inset 0 0 0 1.5px rgb(245 158 11 / 0.85)" }} />vai passar do prazo</span>
+        <span><i className="mr-1.5 inline-block h-[11px] w-[18px] rounded-[3px] align-[-1px]" style={{ background: "#f59e0b" }} />passou do prazo (o card termina no prazo; o resto fica em âmbar)</span>
         <span><i className="mr-1.5 inline-block h-[11px] w-[18px] rounded-[3px] align-[-1px]" style={{ boxShadow: "inset 0 0 0 1.5px rgb(244 63 94 / 0.85)" }} />atrasado</span>
         </div>
       )}

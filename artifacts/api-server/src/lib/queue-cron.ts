@@ -1,9 +1,11 @@
 /**
- * Relógio da fila (roda a cada minuto). Só avisa no horário comercial (seg–sáb, sem feriado):
+ * Relógio da fila (roda a cada minuto). Sempre carimba o 1º de cada fila (`stampHeads`, base da previsão).
+ * Só avisa no horário comercial (seg–sáb, sem feriado):
  *  - prazo de entrega venceu e o job não foi entregue → avisa o gestor dono e o editor (uma vez);
  *  - job travado: o prazo continua correndo. Lembra o responsável a cada 2h parado e avisa a supervisão
  *    uma vez quando o prazo vence ou fica a menos de 24h;
- *  - editor no expediente, com fila e sem job em edição há 30 min → lembra o editor de começar (uma vez por job/dia);
+ *  - editor no expediente, com fila e sem job em edição há 30 min → lembra o editor de começar (uma vez por job/dia;
+ *    só acompanhamento: não tocar em Começar não muda a previsão);
  *  - previsão passou do prazo (o âmbar da Agenda) → avisa o gestor dono enquanto ainda dá para agir (uma vez por prazo).
  */
 import { db, usersTable, queueRequestsTable, queueEventsTable, appSettingsTable } from "@workspace/db";
@@ -11,8 +13,8 @@ import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { notify, notifyFollowers } from "./notify.js";
 import { broadcastTaskChange } from "./broadcast.js";
 import { logger } from "./logger.js";
-import { loadState, loadCalendar, logEvent, isLate, blockRisk, recalcDues, queueOf, schedule, QUEUE_STATUSES } from "./queue.js";
-import { DAY, isWorking, periods, workBetween, toLm, fmtLm } from "./workcal.js";
+import { loadState, loadCalendar, logEvent, isLate, blockRisk, recalcDues, queueOf, schedule, stampHeads, QUEUE_STATUSES } from "./queue.js";
+import { DAY, consume, isWorking, periods, workBetween, toLm, fmtLm } from "./workcal.js";
 
 const BLOCK_REMIND = 120;
 /** minutos de expediente sem job em edição até lembrar o editor */
@@ -25,7 +27,9 @@ const CLOCK_KINDS = ["due_auto", "due_passed", "due_risk", "idle_nudge", "blocke
 const ago = (min: number) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)}h${min % 60 ? String(min % 60).padStart(2, "0") : ""}`);
 
 async function tick() {
-  const s = await loadState();
+  let s = await loadState();
+  // o 1º da fila mudou (entregou, travou, job novo…): carimba agora, a previsão conta daí
+  if (await stampHeads(s)) { s = await loadState(); broadcastTaskChange(); }
   if (!isWorking(await loadCalendar([]), s.now)) return;
   let changed = false;
   const names = new Map((await db.select({ id: usersTable.id, name: usersTable.name, status: usersTable.status }).from(usersTable)).map(u => [u.id, u]));
@@ -107,14 +111,14 @@ async function tick() {
     for (const ed of eds) {
       const q = queueOf(s.tasks, ed), plan = schedule(cal, q, s.now, ed);
       const edName = names.get(ed)?.name ?? "o editor";
-      const head = q[0], headOver = head?.playing && (plan.get(head.id)?.end ?? Infinity) <= s.now;
+      // o 1º conta de quando virou o 1º: só passa do prazo se algum job passou das horas
+      const head = q[0], headOver = !!head && consume(cal, head.headSince ?? head.since ?? s.now, head.est, ed).end < s.now;
       for (const t of q) {
         const p = plan.get(t.id)!;
         if (t.promised == null || isLate(t, s.now) || p.due - t.promised < RISK_SLIP) continue;
         if (evs.some(e => e.kind === "due_risk" && e.taskId === t.id && (e.data as { due?: number } | null)?.due === t.promised)) continue;
-        const why = !head.playing ? `${edName} ainda não começou${t.id === head.id ? "" : " a fila"}.`
-          : headOver ? `O job em edição de ${edName} já passou das horas de trabalho.`
-          : t.id === head.id ? `${edName} começou tarde.` : `Os jobs na frente, na fila de ${edName}, não cabem antes.`;
+        const why = headOver ? (t.id === head.id ? `${edName} já passou das horas de trabalho deste job.` : `“${head.title}”, na frente, já passou das horas de trabalho.`)
+          : t.id === head.id ? `${edName} pegou este job depois do previsto (o anterior passou das horas).` : `Os jobs na frente, na fila de ${edName}, não cabem antes.`;
         risky.push({ t, due: p.due, why });
       }
     }

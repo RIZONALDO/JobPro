@@ -19,6 +19,7 @@ export const tasksTable = pgTable("te_tasks", {
   estMinutes: integer("est_minutes").notNull().default(0),                 // horas de trabalho estimadas (minutos)
   workedMinutes: integer("worked_minutes").notNull().default(0),           // horas trabalhadas até a última pausa
   playingSince: timestamp("playing_since", { withTimezone: true }),        // ▶ em execução desde (null = parado)
+  headSince: timestamp("head_since", { withTimezone: true }),              // virou o 1º da fila do editor em (null = não é o 1º)
   queueOrder: doublePrecision("queue_order").notNull().default(0),         // ordem na fila do editor
   queueHold: boolean("queue_hold").notNull().default(false),               // fora da fila aguardando aprovação de prioridade
   estConfirmed: boolean("est_confirmed").notNull().default(true),          // editor conferiu a estimativa
