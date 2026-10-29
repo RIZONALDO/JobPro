@@ -240,7 +240,7 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
                     const look = mineHi
                       ? { background: "linear-gradient(180deg, hsl(var(--primary) / 0.26), hsl(var(--primary) / 0.16))", boxShadow: "inset 0 0 0 1px hsl(var(--primary) / 0.7), inset 0 1px 0 rgb(255 255 255 / 0.08)", color: "hsl(var(--foreground))" }
                       : { background: `linear-gradient(180deg, color-mix(in srgb, ${c} 18%, hsl(var(--card))), color-mix(in srgb, ${c} 9%, hsl(var(--card))))`, boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${c} 55%, hsl(var(--border))), inset 0 1px 0 rgb(255 255 255 / 0.06)`, color: "hsl(var(--foreground))" };
-                    const amber = { background: "linear-gradient(180deg, #f8a928, #e8920a)", boxShadow: "inset 0 0 0 1px #fbbf24", color: "#1f1405" };
+                    const amber = { background: "linear-gradient(180deg, rgb(245 158 11 / 0.8), rgb(232 140 8 / 0.72))", boxShadow: "inset 0 0 0 1px rgb(251 191 36 / 0.7)", color: "#1f1405" };
                     const lit = focus === t.id;
                     const moved = !!plan && t.promised != null && Math.abs(it.due - t.promised) >= SLIP;
                     const ring = lit ? "0 0 0 2px hsl(var(--foreground) / 0.9), 0 4px 14px rgb(0 0 0 / 0.35)"
@@ -316,7 +316,7 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
           .map(c => <span key={c} className="inline-flex items-center gap-1.5"><i className="h-1.5 w-1.5 rounded-[2px]" style={{ background: coordColor(c) }} />{personName(board, c).split(" ")[0]}</span>)}
         <span><i className="fila-stripes mr-1.5 inline-block h-[11px] w-[18px] rounded-sm align-[-1px]" />sem expediente</span>
         <span className="inline-flex items-center gap-1.5"><LiveDot className="h-1.5 w-1.5 text-emerald-500" />em edição agora</span>
-        <span><i className="mr-1.5 inline-block h-[11px] w-[18px] rounded-[3px] align-[-1px]" style={{ background: "#f59e0b" }} />além do prazo</span>
+        <span><i className="mr-1.5 inline-block h-[11px] w-[18px] rounded-[3px] align-[-1px]" style={{ background: "rgb(245 158 11 / 0.8)" }} />além do prazo</span>
         <span><i className="mr-1.5 inline-block h-[11px] w-[18px] rounded-[3px] align-[-1px]" style={{ boxShadow: "inset 0 0 0 1.5px rgb(244 63 94 / 0.85)" }} />atrasado</span>
         </div>
       )}
