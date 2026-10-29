@@ -316,7 +316,7 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
           .map(c => <span key={c} className="inline-flex items-center gap-1.5"><i className="h-1.5 w-1.5 rounded-[2px]" style={{ background: coordColor(c) }} />{personName(board, c).split(" ")[0]}</span>)}
         <span><i className="fila-stripes mr-1.5 inline-block h-[11px] w-[18px] rounded-sm align-[-1px]" />sem expediente</span>
         <span className="inline-flex items-center gap-1.5"><LiveDot className="h-1.5 w-1.5 text-emerald-500" />em edição agora</span>
-        <span><i className="mr-1.5 inline-block h-[11px] w-[18px] rounded-[3px] align-[-1px]" style={{ background: "#f59e0b" }} />passou do prazo (o card termina no prazo; o resto fica em âmbar)</span>
+        <span><i className="mr-1.5 inline-block h-[11px] w-[18px] rounded-[3px] align-[-1px]" style={{ background: "#f59e0b" }} />além do prazo</span>
         <span><i className="mr-1.5 inline-block h-[11px] w-[18px] rounded-[3px] align-[-1px]" style={{ boxShadow: "inset 0 0 0 1.5px rgb(244 63 94 / 0.85)" }} />atrasado</span>
         </div>
       )}
