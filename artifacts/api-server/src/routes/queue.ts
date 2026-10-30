@@ -109,15 +109,17 @@ router.get("/queue/board", requireAuth, async (req, res): Promise<void> => {
   });
 
   // esteira: posição de cada job em minutos de expediente a partir de agora (régua da equipe: noite, almoço,
-  // domingo e feriado não ocupam espaço), pela conta ao vivo (`schedule`). Ausência do editor vira trecho marcado.
+  // domingo e feriado não ocupam espaço). O 1º vai pelo plano (`schedule` sem `live`): o card tem o tamanho das horas e
+  // não estica com o relógio (o que passou vira etiqueta); os outros, pela conta ao vivo (ninguém começa antes de agora).
+  // Ausência do editor vira trecho marcado.
   const W = (lm: number) => workBetween(cal, s.now, lm);
   let lastDay = today + 13;
   const track = (ed: number) => {
-    const q = queueOf(s.tasks, ed), sch = schedule(cal, q, s.now, ed);
+    const q = queueOf(s.tasks, ed), sch = schedule(cal, q, s.now, ed), head = schedule(cal, q.slice(0, 1), s.now, ed, false);
     const items = q.map((t, i) => {
-      const p = sch.get(t.id)!;
-      // o 1º: horas já corridas desde que virou o 1º e quanto passou das horas dele (o fim vai até agora)
-      const done = i === 0 ? workBetween(cal, p.start, Math.min(s.now, p.end), ed) : 0;
+      const p = (i === 0 ? head : sch).get(t.id)!;
+      // o 1º: horas já corridas desde que virou o 1º e quanto passou das horas dele (vira etiqueta no card)
+      const done = i === 0 && p.start < s.now ? workBetween(cal, p.start, s.now, ed) : 0;
       return {
         id: t.id, a: W(Math.max(p.start, s.now)), b: W(p.end), start: p.start, end: p.end, due: p.due,
         done, over: Math.max(0, done - t.est),

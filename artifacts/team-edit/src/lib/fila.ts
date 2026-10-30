@@ -224,7 +224,8 @@ export function simulateQueue(board: Board, editorId: number, ids: number[]): Pl
     const keep = !out.length && head?.id === id ? head : undefined;
     const w = keep ? { start: keep.start, end: keep.end } : consumeWork(board, editorId, cur, Math.max(0, t.est));
     out.push({ id, start: w.start, end: w.end, due: consumeWork(board, editorId, w.end, BUFFER).end });
-    cur = w.end;
+    // o 1º da agenda não estica: passou das horas, o próximo começa agora
+    cur = keep ? Math.max(w.end, board.now) : w.end;
   }
   return out;
 }

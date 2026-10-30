@@ -1,13 +1,14 @@
 /**
  * Agenda dos editores (mesmo visual da que estava em produção, agora com a fila por horas): cada editor numa linha,
  * cada dia numa coluna do tamanho do expediente (8h; sábado 4h30 com o resto listrado; domingo e feriado estreitos e
- * listrados). Cada job ocupa as horas de trabalho previstas, colado no anterior (`track` do board, conta ao vivo).
+ * listrados). Cada job ocupa as horas de trabalho dele, colado no anterior (`track` do board). O 1º não estica com o
+ * relógio: passou das horas e não saiu, ganha a etiqueta "+X das horas" e o próximo começa de agora.
  * `me` = gestor logado: os jobs dele em roxo; os dos outros num tom da cor de cada gestor, com o nome dele.
  * Visões: dia (com as horas), semana e 2 semanas; as setas andam pelos 14 dias do board.
  * `focus` = job sendo arrastado na fila de baixo: fica em destaque ("arrastando") e os outros apagam.
  * `plan` = prévia ao arrastar (filas simuladas no navegador): a agenda redesenha e o rodapé lista os prazos que mudam.
  * Cada card vai normal até o prazo (o gravado; na prévia, o novo); o trabalho que passa do prazo continua no mesmo card,
- * preenchido em âmbar (borda tracejada = passou das horas e ainda não saiu). Contorno vermelho = atrasado.
+ * preenchido em âmbar (só muda com as horas, não com o relógio). Contorno vermelho = atrasado.
  * O 1º da fila conta de quando virou o 1º (API, `head_since`): tocar ou não em "Começar" não move os cards.
  * Com `onMove`, os blocos também se arrastam aqui (menos o em edição): soltar na linha de um editor põe o job na
  * posição sob o mouse (pelos blocos de antes do arrasto), com a mesma prévia ao vivo da fila.
@@ -230,7 +231,16 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
                       ...ranges(it.start, dl == null ? it.end : Math.min(it.end, dl)).map(r => ({ r, over: false })),
                       ...(dl != null && it.end > dl ? ranges(Math.max(it.start, dl), it.end).map(r => ({ r, over: true })) : []),
                     ];
-                    if (!pieces.length) return null;
+                    // passou das horas e ainda não saiu (só fora da prévia: vem da esteira da API): etiqueta no fim do card,
+                    // que não estica; com o card fora da tela (acabou antes de hoje), a etiqueta fica no começo, com o nome
+                    const overH = (it as { over?: number }).over ?? 0, open = overH > 0;
+                    const tagX = pieces.length ? pieces[pieces.length - 1].r[1] : 0, tagIn = tagX > 90;
+                    const tag = open ? [
+                      <span key={`${t.id}-open`} title={`${t.title} · passou das horas ${fmtH(overH)} e ainda não saiu`}
+                        className={cn("pointer-events-none absolute z-[2] whitespace-nowrap rounded-[4px] bg-rose-500 px-1 font-mono text-[9.5px] font-semibold leading-[14px] text-white", tagIn ? "top-[12px] -translate-x-full -translate-y-1/2" : "top-[5px]")}
+                        style={{ left: tagIn ? tagX : tagX + 2 }}>+{fmtH(overH)} das horas{pieces.length && tagX > 40 ? "" : ` · ${shortTitle(t.title)}`}</span>,
+                    ] : [];
+                    if (!pieces.length) return tag.length ? tag : null;
                     const overMin = dl != null && it.end > dl ? workDelta(board, ed.id, dl, it.end) : 0;
                     const widest = (over: boolean) => pieces.reduce((m, p, i) => p.over === over && (m < 0 || p.r[1] - p.r[0] > pieces[m].r[1] - pieces[m].r[0]) ? i : m, -1);
                     // o título vai no trecho mais largo (de preferência o normal); o "+X além do prazo", no âmbar mais largo
@@ -248,9 +258,7 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
                     const ring = lit ? "0 0 0 2px hsl(var(--foreground) / 0.9), 0 4px 14px rgb(0 0 0 / 0.35)"
                       : moved ? `inset 0 0 0 1.5px rgb(${it.due > t.promised! ? "245 158 11" : "16 185 129"} / 0.9)`
                       : !plan && t.late ? "inset 0 0 0 1.5px rgb(244 63 94 / 0.85)" : null;
-                    // passou das horas e ainda não saiu (só fora da prévia: vem da esteira da API)
-                    const open = ((it as { over?: number }).over ?? 0) > 0;
-                    const extra = overMin ? ` · passou do prazo ${fmtH(overMin)}${open ? " e ainda não saiu" : ""}` : "";
+                    const extra = `${overMin ? ` · passou do prazo ${fmtH(overMin)}` : ""}${open ? ` · passou das horas ${fmtH(overH)} e ainda não saiu` : ""}`;
                     return pieces.map(({ r: [a, b], over }, i) => {
                       const joinL = i > 0 && Math.abs(pieces[i - 1].r[1] - a) < 0.8, joinR = i < pieces.length - 1 && Math.abs(pieces[i + 1].r[0] - b) < 0.8;
                       return (
@@ -261,7 +269,7 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
                           className={cn(onMove && !t.playing && "cursor-move", "absolute top-[12px] flex h-[64px] flex-col justify-center overflow-hidden whitespace-nowrap rounded-[4px] px-1.5 text-left leading-tight transition-[left,width,filter,opacity] duration-300 hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
                             joinL && "rounded-l-none", joinR && "rounded-r-none", focus != null && !lit && !moved && "opacity-35", lit && "z-[2] brightness-150")}
                           style={{ left: a, width: Math.max(3, b - a), ...(over ? amber : look), ...(ring ? { boxShadow: ring } : {}) }}
-                          title={`${t.title} · ${personName(board, t.coordId)} · ${fmtH(t.est)} · prazo ${fmt(dl)} · pronto ${fmt(it.end)}${extra}`}>
+                          title={`${t.title} · ${personName(board, t.coordId)} · ${fmtH(t.est)} · prazo ${fmt(dl)} · ${open ? "horas acabaram" : "pronto"} ${fmt(it.end)}${extra}`}>
                           {i === wide && b - a > 40 && <>
                             <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] font-semibold">
                               {t.playing ? <LiveDot className="h-1.5 w-1.5 text-emerald-500" /> : <i className="h-1.5 w-1.5 shrink-0 rounded-[2px]" style={{ background: over ? "#1f1405" : c }} />}
@@ -270,11 +278,10 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
                             {b - a > 70 && <span className={cn("truncate pl-3 font-mono text-[9.5px] tracking-tight", over ? "font-semibold text-[#1f1405]/85" : "text-[hsl(var(--foreground)/0.6)]")}>{over ? `+${fmtH(overMin)} além do prazo` : `${fmtH(t.est)}${mine ? "" : ` · ${t.title}`} · prazo ${fmt(dl).slice(4)}`}</span>}
                           </>}
                           {over && i === wa && i !== wide && b - a > 46 && <span className="truncate font-mono text-[9.5px] font-semibold">+{fmtH(overMin)} além do prazo</span>}
-                          {over && i === pieces.length - 1 && open && <i aria-hidden className="absolute inset-y-0 right-0 w-[3px] opacity-55" style={{ background: "repeating-linear-gradient(180deg, #1f1405 0 3px, transparent 3px 6px)" }} />}
                           {t.playing && i === wide && b - a <= 40 && <LiveDot className="absolute right-1 top-1 h-1.5 w-1.5 text-emerald-500" />}
                         </button>
                       );
-                    }).concat(lit ? [
+                    }).concat(tag).concat(lit ? [
                       <span key={`${t.id}-drag`} className="pointer-events-none absolute top-0 z-[3] -translate-y-1/2 animate-pulse whitespace-nowrap rounded-[4px] bg-[hsl(var(--foreground))] px-1.5 font-mono text-[9.5px] font-semibold leading-[15px] text-[hsl(var(--background))]"
                         style={{ left: pieces[0].r[0] }}>arrastando</span>,
                     ] : []);
@@ -319,6 +326,7 @@ export function QueueTrack({ board, me, focus: focusProp = null, plan: planProp 
         <span><i className="fila-stripes mr-1.5 inline-block h-[11px] w-[18px] rounded-sm align-[-1px]" />sem expediente</span>
         <span className="inline-flex items-center gap-1.5"><LiveDot className="h-1.5 w-1.5 text-emerald-500" />em edição agora</span>
         <span><i className="mr-1.5 inline-block h-[11px] w-[18px] rounded-[3px] align-[-1px]" style={{ background: "rgb(245 158 11 / 0.8)" }} />além do prazo</span>
+        <span className="inline-flex items-center gap-1.5"><i className="rounded-[4px] bg-rose-500 px-1 font-mono text-[9.5px] font-semibold not-italic leading-[14px] text-white">+1h</i>passou das horas e não saiu</span>
         <span><i className="mr-1.5 inline-block h-[11px] w-[18px] rounded-[3px] align-[-1px]" style={{ boxShadow: "inset 0 0 0 1.5px rgb(244 63 94 / 0.85)" }} />atrasado</span>
         </div>
       )}
