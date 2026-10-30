@@ -48,6 +48,7 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
   const [est, setEst] = useState<number | null>(null);
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [planErr, setPlanErr] = useState<string | null>(null);
+  const [duePrev, setDuePrev] = useState<number | null>(null);
   const [users, setUsers] = useState<UserLite[]>([]);
   const [busy, setBusy] = useState(false);
   const [followers, setFollowers] = useState<number[]>([]);
@@ -85,6 +86,17 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
     }, 200);
     return () => clearTimeout(h);
   }, [open, placing, taskId, est, estValid]);
+
+  // prévia na edição: com as horas novas, para onde vai o prazo (a mesma conta de quando salva)
+  const estChanged = mode === "edit" && !isDraft && !!taskId && estValid && est !== task?.estMinutes;
+  useEffect(() => {
+    if (!open || !estChanged) { setDuePrev(null); return; }
+    const h = setTimeout(() => {
+      apiPost<{ due: number | null }>(`/api/queue/tasks/${taskId}/due-preview`, { estMinutes: est })
+        .then(r => setDuePrev(r.due)).catch(() => setDuePrev(null));
+    }, 200);
+    return () => clearTimeout(h);
+  }, [open, estChanged, taskId, est]);
 
   const name = (id: number | null) => users.find(u => u.id === id)?.name ?? "—";
   const fields = () => ({
@@ -199,7 +211,8 @@ export function JobForm({ open, onOpenChange, onSaved, taskId, mode = taskId ? "
 
               <Step {...stepProps(1)} heading="2 · Horas de trabalho *" question="Quanto tempo de edição?" hint="O prazo de entrega é calculado: as horas contam no expediente do editor, na ordem da fila, e a entrega fica 1h depois. Se o job mudar de lugar na fila, o prazo acompanha.">
                 <EstInput value={est} onChange={setEst} />
-                {mode === "edit" && !isDraft && task?.dueDate && <p className="text-xs text-[hsl(var(--muted-foreground))]">Prazo de entrega agora: <b className="text-[hsl(var(--foreground))]">{new Date(task.dueDate).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</b>. Ao salvar novas horas, ele é recalculado.</p>}
+                {mode === "edit" && !isDraft && task?.dueDate && <p className="text-xs text-[hsl(var(--muted-foreground))]">Prazo de entrega agora: <b className="text-[hsl(var(--foreground))]">{new Date(task.dueDate).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</b>.{" "}
+                  {estChanged && duePrev != null ? <>Com {fmtH(est)}, passa para <b className="text-[hsl(var(--foreground))]">{fmt(duePrev)}</b> ao salvar.</> : "Ao salvar novas horas, ele é recalculado."}</p>}
               </Step>
             </>}
 

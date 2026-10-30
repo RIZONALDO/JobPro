@@ -9,7 +9,7 @@ import { broadcastTaskChange } from "../lib/broadcast.js";
 import { createFeedItem } from "../lib/feed.js";
 import {
   type QTask, type State, type TaskRow, QUEUE_STATUSES, loadState, loadCalendar, queueOf, isLate, frontPos, orderAt, blockRisk,
-  schedule, recalcDues, changedQueues, stampHeads, userNames, logEvent, invalidateHolidays,
+  schedule, recalcDues, newDues, inQueue, changedQueues, stampHeads, userNames, logEvent, invalidateHolidays,
 } from "../lib/queue.js";
 import { DAY, dayOff, dayKey, toLm, fmtLm, fmtH, workBetween } from "../lib/workcal.js";
 
@@ -491,6 +491,19 @@ router.post("/queue/plan", requireCoordinator, async (req, res): Promise<void> =
     };
   });
   res.json({ now: s.now, est, plans });
+});
+
+/** Prévia do formulário: com estas horas, para onde vai o prazo do job (a mesma conta de quando salva). */
+router.post("/queue/tasks/:id/due-preview", requireCoordinator, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const est = parseEst(req.body?.estMinutes);
+  const s = await loadState();
+  const t = s.tasks.find(x => x.id === id);
+  if (!t || !inQueue(t) || !est) { res.json({ due: null }); return; }
+  const ed = t.editorId as number;
+  const cal = await loadCalendar([ed]);
+  const after = s.tasks.map(x => x.id === id ? { ...x, est } : x);
+  res.json({ due: newDues(cal, after, s.now, ed, s.tasks).get(id) ?? null, now: s.now });
 });
 
 /**

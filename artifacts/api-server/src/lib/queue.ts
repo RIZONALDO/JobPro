@@ -79,14 +79,15 @@ export const BUFFER = 60;
  * Prazos da fila de um editor: cada job começa quando o anterior termina (o 1º, agora — ou quando começou, se em edição),
  * consome as horas dele no expediente do editor e o prazo é o fim + BUFFER.
  */
-export function schedule(cal: Calendar, q: QTask[], now: number, ed: number): Map<number, { start: number; end: number; due: number }> {
+export function schedule(cal: Calendar, q: QTask[], now: number, ed: number, live = true): Map<number, { start: number; end: number; due: number }> {
   const out = new Map<number, { start: number; end: number; due: number }>();
   let cur = now;
   q.forEach((t, i) => {
     // o 1º conta de quando virou o 1º (clicar em Começar não move a conta); passou das horas e não saiu: vai até agora
+    // (`live`; sem ele, só as horas: serve para medir quanto uma ação do gestor mudou a fila)
     const from = i === 0 ? t.headSince ?? t.since ?? now : cur;
     const w = consume(cal, from, Math.max(0, t.est), ed);
-    const end = i === 0 ? Math.max(w.end, now) : w.end;
+    const end = i === 0 && live ? Math.max(w.end, now) : w.end;
     const due = consume(cal, end, BUFFER, ed).end;
     out.set(t.id, { start: w.start, end, due });
     cur = end;
@@ -176,6 +177,28 @@ export async function logEvent(e: { kind: string; taskId?: number | null; actorI
 }
 
 /**
+ * Prazos da fila de `ed`. Com o retrato de antes (`before`), o prazo atual anda só o quanto a ação do gestor mudou a
+ * previsão (atraso do editor fica de fora); job sem prazo ou novo na fila ganha a previsão.
+ * Mesmo 1º antes e depois: compara só as horas, sem o "vai até agora" — senão, com o 1º já passado das horas, mais
+ * horas nele quase não andariam o prazo (16h → 24h num job estourado moveria minutos, não 8h).
+ */
+export function newDues(cal: Calendar, tasks: QTask[], now: number, ed: number, before?: QTask[], calBefore?: Calendar): Map<number, number> {
+  const q = queueOf(tasks, ed);
+  const plan = schedule(cal, q, now, ed);
+  const out = new Map<number, number>();
+  const q0 = before ? queueOf(before, ed) : null;
+  const live = !q0 || q0[0]?.id !== q[0]?.id;
+  const cur = live ? plan : schedule(cal, q, now, ed, false);
+  const prev = q0 ? schedule(calBefore ?? cal, q0, now, ed, live) : null;
+  for (const [id, p] of plan) {
+    const t = q.find(x => x.id === id)!;
+    const o = prev?.get(id);
+    out.set(id, o && t.promised != null ? shiftWork(cal, t.promised, workDelta(cal, o.due, cur.get(id)!.due, ed), ed) : p.due);
+  }
+  return out;
+}
+
+/**
  * Recalcula o prazo de entrega de todos os jobs nas filas (depois de qualquer mudança na fila).
  * Grava só o que mudou, registra no histórico do job e avisa o gestor dono quando foi outra pessoa que mexeu.
  */
@@ -195,13 +218,8 @@ export async function recalcDues(
   let n = 0;
   const byCoord = new Map<number, string[]>();
   for (const ed of eds) {
-    const plan = schedule(cal, queueOf(s.tasks, ed), s.now, ed);
-    // com o retrato de antes: o prazo anda só o quanto a ação do gestor mudou a previsão (atraso do editor fica de fora)
-    const prev = opts.before ? schedule(opts.calBefore ?? cal, queueOf(opts.before, ed), s.now, ed) : null;
-    for (const [id, p] of plan) {
+    for (const [id, due] of newDues(cal, s.tasks, s.now, ed, opts.before, opts.calBefore)) {
       const t = s.tasks.find(x => x.id === id)!;
-      const o = prev?.get(id);
-      const due = o && t.promised != null ? shiftWork(cal, t.promised, workDelta(cal, o.due, p.due, ed), ed) : p.due;
       if (t.promised === due) continue;
       await db.update(tasksTable).set({ dueDate: fromLm(due) }).where(eq(tasksTable.id, id));
       n++;
